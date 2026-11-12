@@ -105,6 +105,8 @@ interface FakeClientOptions {
   stderrChunks?: Buffer[];
   /** sftp readdir 的回包 */
   readdir?: { err?: Error; list?: unknown[] };
+  /** exec 的远端**不主动关通道**——用来测超时路径 */
+  execNeverCloses?: boolean;
 }
 
 interface FakeClientHandle {
@@ -117,6 +119,8 @@ interface FakeClientHandle {
   channel: FakeChannel;
   /** sftp 通道有没有被 end 掉 */
   sftpEnded: () => boolean;
+  /** 整个 client 被 end 掉了几次——**超时不该拆连接** */
+  endCalls: () => number;
 }
 
 /**
@@ -133,6 +137,7 @@ function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
   const listeners: Record<string, () => void> = {};
   const channel = new FakeChannel();
   let sftpEnded = false;
+  let endCalls = 0;
 
   const sftp = {
     readdir(path: string, cb: (err: Error | undefined, list: unknown[]) => void) {
@@ -159,7 +164,9 @@ function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
       setTimeout(() => listeners['ready']?.(), 0);
       return this;
     },
-    end() {},
+    end() {
+      endCalls += 1;
+    },
     exec(command: string, cb: (err: Error | undefined, stream: unknown) => void) {
       execCalls.push(command);
       setTimeout(() => {
@@ -169,7 +176,7 @@ function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
         setTimeout(() => {
           for (const chunk of opts.stdoutChunks ?? []) stream.emit('data', chunk);
           for (const chunk of opts.stderrChunks ?? []) stream.stderr.emit('data', chunk);
-          setTimeout(() => stream.emit('close', 0), 0);
+          if (!opts.execNeverCloses) setTimeout(() => stream.emit('close', 0), 0);
         }, 0);
       }, 0);
       return this;
@@ -184,7 +191,14 @@ function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
     },
   };
 
-  return { client, execCalls, readdirCalls, channel, sftpEnded: () => sftpEnded };
+  return {
+    client,
+    execCalls,
+    readdirCalls,
+    channel,
+    sftpEnded: () => sftpEnded,
+    endCalls: () => endCalls,
+  };
 }
 
 const sshProfile = {
@@ -390,5 +404,37 @@ describe('SSH 输出解码（约束 G15 / 风险 RF-3）', () => {
     expect(text).toBe('中');
     expect(text).not.toContain('�');
     expect([...text]).toHaveLength(1);
+  });
+});
+
+describe('SshConnection.exec 的超时路径', () => {
+  it('超时只关那一条通道，不拆整条连接', async () => {
+    // 原来超时调的是 `this.client.end()`——那会把该 client 上**所有通道**
+    // 一起关掉：用户正用着的交互终端当场断掉，
+    // 而连接已经死了却仍被当成「已打开」。
+    const handle = makeFakeClient({ execNeverCloses: true });
+    const conn = makeConn(handle);
+    await conn.open();
+
+    const result = await conn.exec('sleep 100', { timeoutMs: 50 });
+
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).toBe(124);
+    // 连接不该被拆
+    expect(handle.endCalls()).toBe(0);
+  });
+
+  it('远端不关通道时，Promise 也要自己结算（不能永久挂起）', async () => {
+    const handle = makeFakeClient({ execNeverCloses: true });
+    const conn = makeConn(handle);
+    await conn.open();
+
+    // 若没有独立的超时结算路径，这个 Promise 永不 settle，
+    // 调用方永久挂起——这里用超时兜底保证测试不会挂死。
+    const result = await Promise.race([
+      conn.exec('sleep 100', { timeoutMs: 50 }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('挂住了')), 2000)),
+    ]);
+    expect(result.timedOut).toBe(true);
   });
 });

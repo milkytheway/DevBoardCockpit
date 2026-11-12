@@ -181,6 +181,8 @@ export class SshConnection implements Connection {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let settled = false;
+      let stream: ClientChannel | undefined;
 
       // **跨 chunk 重组**（约束 G15 / 风险 RF-3）：
       // 一个中文字符可能被拆到两个 chunk 里，`Buffer.toString('utf8')` 是逐 chunk
@@ -189,12 +191,44 @@ export class SshConnection implements Connection {
       const stdoutDecoder = new StringDecoder('utf8');
       const stderrDecoder = new StringDecoder('utf8');
 
+      /** 结算一次。重复调用无效——超时与 close 可能同时到 */
+      const settle = (code: number | null): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // 冲尾巴：最后一个 chunk 的尾巴可能还缓在 decoder 里
+        stdout += stdoutDecoder.end();
+        stderr += stderrDecoder.end();
+        resolve({
+          exitCode: timedOut ? TIMEOUT_EXIT_CODE : code,
+          stdout,
+          stderr,
+          durationMs: Date.now() - startedAt,
+          timedOut,
+        });
+      };
+
+      /**
+       * 超时**只关那一条通道**，不拆整条连接。
+       *
+       * 原来这里调的是 `this.client.end()`——那会把该 client 上
+       * **所有通道**一起关掉：用户正用着的交互终端当场断掉，
+       * 而连接已经死了却仍被当成「已打开」（`this.client` 没置空），
+       * 后续每条命令都往死连接上打。
+       */
       const timer = setTimeout(() => {
         timedOut = true;
-        this.client?.end();
+        try {
+          stream?.close();
+        } catch {
+          // 通道已经关了就算了
+        }
+        // 超时要**自己结算**：远端不主动关通道的话，
+        // 光靠 close 事件这个 Promise 永不 settle，调用方永久挂起。
+        settle(TIMEOUT_EXIT_CODE);
       }, timeoutMs);
 
-      this.client!.exec(command, (err, stream) => {
+      this.client!.exec(command, (err, ch) => {
         if (err) {
           clearTimeout(timer);
           reject(makeError('CONN_OPEN_FAILED', `SSH 执行失败：${err.message}`, {
@@ -202,21 +236,10 @@ export class SshConnection implements Connection {
           }));
           return;
         }
+        stream = ch;
         stream.on('data', (d: Buffer) => { stdout += stdoutDecoder.write(d); });
         stream.stderr.on('data', (d: Buffer) => { stderr += stderrDecoder.write(d); });
-        stream.on('close', (code: number | null) => {
-          clearTimeout(timer);
-          // 冲尾巴：最后一个 chunk 的尾巴可能还缓在 decoder 里
-          stdout += stdoutDecoder.end();
-          stderr += stderrDecoder.end();
-          resolve({
-            exitCode: timedOut ? TIMEOUT_EXIT_CODE : code,
-            stdout,
-            stderr,
-            durationMs: Date.now() - startedAt,
-            timedOut,
-          });
-        });
+        stream.on('close', (code: number | null) => settle(code));
       });
     });
   }
@@ -375,6 +398,17 @@ class SshSession extends Session {
 
   resize(cols: number, rows: number): void {
     this.channel.setWindow(rows, cols, 0, 0);
+  }
+
+  /**
+   * 远端 shell 自己退出了 → 上报。
+   *
+   * 没有它的话，用户敲了 `exit` 之后界面还留着标签页，
+   * 继续打字写进一个**已经死了**的通道——
+   * 「板子掉线了但界面不知道」。
+   */
+  onExit(cb: (exitCode: number | null) => void): void {
+    this.channel.on('close', (code: number | null) => cb(code));
   }
 
   close(): void {

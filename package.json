@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
-    "mutation:check": "bash scripts/mutation-check.sh",
+    "gen:vocabulary:check": "tsx scripts/gen-vocabulary.ts --check",
+    "mutation:check": "node scripts/mutation-check.mjs",
     "postinstall": "electron-rebuild -f -w node-pty,serialport"
   },
   "dependencies": {

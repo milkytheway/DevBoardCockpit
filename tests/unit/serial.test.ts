@@ -74,6 +74,38 @@ describe('SerialConnection.exec', () => {
     expect(res.stdout).not.toContain('__DBC');
   });
 
+  it('输出超过 64 KB 也认得回来 —— 旧的「绝对下标 + 裁剪」会在这里永久失效', async () => {
+    // 这条对应 `docs/11-计划1评审报告.md` R-02：
+    // 原来用 transcript 的**绝对下标**认领 marker，而 transcript 会被裁剪，
+    // 于是大输出之后**这条连接上的 exec 通道永久死亡**
+    // （每条命令都挂满 30 秒、返回空输出）。
+    //
+    // 现在的做法是「每次 exec 用自己的缓冲」，没有下标这回事。
+    const big = 'x'.repeat(100 * 1024);
+    const { factory } = fakeBoard(big);
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+    const res = await conn.exec('cat bigfile', { timeoutMs: 5000 });
+    expect(res.timedOut).toBe(false);
+    expect(res.stdout.length).toBe(big.length);
+  });
+
+  it('交互会话开着时，exec 被拒 —— 一根线上不能同时有两次往返（事实 S1）', async () => {
+    // 原来这把锁只挡 exec↔exec：会话开着的时候，
+    // 任何一次 exec 都会把命令**追加在用户没打完的输入后面**
+    // （板端 shell 拿到的是 `ls -l /tmpuptime; echo marker`）。
+    const { factory } = fakeBoard('hi');
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+
+    const session = await conn.openSession();
+    await expect(conn.exec('uptime')).rejects.toMatchObject({ code: 'CONN_TIMEOUT' });
+
+    // 会话关掉之后，线又空出来了
+    session.close();
+    await expect(conn.exec('uptime')).resolves.toMatchObject({ exitCode: 0 });
+  });
+
   it('端口被占用时报 PORT_BUSY 并指出是哪个端口（RF-5）', async () => {
     const factory: SerialPortFactory = async () => {
       throw Object.assign(new Error('Resource busy'), { code: 'EBUSY' });

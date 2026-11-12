@@ -81,6 +81,21 @@ export abstract class Session {
    */
   abstract readonly exitCode: number | null;
 
+  /**
+   * 会话**自己结束**了（远端 shell 退出、adbd 断连、拔线）。
+   *
+   * **为什么需要这个钩子**：没有它，用户在 SSH 终端里敲 `exit` 之后，
+   * 界面还留着那个标签页，屏幕停在最后的输出上，
+   * 继续打字写进一个**已经死了**的通道——
+   * 「板子掉线了但界面不知道」。
+   * 这与「驾驶舱而非遥控器」直接冲突：驾驶舱要显示板子**实际**在做什么。
+   *
+   * 默认没有退出事件（串口控制台不会报告退出）。
+   */
+  onExit(_cb: (exitCode: number | null) => void): void {
+    // 默认实现：没有退出事件
+  }
+
   /** 记录一行到会话日志 */
   protected record(line: string): void {
     this.log.write(line);

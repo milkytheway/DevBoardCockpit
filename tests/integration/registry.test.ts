@@ -12,6 +12,18 @@ describe('capabilitiesFor', () => {
     expect(capabilitiesFor(p('adb')).pty).toBe(false);
     expect(capabilitiesFor(p('ssh')).pty).toBe(true);
   });
+
+  it('profile 显式写的 pty 覆盖传输默认值 —— 能力位由 profile 决定', () => {
+    // 能力位只有一份实现（`hal/capabilities`）。
+    // 原来有两份，而 registry 那份**不看 profile 的 pty**——
+    // 于是用户在 profile 里把 ssh 的 pty 改成 false 毫无效果，
+    // 而两处算法还不一样（谁 import 错那份就出 bug）。
+    const sshNoPty = { ...p('ssh'), options: { pty: false } };
+    expect(capabilitiesFor(sshNoPty).pty).toBe(false);
+
+    const serialNoPty = { ...p('serial'), options: { port: 'COM3', pty: false } };
+    expect(capabilitiesFor(serialNoPty).pty).toBe(false);
+  });
 });
 
 describe('capabilitiesFor 与真实 profile 一致', () => {

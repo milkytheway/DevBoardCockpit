@@ -8,6 +8,7 @@ import { TerminalManager } from '../../src/main/terminal/manager';
 const fakeConn = (caps: { pty: boolean }) => {
   const written: string[] = [];
   let dataCb: ((chunk: string) => void) | undefined;
+  let exitCb: ((exitCode: number | null) => void) | undefined;
   const conn = {
     id: 'c', transport: 'serial' as const,
     capabilities: () => ({ exec: true, pty: caps.pty, files: false, exitCode: false }),
@@ -17,11 +18,14 @@ const fakeConn = (caps: { pty: boolean }) => {
       write: (d: string) => written.push(d),
       resize: vi.fn(), close: vi.fn(), exitCode: null,
       onData: (cb: (chunk: string) => void) => { dataCb = cb; },
+      onExit: (cb: (exitCode: number | null) => void) => { exitCb = cb; },
     }),
   };
   return {
     conn, written,
     emit: (chunk: string) => dataCb?.(chunk),
+    /** 模拟「远端自己退出了」 */
+    exit: (code: number | null) => exitCb?.(code),
   };
 };
 
@@ -104,5 +108,25 @@ describe('TerminalManager', () => {
     const { conn } = fakeConn({ pty: false });
     const mgr = mgrWith(conn);
     await expect(mgr.open('nope')).rejects.toMatchObject({ code: 'TERM_NOT_FOUND' });
+  });
+});
+
+describe('TerminalManager 的会话退出', () => {
+  it('远端自己退出时上报 exit —— 界面不能留着死终端', async () => {
+    // 原来 Session 基类没有退出钩子，
+    // 用户在 SSH 里敲了 `exit` 之后界面还留着标签页，
+    // 继续打字写进一个已经死了的通道——
+    // 「板子掉线了但界面不知道」，与「驾驶舱而非遥控器」直接冲突。
+    const { conn, exit } = fakeConn({ pty: true });
+    const mgr = mgrWith(conn);
+    const seen: Array<number | null> = [];
+    mgr.onExit((_id, code) => seen.push(code));
+
+    const { sessionId } = await mgr.open('p1');
+    exit(0);
+
+    expect(seen).toEqual([0]);
+    // 会话已经被收掉
+    expect(() => mgr.write(sessionId, 'x')).toThrow();
   });
 });

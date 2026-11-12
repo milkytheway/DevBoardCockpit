@@ -313,6 +313,16 @@ class AdbSession extends Session {
     this.dataCbs.push(cb);
   }
 
+  /**
+   * adb shell 退出了 → 上报。
+   *
+   * 拔线、adbd 重启、用户敲 `exit` 都会走到这里。
+   * 没有它的话，界面留着标签页继续往死通道里打字。
+   */
+  onExit(cb: (exitCode: number | null) => void): void {
+    this.child.on('exit', (code: number | null) => cb(code));
+  }
+
   resize(_cols: number, _rows: number): void {
     // adb shell 没有窗口尺寸概念
   }

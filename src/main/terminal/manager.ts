@@ -94,6 +94,12 @@ export class TerminalManager {
       for (const cb of this.dataCbs) cb(id, chunk);
     });
 
+    // 远端自己退出了（敲 exit / 拔线 / adbd 断连）→ 收掉会话并通知界面。
+    // 没有这条，界面留着标签页，用户继续往死通道里打字。
+    session.onExit((exitCode: number | null) => {
+      this.closeSession(id, exitCode);
+    });
+
     this.sessions.set(id, { id, session, connection, pty, editor: new PipeLineEditor() });
     // **按 sessionId 登记**：一个标签一个连接。
     // 按 profileId 登记的话，同一个 profile 开两个标签会互相覆盖。
@@ -126,6 +132,16 @@ export class TerminalManager {
   }
 
   close(sessionId: string): void {
+    this.closeSession(sessionId, this.sessions.get(sessionId)?.session.exitCode ?? null);
+  }
+
+  /**
+   * 收掉一个会话。
+   *
+   * 两条路径会走到这里：用户点关闭按钮、远端自己退出了。
+   * 重复调用无害——会话从 map 里删掉后第二次就直接返回。
+   */
+  private closeSession(sessionId: string, exitCode: number | null): void {
     const live = this.sessions.get(sessionId);
     if (!live) return;
     live.session.close();
@@ -133,7 +149,7 @@ export class TerminalManager {
     this.sessions.delete(sessionId);
     // 连接也要注销——否则按 id 找连接会拿到一个已关闭的
     this.opts.onConnectionClose?.(sessionId);
-    for (const cb of this.exitCbs) cb(sessionId, live.session.exitCode);
+    for (const cb of this.exitCbs) cb(sessionId, exitCode);
   }
 
   onData(cb: (sessionId: string, chunk: string) => void): void {
