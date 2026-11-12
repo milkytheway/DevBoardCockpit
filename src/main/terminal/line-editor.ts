@@ -46,6 +46,18 @@ const CTRL_W = '\x17'; // 删前一个词
 const ESC = '\x1b';
 
 export class PipeLineEditor {
+  /**
+   * pipe 模式的提示符。
+   *
+   * **为什么宿主要画提示符**：pipe 模式下远端**不发提示符**
+   * （它没有 tty，`PS1` 也就无从打印）。前身工程就是这么做的
+   * （`docs/legacy/旧工程架构说明-PySide6.md`：「提示符由控制台画，
+   * 不是从设备取——因为板子自己的 `PS1` 是纯文本」）。
+   *
+   * 它来自 profile 的 `options.prompt`。
+   */
+  constructor(private readonly prompt: string = '') {}
+
   /** 当前行已输入的内容（用户看得见的那一行） */
   private line = '';
 
@@ -98,7 +110,8 @@ export class PipeLineEditor {
           // 回车 → 整行发给远端，行尾是 `\n`（远端只认 LF）。
           // 回显是 `\r\n`，让用户看到自己换行了。
           toRemote += `${this.line}\n`;
-          echo += '\r\n';
+          // 换行后画下一个提示符——用户看到的是一条条输入行
+          echo += `\r\n${this.prompt}`;
           this.line = '';
           this.cursor = 0;
           break;

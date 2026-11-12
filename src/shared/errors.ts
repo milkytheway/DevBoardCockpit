@@ -9,6 +9,7 @@ export type ErrorCode =
   | 'CONN_OPEN_FAILED'
   | 'CONN_CLOSED'
   | 'CONN_TIMEOUT'
+  | 'CONN_BUSY'
   | 'PORT_BUSY'
   | 'TERM_NOT_FOUND'
   | 'FILE_TRANSFER_FAILED'

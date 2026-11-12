@@ -77,6 +77,9 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
+    // **把焦点给终端**：否则开完标签直接打字没反应，
+    // 而回车还会再开一个标签（焦点还在工具栏的按钮上）。
+    term.focus();
 
     const disposeData = term.onData((data) => {
       onWriteRef.current(data);

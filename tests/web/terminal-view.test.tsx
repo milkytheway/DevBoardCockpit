@@ -20,6 +20,7 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon(_a: unknown) { /* no-op */ }
     open(_el: unknown) { /* no-op */ }
     write(data: string) { writes.push(data); }
+    focus() { /* no-op */ }
     dispose() { /* no-op */ }
   },
 }));

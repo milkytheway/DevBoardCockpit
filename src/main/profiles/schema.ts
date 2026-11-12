@@ -30,6 +30,18 @@ interface TransportSpec {
   defaults?: Record<string, unknown>;
 }
 
+/**
+ * 各传输共有的可选字段。
+ *
+ * - `pty`：目标是不是真终端（能力位由 profile 决定，不靠传输名猜）
+ * - `prompt`：**pipe 模式下宿主要画的提示符**。
+ *   pipe 模式的远端没有 tty，`PS1` 无从打印——前身工程就是宿主画的
+ *   （`docs/legacy/旧工程架构说明-PySide6.md`）。
+ * - `commands`：**快捷命令集的 id**（前身工程：quick-command set）。
+ *   **已登记但尚未消费**——快捷命令面板属 M5。
+ *   在那之前它是一个「看起来支持」的字段，所以在这里写清楚，
+ *   免得有人以为改它能生效（`docs/11-计划1评审报告.md` R-36）。
+ */
 const COMMON_OPTIONAL = ['pty', 'prompt', 'commands'] as const;
 
 const TRANSPORT_SPECS: Record<TransportKind, TransportSpec> = {

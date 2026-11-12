@@ -23,6 +23,7 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon() { /* no-op */ }
     open() { /* no-op */ }
     write() { /* no-op */ }
+    focus() { /* no-op */ }
     dispose() { /* no-op */ }
   },
 }));

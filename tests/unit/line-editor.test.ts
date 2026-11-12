@@ -86,3 +86,23 @@ describe('pipe 模式的行规程', () => {
     expect(edit.toRemote).toBe('');
   });
 });
+
+describe('pipe 模式的提示符', () => {
+  it('换行后画下一个提示符 —— pipe 模式的远端不发提示符', () => {
+    // 前身工程就是宿主画的（`docs/legacy/旧工程架构说明-PySide6.md`）：
+    // 「提示符由控制台画，不是从设备取——因为板子自己的 PS1 是纯文本」。
+    const ed = new PipeLineEditor('root@board$ ');
+    ed.input('ls');
+    const edit = ed.input('\r');
+    // 换行 + 下一个提示符
+    expect(edit.echo).toBe('\r\nroot@board$ ');
+    // 提示符只是画给人看的，不发给远端
+    expect(edit.toRemote).toBe('ls\n');
+  });
+
+  it('没有提示符时什么都不多画', () => {
+    const ed = new PipeLineEditor();
+    ed.input('ls');
+    expect(ed.input('\r').echo).toBe('\r\n');
+  });
+});

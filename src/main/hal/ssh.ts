@@ -251,35 +251,42 @@ export class SshConnection implements Connection {
    */
   async pull(remotePath: string, localPath: string): Promise<void> {
     const sftp = await this.openSftp();
-    await new Promise<void>((resolve, reject) => {
-      sftp.fastGet(remotePath, localPath, (err) => {
-        if (err) {
-          reject(makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
-            detail: { remotePath, localPath, cause: err.message },
-          }));
-          return;
-        }
-        resolve();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sftp.fastGet(remotePath, localPath, (err) => {
+          if (err) {
+            reject(makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+              detail: { remotePath, localPath, cause: err.message },
+            }));
+            return;
+          }
+          resolve();
+        });
       });
-    });
-    sftp.end();
+    } finally {
+      // 失败也要关——否则每失败一次就漏一个 sftp 通道
+      sftp.end();
+    }
   }
 
   /** 上传：走 ssh2 的 sftp */
   async push(localPath: string, remotePath: string): Promise<void> {
     const sftp = await this.openSftp();
-    await new Promise<void>((resolve, reject) => {
-      sftp.fastPut(localPath, remotePath, (err) => {
-        if (err) {
-          reject(makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
-            detail: { localPath, remotePath, cause: err.message },
-          }));
-          return;
-        }
-        resolve();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sftp.fastPut(localPath, remotePath, (err) => {
+          if (err) {
+            reject(makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+              detail: { localPath, remotePath, cause: err.message },
+            }));
+            return;
+          }
+          resolve();
+        });
       });
-    });
-    sftp.end();
+    } finally {
+      sftp.end();
+    }
   }
 
   /**

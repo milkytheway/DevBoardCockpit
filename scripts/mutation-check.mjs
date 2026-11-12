@@ -225,10 +225,64 @@ function run(cmd, args) {
 let pass = 0;
 let fail = 0;
 
+/**
+ * **待还原的文件**。
+ *
+ * 为什么需要它：变异期间源文件是「坏」的。如果进程在跑检查的过程中
+ * 被杀掉（Ctrl+C、超时、关窗），`finally` 里的还原**不会执行**——
+ * 源文件就带着变异留在仓库里了。
+ *
+ * 那不是假设：有一次跑超时被砍，App.tsx 的错误呈现就留在坏状态，
+ * 之后的测试全红，而原因在几十行之外。
+ *
+ * 所以：**退出信号与正常退出都要还原**。
+ */
+let pendingRestore = null;
+
+function restorePending() {
+  if (!pendingRestore) return;
+  try {
+    writeFileSync(pendingRestore.path, pendingRestore.original, 'utf8');
+    console.log('\n（已还原被中断的变异）');
+  } catch {
+    // 还原不了也要说出来
+    console.error(`\n✗ 还原失败：${pendingRestore.path} —— 请手动 git checkout 它`);
+  }
+  pendingRestore = null;
+}
+
+process.on('SIGINT', () => {
+  restorePending();
+  process.exit(130);
+});
+process.on('SIGTERM', () => {
+  restorePending();
+  process.exit(143);
+});
+process.on('exit', restorePending);
+
 console.log('=== 变异测试：验证回归测试真的在守 ===');
 console.log();
 
-for (const m of MUTATIONS) {
+/**
+ * 可以只跑其中几项：`node scripts/mutation-check.mjs M10 M11`。
+ *
+ * **为什么需要**：12 项一次跑完要好几分钟（web 测试本身就慢），
+ * 而工具调用有上限——一次跑不完就会**在变异中途被杀**，
+ * 源文件带着变异留在仓库里。
+ */
+const FILTERS = process.argv.slice(2);
+const selected = FILTERS.length
+  ? MUTATIONS.filter((m) => FILTERS.some((f) => m.name.includes(f)))
+  : MUTATIONS;
+
+if (selected.length === 0) {
+  console.error(`没有匹配的变异：${FILTERS.join(', ')}`);
+  console.error(`可用的编号：C1–C6、M7–M12`);
+  process.exit(1);
+}
+
+for (const m of selected) {
   const path = join(ROOT, m.file);
   const original = readFileSync(path, 'utf8');
 
@@ -242,6 +296,7 @@ for (const m of MUTATIONS) {
   }
 
   writeFileSync(path, mutated, 'utf8');
+  pendingRestore = { path, original };
 
   let result;
   try {
@@ -249,6 +304,7 @@ for (const m of MUTATIONS) {
   } finally {
     // 还原——不管验成什么样，文件必须回到原样
     writeFileSync(path, original, 'utf8');
+    pendingRestore = null;
   }
 
   if (result.rc === 0) {

@@ -99,7 +99,7 @@ describe('SerialConnection.exec', () => {
     await conn.open();
 
     const session = await conn.openSession();
-    await expect(conn.exec('uptime')).rejects.toMatchObject({ code: 'CONN_TIMEOUT' });
+    await expect(conn.exec('uptime')).rejects.toMatchObject({ code: 'CONN_BUSY' });
 
     // 会话关掉之后，线又空出来了
     session.close();
@@ -130,7 +130,8 @@ describe('SerialConnection.exec', () => {
     // 第二个命令不能插进来——两个 marker 的回包会在同一份 transcript 里交错，
     // 互相认领对方的输出
     await expect(conn.exec('uname', { timeoutMs: 200 })).rejects.toMatchObject({
-      code: 'CONN_TIMEOUT',
+      // 「被拒」与「真的超时」不同码：UI 要能分开说
+      code: 'CONN_BUSY',
     });
     await first;
   });

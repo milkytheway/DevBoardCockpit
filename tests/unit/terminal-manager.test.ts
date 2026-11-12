@@ -130,3 +130,37 @@ describe('TerminalManager 的会话退出', () => {
     expect(() => mgr.write(sessionId, 'x')).toThrow();
   });
 });
+
+describe('TerminalManager 的 pipe 模式提示符', () => {
+  it('会话开起来时画一次 profile 里的提示符', async () => {
+    // profile 的 `options.prompt` 是「pipe 模式下宿主要画的提示符」。
+    // 没有它，ADB 终端打开就是一片空白，用户不知道该输入什么。
+    const { conn } = fakeConn({ pty: false });
+    const mgr = new TerminalManager({
+      listProfiles: () => [
+        { id: 'p1', label: 'p1', transport: 'adb', options: { prompt: 'root@board$ ' } },
+      ],
+      createConnection: () => conn as never,
+      createLog: () => ({ write: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+    });
+    const seen: string[] = [];
+    mgr.onData((_id, chunk) => seen.push(chunk));
+    await mgr.open('p1');
+    expect(seen.join('')).toContain('root@board$ ');
+  });
+
+  it('pty 模式不画提示符 —— 远端自己有', async () => {
+    const { conn } = fakeConn({ pty: true });
+    const mgr = new TerminalManager({
+      listProfiles: () => [
+        { id: 'p1', label: 'p1', transport: 'ssh', options: { prompt: 'root@board$ ' } },
+      ],
+      createConnection: () => conn as never,
+      createLog: () => ({ write: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+    });
+    const seen: string[] = [];
+    mgr.onData((_id, chunk) => seen.push(chunk));
+    await mgr.open('p1');
+    expect(seen).toEqual([]);
+  });
+});

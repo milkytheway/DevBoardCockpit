@@ -100,10 +100,18 @@ export class TerminalManager {
       this.closeSession(id, exitCode);
     });
 
-    this.sessions.set(id, { id, session, connection, pty, editor: new PipeLineEditor() });
+    // pipe 模式：远端不发提示符，宿主画（profile 的 `options.prompt`）
+    const prompt = typeof profile.options['prompt'] === 'string' ? profile.options['prompt'] : '';
+    const editor = new PipeLineEditor(prompt);
+    this.sessions.set(id, { id, session, connection, pty, editor });
     // **按 sessionId 登记**：一个标签一个连接。
     // 按 profileId 登记的话，同一个 profile 开两个标签会互相覆盖。
     this.opts.onConnectionOpen?.(id, connection);
+
+    // pipe 模式的第一条提示符
+    if (!pty && prompt.length > 0) {
+      for (const cb of this.dataCbs) cb(id, prompt);
+    }
     return { sessionId: id };
   }
 

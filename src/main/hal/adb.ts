@@ -277,7 +277,14 @@ export class AdbConnection implements Connection {
 class AdbSession extends Session {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly dataCbs: ((chunk: string) => void)[] = [];
-  private readonly decoder = new StringDecoder('utf8');
+  /**
+   * stdout 与 stderr **各一个** decoder。
+   *
+   * 共用一个的话，跨两个流被拆开的多字节字符会被拼错
+   * （stdout 的前半截 + stderr 的后半截 = 一个乱码字符）。
+   */
+  private readonly stdoutDecoder = new StringDecoder('utf8');
+  private readonly stderrDecoder = new StringDecoder('utf8');
 
   constructor(
     conn: AdbConnection,
@@ -287,12 +294,12 @@ class AdbSession extends Session {
     this.child = conn.spawnShell();
 
     this.child.stdout.on('data', (buf: Buffer) => {
-      const chunk = this.decoder.write(buf);
+      const chunk = this.stdoutDecoder.write(buf);
       if (chunk.length === 0) return;
       for (const cb of this.dataCbs) cb(chunk);
     });
     this.child.stderr.on('data', (buf: Buffer) => {
-      const chunk = this.decoder.write(buf);
+      const chunk = this.stderrDecoder.write(buf);
       if (chunk.length === 0) return;
       for (const cb of this.dataCbs) cb(chunk);
     });

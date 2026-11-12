@@ -151,6 +151,13 @@ export class SerialConnection implements Connection {
     const port = this.profile.options['port'];
     const baudRate = Number(this.profile.options['baudrate'] ?? 115200);
 
+    // 重复 open 会覆盖 `this.port`，**前一个端口句柄就泄漏了**。
+    // 先把旧的关掉。
+    if (this.port) {
+      await this.port.close();
+      this.port = undefined;
+    }
+
     try {
       this.port = await this.portFactory({ path: String(port), baudRate });
     } catch (err) {
@@ -200,7 +207,9 @@ export class SerialConnection implements Connection {
     }
     if (this.busy) {
       // 同一连接上并发往返 = 串台。宁可拒绝，也不能让两个命令互相认领对方的输出。
-      throw makeError('CONN_TIMEOUT', '这条连接上还有命令在跑', {
+      // **不是超时，是「被拒」**：两者不该同码——
+      // UI 分不清「等久了没结果」与「这条线正忙着」。
+      throw makeError('CONN_BUSY', '这条连接上还有命令在跑', {
         detail: { id: this.id, command },
       });
     }
@@ -272,7 +281,7 @@ export class SerialConnection implements Connection {
     if (this.busy) {
       // 同一根线上已经有一次往返了（事实 S1：命令通道与交互终端共用一根线）。
       // 宁可拒绝，也不能把命令追加在用户没打完的输入后面。
-      throw makeError('CONN_TIMEOUT', '这条连接上已经有命令在跑', {
+      throw makeError('CONN_BUSY', '这条连接上已经有命令在跑', {
         detail: { id: this.id },
       });
     }
