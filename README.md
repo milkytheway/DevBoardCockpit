@@ -93,6 +93,13 @@ npm run typecheck
 npm test
 ```
 
+另外两个跟「不漂移」有关的：
+
+```powershell
+npm run gen:vocabulary -- --check   # 词表三份一致：YAML = 文档表格 = 代码词表
+npm run mutation:check               # 变异测试：证明回归测试真的在守
+```
+
 **宿主的 adb 路径在 `profiles/settings.json` 的 `hostTools.adb`**——
 这台机器上 adb 不在 PATH（`where adb` 查不到），机器专属路径不进代码（`AGENTS.md` §3）。
 

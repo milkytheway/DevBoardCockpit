@@ -78,6 +78,9 @@ README.md
 | **旧工程只读** | `DevBoardConsole` 保留事实与理由，**不删不改**；移植先看 `docs/03-迁移对照表.md` |
 | **改决策要写 ADR** | 动 `docs/05-决策记录.md`，别在代码里默默改架构 |
 | **提交前跑测试** | `npm run lint && npm run typecheck && npm test` 全绿才提交 |
+| **修完 bug 要验测试真的在守** | 把修复**改回去**，确认对应测试**变红**，再还原确认变绿。<br>「测试通过」不等于「测试能抓住这个 bug」——只有变异能区分。<br>跑 `npm run mutation:check` 看当前这批修复是否都还守着 |
+| **替身按行为建模，不按结论建模** | 假实现要模拟**真实行为**（回显每一行、执行命令、异步回调），<br>不能直接返回「契约期待的那个答案」——那样会把协议形状的 bug 盖住 |
+| **词表只有一个源头** | 改词表改 `docs/spec/data/tag-vocabulary.yaml`，然后 `npm run gen:vocabulary`。<br>跑 `npm run gen:vocabulary -- --check` 确认「YAML = 文档表格 = 代码词表」三份一致 |
 
 ## 4. 事实从哪来
 
@@ -120,6 +123,9 @@ npm run typecheck          # tsc --noEmit
 npm test                   # vitest
 npm run validate:profiles  # 板型包 + 卡片 manifest 校验
 npm run probe:board        # 对着真板跑 reader，核对输出
+npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
+npm run gen:vocabulary -- --check   # 校验三份一致，不一致就退出码 1
+npm run mutation:check     # 变异测试：证明回归测试真的在守着
 ```
 
 > 这些命令**现在还不存在**——`package.json` 与 `src/` 都要等契约评审通过后才建。
