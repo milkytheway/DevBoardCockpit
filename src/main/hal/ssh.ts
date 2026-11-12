@@ -60,6 +60,8 @@ export class SshConnection implements Connection {
 
   private client: Client | undefined;
   private readonly opts: SshConnectOptions;
+  /** 最近一次链路错误。供上层查连接健康度 */
+  lastError: Error | undefined;
 
   constructor(
     profile: ConnectionProfile,
@@ -81,19 +83,24 @@ export class SshConnection implements Connection {
 
     await new Promise<void>((resolve, reject) => {
       const onReady = (): void => {
-        client.off('error', onError);
         resolve();
       };
       const onError = (err: Error & { level?: string }): void => {
-        client.off('ready', onReady);
-        reject(
-          makeError('CONN_OPEN_FAILED', `SSH 连不上 ${this.opts.host}:${this.opts.port}`, {
-            detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level },
-          }),
-        );
+        // 连接建立之后的错误（链路断了）也要有人接——
+        // 没有监听器的 'error' 事件会变成未捕获异常，把主进程带崩。
+        if (this.client) {
+          this.lastError = err;
+        } else {
+          reject(
+            makeError('CONN_OPEN_FAILED', `SSH 连不上 ${this.opts.host}:${this.opts.port}`, {
+              detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level },
+            }),
+          );
+        }
       };
       client.once('ready', onReady);
-      client.once('error', onError);
+      // 常驻监听：握手之后不再摘掉
+      client.on('error', onError);
       client.connect(this.opts);
     });
 
@@ -146,33 +153,31 @@ export class SshConnection implements Connection {
     });
   }
 
-  openSession(_opts?: { cols?: number; rows?: number }): Session {
+  async openSession(opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.client) {
       throw makeError('CONN_CLOSED', 'SSH 连接未打开', { detail: { id: this.id } });
     }
-    // ssh2 的 shell() 在回调里给出 ClientChannel——通道才是会话，不是 client
-    const channel = this.openShell();
+    // ssh2 的 shell() 是**异步**的：通道要等一次往返才拿到。
+    // 同步检查 channel 必然是 undefined——SSH 终端开不起来。
+    const channel = await this.openShell(opts?.cols ?? 80, opts?.rows ?? 24);
     return new SshSession(channel, this.log);
   }
 
-  /** 打开一个 shell 通道。ssh2 的 shell() 只有回调形态，这里包成同步结果 */
-  private openShell(): ClientChannel {
-    let channel: ClientChannel | undefined;
-    this.client!.shell((err, ch) => {
-      if (err) {
-        throw makeError('CONN_OPEN_FAILED', `SSH 开 shell 失败：${err.message}`, {
-          detail: { host: this.opts.host, cause: err.message },
-        });
-      }
-      channel = ch;
-    });
-    if (!channel) {
-      throw makeError('CONN_OPEN_FAILED', 'SSH 开 shell 失败：没有拿到通道', {
-        detail: { host: this.opts.host },
+  /** 打开一个 shell 通道 */
+  private openShell(cols: number, rows: number): Promise<ClientChannel> {
+    return new Promise((resolve, reject) => {
+      this.client!.shell({ term: 'xterm-256color', cols, rows }, (err, ch) => {
+        if (err) {
+          reject(makeError('CONN_OPEN_FAILED', `SSH 开 shell 失败：${err.message}`, {
+            detail: { host: this.opts.host, cause: err.message },
+          }));
+          return;
+        }
+        resolve(ch);
       });
-    }
-    return channel;
+    });
   }
+
 }
 
 /** SSH 的交互式会话。远端自己回显并出 ANSI，宿主只转发按键 */

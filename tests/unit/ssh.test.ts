@@ -37,8 +37,13 @@ describe('SshConnection.openSession', () => {
         return this;
       },
       end() {},
-      shell(cb: (err: Error | undefined, ch: unknown) => void) {
-        cb(undefined, fakeChannel);
+      shell(
+        _opts: unknown,
+        cb: (err: Error | undefined, ch: unknown) => void,
+      ) {
+        // **异步**回调：ssh2 的 shell() 要等一次往返才给通道。
+        // 假 client 若同步回调，就把「同步拿通道」的 bug 盖住了。
+        setTimeout(() => cb(undefined, fakeChannel), 0);
         return this;
       },
     };
@@ -50,7 +55,7 @@ describe('SshConnection.openSession', () => {
     );
 
     await conn.open();
-    const session = conn.openSession();
+    const session = await conn.openSession();
 
     session.write('ls\r');
     session.resize(80, 24);

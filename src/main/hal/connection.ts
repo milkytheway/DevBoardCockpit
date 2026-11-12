@@ -37,6 +37,13 @@ export interface Connection {
   open(): Promise<void>;
   close(): Promise<void>;
   exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult>;
-  /** 打开一个交互式会话（终端用）。pipe 模式的会话不回显，pty 模式的会。 */
-  openSession(opts?: { cols?: number; rows?: number }): Session;
+  /**
+   * 打开一个交互式会话（终端用）。
+   *
+   * **异步**：SSH 的 `shell()` 要等一次往返才拿到通道——
+   * 同步实现必然拿不到通道，SSH 终端开不起来。
+   *
+   * pipe 模式的会话不回显（宿主负责），pty 模式的会（远端负责）。
+   */
+  openSession(opts?: { cols?: number; rows?: number }): Promise<Session>;
 }

@@ -44,8 +44,19 @@ export class TerminalManager {
   private readonly sessions = new Map<string, LiveSession>();
   private readonly dataCbs: ((sessionId: string, chunk: string) => void)[] = [];
   private readonly exitCbs: ((sessionId: string, exitCode: number | null) => void)[] = [];
+  private readonly logs = new Map<string, SessionLog>();
 
   constructor(private readonly opts: TerminalManagerOptions) {}
+
+  /** 每个连接一个会话日志 */
+  private logFor(profileId: string): SessionLog {
+    let log = this.logs.get(profileId);
+    if (!log) {
+      log = this.opts.createLog(profileId);
+      this.logs.set(profileId, log);
+    }
+    return log;
+  }
 
   /** 打开一个会话。找不到 profile 就报 TERM_NOT_FOUND */
   async open(profileId: string): Promise<{ sessionId: string }> {
@@ -59,11 +70,14 @@ export class TerminalManager {
     const connection = this.opts.createConnection(profile);
     await connection.open();
 
-    const session = connection.openSession();
+    const session = await connection.openSession({ cols: 80, rows: 24 });
     const id = randomUUID();
     const pty = connection.capabilities().pty;
 
     session.onData((chunk: string) => {
+      // 远端输出也要记进日志——事实 G4：「崩溃/重启/关窗都不能丢记录」。
+      // 只记输入不记输出，事后复盘就只剩半截对话。
+      this.logFor(profileId).write(chunk);
       for (const cb of this.dataCbs) cb(id, chunk);
     });
 

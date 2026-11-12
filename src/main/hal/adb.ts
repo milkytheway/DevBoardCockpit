@@ -104,7 +104,7 @@ export class AdbConnection implements Connection {
     });
   }
 
-  openSession(_opts?: { cols?: number; rows?: number }): Session {
+  async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', 'ADB 连接未打开', { detail: { id: this.id } });
     }

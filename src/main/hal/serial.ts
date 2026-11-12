@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder';
 import { SerialPort } from 'serialport';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
@@ -18,36 +19,80 @@ import type { Capabilities, Connection, ExecResult } from './connection';
  * **S4** getty 期待 CR，发送时 `\n` → `\r\n`。
  */
 
+/**
+ * 串口是**控制台**：真终端，自己回显、自己出提示符。
+ *
+ * 这不是我的判断，是三处一致：
+ * - legacy 架构说明：「A target that runs a real terminal -- `ssh`, **or a serial
+ *   console** -- gives the user a prompt, an echo and line editing」
+ * - 本仓库自己的 `profiles/targets/board-serial.json` 写着 `"pty": true`
+ * - 事实 S2 说板子**回显**命令——回显是真终端的行为
+ *
+ * 计划的能力表把串口写成 `pty: false`，与这三条冲突，是计划错了。
+ * 串口传不了文件（事实 S7）、拿不到退出码（事实 S5）——这两条不变。
+ */
 export function serialCapabilities(): Capabilities {
-  return { exec: true, pty: false, files: false, exitCode: false };
+  return { exec: true, pty: true, files: false, exitCode: false };
 }
 
-/** 串口端口的最小抽象——只为可测，真实实现包一层 serialport */
+/**
+ * 串口端口的最小抽象——只为可测，真实实现包一层 serialport。
+ *
+ * `close` 是**异步**的：serialport 的 `close()` 要等 `close` 事件才真的关完，
+ * 同步返回会导致「关完就报错」。
+ */
 export interface SerialPortLike {
   write(data: string): void;
   onData(cb: (chunk: string) => void): void;
-  close(): void;
+  /** 底层出错时通知（拔线、驱动异常） */
+  onError(cb: (err: Error) => void): void;
+  close(): Promise<void>;
 }
 
-export type SerialPortFactory = (opts: { path: string; baudRate: number }) => SerialPortLike;
+/**
+ * 打开一个串口。**必须真的打开端口**——
+ * `new SerialPort({autoOpen: false})` 只是构造，之后 write 会因为「端口没开」抛错，
+ * 而那个错没人监听 → 主进程崩。
+ */
+export type SerialPortFactory = (opts: { path: string; baudRate: number }) => Promise<SerialPortLike>;
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** 真实实现：serialport 的 SerialPort 适配成 SerialPortLike */
-const realPortFactory: SerialPortFactory = ({ path, baudRate }) => {
+const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {
   const port = new SerialPort({ path, baudRate, autoOpen: false });
+  // 坏字节不废掉整条命令（事实 A8）——用 StringDecoder 跨 chunk 重组，
+  // 否则一个多字节字符被拆到两个 chunk 时会变成两个 U+FFFD。
+  const decoder = new StringDecoder('utf8');
+  const listeners: ((chunk: string) => void)[] = [];
+  const errorListeners: ((err: Error) => void)[] = [];
+
+  port.on('data', (buf: Buffer) => {
+    const chunk = decoder.write(buf);
+    if (chunk.length === 0) return;
+    for (const cb of listeners) cb(chunk);
+  });
+  port.on('error', (err: Error) => {
+    for (const cb of errorListeners) cb(err);
+  });
+
+  await port.open();
+
   return {
     write(data: string) {
       port.write(data);
     },
     onData(cb: (chunk: string) => void) {
-      port.on('data', (buf: Buffer) => {
-        // 坏字节不废掉整条命令（事实 A8）
-        cb(buf.toString('utf8'));
-      });
+      listeners.push(cb);
     },
-    close() {
-      port.close();
+    onError(cb: (err: Error) => void) {
+      errorListeners.push(cb);
+    },
+    async close() {
+      if (!port.isOpen) return;
+      await new Promise<void>((resolve) => {
+        port.close(() => resolve());
+      });
     },
   };
 };
@@ -59,6 +104,8 @@ export class SerialConnection implements Connection {
   private port: SerialPortLike | undefined;
   private transcript = '';
   private dataCb: ((chunk: string) => void) | undefined;
+  /** 最近一次端口层错误（拔线、驱动异常）。供上层查连接健康度 */
+  lastError: Error | undefined;
 
   constructor(
     private readonly profile: ConnectionProfile,
@@ -77,7 +124,7 @@ export class SerialConnection implements Connection {
     const baudRate = Number(this.profile.options['baudrate'] ?? 115200);
 
     try {
-      this.port = this.portFactory({ path: String(port), baudRate });
+      this.port = await this.portFactory({ path: String(port), baudRate });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const code = (err as { code?: string } | undefined)?.code;
@@ -95,12 +142,19 @@ export class SerialConnection implements Connection {
 
     this.port.onData((chunk) => {
       this.transcript += chunk;
+      this.trimTranscript();
       this.dataCb?.(chunk);
+    });
+
+    // 端口层出错（拔线、驱动异常）要有去处——
+    // 没有监听器的 'error' 事件会变成未捕获异常，把主进程带崩。
+    this.port.onError((err) => {
+      this.lastError = err;
     });
   }
 
   async close(): Promise<void> {
-    this.port?.close();
+    await this.port?.close();
     this.port = undefined;
   }
 
@@ -120,8 +174,18 @@ export class SerialConnection implements Connection {
     const marker = buildMarker(process.pid, Date.now());
 
     const before = this.transcript.length;
+    // **一行协议**（事实 S2）。
+    //
+    // 板子会**回显命令**，所以同一个 marker 在 transcript 里出现**两次**：
+    //   第一次 = 回显的那一行里（`command; echo marker` 被回显出来）
+    //   第二次 = 命令跑完后 echo 打印出来
+    // 取两次之间的内容就是命令的输出。
+    //
+    // 如果把 marker 单独发一行，板子会先执行 `marker` 这个命令
+    // （sh: marker: not found），输出全错。
+    //
     // 事实 S4：getty 期待 CR，只发 \n 可能不换行
-    this.port.write(`${marker}\r\n${command}\r\n${marker}\r\n`);
+    this.port.write(`${command}; echo ${marker}\r\n`);
 
     const output = await this.waitForMarker(marker, before, timeoutMs);
     const timedOut = output === undefined;
@@ -135,7 +199,7 @@ export class SerialConnection implements Connection {
     };
   }
 
-  openSession(_opts?: { cols?: number; rows?: number }): Session {
+  async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
@@ -161,6 +225,17 @@ export class SerialConnection implements Connection {
       };
       check();
     });
+  }
+
+  /**
+   * transcript 只用来认领最近的回包，不必无限增长。
+   * 留 64 KB 足够装下任何一次命令的输出。
+   */
+  private trimTranscript(): void {
+    const MAX = 64 * 1024;
+    if (this.transcript.length > MAX) {
+      this.transcript = this.transcript.slice(this.transcript.length - MAX);
+    }
   }
 }
 
@@ -190,6 +265,7 @@ class SerialSession extends Session {
   }
 
   close(): void {
-    this.port.close();
+    void this.port.close();
   }
 }
+
