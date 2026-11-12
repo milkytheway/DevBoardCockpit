@@ -29,12 +29,16 @@ export function capabilitiesFor(profile: ConnectionProfile): Capabilities {
 }
 
 /** 按 profile 造一个连接 */
-export function createConnection(profile: ConnectionProfile, log: SessionLog): Connection {
+export function createConnection(
+  profile: ConnectionProfile,
+  log: SessionLog,
+  opts: { adbPath?: string } = {},
+): Connection {
   switch (profile.transport) {
     case 'serial':
       return new SerialConnection(profile, log);
     case 'adb':
-      return new AdbConnection(profile, log);
+      return new AdbConnection(profile, log, { adbPath: opts.adbPath });
     case 'ssh':
       return new SshConnection(profile, log);
     case 'local':

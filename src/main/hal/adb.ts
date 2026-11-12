@@ -1,8 +1,11 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { runProcess } from '../util/spawn';
 import { Session } from './session';
+import { terminalEnvScript } from './session-env';
 import type { Capabilities, Connection, ExecResult } from './connection';
 
 /**
@@ -134,34 +137,77 @@ export class AdbConnection implements Connection {
     }
     return new AdbSession(this, this.log);
   }
+
+  /**
+   * 开一条常驻的 `adb shell`。
+   *
+   * **不用 PTY**（事实 A1：`adb shell -t -t` 在 Windows 上会晚一条）。
+   */
+  spawnShell(): ChildProcessWithoutNullStreams {
+    const args = adbArgs(this.profile, ['shell']);
+    const child = spawn(this.adbPath, args, {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env },
+    });
+    child.on('error', (err) => {
+      console.error(`[adb shell] ${err.message}`);
+    });
+    return child;
+  }
 }
 
 /**
  * ADB 的交互式会话。
  *
+ * **一条常驻的 `adb shell` 子进程**，不是每次按键 spawn 一次：
+ * 每敲一个键 spawn 一次 adb，板子的 CPU 会被拖垮（事实 A5：一次往返 ≈30ms），
+ * 而且板子的任何输出都收不到。
+ *
  * adb 是 pipe 模式：板子**不回显**、不出 ANSI，
  * 所以提示符与回显都由宿主负责（legacy 行为，事实 A1 的推论）。
+ *
+ * 会话建立时先执行一次 `terminalEnvScript()`——
+ * 否则 `TERM` 还是 `dumb`（事实 A2，coreutils 拒绝着色），
+ * `ls` 也不是多列有色的 shell 函数（事实 A3）。
  */
 class AdbSession extends Session {
+  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly dataCbs: ((chunk: string) => void)[] = [];
+  private readonly decoder = new StringDecoder('utf8');
+
   constructor(
-    private readonly conn: AdbConnection,
+    conn: AdbConnection,
     log: SessionLog,
   ) {
     super(log);
+    this.child = conn.spawnShell();
+
+    this.child.stdout.on('data', (buf: Buffer) => {
+      const chunk = this.decoder.write(buf);
+      if (chunk.length === 0) return;
+      for (const cb of this.dataCbs) cb(chunk);
+    });
+    this.child.stderr.on('data', (buf: Buffer) => {
+      const chunk = this.decoder.write(buf);
+      if (chunk.length === 0) return;
+      for (const cb of this.dataCbs) cb(chunk);
+    });
+
+    // 会话环境：TERM 与 ls 的 shell 函数（事实 A2/A3）
+    this.child.stdin.write(`${terminalEnvScript()}\r\n`);
   }
 
   readonly exitCode: number | null = null;
 
   write(data: string): void {
-    this.conn['exec'](data).catch(() => {
-      /* 会话期的错误由日志记录，不打断输入 */
-    });
+    // pipe 模式：板子不回显，宿主负责回显
+    this.child.stdin.write(data);
     this.record(data);
   }
 
-  onData(_cb: (chunk: string) => void): void {
-    // adb 的命令输出走 exec 的返回值；交互式会话的连续输出在 Task 8 的
-    // node-pty 会话里接上——这里没有可订阅的流。
+  onData(cb: (chunk: string) => void): void {
+    this.dataCbs.push(cb);
   }
 
   resize(_cols: number, _rows: number): void {
@@ -169,6 +215,6 @@ class AdbSession extends Session {
   }
 
   close(): void {
-    /* adb shell 会话随父进程结束 */
+    this.child.kill();
   }
 }

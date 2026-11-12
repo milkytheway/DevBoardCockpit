@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { Session } from '../hal/session';
 import type { SessionLog } from '../logging/session-log';
 
@@ -29,9 +29,15 @@ interface PtyModule {
 
 let ptyModule: PtyModule | undefined;
 
+/**
+ * 加载 node-pty。
+ *
+ * 用 `createRequire` 而不是裸 `require`：构建产物是 ESM
+ * （package.json 有 `"type": "module"`），裸 `require` 在 ESM 里不存在。
+ */
 function loadPty(): PtyModule {
   if (ptyModule) return ptyModule;
-  // 动态 require：原生模块加载失败时给出可行动的错误
+  const require = createRequire(import.meta.url);
   ptyModule = require('node-pty') as PtyModule;
   return ptyModule;
 }
@@ -88,9 +94,4 @@ export class LocalPtySession extends Session {
 /** 给 LocalConnection 用的工厂：每次开一个新 pty 会话 */
 export function createLocalPtySession(log: SessionLog, opts: LocalPtyOptions = {}): Session {
   return new LocalPtySession(log, opts);
-}
-
-/** 仅用于测试：给一个会话生成 id */
-export function newSessionId(): string {
-  return randomUUID();
 }

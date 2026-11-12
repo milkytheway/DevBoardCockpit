@@ -6,6 +6,7 @@ import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
 import { builtinProfilesDir, userProfilesDir } from './util/paths';
+import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TransferService } from './files/transfer';
 import type { ConnectionProfile } from './profiles/schema';
@@ -25,9 +26,13 @@ function listProfiles(): ConnectionProfile[] {
   });
 }
 
+/** 宿主设置。机器专属的 adb 路径在这里读，不进代码（事实清单 §2） */
+const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'));
+const adbPath = resolveAdbPath(settings);
+
 function createConnectionFor(profile: ConnectionProfile): Connection {
   const log = new SessionLog({ label: profile.id, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') });
-  return createConnection(profile, log);
+  return createConnection(profile, log, { adbPath });
 }
 
 /** 已建立的连接，按连接 profile 的 id 索引 */
@@ -56,11 +61,27 @@ terminal.onData((sessionId, chunk) => broadcast(IPC.terminalData, sessionId, chu
 terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, exitCode));
 
 ipcMain.handle(IPC.terminalOpen, async (_e, profileId: string) => terminal.open(profileId));
-ipcMain.on(IPC.terminalWrite, (_e, sessionId: string, data: string) => terminal.write(sessionId, data));
-ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: number) =>
-  terminal.resize(sessionId, cols, rows),
+
+// 这三个是无返回值通道（ipcMain.on）：抛出的异常**没人接**，
+// 会变成未捕获异常把主进程带崩。所以在这里兜住并记日志。
+ipcMain.on(IPC.terminalWrite, (_e, sessionId: string, data: string) =>
+  guard('terminalWrite', () => terminal.write(sessionId, data)),
 );
-ipcMain.on(IPC.terminalClose, (_e, sessionId: string) => terminal.close(sessionId));
+ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: number) =>
+  guard('terminalResize', () => terminal.resize(sessionId, cols, rows)),
+);
+ipcMain.on(IPC.terminalClose, (_e, sessionId: string) =>
+  guard('terminalClose', () => terminal.close(sessionId)),
+);
+
+/** 包住可能抛出的调用。异常只记日志，不许崩主进程。 */
+function guard(what: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`[${what}] ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 // ── 文件互传 ────────────────────────────────────────────────────────
 ipcMain.handle(IPC.connectionsList, async () =>

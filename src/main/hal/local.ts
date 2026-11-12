@@ -4,6 +4,7 @@ import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { runProcess } from '../util/spawn';
 import { Session } from './session';
+import { createLocalPtySession } from '../terminal/pty';
 import type { Capabilities, Connection, ExecResult } from './connection';
 
 /**
@@ -82,35 +83,12 @@ export class LocalConnection implements Connection {
     }
   }
 
-  async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
+  async openSession(opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', '本机连接未打开', { detail: { id: this.id } });
     }
-    return new LocalSession(this.log);
+    // 真 pty（node-pty）——不是那个只记日志的桩
+    return createLocalPtySession(this.log, { cols: opts?.cols ?? 80, rows: opts?.rows ?? 24 });
   }
 }
 
-/** 本机交互式会话。实现留给 node-pty（Task 8） */
-class LocalSession extends Session {
-  constructor(log: SessionLog) {
-    super(log);
-  }
-
-  readonly exitCode: number | null = null;
-
-  write(data: string): void {
-    this.record(data);
-  }
-
-  onData(_cb: (chunk: string) => void): void {
-    // 本机 pty 的输出流在 Task 8 的 node-pty 会话里接上
-  }
-
-  resize(_cols: number, _rows: number): void {
-    // 本机 pty 的尺寸同步在 Task 8 的 node-pty 会话里做
-  }
-
-  close(): void {
-    /* 进程随宿主退出 */
-  }
-}
