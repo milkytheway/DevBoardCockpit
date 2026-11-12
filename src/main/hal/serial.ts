@@ -59,7 +59,14 @@ export type SerialPortFactory = (opts: { path: string; baudRate: number }) => Pr
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** 真实实现：serialport 的 SerialPort 适配成 SerialPortLike */
-const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {
+/**
+ * 真实的串口工厂。
+ *
+ * **导出是为了能被测。** 之前的实现在模块内私有，于是「端口到底开没开」
+ * 这件事没有任何测试守着——把 `await port.open()` 删掉，测试全绿。
+ * 而那正是整支评审的 C1：端口不开，用户第一次按键就崩主进程。
+ */
+export const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {
   const port = new SerialPort({ path, baudRate, autoOpen: false });
   // 坏字节不废掉整条命令（事实 A8）——用 StringDecoder 跨 chunk 重组，
   // 否则一个多字节字符被拆到两个 chunk 时会变成两个 U+FFFD。
