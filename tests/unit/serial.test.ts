@@ -83,6 +83,26 @@ describe('SerialConnection.exec', () => {
     await expect(conn.open()).rejects.toMatchObject({ code: 'PORT_BUSY' });
   });
 
+  it('同一连接上并发两次 exec 被拒（契约 §1.2.1 往返互斥）', async () => {
+    // 假板子不回话 → 第一个 exec 会一直等到超时，占着这条线
+    const factory: SerialPortFactory = async () => ({
+      write() { /* 什么都不回 */ },
+      onData() { /* no-op */ },
+      onError() { /* no-op */ },
+      async close() { /* no-op */ },
+    });
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+
+    const first = conn.exec('uptime', { timeoutMs: 200 });
+    // 第二个命令不能插进来——两个 marker 的回包会在同一份 transcript 里交错，
+    // 互相认领对方的输出
+    await expect(conn.exec('uname', { timeoutMs: 200 })).rejects.toMatchObject({
+      code: 'CONN_TIMEOUT',
+    });
+    await first;
+  });
+
   it('超时时返回 124 且 timedOut 为 true（事实 S5）', async () => {
     // 假板子不回话 → 只能靠超时
     const factory: SerialPortFactory = async () => ({

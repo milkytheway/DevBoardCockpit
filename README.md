@@ -31,7 +31,8 @@
 | 评审 | ✅ 两轮已出 | `docs/07-评审报告.md`、`docs/08-独立评审-k3.1pro.md` |
 | 契约核对 | 🔵 部分已定 | `docs/06-契约核对.md`（C1–C7 共 7 条；C1/C2/C3/C6/C7 已定，C4/C5 待拍板） |
 | 实施计划 | ⬜ 未开始 | 设计确认后产出 |
-| 代码实现 | ⬜ 未开始 | 实施计划批准后开始 |
+| 代码实现 | 🟡 进行中 | **计划 1**（工程骨架 + 终端三通道）已实现，见 `src/` |
+| 真机验收 | 🔵 待做 | 需在 Windows 宿主机上跑 `docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md` |
 
 **当前仓库不含任何应用代码**——这是刻意的：契约与设计没冻结之前不写实现。
 
@@ -64,7 +65,7 @@
 
 ```
 契约层  docs/spec/*        —— 权威定义，改动要升 apiVersion
-实现层  docs/04 + src/     —— Electron 外壳、卡片运行时、路线图（尚未开始）
+实现层  docs/04 + src/     —— Electron 外壳、卡片运行时、路线图（计划 1 已落地）
 ```
 
 > **契约层已由用户追认为当前基线**（`docs/05` ADR-D15），
@@ -72,9 +73,31 @@
 > 核心词表的**机器可读权威**是 `docs/spec/data/tag-vocabulary.yaml`，
 > `docs/spec/01` 里的表格是它的渲染结果。
 
-> ⚠️ **目前只有契约层。** 契约尚未经用户逐节评审通过，因此工程里**没有任何实现代码**——
-> 评审通过后才建 `src/`、`package.json`、校验器与测试脚手架。
-> 允许写的只有：文档、契约、板型包数据、真机样本（`fixtures/`）。
+> ⚠️ **契约层已由用户追认**（`docs/05` ADR-D15），实现层从「计划 1」开始建。
+> **计划 1**（工程骨架 + 终端三通道 + 文件互传）已实现并通过自动化测试；
+> **真机验收**（串口 / ADB / SSH / 日志 / 超时码）要在 Windows 宿主机上做，
+> 清单见 `docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md`。
+
+## 跑起来
+
+```powershell
+npm install     # 会触发 electron-rebuild，把 node-pty / serialport 重编译到 Electron 的 ABI
+npm run dev     # 起工作台：串口 / ADB / SSH / 本机 四个终端
+```
+
+三道检查必须全绿：
+
+```powershell
+npm run lint
+npm run typecheck
+npm test
+```
+
+**宿主的 adb 路径在 `profiles/settings.json` 的 `hostTools.adb`**——
+这台机器上 adb 不在 PATH（`where adb` 查不到），机器专属路径不进代码（`AGENTS.md` §3）。
+
+会话日志在 `%LOCALAPPDATA%\DevBoardCockpit\logs\<日期>\`，
+格式是 `[HH:mm:ss.SSS] 行`，与黄金样本 `fixtures/session-log/serial-session.log` 同构。
 
 ## 已冻结的决策
 

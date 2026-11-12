@@ -28,6 +28,15 @@ export function stripAnsi(s: string): string {
   return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
 }
 
+/** 时间戳前缀 `[HH:mm:ss.SSS]`（本地时间） */
+export function formatTimestamp(at: Date): string {
+  const pad = (n: number, w = 2): string => String(n).padStart(w, '0');
+  return (
+    `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}` +
+    `.${pad(at.getMilliseconds(), 3)}`
+  );
+}
+
 /** '<label>-<HHMMSS>.log' */
 export function logFileName(label: string, at: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -46,10 +55,16 @@ export class SessionLog {
     this.filePath = join(dir, logFileName(opts.label, at));
   }
 
-  /** 写一行：剥 ANSI → 加时间戳前缀 → 追加落盘 */
+  /**
+   * 写一行：剥 ANSI → 加时间戳前缀 → 追加落盘。
+   *
+   * 时间戳格式 `[HH:mm:ss.SSS]`（**本地时间**）——
+   * 与黄金样本 `fixtures/session-log/serial-session.log` 同构。
+   * 之前写的是 ISO + UTC，与样本对不上：格式是契约的一部分，
+   * 样本是它的黄金向量。
+   */
   write(line: string): void {
-    const stamp = this.now().toISOString();
-    appendFileSync(this.filePath, `[${stamp}] ${stripAnsi(line)}\n`);
+    appendFileSync(this.filePath, `[${formatTimestamp(this.now())}] ${stripAnsi(line)}\n`);
   }
 
   /** 同步写无需关闭；接口留着，将来换流式写入时用 */

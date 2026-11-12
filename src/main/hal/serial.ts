@@ -106,6 +106,14 @@ export class SerialConnection implements Connection {
   private dataCb: ((chunk: string) => void) | undefined;
   /** 最近一次端口层错误（拔线、驱动异常）。供上层查连接健康度 */
   lastError: Error | undefined;
+  /**
+   * 往返互斥（契约 `spec/02` §1.2.1）。
+   *
+   * 串口只有一根线、一个读线程、一份 transcript（事实 S1）。
+   * 两次 exec 并发时，两个 marker 的回包会在同一份 transcript 里交错——
+   * 每个命令认领到对方的输出。所以同一连接上**同时只能有一次往返**。
+   */
+  private busy = false;
 
   constructor(
     private readonly profile: ConnectionProfile,
@@ -168,6 +176,21 @@ export class SerialConnection implements Connection {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
+    if (this.busy) {
+      // 同一连接上并发往返 = 串台。宁可拒绝，也不能让两个命令互相认领对方的输出。
+      throw makeError('CONN_TIMEOUT', '这条连接上还有命令在跑', {
+        detail: { id: this.id, command },
+      });
+    }
+    this.busy = true;
+    try {
+      return await this.execLocked(command, opts);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async execLocked(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
 
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const startedAt = Date.now();
@@ -185,7 +208,7 @@ export class SerialConnection implements Connection {
     // （sh: marker: not found），输出全错。
     //
     // 事实 S4：getty 期待 CR，只发 \n 可能不换行
-    this.port.write(`${command}; echo ${marker}\r\n`);
+    this.port?.write(`${command}; echo ${marker}\r\n`);
 
     const output = await this.waitForMarker(marker, before, timeoutMs);
     const timedOut = output === undefined;
