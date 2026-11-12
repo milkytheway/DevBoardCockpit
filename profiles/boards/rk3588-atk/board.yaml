@@ -1,0 +1,177 @@
+# 正点原子 ATK-DLRK3588 板型包
+#
+# 这份包里的每一条路径都来自 core/metrics.py 的实测记录：
+#   README「Hardware metrics」一节写明「All of them were verified on an
+#   RK3588 board running Linux 6.1.141」。
+#
+# 两个已知的坑，这份包里被显式编码了：
+#   1. NPU 的 devfreq load 文件读 100@1000000000Hz —— 那是占空比，不是利用率。
+#      所以 npu.usage 绑到 rknpu_load 的读数，不绑 devfreq。
+#   2. thermal_zone5 是某个具体板的索引，不能硬编码。所以用 glob 遍历 +
+#      type 文件归并。
+#
+# 用 tools/boardkit/probe.py 在真板上验证这份包的 reader 行为。
+
+apiVersion: devboard/v1
+kind: BoardPack
+
+id: rk3588-atk
+name: 正点原子 ATK-DLRK3588
+version: 1.0.0
+description: RK3588，Buildroot 6.1.141，8 核（Cortex-A55 ×4 + Cortex-A76 ×4）
+
+requires:
+  transports: [adb, serial, ssh]
+  capabilities: [shell, exec, stream, files]
+  min_contract: devboard/v1
+
+# ── 轮询分组 ─────────────────────────────────────────────────────────────
+# 一个组 = 一次往返。同组的所有 reader 合成一条命令，一次取回。
+#
+# 为什么不所有 reader 都放一组：/proc/stat 必须每 1 秒采一次（占用率是两次
+# 采样做差），而 /proc/device-tree/model 一天都不会变。把它们合成一条命令
+# 意味着 model 每秒也被重读一次——白费 fork 的 30ms，还有 fork 出来的 shell
+# 自己的 CPU 时间记进 /proc/stat 让板子看起来 100% 忙。
+#
+# 为什么不是一个组全包了：上面那条 30ms 的实测就是理由。
+poll_groups:
+  - id: fast
+    interval_ms: 1000
+    readers: [cpu, gpu, npu]
+
+  - id: slow
+    interval_ms: 2000
+    readers: [mem, temp]
+
+  - id: rare
+    interval_ms: 30000
+    readers: [board, npu_devfreq]
+
+# ── 数据源 ─────────────────────────────────────────────────────────────
+readers:
+  - id: cpu
+    kind: proc_stat
+    args:
+      stat_path: /proc/stat
+      cpuinfo_path: /proc/cpuinfo
+    provides:
+      - tag: cpu.usage
+        sample: usage
+      - tag: cpu.core.*.usage
+        sample: core.*.usage
+      - tag: cpu.core.*.cluster
+        sample: core.*.cluster
+
+  - id: gpu
+    kind: devfreq_load
+    args:
+      path: /sys/class/devfreq/fb000000.gpu/load
+      # 读出形如 "37@300000000Hz"。RK 的 GPU devfreq load 确实是利用率，
+      # 与 NPU 不同（见下面 npu reader）——所以这里必须声明。
+      measure: utilization
+    provides:
+      - tag: gpu.usage
+        sample: duty
+      - tag: gpu.freq_hz
+        sample: freq_hz
+
+  - id: npu
+    kind: rknpu_load
+    args:
+      # 真正的 NPU 利用率在这里，不是 devfreq 的 load 文件。
+      # /sys/kernel/debug 默认没挂载 —— 缺失时 npu.usage 报 unavailable，
+      # 不能退回去读 devfreq 那个占空比，那会显示 100% 但板子是闲的。
+      path: /sys/kernel/debug/rknpu/load
+    provides:
+      - tag: npu.usage
+        sample: usage
+      - tag: npu.core.*.usage
+        sample: core.*.usage
+
+  - id: mem
+    kind: meminfo
+    args:
+      path: /proc/meminfo
+    provides:
+      - tag: mem.total_bytes
+        sample: total_bytes
+      - tag: mem.used_bytes
+        sample: used_bytes
+      - tag: mem.usage
+        sample: usage
+
+  - id: temp
+    kind: thermal_zone
+    args:
+      glob: /sys/class/thermal/thermal_zone*
+      # 按 type 文件里的名字归并，不依赖 zone 序号
+      type_map:
+        soc-thermal: soc
+        gpu-thermal: gpu
+        npu-thermal: npu
+    provides:
+      - tag: temp.soc
+        sample: zone.soc
+      - tag: temp.gpu
+        sample: zone.gpu
+      - tag: temp.npu
+        sample: zone.npu
+
+  - id: board
+    kind: file_read
+    args:
+      path: /proc/device-tree/model
+      format: string
+      strip_trailing_null: true
+    provides:
+      - tag: board.model
+        sample: value
+
+# ── 控制面 ─────────────────────────────────────────────────────────────
+actions:
+  - id: backlight.set
+    label: 设置背光亮度
+    danger: reversible
+    params:
+      value:
+        type: integer
+        min: 0
+        max: 255
+    command: "echo {value} > /sys/class/backlight/backlight/brightness"
+    readback:
+      kind: file_equals
+      path: /sys/class/backlight/backlight/brightness
+      expect: "{value}"
+      tolerance: 1
+
+  - id: cpu.governor.set
+    label: 设置 CPU 调频策略
+    danger: reversible
+    params:
+      governor:
+        type: enum
+        values: [performance, schedutil, powersave, ondemand, userspace]
+      cpu:
+        type: integer
+        min: 0
+        max: 7
+        default: 0
+    command: "echo {governor} > /sys/devices/system/cpu/cpu{cpu}/cpufreq/scaling_governor"
+    readback:
+      kind: file_equals
+      path: /sys/devices/system/cpu/cpu{cpu}/cpufreq/scaling_governor
+      expect: "{governor}"
+
+# ── 板型私有量 ─────────────────────────────────────────────────────────
+# 不在核心词表里，别的板不保证有。命名空间 = custom.<pack id>.*
+custom:
+  - id: npu_devfreq
+    kind: devfreq_load
+    args:
+      path: /sys/kernel/debug/rknpu/devfreq/cur_freq
+      # 这一条确实是占空比，不是利用率。所以它只绑定到 .freq_hz 这种
+      # 名字上，不绑定任何 *.usage。校验器会拦住「占空比当利用率发布」。
+      measure: duty_cycle
+    provides:
+      - tag: custom.rk3588-atk.npu.freq_hz
+        sample: freq_hz
