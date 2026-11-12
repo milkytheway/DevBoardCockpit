@@ -27,5 +27,6 @@ Thumbs.db
 # Python leftovers from the predecessor project
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
