@@ -51,15 +51,17 @@
 | `docs/05-决策记录.md` | ADR：已冻结的决策与被否掉的选项 | Codex |
 | `docs/06-契约核对.md` | **契约草案 ↔ 真板实测的差异清单（待拍板）** | Codex |
 | `docs/legacy/` | 旧工程的架构说明与加板指南（原样保留） | 旧工程 |
-| `reference/boardkit-python/` | 契约的 Python 参考实现（不参与构建，作为 TS 移植的对照物） | 迁移 |
 
-## 三层分工（别搞混）
+## 两层分工（别搞混）
 
 ```
 契约层  docs/spec/*        —— 权威定义，改动要升 apiVersion
-参考实现 reference/         —— 契约的机器可读形态，TS 移植的对照物
-实现层  docs/04 + src/     —— Electron 外壳、卡片运行时、路线图
+实现层  docs/04 + src/     —— Electron 外壳、卡片运行时、路线图（尚未开始）
 ```
+
+> ⚠️ **目前只有契约层。** 契约尚未经用户逐节评审通过，因此工程里**没有任何实现代码**——
+> 评审通过后才建 `src/`、`package.json`、校验器与测试脚手架。
+> 允许写的只有：文档、契约、板型包数据、真机样本（`fixtures/`）。
 
 ## 已冻结的决策
 
@@ -86,10 +88,11 @@ DevBoardCockpit/
 │  ├─ boards/rk3588-atk/    板型包（board.yaml）
 │  ├─ targets/              连接实例 profile（怎么连上）
 │  └─ settings.json         宿主工具路径等全局设置
-├─ reference/boardkit-python/   契约的 Python 参考实现
 ├─ fixtures/                真机样本（黄金测试向量）
 └─ AGENTS.md / README.md / LICENSE
 ```
+
+> `src/` 与 `package.json` 还没有——它们等契约评审通过后才建。
 
 ## 事实标注规矩
 

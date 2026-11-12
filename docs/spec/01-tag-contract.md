@@ -44,31 +44,55 @@ temp.soc
 |---|---|---|---|
 | **核心词表** | 本文档，随契约版本走 | 所有板、所有卡片 | 语义永不改变；要改语义就升版本并另起新名 |
 | **板型私有扩展** | board pack 自己声明，命名空间 `custom.<板型>.<…>` | 只有该板型的卡片 | 不保证跨板可用 |
-| **逃生舱** | `custom.local.<…>` | 本地脚本、临时实验 | 无保证 |
 
 核心词表用**匹配模式**表达，模式里的 `*` 匹配恰好一段：
 
-```
-cpu.usage          : number, percent,  [0,100]
-cpu.core.*.usage   : number, percent,  [0,100]
-cpu.core.*.cluster : string, -,        枚举 {A55, A76, ...}（可扩展）
-gpu.usage          : number, percent,  [0,100]
-gpu.freq_hz        : number, hertz,    >= 0
-npu.usage          : number, percent,  [0,100]
-npu.core.*.usage   : number, percent,  [0,100]
-mem.total_bytes    : number, byte,     > 0
-mem.used_bytes     : number, byte,     >= 0
-mem.usage          : number, percent,  [0,100]
-temp.soc           : number, celsius,  毫度内部值
-temp.gpu           : number, celsius
-temp.npu           : number, celsius
-disk.*.free_bytes  : number, byte
-disk.*.total_bytes : number, byte
-net.rx_bytes       : number, byte      累计接收字节
-net.tx_bytes       : number, byte
-board.model        : string, -
-board.kernel       : string, -
-```
+| 模式 | 类型 | 单位 | 取值域 | 语义 |
+|---|---|---|---|---|
+| `cpu.usage` | number | percent | [0,100] | 过去 1 秒内，所有 CPU 核心执行非空闲指令的时间占比 |
+| `cpu.core.*.usage` | number | percent | [0,100] | 过去 1 秒内，单个 CPU 核心执行非空闲指令的时间占比 |
+| `cpu.core.*.cluster` | string | - | 开放枚举 | CPU 核心所属的簇名，如 A55 / A76 |
+| `gpu.usage` | number | percent | [0,100] | 过去 1 秒内 GPU 执行非空闲指令的时间占比 |
+| `gpu.freq_hz` | number | hertz | ≥0 | GPU 当前工作频率 |
+| `npu.usage` | number | percent | [0,100] | 过去 1 秒内 NPU 各计算核利用率的**最大值** |
+| `npu.core.*.usage` | number | percent | [0,100] | 过去 1 秒内单个 NPU 计算核的利用率 |
+| `mem.total_bytes` | number | byte | >0 | 物理内存总量 |
+| `mem.used_bytes` | number | byte | ≥0 | 已用内存 = MemTotal - MemAvailable，含可回收 page cache |
+| `mem.usage` | number | percent | [0,100] | 已用内存占物理内存总量的百分比 |
+| `temp.soc` | number | celsius | - | SoC 核心温度，按 thermal zone 的 `type` 归并，不依赖 zone 序号 |
+| `temp.gpu` | number | celsius | - | GPU 温度，按 thermal zone 的 `type` 归并 |
+| `temp.npu` | number | celsius | - | NPU 温度，按 thermal zone 的 `type` 归并 |
+| `board.model` | string | - | - | 板子型号字符串，用于自动识别板型包 |
+| `board.kernel` | string | - | - | 运行中的内核版本字符串 |
+| `backlight.brightness` | number | level | [0,255] | 背光亮度档位，具体刻度由板子决定 |
+| `net.rx_bytes` | number | byte | ≥0 | 自启动以来累计接收的字节数 |
+| `net.tx_bytes` | number | byte | ≥0 | 自启动以来累计发送的字节数 |
+| `disk.*.free_bytes` | number | byte | ≥0 | 某个挂载点所在文件系统的可用字节数 |
+| `disk.*.total_bytes` | number | byte | ≥0 | 某个挂载点所在文件系统的总字节数 |
+
+**「语义」这一栏不是装饰。** 它就是 `describe_tag()` 返回给 AI 的那段文字，
+也是防止「npu.usage」被当成任何模糊的「NPU 负载」来理解的唯一东西。
+没有语义的量不要进核心词表。
+
+**这张表就是核心词表的唯一权威。** 实现层必须从**这一张表**生成机器可读的形态
+（校验器读它、运行时读它、`describe_tag` 读它），不允许在代码里另写一份词表。
+
+> **为什么强调「唯一」**：词表一旦有两份，就会漂移——改了文档没改代码，
+> 或者改了代码没改文档，而两边都说自己是对的。
+> 实现层的那一份是**生成物**，不是**源头**；源头永远在这张表里。
+> 评审通过后，实现层需要自带一个对拍测试：逐条比对「代码里的词表」与
+> 「本文档这张表」，不一致就红。
+
+新增一个核心 tag 是**契约升版本**的事，不是 board pack 的事。board pack 只能**声明自己实现了哪些核心 tag**。
+
+### 板型私有扩展的命名
+
+私有 tag 的命名空间是 `custom.<board pack id>.<…>`。
+
+- `<board pack id>` 可以含连字符（`rk3588-atk`），因为匹配是**字面前缀**匹配，不是段模式匹配。
+- 私有 tag 的段数不限：`custom.rk3588-atk.npu.duty` 是合法的。
+- 私有 tag **没有核心词表那样的语义约束**——它们是那块板自己的东西。
+  但 board pack 应该在自己的 README 里写清楚每一个的含义。
 
 新增一个核心 tag 是**契约升版本**的事，不是 board pack 的事。board pack 只能**声明自己实现了哪些核心 tag**。
 
@@ -83,39 +107,130 @@ board.kernel       : string, -
 | 状态 | 含义 | 卡片怎么显示 |
 |---|---|---|
 | `ok` | 有值，且在刷新周期内 | 正常显示 |
-| `stale` | 有值，但上次刷新失败/超时，值可能过时 | 显示值 + 「已过时」标记 |
-| `unavailable` | 这块板不提供这个 tag | 显示「不可用」，不显示数值 |
-| `error` | 提供这个 tag 但读取失败 | 显示错误 |
-| `pending` | 首次读，还没建立起基线（如需要两次采样做差） | 显示「等待」 |
+| `stale` | 有值，但上次刷新失败，值可能过时 | 显示值 + 「已过时」标记 |
+| `unavailable` | 这块板不提供这个 tag，或该资源此刻不在 | 显示「不可用」，不显示数值 |
+| `error` | 应该能读，但读取或解析失败 | 显示错误 |
+| `pending` | 还没建立起基线（如需要两次采样做差） | 显示「等待」 |
 
 **关键约定：`unavailable` 和 `0` 是两回事，绝不能混。**
 
-这直接继承现有 `core/metrics.py` 里已经做对的事——那个 `Metrics` dataclass 里读不到的量是 `None` 而不是 `0.0`，注释写得很清楚：「一块够不到的板和一块没事干的板，绝不能长得一样」。契约把它升格成正式的状态机。
+这直接继承旧工程 `core/metrics.py` 里已经做对的事——那个 `Metrics` dataclass 里读不到的
+量是 `None` 而不是 `0.0`，注释写得很清楚：「一块够不到的板和一块没事干的板，绝不能长得
+一样」。契约把它升格成正式的状态机。
 
-这条约定是「驾驶舱」的底线：**显示 0% 负载的按钮，可能其实是没连上。** 反过来，一个 `unavailable` 的按钮必须显示成不可用，而不是 0——否则用户会去点一个不存在的开关。
+这条约定是「驾驶舱」的底线：**显示 0% 负载的按钮，可能其实是没连上。** 反过来，一个
+`unavailable` 的按钮必须显示成不可用，而不是 0——否则用户会去点一个不存在的开关。
+
+### 2.1 状态怎么迁移
+
+这张表是**有状态的**：运行时必须按这张表迁移，不能各写各的。
+
+| 从 | 到 | 触发条件 |
+|---|---|---|
+| （无） | `pending` | 该 tag 第一次被读，且需要两次采样做差 |
+| `pending` | `ok` | 第二次采样完成，算出差值 |
+| `pending` | `unavailable` | 资源已不存在 |
+| `pending` | `error` | 第一次采样就失败了 |
+| `ok` | `ok` | 读到新值 |
+| `ok` | `stale` | 本次刷新失败，但保留上一次的值 |
+| `ok` | `unavailable` | 资源消失（设备被拔出、debugfs 被卸载） |
+| `stale` | `ok` | 刷新恢复 |
+| `stale` | `stale` | 继续失败，值仍是旧的 |
+| `stale` | `unavailable` | 资源消失 |
+| `stale` | `error` | 刷新恢复但这次读出来的值坏了 |
+| `unavailable` | `ok` | 资源回来，且直接能读出值 |
+| `unavailable` | `pending` | 资源回来，但需要**重新建立基线**（有状态 tag） |
+| `error` | `ok` | 刷新恢复 |
+| `error` | `error` | 继续失败 |
+| `error` | `unavailable` | 资源消失 |
+| `error` | `pending` | 资源回来，但需要重新建立基线 |
+
+**这张表没有死路。** 每一行都可以走回 `ok`——一次瞬时故障不会让一张卡的显示永久坏掉。
+这很重要：`error` 和 `stale` 都不是终态。
+
+**`unavailable` 与 `error` 的分界**：资源**不在**是 `unavailable`，资源**在但读不出来**
+是 `error`。
+
+> 一个具体的例子：RK3588 的 NPU 读 `/sys/kernel/debug/rknpu/load`，而
+> `/sys/kernel/debug` 默认没挂载。挂载与否是**环境状态**，不是板子能力的缺失——
+> 所以它是 `unavailable`（此刻读不到），不是 `error`（读的时候出了错）。
+
+这直接影响卡片：一个 `unavailable` 的 widget 应当引导用户去挂载 debugfs，
+而不是报「NPU 读取失败」。
+
+**`stale` 保留旧值**，`unavailable` 和 `error` 不保留（值为 `null`）。
+保留旧值是有理由的：一个刚刚掉线的板子，显示它最后一次已知的 37% 比显示空白有用——
+但必须**标出它已过时**，否则就是在撒谎。
+
+### 2.2 谁负责算什么
+
+| 谁 | 负责 |
+|---|---|
+| **reader** | 判断这次读**成没成**：产出 `ok` / `pending` / `unavailable` / `error` |
+| **运行时** | 判断值**新不新**：把 `ok` 降级成 `stale`，并做 §2.1 的状态迁移 |
+
+所以：**reader 不产出 `stale`。** `stale` 是一个关于「时间」的判断，而 reader 只知道
+「我刚才读到了什么」。运行时知道上一次成功是什么时候，所以由它来决定一个值是否还新鲜。
+
+这条分工很重要，因为它让 reader 保持纯函数：给它同样的输入，它给出同样的输出。
+`stale` 依赖历史，所以它不属于 reader。
+
+### 2.3 新鲜度
+
+**运行时**把一个 tag 标为 `stale` 的条件是：**最后一次成功读到现在，超过了 3 × 该 poll
+group 的刷新周期**。
+
+这个倍数由契约固定，board pack 不能改。原因很简单：不同板子刷新快慢差很多，
+如果每个包自己定「多久算过时」，那 `stale` 就成了一个没有统一含义的词，
+AI 和卡片都无法据此判断。
+
+注意 `stale` 有**两个触发路径**，都是同一个状态：
+
+1. **刷新失败**——本次 poll 没能读出来，但保留着上一次的值，标记为 `stale`。
+2. **刷新停了**——整个 poll group 停止被轮询（连接断了、程序挂了），
+   值本身还在，但已经过了 3 倍周期。
+
+两者都是「值可能不准了」，卡片上的处理是一样的：**显示值 + 标出已过时**。
 
 ---
 
 ## 三、刷新模型
 
-一个 tag 有两个时间属性：
+### 3.1 谁在轮询
 
-| 属性 | 含义 | 谁定 |
+**运行时是唯一的轮询者。** 卡片订阅，agent 查询，都不自己轮询。
+
+理由在旧工程里有实测记录：每个文件 spawn 一次 `adb shell` 大约 30 ms，而且 fork 出来的
+shell 自己的 CPU 时间会记进 `/proc/stat`，让板子看起来 100% 忙。N 张卡各自轮询，
+负载就是 N 倍。
+
+### 3.2 轮询的单位是 poll group
+
+board pack 把 reader 分成 **poll group**（见 `02-board-pack.md` §1.2）。
+**一个 group = 一次往返 = 一个刷新周期。**
+
+同组的所有 reader 合成一条命令取回，每个 reader 的输出用 marker 隔开，所以一个 reader
+挂了不影响同组其他 reader。
+
+这解决了两个实测事实的冲突：`/proc/stat` 必须每秒采一次（占用率是两次采样做差），
+而 `/proc/device-tree/model` 一天不变。合成一条命令会让 model 每秒被重读一次，
+白费 30ms，还多一份 fork 的 CPU 噪声。
+
+因此：
+
+| 概念 | 归属 | 周期 |
 |---|---|---|
-| **刷新周期** | 多久读一次 | board pack（默认按设备域给建议值） |
-| **新鲜度上限** | 超过多久算 `stale` | 契约默认 = 3 × 刷新周期 |
+| poll group | board pack | 组自己的 `interval_ms` |
+| reader | board pack | 继承所在 group 的周期 |
+| tag | board pack | 继承其 reader 的周期 |
+| 刷新推送 | 运行时 | 按 group 周期 |
 
-刷新是**按设备域批量**的，不是按 tag 单独轮询。原因在现有代码里有实测记录：每个文件 spawn 一次 `adb shell` 大约 30 ms，而且 fork 出来的 shell 自己的 CPU 时间会记进 `/proc/stat`，让板子看起来 100% 忙。
+**card manifest 里的权限和降级判断用的是 tag 名，与轮询无关。**
 
-所以一条铁律：
+### 3.3 首次读的特殊性
 
-> **同一个 board pack 的所有 reader，必须能在一次往返里取回全部数据。**
-
-reader 的定义就是「一次往返能取回的一批数据」，见 `02-board-pack.md`。
-
-### 首次读的特殊性
-
-有些量必须**两次采样做差**才能算出来（CPU 占用率就是这样）。这类 tag 在第一次读时返回 `pending`，第二次起才有值。
+有些量必须**两次采样做差**才能算出来（CPU 占用率就是这样）。这类 tag 在第一次读时返回
+`pending`，第二次起才有值。
 
 卡片必须能优雅处理 `pending`：显示「等待第一次采样」，而不是转圈或显示 0。
 

@@ -10,7 +10,8 @@
 #   2. thermal_zone5 是某个具体板的索引，不能硬编码。所以用 glob 遍历 +
 #      type 文件归并。
 #
-# 用 tools/boardkit/probe.py 在真板上验证这份包的 reader 行为。
+# 验证：契约评审通过、实现层建好后，用 `npm run validate:profiles` 与
+# `npm run probe:board`（详见本目录的 README.md）。
 
 apiVersion: devboard/v1
 kind: BoardPack
@@ -24,6 +25,14 @@ requires:
   transports: [adb, serial, ssh]
   capabilities: [shell, exec, stream, files]
   min_contract: devboard/v1
+
+# 自动识别：连接没指名 board_pack 时，运行时读板子的型号来匹配。
+# mode: exact = 型号字符串完全相同；substring = 包含其中之一即可。
+match:
+  mode: substring
+  models:
+    - ATK-DLRK3588
+    - ATK-DLRK3XXX
 
 # ── 轮询分组 ─────────────────────────────────────────────────────────────
 # 一个组 = 一次往返。同组的所有 reader 合成一条命令，一次取回。
@@ -164,14 +173,27 @@ actions:
 
 # ── 板型私有量 ─────────────────────────────────────────────────────────
 # 不在核心词表里，别的板不保证有。命名空间 = custom.<pack id>.*
+#
+# ⚠️ 待你拍板（docs/06-契约核对.md 的 Q1/Q7）：这里的路径原先写的是
+# /sys/kernel/debug/rknpu/devfreq/cur_freq，实测该目录在板上**不存在**
+# （rknpu/ 下只有 delayms freq load power reset version volt）。
+# 现改用实测存在的 /sys/class/devfreq/fdab0000.npu/load，内容形如
+# "100@1000000000Hz" —— 前半是**占空比**，后半是当前频率 Hz。
+#
+# 这样一块板子同时给出两个对照量：
+#   npu.usage            ← rknpu debugfs 的真实利用率（空闲 0%）
+#   custom...npu.duty    ← devfreq 的占空比      （空闲 100%）
+# 对照着看才不至于把「板子闲着但时钟满速待命」误判成「板子在满负荷」。
 custom:
   - id: npu_devfreq
     kind: devfreq_load
     args:
-      path: /sys/kernel/debug/rknpu/devfreq/cur_freq
-      # 这一条确实是占空比，不是利用率。所以它只绑定到 .freq_hz 这种
-      # 名字上，不绑定任何 *.usage。校验器会拦住「占空比当利用率发布」。
+      path: /sys/class/devfreq/fdab0000.npu/load
+      # 这一条确实是占空比，不是利用率。所以它只绑到 .duty / .freq_hz
+      # 这种名字上，不绑任何 *.usage。校验器会拦住「占空比当利用率发布」。
       measure: duty_cycle
     provides:
+      - tag: custom.rk3588-atk.npu.duty
+        sample: duty
       - tag: custom.rk3588-atk.npu.freq_hz
         sample: freq_hz

@@ -10,7 +10,7 @@
 ## 一、一个包长什么样
 
 ```yaml
-# boards/rk3588-atk/board.yaml
+# profiles/boards/rk3588-atk/board.yaml
 apiVersion: devboard/v1
 kind: BoardPack
 
@@ -19,65 +19,91 @@ name: 正点原子 ATK-DLRK3588
 version: 1.0.0
 description: RK3588，Buildroot 6.1.141，8 核（A55×4 + A76×4）
 
-# 这块板需要什么连接方式才能被访问
 requires:
   transports: [adb, serial, ssh]     # 三种都支持
-  capabilities: [shell, exec, stream]
+  capabilities: [shell, exec, stream, files]
+  min_contract: devboard/v1
 
-# 数据从哪来。reader 是「一次往返取回的一批数据」的单位。
+# 自动识别：连接没指名 board_pack 时，运行时读板子的型号来匹配。
+match:
+  mode: substring                   # exact | substring
+  models: [ATK-DLRK3588]
+
+# 轮询分组：一个组 = 一次往返。
+poll_groups:
+  - id: fast
+    interval_ms: 1000
+    readers: [cpu, gpu, npu]
+  - id: slow
+    interval_ms: 2000
+    readers: [mem, temp]
+  - id: rare
+    interval_ms: 30000
+    readers: [board, npu_devfreq]
+
+# 数据从哪来。reader 产出 sample，provides 把 sample 绑成 tag。
 readers:
   - id: cpu
     kind: proc_stat
-    interval_ms: 1000
     args:
-      path: /proc/stat
+      stat_path: /proc/stat
       cpuinfo_path: /proc/cpuinfo
     provides:
-      - cpu.usage
-      - cpu.core.*.usage
-      - cpu.core.*.cluster
+      - tag: cpu.usage
+        sample: usage
+      - tag: cpu.core.*.usage
+        sample: core.*.usage
+      - tag: cpu.core.*.cluster
+        sample: core.*.cluster
 
   - id: gpu
     kind: devfreq_load
-    interval_ms: 1000
     args:
       path: /sys/class/devfreq/fb000000.gpu/load
+      measure: utilization           # utilization | duty_cycle
     provides:
-      - gpu.usage
-      - gpu.freq_hz
+      - tag: gpu.usage
+        sample: duty
+      - tag: gpu.freq_hz
+        sample: freq_hz
 
   - id: npu
     kind: rknpu_load
-    interval_ms: 1000
     args:
       path: /sys/kernel/debug/rknpu/load
     provides:
-      - npu.usage
-      - npu.core.*.usage
+      - tag: npu.usage
+        sample: usage
+      - tag: npu.core.*.usage
+        sample: core.*.usage
 
   - id: mem
     kind: meminfo
-    interval_ms: 2000
     args:
       path: /proc/meminfo
     provides:
-      - mem.total_bytes
-      - mem.used_bytes
-      - mem.usage
+      - tag: mem.total_bytes
+        sample: total_bytes
+      - tag: mem.used_bytes
+        sample: used_bytes
+      - tag: mem.usage
+        sample: usage
 
   - id: temp
     kind: thermal_zone
-    interval_ms: 2000
     args:
       glob: /sys/class/thermal/thermal_zone*
       type_map:
-        soc-thermal: temp.soc
-        gpu-thermal: temp.gpu
-        npu-thermal: temp.npu
+        soc-thermal: soc
+        gpu-thermal: gpu
+        npu-thermal: npu
     provides:
-      - temp.soc
-      - temp.gpu
-      - temp.npu
+      - tag: temp.soc
+        sample: zone.soc
+      - tag: temp.gpu
+        sample: zone.gpu
+      - tag: temp.npu
+        sample: zone.npu
 
 # 这块板能接受什么写入。每个动作都要声明危险等级和怎么回读。
 actions:
@@ -91,22 +117,81 @@ actions:
         max: 255
     command: "echo {value} > /sys/class/backlight/backlight/brightness"
     readback:
-      tag: backlight.brightness
-    verify:
       kind: file_equals
       path: /sys/class/backlight/backlight/brightness
+      expect: "{value}"
       tolerance: 1
 
 # 这块板特有的量。不进核心词表，别的板不保证有。
 custom:
-  - id: npu.freq_mhz
+  - id: npu_devfreq
     kind: devfreq_load
-    interval_ms: 2000
     args:
-      path: /sys/kernel/debug/rknpu/devfreq/cur_freq
+      path: /sys/class/devfreq/fdab0000.npu/load
+      measure: duty_cycle
     provides:
-      - custom.rk3588-atk.npu.freq_mhz
+      - tag: custom.rk3588-atk.npu.duty
+        sample: duty
 ```
+
+### 1.1 sample 与 tag：两个命名空间
+
+这是本格式最重要的一条。
+
+**reader kind 产出的是 sample，不是 tag。** sample 是 reader 内部的相对名字（`usage`、
+`core.3.usage`、`duty`）；tag 是全局限定名（`cpu.usage`、`cpu.core.3.usage`、`gpu.usage`）。
+
+pack 用 `provides` 把两者**显式**连起来：
+
+```yaml
+provides:
+  - tag: cpu.core.*.usage     # 目标名字
+    sample: core.*.usage      # 来源样本
+```
+
+`*` 的位置一一对应：sample `core.3.usage` 绑成 tag `cpu.core.3.usage`。
+
+**为什么不让 reader 直接产出 tag**：一个 kind 要服务多块名字不同的板。`devfreq_load`
+产出 `duty` 和 `freq_hz`；RK3588 的包把 `duty` 绑成 `gpu.usage`，另一块板可以把同一个
+`duty` 绑成 `custom.<那板>.gpu_duty`——**一行代码都不用改**。
+
+**为什么不让 reader 直接产出 tag（另一个角度）**：两个不同 kind 的 reader 就不会在同一个
+tag 上撞车。撞车只可能发生在 `provides` 写重的地方，而那是校验器能查的。
+
+**两个命名空间的长度不必相同**（`cpu.core.*.usage` 是四段，`core.*.usage` 是三段），
+但**通配符的数量必须一致**，且 sample 的字面段要与具体样本**逐位对上**
+（`core.*.usage` 匹配 `core.3.usage`，不匹配 `core.3.cluster`）。
+
+tag 与 sample 之间**不逐位比较**：它们在不同命名空间，`gpu.usage` 合法地绑定 sample
+`duty`——是包的 `measure: utilization` 说明了「这个 duty 读数**就是**利用率」。
+**sample 的字面说的是「读到了什么」，tag 的字面说的是「这意味着什么」。**
+
+### 1.2 轮询分组
+
+一个 **poll group = 一次往返**。同组的所有 reader 合成一条 shell 命令，一次取回，
+每个 reader 的输出用 marker 隔开。
+
+```
+echo '###R cpu STAT'; ...; echo '###E cpu' ; echo '###R gpu LOAD'; ...; echo '###E gpu'
+```
+
+分组存在是因为两条实测事实打架：
+
+- 每个文件 spawn 一次 `adb shell` 约 30ms，而且 fork 出来的 shell 自己的 CPU 时间会记进
+  `/proc/stat`，让板子看起来 100% 忙。
+- 但 `/proc/stat` 必须每秒采一次（占用率是两次采样做差），而 `/proc/device-tree/model`
+  一天不变。
+
+合成一条命令 ⇒ 每秒重读 model，白费 30ms，还多一份 fork 的 CPU 噪声。
+一个组全包 ⇒ 同上。
+
+分组把这件事说清楚了：**快的东西和慢的东西分开取。**
+
+组内某个 reader 挂了，**不影响同组其他 reader**：每个 reader 有自己的 marker，
+section 是空的就算它不可用。
+
+每个 reader **必须属于恰好一个 group**——没组 = 没有往返 = 永远读不到。
+校验器会拦。
 
 ---
 
@@ -150,20 +235,30 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
 - 可单元测试（不需要真板）
 - 行为有版本号，可随契约升版
 
-| kind | 一次性往返取回 | 产出形状 | 备注 |
+每个 kind 声明三件事：**接受什么参数**、**产出什么 sample**、**怎么从板子上取**。
+
+| kind | 参数 | 产出的 sample | 备注 |
 |---|---|---|---|
-| `proc_stat` | `/proc/stat` + `/proc/cpuinfo` | `cpu.usage`, `cpu.core.*.usage`, `cpu.core.*.cluster` | 需要两次采样，**首次为 pending** |
-| `meminfo` | `/proc/meminfo` | `mem.total_bytes`, `mem.used_bytes`, `mem.usage` | 单次即可 |
-| `devfreq_load` | 一个 devfreq `load` 文件 | `gpu.usage` + `gpu.freq_hz` | **只取 duty cycle 时另说，见下** |
-| `rknpu_load` | `rknpu` debugfs 文件 | `npu.usage`, `npu.core.*.usage` | vendor 专有格式，RK 专属 kind |
-| `thermal_zone` | glob 遍历 thermal_zone | `temp.*`（按 `type` 归并） | |
-| `file_read` | 任意文件 | 任意自定义 tag | 逃生门 1：最通用 |
-| `exec_regex` | 任意命令 + 正则 | 任意自定义 tag | 逃生门 2 |
-| `script` | 包内脚本，输出 JSON | 任意自定义 tag | 逃生门 3，见 §三 |
+| `proc_stat` | `stat_path`, `cpuinfo_path` | `usage`, `core.*.usage`, `core.*.cluster` | **需要两次采样**，首次为 pending |
+| `meminfo` | `path` | `total_bytes`, `used_bytes`, `usage` | 单次即可 |
+| `devfreq_load` | `path`, `measure` | `duty`, `freq_hz` | `measure` 说明 `duty` 是什么，见下 |
+| `rknpu_load` | `path` | `usage`, `core.*.usage` | vendor 专有格式，RK 专属 kind |
+| `thermal_zone` | `glob`, `type_map` | `zone.*` | 按 `type` 归并，不按序号 |
+| `file_read` | `path`/`glob`, `format`, `strip_trailing_null` | `value` | 逃生门 1：最通用 |
+| `exec_regex` | `command`, `pattern`, `format` | `value` | 逃生门 2 |
+| `script` | `path`, `interpreter`, `remote_path` | 脚本 JSON 的键（段数不限） | 逃生门 3，见 §三 |
 
-**关于 `devfreq_load` 的重要警告**：devfreq 的 `load` 文件读出 `<duty>@<freq>Hz`，这个 duty 是**时钟占空比**，不是利用率。空闲时读 100（时钟满速待命），满载也读 100。
+这张表是**契约的一部分**，它的机器可读形态由实现层提供：实现层必须有一份
+reader kind 注册表，声明每个 kind 的参数 schema、产出的 sample、是否需要两次采样、
+取数用的 shell 片段。
 
-所以 `devfreq_load` 这个 kind **必须**带一个参数声明它读的是什么：
+校验器检查 pack 声明的参数在 kind 的 schema 里存在——**拼错参数名会被拦下**，
+而不是静默用默认值。
+
+**关于 `devfreq_load` 的重要警告**：devfreq 的 `load` 文件读出 `<duty>@<freq>Hz`，
+这个 duty 是**时钟占空比**，不是利用率。空闲时读 100（时钟满速待命），满载也读 100。
+
+所以 `devfreq_load` 必须带一个 `measure` 参数声明它读的是什么：
 
 ```yaml
   - id: gpu
@@ -172,10 +267,17 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
       path: /sys/class/devfreq/fb000000.gpu/load
       measure: utilization      # utilization | duty_cycle
     provides:
-      - gpu.usage
+      - tag: gpu.usage
+        sample: duty
 ```
 
-`measure: duty_cycle` 的包**不能**把它映射到 `gpu.usage`（核心词表的 `gpu.usage` 语义是利用率）。校验器必须拒绝这个组合。这是把现有 `metrics.py` 里那个踩过的坑（README 第 193 行明确写着「NPU 的 devfreq load 文件空闲时读 100@1000000000Hz。那是占空比，不是利用率」）变成机器可检查的规则。
+`measure: duty_cycle` 的包**不能**把 `duty` 绑到任何 `*.usage` 上（核心词表的
+`gpu.usage` 语义是利用率）。校验器必须拒绝这个组合。这是把旧工程
+`core/metrics.py` 里那个踩过的坑（「NPU 的 devfreq load 文件空闲时读 100@1000000000Hz。
+那是占空比，不是利用率」）变成机器可检查的规则。
+
+**`measure` 不是可选的**：绑到 `*.usage` 而没声明 `measure`，校验器报错。
+沉默的默认值会骗人——「没说是利用率」不能当成「是利用率」。
 
 ---
 
@@ -190,12 +292,12 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
 ```yaml
   - id: brightness
     kind: file_read
-    interval_ms: 2000
     args:
       path: /sys/class/backlight/backlight/brightness
       format: integer
     provides:
-      - custom.rk3588-atk.backlight.brightness
+      - tag: custom.rk3588-atk.backlight.brightness
+        sample: value
 ```
 
 ### 3.2 `exec_regex` —— 跑一条命令，正则取
@@ -205,16 +307,17 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
 ```yaml
   - id: uptime
     kind: exec_regex
-    interval_ms: 5000
     args:
       command: "cat /proc/uptime"
       pattern: "^([0-9.]+)"
       format: float
     provides:
-      - custom.rk3588-atk.uptime_s
+      - tag: custom.rk3588-atk.uptime_s
+        sample: value
 ```
 
-**注意**：`exec_regex` 有安全含义——它在板子上执行任意命令。它受 §五 的权限分级约束。
+**注意**：`exec_regex` 有安全含义——它在板子上执行任意命令。它受 §五 的权限分级约束，
+校验器也会对它报警告。
 
 ### 3.3 包内脚本 —— 逃生舱
 
@@ -227,10 +330,19 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
       path: scripts/pipeline_status.sh
       format: json
     provides:
-      - custom.rk3588-atk.pipeline.fps
+      - tag: custom.rk3588-atk.pipeline.fps
+        sample: fps
 ```
 
-脚本必须**输出 JSON**，键就是它提供的 tag 名（去掉 `custom.<板型>.` 前缀）。这样 pack 依然是自解释的：AI 读 YAML 就知道有个脚本，脚本本身是另一层。
+脚本必须**输出 JSON**，键就是它提供的 sample 名。这样 pack 依然是自解释的：
+AI 读 YAML 就知道有个脚本，脚本本身是另一层。
+
+**脚本在板子上跑。** 它住在包目录里（宿主上），但要读板子的状态，所以运行时必须先把它
+推到板子上（一次会话一次，落在 `/tmp`），之后每次 poll 只是带上路径执行它。
+脚本没推上去时命令跑不起来，那个 reader 的 tag 报 `unavailable`——
+和其他资源不存在是同一种处理，不猜。
+
+`script` 是唯一一个 sample 名段数不限的 kind，因为它的 sample 名来自 JSON 的键。
 
 ---
 
@@ -292,6 +404,8 @@ params:
 
 ### 4.4 回读的三种形式
 
+`readback` 是一个块，三选一：
+
 ```yaml
 readback:
   tag: some.tag            # 形式 1：读一个 tag（最常见）
@@ -302,6 +416,7 @@ readback:
 readback:
   kind: file_equals        # 形式 2：读文件比值
   path: /sys/class/backlight/backlight/brightness
+  expect: "{value}"        # 与哪个参数比；可以是参数名
   tolerance: 1
 ```
 
@@ -312,23 +427,67 @@ readback:
 
 形式 1 是首选，因为它自动复用已有的 tag 通道。
 
+**`expect` 可以写参数名**：`expect: "{value}"` 的意思是「读完文件后，
+它的值应该等于这次调用的 `value` 参数」。这比把期望值硬编码进包好。
+
+`{param}` 的替换在 `command` 和 `readback.path` 里都允许——`{cpu}` 出现在
+`/sys/devices/system/cpu/cpu{cpu}/cpufreq/...` 这种地方是必要的。
+校验器**两处都扫**：只在一处出现过的参数算「死参数」，两处都没出现过的
+`{param}` 算「未声明」。
+
 ---
 
 ## 五、权限与安全
 
 board pack 里的动作**不是**自动获准执行的。权限在卡片侧声明、在运行时授权。
 
-### 5.1 三档分级
+### 5.1 分级
 
-| 档 | 含义 | 安装卡片时 | 执行时 | 审计 |
-|---|---|---|---|---|
-| `readonly` | 只读 | 直接放行 | 直接执行 | 记 |
-| `reversible` | 可逆写 | 首次安装询问一次 | 直接执行 | 记 |
-| `destructive` | 破坏性写 | 首次安装询问一次 | **二次确认** + 支持 dry-run | 记 |
+| 档 | 在哪 | 含义 | 授权 |
+|---|---|---|---|
+| 只读 | 卡片的 `permissions.read` | 读 tag | 不需要（tag 本身只读） |
+| `reversible` | 板型包的 `danger: reversible` | 可逆写 | 装卡时问一次 |
+| `destructive` | 板型包的 `danger: destructive` | 破坏性写 | 装卡时问一次 + 每次执行二次确认 |
+
+**只读不是动作。** 只读走 tag，`permissions.read` 不需要授权流程。板型包里
+也**没有** `danger: readonly` 的动作——动作一律是写。
 
 授权是**按动作**的，不是一刀切。装一张卡不等于装上它所有动作的权限。
 
-### 5.2 dry-run
+### 5.2 危险等级的地板
+
+包自己声明 `danger`。但 agent 可以写包——如果没有任何别的约束，一个把 `reboot`
+写成 `reversible` 的包就能跳过人的确认，**分档就成了摆设**。
+
+所以有一条**地板**：
+
+> **某些操作永远是 `destructive`，不管包怎么声明。**
+
+地板是一份固定的操作模式表，属于**契约**，不属于任何一个包：
+
+| 模式 | 匹配的操作 |
+|---|---|
+| `reboot` / `shutdown` / `poweroff` / `halt` | 重启与关机 |
+| `flash` / `upgrade` / `erase` / `burn` | 刷写存储 |
+| `mkfs` | 格式化 |
+| `dd` 写到 `/dev/mmcblk` `/dev/sd` `/dev/nvme` | 裸写块设备 |
+| `rm -rf /` 及其等价形式 | 删根 |
+| `iptables -F` / `nft flush ruleset` | 清空防火墙规则 |
+
+运行时在执行一个动作前，**把命令和地板表对一遍**。命中任何一条，
+这个动作按 `destructive` 处理——即使包说它是 `reversible`。
+
+**地板是下限，不是上限。** 包**可以**把更多动作标成 `destructive`，
+但不能把地板上的降级。校验器会检查：一个把命中地板的命令声明成 `reversible` 的包，
+直接报错。
+
+**为什么按命令模式匹配而不是动作清单**：要拦的是**命令**，不是动作 id。
+`reboot` 可能藏在任何动作里：`system.reboot`、`board.power_cycle`、`do_a_soft_reset`。
+按命令匹配，拦的是「这条命令到底做了什么」，而不是「这个动作叫什么名字」。
+
+可执行的版本由实现层提供（一张命令模式表 + 一个匹配函数）。
+
+### 5.3 dry-run
 
 `dry_run: true` 时，返回「将会执行什么」，不执行：
 
@@ -340,11 +499,11 @@ board pack 里的动作**不是**自动获准执行的。权限在卡片侧声�
 }
 ```
 
-### 5.3 审计日志
+### 5.4 审计日志
 
 每次动作执行记一行：时间、卡片 id、动作 id、参数、结果、回读值。
 
-沿用现有 `core/session_log.py` 的形态（追加写、每行 flush、时间戳前缀）——那套已经被验证过：崩了也留下可读记录。
+沿用旧工程 `core/session_log.py` 的形态（追加写、每行 flush、时间戳前缀）——那套已经被验证过：崩了也留下可读记录。
 
 ---
 
@@ -362,35 +521,133 @@ board pack 里的动作**不是**自动获准执行的。权限在卡片侧声�
 
 ## 七、校验规则（validator 必须拦住的）
 
-一个 pack 在被接受之前，至少要过这些检查：
+一个 pack 在被接受之前，至少要过这些检查。**这 19 条就是契约本身**——
+实现层必须逐条实现，缺一条都不算实现了板型包格式。
+
+校验器的命令入口由实现层决定（例如 `npm run validate:profiles`），
+但**规则本身以这张表为准**，不因实现而增减。
 
 | # | 规则 | 为什么 |
 |---|---|---|
-| 1 | 每个 reader 的 `provides` 里的 tag 名**匹配核心词表**或落在 `custom.<本包 id>.*` 下 | 防止拼错和私自扩词表 |
-| 2 | 同一个 tag 不能被两个 reader 提供 | 歧义 |
-| 3 | `devfreq_load` 且 `measure: duty_cycle` 时，**不得**提供 `*.usage` | 就是那个占空比坑 |
-| 4 | `proc_stat` 提供的 tag 必须包含 `cpu.usage`（首次 pending 语义） | |
-| 5 | 每个 action 的 `readback.tag` 必须是本 pack 提供的 tag | 否则闭环断了 |
-| 6 | 每个 action 的 `command` 里出现的 `{param}` 必须都在 `params` 里声明 | 拼错参数名到运行时才炸 |
-| 7 | 每个 `params` 里的声明的参数必须真的在 `command` 里用上 | 死参数 |
-| 8 | `danger: destructive` 的动作必须有 `verify` 或 `readback` | 不可逆动作不能盲发 |
-| 9 | reader 的 `interval_ms` 不低于 200 | 太频繁会打爆板子 |
-| 10 | `exec_regex` / `script` 动作或 reader 存在时，打印警告（可执行任意代码） | |
+| 1 | 每个 `provides[].tag` 匹配核心词表，或落在 `custom.<本包 id>.` 下 | 防止拼错和私自扩词表 |
+| 2 | 两个 reader 的 tag **模式不得重叠** | `cpu.core.*.usage` 与 `cpu.core.3.usage` 会运行时撞车 |
+| 3 | `devfreq_load` 且 `measure: duty_cycle` 时，`duty` 不得绑到任何 `*.usage` | 就是那个占空比坑 |
+| 4 | `devfreq_load` 绑到 `*.usage` 时必须声明 `measure: utilization` | 沉默的默认值会骗人 |
+| 5 | `proc_stat` 必须把 `usage` 绑到 `cpu.usage` | 首次 pending 语义 |
+| 6 | 每个 `provides[].sample` 必须是该 kind 能产出的 sample | 绑定指向了不存在的数据 |
+| 7 | tag 和 sample 的 `*` 数量必须一致，段数不必一致 | 两个命名空间，长度可以不同 |
+| 8 | 每个 reader 声明的参数必须在 kind 的 schema 里存在 | 拼错参数名会被静默忽略 |
+| 9 | 必填参数不能缺 | |
+| 10 | 未知顶层字段报错 | 被静默忽略的字段就是拼错的字段 |
+| 11 | `match.models` 必须是非空字符串列表，`match.mode` 只能是 exact/substring | 自动识别靠它 |
+| 12 | 每个 action 的 `readback.tag` 必须是本包提供的 tag | 否则闭环断了 |
+| 13 | 每个 action 的 `command` 与 `readback.path` 里的 `{param}` 都必须声明 | 拼错参数名到运行时才炸 |
+| 14 | 声明了但没在任何地方用的参数是死参数 | 死参数 |
+| 15 | `danger: destructive` 的动作必须有 `readback` 或 `verify` | 不可逆动作不能盲发 |
+| 16 | 命中危险地板的命令必须声明为 `destructive` | agent 不能自己降级 |
+| 17 | 每个 reader 必须属于恰好一个 poll group | 没组 = 没有往返 = 永远读不到 |
+| 18 | poll group 的 `interval_ms` 不低于 200 | 太频繁会打爆板子 |
+| 19 | `exec_regex` / `script` 存在时，打印警告 | 可执行任意代码 |
 
 ---
 
 ## 八、目录布局
 
 ```
-boards/
-  rk3588-atk/
-    board.yaml            # 板型包
-    README.md             # 人类读的补充说明（怎么接、已知坑）
-    scripts/
-      pipeline_status.sh  # 逃生舱脚本，输出 JSON
-  rk3568/
-    board.yaml
+profiles/
+  boards/
+    rk3588-atk/
+      board.yaml            # 板型包
+      README.md             # 人类读的补充说明（怎么接、已知坑）
+      scripts/
+        pipeline_status.sh  # 逃生舱脚本，输出 JSON
+    rk3568/
+      board.yaml
 ```
 
 一个目录一个包。包目录也可以带自己的 `scripts/`。
+
+---
+
+## 九、两个顶层列表：`readers` 和 `custom`
+
+板型包有两个 reader 列表：
+
+| 列表 | 里面的 reader | 它提供的 tag |
+|---|---|---|
+| `readers` | 板子通用能力 | 核心词表里的 tag（`cpu.usage` 等） |
+| `custom` | 板子特有的能力 | `custom.<本包 id>.*` 里的 tag |
+
+**两者的唯一区别是 tag 的命名空间。** 运行时对它们的处理完全一样：都要属于一个
+poll group，都要用同一个 reader kind 表，都要有 `provides` 绑定。
+
+分成两个列表是给人看的：读 `readers` 就知道「这块板通用的那些量」，
+读 `custom` 就知道「这块板特有的那些量」。机器不区分。
+
+---
+
+## 十、包怎么绑到连接上
+
+一个 board pack 描述「这块板是什么」，一个连接（连接 profile）描述「怎么连上这块板」。
+两者是分开的，但运行时必须知道**哪个包配哪个连接**。
+
+三种绑定方式，按可靠性排序：
+
+| 方式 | 怎么定 | 优缺点 |
+|---|---|---|
+| **连接里指名** | 连接 profile 写 `board_pack: rk3588-atk` | 最明确，但每个连接都要写一遍 |
+| **自动识别** | 读 `board.model`，按包的 `match` 规则匹配 | 省事，但要板子支持读型号 |
+| **探测匹配** | 试几个包的 reader，看哪个能读出东西 | 慢，且可能误判 |
+
+**采用「连接里指名 + 自动识别兜底」**：
+
+```json
+{
+  "id": "board-adb",
+  "label": "板子 · ADB",
+  "transport": "adb",
+  "options": { "pty": false, "prompt": "root@board" },
+  "board_pack": "rk3588-atk"
+}
+```
+
+没写 `board_pack` 时，运行时读 `board.model`，按包的 `match` 规则找匹配的包：
+
+| mode | 规则 |
+|---|---|
+| `exact` | 型号字符串与 `models` 里某一项完全相同 |
+| `substring` | 型号字符串包含 `models` 里某一项 |
+
+**认不出来怎么办**：不猜。报「这块板没有板型包」，终端和文件互传照常可用，
+监控和控制明确显示「不可用」。
+
+这条「不猜」的承诺很具体：把一个 `gpu.usage` 绑到一块没有 GPU 的板上，
+卡片会显示一个恒为 0 的仪表——**看不出错的仪表比没有仪表更危险**。
+
+### 10.1 一个连接没有包会怎样
+
+连接连上了，但没有匹配的板型包：
+
+- 终端**照常能用**（终端只需要 HAL，不需要板型知识）
+- 文件互传**照常能用**
+- 监控和控制**不可用**，并明确显示「这块板没有板型包」
+
+这条很重要：**板型包是增强，不是前提。** 用户拿一块新板来，先能连上、能敲命令，
+再补一个包。
+
+### 10.2 `requires.transports` 是什么意思
+
+包可以声明它需要什么连接方式（`[adb, serial, ssh]`）。
+这是**信息**，不是限制——它告诉运行时「这个包在串口上也能用」，让运行时知道
+同一个包可以配多个连接。
+
+但串口和 ADB 不是一回事：串口只有一行一次，`/proc/stat` 的多行快照在串口上跑不了。
+所以 **reader 的取数方式必须适配传输**，这是运行时的责任，不是包的责任。
+
+具体地：同一个 `proc_stat` reader，在 ADB 上可以取多行，
+在串口上必须用单行变体（旧工程 `core/metrics.py` 里的 `SNAPSHOT_ONELINE` 就是为此存在的，
+它的注释写着「UART 没有空间放多行脚本」）。
+
+**包不感知传输。** 这是刻意的：包描述板子，HAL 描述通道，两者由运行时接起来。
+一个包配 ADB 和串口时，两条通道各用各的取数方式，产出同样的 tag。
 
