@@ -37,28 +37,28 @@ entries:
   - pattern: cpu.core.*.cluster
     type: string
     unit: "-"
-    range: open-enum
-    semantics: CPU 核心所属的簇名，如 A55 / A76。未知名字按字符串原样上报，不报错。
+    range: "开放枚举"
+    semantics: CPU 核心所属的簇名，如 A55 / A76。**未知名字按字符串原样上报**，不报错
     v1: required
 
   - pattern: cpu.governor
     type: enum
     unit: "-"
-    range: open-enum
-    semantics: 当前生效的 CPU 调频策略（cpufreq 的 scaling_governor），如 schedutil。取 cpu0 的值；各核可独立设置。
+    range: "开放枚举"
+    semantics: 当前生效的 CPU 调频策略（cpufreq 的 `scaling_governor`），如 `schedutil`。取 cpu0 的值；各核可独立设置
     v1: required
 
   - pattern: gpu.usage
     type: number
     unit: percent
     range: [0, 100]
-    semantics: GPU 当前读数：执行非空闲指令的时间占比。采样窗口由驱动决定，不是固定的 1 秒。
+    semantics: GPU 当前读数：执行非空闲指令的时间占比。**采样窗口由驱动决定**，不是固定的 1 秒
     v1: required
 
   - pattern: gpu.freq_hz
     type: number
     unit: hertz
-    range: ">=0"
+    range: "≥0"
     semantics: GPU 当前工作频率
     v1: required
 
@@ -66,7 +66,7 @@ entries:
     type: number
     unit: percent
     range: [0, 100]
-    semantics: NPU 当前读数：各计算核利用率的**最大值**。采样窗口由驱动决定，不是固定的 1 秒。
+    semantics: NPU 当前读数：各计算核利用率的**最大值**。**采样窗口由驱动决定**，不是固定的 1 秒
     v1: required
 
   - pattern: npu.core.*.usage
@@ -86,14 +86,14 @@ entries:
   - pattern: mem.available_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 无需交换即可分配给新进程的内存（MemAvailable）
     v1: required
 
   - pattern: mem.used_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 已用内存 = MemTotal - MemAvailable（**不含**可回收的 page cache）
     v1: required
 
@@ -108,21 +108,21 @@ entries:
     type: number
     unit: celsius
     range: "-"
-    semantics: SoC 核心温度，按 thermal zone 的 type 归并，不依赖 zone 序号
+    semantics: SoC 核心温度，按 thermal zone 的 `type` 归并，不依赖 zone 序号
     v1: required
 
   - pattern: temp.gpu
     type: number
     unit: celsius
     range: "-"
-    semantics: GPU 温度，按 thermal zone 的 type 归并
+    semantics: GPU 温度，按 thermal zone 的 `type` 归并
     v1: required
 
   - pattern: temp.npu
     type: number
     unit: celsius
     range: "-"
-    semantics: NPU 温度，按 thermal zone 的 type 归并
+    semantics: NPU 温度，按 thermal zone 的 `type` 归并
     v1: required
 
   - pattern: board.model
@@ -142,27 +142,27 @@ entries:
   - pattern: net.rx_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 自启动以来累计接收的字节数
     v1: reserved
 
   - pattern: net.tx_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 自启动以来累计发送的字节数
     v1: reserved
 
   - pattern: disk.*.free_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 某个挂载点所在文件系统的可用字节数
     v1: reserved
 
   - pattern: disk.*.total_bytes
     type: number
     unit: byte
-    range: ">=0"
+    range: "≥0"
     semantics: 某个挂载点所在文件系统的总字节数
     v1: reserved

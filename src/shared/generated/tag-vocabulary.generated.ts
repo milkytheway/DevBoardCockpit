@@ -1,0 +1,212 @@
+// 由 scripts/gen-vocabulary.ts 生成 —— **不要手改**。
+// 源：docs/spec/data/tag-vocabulary.yaml（核心词表的唯一权威）。
+// 重新生成：npm run gen:vocabulary
+// 校验一致性：npm run gen:vocabulary -- --check
+
+export type TagType = 'number' | 'string' | 'boolean' | 'enum';
+export type V1Status = 'required' | 'reserved';
+
+export interface CoreTagEntry {
+  pattern: string;
+  type: TagType;
+  unit: string;
+  range: [number, number] | string;
+  semantics: string;
+  v1: V1Status;
+}
+
+/** 核心词表的机器可读形态。校验器、运行时、describe_tag 共用这一份。 */
+export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
+  {
+    pattern: 'cpu.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "过去 1 秒内，所有 CPU 核心执行非空闲指令的时间占比",
+    v1: 'required',
+  },
+  {
+    pattern: 'cpu.core.*.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "过去 1 秒内，单个 CPU 核心执行非空闲指令的时间占比",
+    v1: 'required',
+  },
+  {
+    pattern: 'cpu.core.*.cluster',
+    type: 'string',
+    unit: '-',
+    range: "开放枚举",
+    semantics: "CPU 核心所属的簇名，如 A55 / A76。**未知名字按字符串原样上报**，不报错",
+    v1: 'required',
+  },
+  {
+    pattern: 'cpu.governor',
+    type: 'enum',
+    unit: '-',
+    range: "开放枚举",
+    semantics: "当前生效的 CPU 调频策略（cpufreq 的 `scaling_governor`），如 `schedutil`。取 cpu0 的值；各核可独立设置",
+    v1: 'required',
+  },
+  {
+    pattern: 'gpu.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "GPU 当前读数：执行非空闲指令的时间占比。**采样窗口由驱动决定**，不是固定的 1 秒",
+    v1: 'required',
+  },
+  {
+    pattern: 'gpu.freq_hz',
+    type: 'number',
+    unit: 'hertz',
+    range: "≥0",
+    semantics: "GPU 当前工作频率",
+    v1: 'required',
+  },
+  {
+    pattern: 'npu.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "NPU 当前读数：各计算核利用率的**最大值**。**采样窗口由驱动决定**，不是固定的 1 秒",
+    v1: 'required',
+  },
+  {
+    pattern: 'npu.core.*.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "单个 NPU 计算核的当前利用率",
+    v1: 'required',
+  },
+  {
+    pattern: 'mem.total_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: ">0",
+    semantics: "物理内存总量",
+    v1: 'required',
+  },
+  {
+    pattern: 'mem.available_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "无需交换即可分配给新进程的内存（MemAvailable）",
+    v1: 'required',
+  },
+  {
+    pattern: 'mem.used_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "已用内存 = MemTotal - MemAvailable（**不含**可回收的 page cache）",
+    v1: 'required',
+  },
+  {
+    pattern: 'mem.usage',
+    type: 'number',
+    unit: 'percent',
+    range: [0,100],
+    semantics: "已用内存占物理内存总量的百分比",
+    v1: 'required',
+  },
+  {
+    pattern: 'temp.soc',
+    type: 'number',
+    unit: 'celsius',
+    range: "-",
+    semantics: "SoC 核心温度，按 thermal zone 的 `type` 归并，不依赖 zone 序号",
+    v1: 'required',
+  },
+  {
+    pattern: 'temp.gpu',
+    type: 'number',
+    unit: 'celsius',
+    range: "-",
+    semantics: "GPU 温度，按 thermal zone 的 `type` 归并",
+    v1: 'required',
+  },
+  {
+    pattern: 'temp.npu',
+    type: 'number',
+    unit: 'celsius',
+    range: "-",
+    semantics: "NPU 温度，按 thermal zone 的 `type` 归并",
+    v1: 'required',
+  },
+  {
+    pattern: 'board.model',
+    type: 'string',
+    unit: '-',
+    range: "-",
+    semantics: "板子型号字符串，用于自动识别板型包",
+    v1: 'required',
+  },
+  {
+    pattern: 'board.kernel',
+    type: 'string',
+    unit: '-',
+    range: "-",
+    semantics: "运行中的内核版本字符串",
+    v1: 'reserved',
+  },
+  {
+    pattern: 'net.rx_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "自启动以来累计接收的字节数",
+    v1: 'reserved',
+  },
+  {
+    pattern: 'net.tx_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "自启动以来累计发送的字节数",
+    v1: 'reserved',
+  },
+  {
+    pattern: 'disk.*.free_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "某个挂载点所在文件系统的可用字节数",
+    v1: 'reserved',
+  },
+  {
+    pattern: 'disk.*.total_bytes',
+    type: 'number',
+    unit: 'byte',
+    range: "≥0",
+    semantics: "某个挂载点所在文件系统的总字节数",
+    v1: 'reserved',
+  },
+];
+
+/** 核心 tag 的名字联合类型 */
+export type CoreTagName =
+  'cpu.usage' |
+  'cpu.core.*.usage' |
+  'cpu.core.*.cluster' |
+  'cpu.governor' |
+  'gpu.usage' |
+  'gpu.freq_hz' |
+  'npu.usage' |
+  'npu.core.*.usage' |
+  'mem.total_bytes' |
+  'mem.available_bytes' |
+  'mem.used_bytes' |
+  'mem.usage' |
+  'temp.soc' |
+  'temp.gpu' |
+  'temp.npu' |
+  'board.model' |
+  'board.kernel' |
+  'net.rx_bytes' |
+  'net.tx_bytes' |
+  'disk.*.free_bytes' |
+  'disk.*.total_bytes';

@@ -19,6 +19,7 @@
     "tests/unit/**/*",
     "tests/integration/**/*",
     "electron.vite.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "scripts/**/*.ts"
   ]
 }

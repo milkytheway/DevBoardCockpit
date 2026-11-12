@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
     "postinstall": "electron-rebuild -f -w node-pty,serialport"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "eslint": "9.39.1",
     "happy-dom": "20.0.11",
     "jsdom": "26.1.0",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "7.3.1",
     "vitest": "4.0.18"
