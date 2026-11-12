@@ -139,9 +139,18 @@ export function App(): JSX.Element {
               <FileBrowser
                 connectionId={current.profileId}
                 capabilities={currentInfo.capabilities}
-                onPush={() => {
-                  /* v1 只做本地选择，真实传输在 Task 10 之后接 */
+                onPush={(file, remoteDir) => {
+                  // 上传：本地文件 → 远端目录。真实传输由宿主的 files:push 做。
+                  void apiRef.current?.filesPush(current.profileId, file.name, remoteDir);
                 }}
+                onPull={(connectionId, remotePath) => {
+                  // 下载：远端 → 本地。本地路径由宿主决定（弹保存对话框），
+                  // 这里先传空串，让宿主用它的默认落盘位置。
+                  void apiRef.current?.filesPull(connectionId, remotePath, '');
+                }}
+                listRemote={(connectionId, remotePath) =>
+                  apiRef.current?.filesList(connectionId, remotePath) ?? Promise.resolve([])
+                }
               />
             ) : null}
           </>

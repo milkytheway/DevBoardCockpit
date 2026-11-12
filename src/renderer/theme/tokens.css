@@ -163,3 +163,122 @@ body {
   color: var(--cockpit-accent);
   margin: 6px 0 0;
 }
+
+/* ── 双树文件浏览器 ────────────────────────────────────────────────── */
+
+.cockpit-files__trees {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.cockpit-tree {
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius);
+  padding: 8px;
+  min-width: 0;
+}
+
+.cockpit-tree__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--cockpit-text-dim);
+  margin-bottom: 6px;
+}
+
+.cockpit-tree__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cockpit-tree__list button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--cockpit-text);
+  background: transparent;
+  border: none;
+  border-radius: var(--cockpit-radius);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.cockpit-tree__list button:hover {
+  background: var(--cockpit-bg-elevated);
+}
+
+.cockpit-tree__list button.is-selected {
+  background: var(--cockpit-accent);
+  color: var(--cockpit-bg);
+}
+
+.cockpit-tree__selected {
+  color: var(--cockpit-accent);
+  margin: 6px 0 0;
+}
+
+.cockpit-tree__hint {
+  color: var(--cockpit-text-faint);
+  margin: 6px 0 0;
+}
+
+/* 目录 / 文件的标记。用 CSS 画，不混在文字里——混在一起文本就匹配不到了 */
+.cockpit-tree__list .is-dir,
+.cockpit-tree__list .is-file {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+
+.cockpit-tree__list .is-dir {
+  background: var(--cockpit-accent);
+}
+
+.cockpit-tree__list .is-file {
+  background: var(--cockpit-text-faint);
+}
+
+.cockpit-files__arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.cockpit-files__arrows button {
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  color: var(--cockpit-text);
+  background: var(--cockpit-bg-elevated);
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius);
+  cursor: pointer;
+}
+
+.cockpit-files__arrows button:disabled {
+  color: var(--cockpit-unavailable);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.cockpit-files__arrows button:hover:not(:disabled) {
+  border-color: var(--cockpit-accent);
+}
+
+.cockpit-files__error {
+  color: var(--cockpit-danger);
+  margin: 8px 0 0;
+}
