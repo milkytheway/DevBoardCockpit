@@ -17,6 +17,9 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['tests/web/**/*.{test,spec}.{ts,tsx}'],
           setupFiles: [resolve(__dirname, 'tests/web/setup.ts')],
+          // jsdom 环境每个文件建一次要 ~23 秒（沙箱文件系统慢）。
+          // 同一个 worker 里共享一份环境，省掉重复的构造开销。
+          isolate: false,
         },
       },
     ],

@@ -29,6 +29,19 @@ export interface TerminalViewProps {
   subscribe?: (cb: (chunk: string) => void) => () => void;
 }
 
+/**
+ * 读一个 CSS 变量的**解析后**的值。
+ *
+ * xterm 是用 canvas 画的，canvas 不认 `var(--x)`——
+ * 直接把 token 名传给 xterm 会静默失效（终端落在默认色上）。
+ * 所以这里用 getComputedStyle 取实际颜色。
+ */
+function readToken(name: string, fallback: string): string {
+  if (typeof window === 'undefined' || !window.getComputedStyle) return fallback;
+  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value.length > 0 ? value : fallback;
+}
+
 export function TerminalView({ sessionId, onWrite, onResize, subscribe }: TerminalViewProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -44,17 +57,19 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
     if (!host) return;
 
     const term = new Terminal({
-      fontFamily: 'var(--cockpit-font-mono)',
+      fontFamily: readToken('--cockpit-font-mono', 'Consolas, monospace'),
       fontSize: 13,
       convertEol: false,
       cursorBlink: true,
       // 板子可能吐出半个 UTF-8 字符或坏字节，终端自己处理，不要崩
       scrollback: 2000,
+      // **必须读出解析后的值**：xterm 用 canvas 的 fillStyle 画字，
+      // canvas **不解析 CSS 变量**——直接传 'var(--cockpit-bg)' 会静默失效。
       theme: {
-        background: 'var(--cockpit-bg)',
-        foreground: 'var(--cockpit-text)',
-        cursor: 'var(--cockpit-accent)',
-        selectionBackground: 'var(--cockpit-bg-elevated)',
+        background: readToken('--cockpit-bg', '#14171c'),
+        foreground: readToken('--cockpit-text', '#dfe4ec'),
+        cursor: readToken('--cockpit-accent', '#58a6ff'),
+        selectionBackground: readToken('--cockpit-bg-elevated', '#1c2027'),
       },
     });
 

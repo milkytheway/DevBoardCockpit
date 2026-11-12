@@ -5,7 +5,7 @@ import { capabilitiesFor, createConnection } from './hal/registry';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
-import { builtinProfilesDir, userProfilesDir } from './util/paths';
+import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TransferService } from './files/transfer';
@@ -31,7 +31,7 @@ const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'
 const adbPath = resolveAdbPath(settings);
 
 function createConnectionFor(profile: ConnectionProfile): Connection {
-  const log = new SessionLog({ label: profile.id, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') });
+  const log = new SessionLog({ label: profile.id, dataDir: userDataDir() });
   return createConnection(profile, log, { adbPath });
 }
 
@@ -45,9 +45,10 @@ const transfer = new TransferService({
 const terminal = new TerminalManager({
   listProfiles,
   createConnection: createConnectionFor,
-  createLog: (label) => new SessionLog({ label, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') }),
+  createLog: (label) => new SessionLog({ label, dataDir: userDataDir() }),
   // 连接建好后登记一份，文件互传模块靠它按 id 找连接
   onConnectionOpen: (connectionId, connection) => connections.set(connectionId, connection),
+  onConnectionClose: (connectionId) => connections.delete(connectionId),
 });
 
 // 主进程 → renderer 的推送

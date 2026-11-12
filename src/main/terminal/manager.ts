@@ -31,6 +31,8 @@ export interface TerminalManagerOptions {
   createLog(label: string): SessionLog;
   /** 连接建好后的通知。文件互传等模块靠它拿到「按 id 找连接」的入口 */
   onConnectionOpen?: (connectionId: string, connection: Connection) => void;
+  /** 连接关掉后的通知。否则 connections Map 里会留下已关闭的连接 */
+  onConnectionClose?: (connectionId: string) => void;
 }
 
 interface LiveSession {
@@ -106,6 +108,8 @@ export class TerminalManager {
     live.session.close();
     void live.connection.close();
     this.sessions.delete(sessionId);
+    // 连接也要注销——否则按 id 找连接会拿到一个已关闭的
+    this.opts.onConnectionClose?.(live.connection.id);
     for (const cb of this.exitCbs) cb(sessionId, live.session.exitCode);
   }
 

@@ -42,10 +42,13 @@ export interface CockpitApi {
 export interface ConnectionInfo {
   id: string;
   label: string;
-  transport: 'serial' | 'adb' | 'ssh' | 'local';
+  transport: TransportKind;
   boardPack: string | null;
   capabilities: Capabilities;
 }
+
+/** 传输种类。定义在 shared —— main 与 renderer 都要用，不许各抄一份 */
+export type TransportKind = 'serial' | 'adb' | 'ssh' | 'local';
 
 /**
  * 能力位。**UI 依能力降级**，不依传输名。

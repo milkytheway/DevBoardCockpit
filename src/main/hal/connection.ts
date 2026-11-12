@@ -1,5 +1,5 @@
 import type { Session } from './session';
-import type { TransportKind } from '../profiles/schema';
+import type { TransportKind } from '../../shared/ipc-contract';
 
 /**
  * 连接层的公共接口。

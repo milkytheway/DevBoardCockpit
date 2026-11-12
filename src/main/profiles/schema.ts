@@ -11,7 +11,8 @@ import { makeError } from '../../shared/errors';
  * 拼错的 `board_pack` 会让连接绑不上任何板，而用户看不到任何提示。
  */
 
-export type TransportKind = 'serial' | 'adb' | 'ssh' | 'local';
+export type { TransportKind } from '../../shared/ipc-contract';
+import type { TransportKind } from '../../shared/ipc-contract';
 
 export interface ConnectionProfile {
   id: string;

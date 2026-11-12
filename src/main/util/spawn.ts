@@ -31,6 +31,7 @@ export interface SpawnOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** 统一超时码（事实 G1）——与 `hal/session.ts` 是同一个常量 */
 const TIMEOUT_EXIT_CODE = 124;
 
 export function runProcess(
