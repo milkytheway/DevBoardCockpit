@@ -1,0 +1,13 @@
+{
+  "id": "board-serial",
+  "label": "板子 · 串口",
+  "transport": "serial",
+  "board": "atklrk3588",
+  "options": {
+    "port": "COM3",
+    "baudrate": 1500000,
+    "pty": true,
+    "prompt": "root@ATK-DLRK3588",
+    "commands": "serial"
+  }
+}

@@ -1,0 +1,11 @@
+# Keep the repository byte-consistent across platforms.
+* text=auto eol=lf
+
+*.py   text diff=python
+*.md   text
+*.toml text
+*.json text
+
+*.png  binary
+*.ico  binary
+*.jpg  binary

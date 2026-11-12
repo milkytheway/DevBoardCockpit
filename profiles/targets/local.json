@@ -1,0 +1,10 @@
+{
+  "id": "local",
+  "label": "本机",
+  "transport": "local",
+  "board": null,
+  "options": {
+    "pty": true,
+    "commands": "ssh"
+  }
+}

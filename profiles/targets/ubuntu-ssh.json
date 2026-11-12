@@ -1,0 +1,13 @@
+{
+  "id": "ubuntu-ssh",
+  "label": "Ubuntu · SSH",
+  "transport": "ssh",
+  "board": null,
+  "options": {
+    "host": "192.168.136.131",
+    "port": 22,
+    "username": "alientek",
+    "pty": true,
+    "commands": "ssh"
+  }
+}

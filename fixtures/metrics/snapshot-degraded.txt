@@ -1,0 +1,14 @@
+###STAT
+cpu  100 0 50 900 0 0 0 0 0 0
+###INFO
+processor	: 0
+CPU part	: 0xZZZ
+###GPU
+###NPU
+###MEM
+MemTotal:        8107744 kB
+###TEMP
+broken-line
+x=
+name=notanumber
+###END

@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+*.asar
+
+# Runtime data (logs, user profiles, scratch)
+logs/
+*.log
+*.tmp
+
+# Local settings (machine-specific paths, do not commit)
+profiles/settings.local.json
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python leftovers from the predecessor project
+__pycache__/
+*.py[cod]
+.venv/
+venv/
