@@ -38,6 +38,15 @@ export interface Connection {
   close(): Promise<void>;
   exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult>;
   /**
+   * 文件互传。
+   *
+   * **按传输分派**，不是跑远端的 `pull`/`push` 命令——
+   * 板子上没有这两个命令（adb 的 pull 是 `adb pull`，ssh 的是 sftp）。
+   */
+  pull(remotePath: string, localPath: string): Promise<void>;
+  push(localPath: string, remotePath: string): Promise<void>;
+
+  /**
    * 打开一个交互式会话（终端用）。
    *
    * **异步**：SSH 的 `shell()` 要等一次往返才拿到通道——

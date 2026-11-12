@@ -1,4 +1,4 @@
-import { Client, type ClientChannel } from 'ssh2';
+import { Client, type ClientChannel, type SFTPWrapper } from 'ssh2';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
@@ -149,6 +149,63 @@ export class SshConnection implements Connection {
             timedOut,
           });
         });
+      });
+    });
+  }
+
+  /**
+   * 下载：走 ssh2 的 sftp。
+   *
+   * **不是**远端的 `pull` 命令——远端 shell 里没有那个命令。
+   */
+  async pull(remotePath: string, localPath: string): Promise<void> {
+    const sftp = await this.openSftp();
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastGet(remotePath, localPath, (err) => {
+        if (err) {
+          reject(makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+            detail: { remotePath, localPath, cause: err.message },
+          }));
+          return;
+        }
+        resolve();
+      });
+    });
+    sftp.end();
+  }
+
+  /** 上传：走 ssh2 的 sftp */
+  async push(localPath: string, remotePath: string): Promise<void> {
+    const sftp = await this.openSftp();
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastPut(localPath, remotePath, (err) => {
+        if (err) {
+          reject(makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+            detail: { localPath, remotePath, cause: err.message },
+          }));
+          return;
+        }
+        resolve();
+      });
+    });
+    sftp.end();
+  }
+
+  /** 打开一条 sftp 通道 */
+  private openSftp(): Promise<SFTPWrapper> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(makeError('CONN_CLOSED', 'SSH 连接未打开'));
+        return;
+      }
+      this.client.sftp((err, sftp) => {
+        if (err) {
+          reject(makeError('FILE_TRANSFER_FAILED', `开 sftp 失败：${err.message}`, {
+            detail: { host: this.opts.host, cause: err.message },
+          }));
+          return;
+        }
+        resolve(sftp);
       });
     });
   }

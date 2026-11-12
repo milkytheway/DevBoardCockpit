@@ -199,6 +199,16 @@ export class SerialConnection implements Connection {
     };
   }
 
+  /** 串口传不了文件（事实 S7） */
+  async pull(_remotePath: string, _localPath: string): Promise<void> {
+    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
+  }
+
+  /** 串口传不了文件（事实 S7） */
+  async push(_localPath: string, _remotePath: string): Promise<void> {
+    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
+  }
+
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });

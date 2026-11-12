@@ -1,3 +1,4 @@
+import { copyFile } from 'node:fs/promises';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
@@ -57,6 +58,28 @@ export class LocalConnection implements Connection {
     const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
     const args = process.platform === 'win32' ? ['/c', command] : ['-c', command];
     return this.runner(shell, args, { timeoutMs: opts?.timeoutMs });
+  }
+
+  /** 下载：宿主文件系统直读 */
+  async pull(remotePath: string, localPath: string): Promise<void> {
+    try {
+      await copyFile(remotePath, localPath);
+    } catch (err) {
+      throw makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+        detail: { remotePath, localPath, cause: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  }
+
+  /** 上传：宿主文件系统直写 */
+  async push(localPath: string, remotePath: string): Promise<void> {
+    try {
+      await copyFile(localPath, remotePath);
+    } catch (err) {
+      throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+        detail: { localPath, remotePath, cause: err instanceof Error ? err.message : String(err) },
+      });
+    }
   }
 
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {

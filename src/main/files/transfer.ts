@@ -40,7 +40,7 @@ export class TransferService implements FileTransfer {
 
   async list(connectionId: string, remotePath: string): Promise<FileEntry[]> {
     const conn = this.require(connectionId);
-    const result = await conn.exec(`ls -la ${remotePath}`);
+    const result = await conn.exec(`ls -la ${quotePath(remotePath)}`);
     if (result.exitCode !== 0) {
       throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
         detail: { remotePath, stderr: result.stderr },
@@ -51,23 +51,14 @@ export class TransferService implements FileTransfer {
 
   async pull(connectionId: string, remotePath: string, localPath: string): Promise<void> {
     const conn = this.require(connectionId);
-    // 具体实现按传输分派：adb 用 `adb pull`，ssh 用 sftp
-    const result = await conn.exec(`pull ${remotePath} ${localPath}`);
-    if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
-        detail: { remotePath, localPath, stderr: result.stderr },
-      });
-    }
+    // **按传输分派**：adb 用 `adb pull`，ssh 用 sftp，本机用 fs。
+    // 不能跑远端的 `pull` 命令——板子上没有这个命令。
+    await conn.pull(remotePath, localPath);
   }
 
   async push(connectionId: string, localPath: string, remotePath: string): Promise<void> {
     const conn = this.require(connectionId);
-    const result = await conn.exec(`push ${localPath} ${remotePath}`);
-    if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
-        detail: { localPath, remotePath, stderr: result.stderr },
-      });
-    }
+    await conn.push(localPath, remotePath);
   }
 
   /** 取连接并检查能力位。取不到或不支持都直接拒 */
@@ -79,6 +70,37 @@ export class TransferService implements FileTransfer {
     assertTransferAllowed(conn.capabilities());
     return conn;
   }
+}
+
+/**
+ * 路径转义。
+ *
+ * 远端路径原样拼进 shell 命令时，路径里有空格就断，
+ * 而且 `;` 之类能让命令变成两条。**单引号包裹并转义内部的单引号**。
+ */
+export function quotePath(path: string): string {
+  return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * 解析 `ls -l` 的大小列。
+ *
+ * 管道下的 GNU ls 给原始字节数（`4096`），
+ * 但有些环境给人类可读值（`4.0K`）——真机样本里就有 `drwxr-xr-x 6 root root 4.0K`。
+ * 两种都要认。
+ */
+export function parseSize(text: string): number | null {
+  const t = text.trim();
+  if (/^\d+$/.test(t)) return Number(t);
+  const m = /^(\d+(?:\.\d+)?)([KMGTP]?)$/i.exec(t);
+  if (!m) return null;
+  const units: Record<string, number> = {
+    '': 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4, P: 1024 ** 5,
+  };
+  const unit = (m[2] ?? '').toUpperCase();
+  const factor = units[unit];
+  if (factor === undefined) return null;
+  return Math.round(Number(m[1]) * factor);
 }
 
 /**
@@ -120,7 +142,7 @@ export function parseLsOutput(stdout: string, basePath: string): FileEntry[] {
     if (trimmed.length === 0) continue;
     // -rw-r--r-- 1 root root  1234 Nov 12 09:30 name
     // 日期必须显式匹配（它内部有空格），剩下的才是文件名
-    const m = /^([dlbcps-])([rwxstST-]{9})\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4}))\s+(.+)$/.exec(
+    const m = /^([dlbcps-])([rwxstST-]{9})\s+\d+\s+\S+\s+\S+\s+(\S+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4}))\s+(.+)$/.exec(
       trimmed,
     );
     if (!m) continue;
@@ -130,7 +152,7 @@ export function parseLsOutput(stdout: string, basePath: string): FileEntry[] {
       name,
       path: `${basePath.replace(/\/$/, '')}/${name}`,
       isDirectory: type === 'd',
-      sizeBytes: Number(size),
+      sizeBytes: parseSize(size),
       modifiedAt: parseLsDate(date),
     });
   }

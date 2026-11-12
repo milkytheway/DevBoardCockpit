@@ -26,7 +26,7 @@ export function App(): JSX.Element {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string | null>(null);
-  const [output, setOutput] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
   const apiRef = useRef<CockpitApi | null>(null);
 
   useEffect(() => {
@@ -36,25 +36,45 @@ export function App(): JSX.Element {
     // 连接与能力位都问宿主要——UI 不该自己猜哪个传输能干什么
     void apiRef.current.connectionsList().then(setConnections);
 
-    const offData = apiRef.current.onTerminalData((sessionId, chunk) => {
-      setOutput((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? '') + chunk }));
-    });
     const offExit = apiRef.current.onTerminalExit((sessionId) => {
       setTabs((prev) => prev.filter((t) => t.sessionId !== sessionId));
     });
 
     return () => {
-      offData();
       offExit();
     };
   }, []);
 
+  /**
+   * 订阅某个会话的输出。
+   *
+   * **每个 chunk 直接写进终端，不重放历史。**
+   * 之前把输出累积成字符串再整体传下去，每来一个 chunk 就得把从第一个字符起的
+   * 全部内容再写一遍——屏幕上显示的是重复的文本。
+   */
+  const subscribeOutput = useCallback(
+    (sessionId: string) => (cb: (chunk: string) => void) => {
+      const api = apiRef.current;
+      if (!api) return () => undefined;
+      return api.onTerminalData((id, chunk) => {
+        if (id === sessionId) cb(chunk);
+      });
+    },
+    [],
+  );
+
   const openTab = useCallback(async (profileId: string) => {
     const api = apiRef.current;
     if (!api) return;
-    const { sessionId } = await api.terminalOpen(profileId);
-    setTabs((prev) => [...prev, { sessionId, profileId }]);
-    setActive(sessionId);
+    try {
+      const { sessionId } = await api.terminalOpen(profileId);
+      setTabs((prev) => [...prev, { sessionId, profileId }]);
+      setActive(sessionId);
+      setError(null);
+    } catch (err) {
+      // 失败要让人看见——「串口被占用」这种错误藏在控制台里等于没报（RF-5）
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }, []);
 
   const closeTab = useCallback((sessionId: string) => {
@@ -100,12 +120,18 @@ export function App(): JSX.Element {
         ))}
       </nav>
 
+      {error ? (
+        <p className="cockpit-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       <main className="cockpit-main">
         {current ? (
           <>
             <TerminalView
               sessionId={current.sessionId}
-              incoming={output[current.sessionId]}
+              subscribe={subscribeOutput(current.sessionId)}
               onWrite={(data) => apiRef.current?.terminalWrite(current.sessionId, data)}
               onResize={(cols, rows) => apiRef.current?.terminalResize(current.sessionId, cols, rows)}
             />

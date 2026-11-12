@@ -104,6 +104,30 @@ export class AdbConnection implements Connection {
     });
   }
 
+  /**
+   * 下载：走 `adb pull`。
+   *
+   * **不是**远端的 `pull` 命令——板子上没有那个命令。
+   */
+  async pull(remotePath: string, localPath: string): Promise<void> {
+    const result = await this.runner(this.adbPath, adbArgs(this.profile, ['pull', remotePath, localPath]));
+    if (result.exitCode !== 0) {
+      throw makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+        detail: { remotePath, localPath, stderr: result.stderr },
+      });
+    }
+  }
+
+  /** 上传：走 `adb push` */
+  async push(localPath: string, remotePath: string): Promise<void> {
+    const result = await this.runner(this.adbPath, adbArgs(this.profile, ['push', localPath, remotePath]));
+    if (result.exitCode !== 0) {
+      throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+        detail: { localPath, remotePath, stderr: result.stderr },
+      });
+    }
+  }
+
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', 'ADB 连接未打开', { detail: { id: this.id } });

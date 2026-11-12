@@ -20,11 +20,16 @@ export interface TerminalViewProps {
   onWrite: (data: string) => void;
   /** 尺寸变化时把行列数报给宿主 */
   onResize?: (cols: number, rows: number) => void;
-  /** 远端输出 → 写进终端 */
-  incoming?: string;
+  /**
+   * 订阅远端输出。
+   *
+   * **传回调，不传累积串。** 传累积串的话，每来一个 chunk 就得把从第一个字符起
+   * 的全部内容再写一遍——屏幕上是重复的文本，不是板子说的话。
+   */
+  subscribe?: (cb: (chunk: string) => void) => () => void;
 }
 
-export function TerminalView({ sessionId, onWrite, onResize, incoming }: TerminalViewProps): JSX.Element {
+export function TerminalView({ sessionId, onWrite, onResize, subscribe }: TerminalViewProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -85,12 +90,13 @@ export function TerminalView({ sessionId, onWrite, onResize, incoming }: Termina
     };
   }, [sessionId]);
 
-  // 远端输出进来时写进终端
+  // 订阅远端输出：每个 chunk 写一次，不重放历史
   useEffect(() => {
-    if (incoming !== undefined && termRef.current) {
-      termRef.current.write(incoming);
-    }
-  }, [incoming]);
+    if (!subscribe) return;
+    return subscribe((chunk: string) => {
+      termRef.current?.write(chunk);
+    });
+  }, [subscribe]);
 
   return <div className="cockpit-terminal" data-testid={`terminal-${sessionId}`} ref={hostRef} />;
 }
