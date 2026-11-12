@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TerminalView } from './terminal/TerminalView';
-import type { CockpitApi } from '../shared/ipc-contract';
+import { FileBrowser } from './files/FileBrowser';
+import type { Capabilities, CockpitApi } from '../shared/ipc-contract';
 import './theme/tokens.css';
 
 /**
@@ -60,6 +61,25 @@ export function App(): JSX.Element {
 
   const current = tabs.find((t) => t.sessionId === active) ?? null;
 
+  /**
+   * 各连接的能力位。
+   *
+   * v1 还没有「列出连接」这条 IPC，所以这里按已知的传输写死能力——
+   * 这是临时的：能力位应该由宿主问连接要（Task 10 之后接 `list_connections`）。
+   */
+  const capabilitiesOf = (profileId: string): Capabilities => {
+    switch (profileId) {
+      case 'board-serial':
+        return { exec: true, pty: false, files: false, exitCode: false };
+      case 'board-adb':
+        return { exec: true, pty: false, files: true, exitCode: true };
+      case 'ubuntu-ssh':
+        return { exec: true, pty: true, files: true, exitCode: true };
+      default:
+        return { exec: true, pty: true, files: true, exitCode: true };
+    }
+  };
+
   return (
     <div className="cockpit-app">
       <header className="cockpit-toolbar">
@@ -103,12 +123,21 @@ export function App(): JSX.Element {
 
       <main className="cockpit-main">
         {current ? (
-          <TerminalView
-            sessionId={current.sessionId}
-            incoming={output[current.sessionId]}
-            onWrite={(data) => apiRef.current?.terminalWrite(current.sessionId, data)}
-            onResize={(cols, rows) => apiRef.current?.terminalResize(current.sessionId, cols, rows)}
-          />
+          <>
+            <TerminalView
+              sessionId={current.sessionId}
+              incoming={output[current.sessionId]}
+              onWrite={(data) => apiRef.current?.terminalWrite(current.sessionId, data)}
+              onResize={(cols, rows) => apiRef.current?.terminalResize(current.sessionId, cols, rows)}
+            />
+            <FileBrowser
+              connectionId={current.profileId}
+              capabilities={capabilitiesOf(current.profileId)}
+              onPush={() => {
+                /* v1 只做本地选择，真实的传输在 Task 10 之后接 */
+              }}
+            />
+          </>
         ) : (
           <p className="cockpit-empty">选一个连接开始</p>
         )}

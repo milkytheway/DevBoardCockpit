@@ -63,3 +63,103 @@ body {
 .cockpit-terminal .xterm {
   height: 100%;
 }
+
+/* ── 工作台外壳 ────────────────────────────────────────────────────── */
+
+.cockpit-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cockpit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--cockpit-bg-elevated);
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+.cockpit-toolbar__title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-right: 8px;
+}
+
+.cockpit-toolbar button,
+.cockpit-tabs button {
+  font: inherit;
+  color: var(--cockpit-text-dim);
+  background: transparent;
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.cockpit-toolbar button:hover,
+.cockpit-tabs button:hover {
+  color: var(--cockpit-text);
+  border-color: var(--cockpit-accent);
+}
+
+.cockpit-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: var(--cockpit-bg-elevated);
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+.cockpit-tabs button {
+  border-bottom: none;
+  border-radius: var(--cockpit-radius) var(--cockpit-radius) 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cockpit-tabs button.is-active {
+  color: var(--cockpit-text);
+  background: var(--cockpit-bg);
+  border-color: var(--cockpit-accent);
+}
+
+.cockpit-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cockpit-empty {
+  color: var(--cockpit-text-faint);
+  padding: 24px;
+}
+
+/* ── 文件浏览器 ────────────────────────────────────────────────────── */
+
+.cockpit-files {
+  border-top: 1px solid var(--cockpit-border);
+  padding: 10px 12px;
+  background: var(--cockpit-bg-elevated);
+}
+
+.cockpit-files__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cockpit-text-dim);
+  cursor: pointer;
+}
+
+.cockpit-files__disabled {
+  color: var(--cockpit-unavailable);
+  margin: 0;
+}
+
+.cockpit-files__pending {
+  color: var(--cockpit-accent);
+  margin: 6px 0 0;
+}

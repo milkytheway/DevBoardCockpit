@@ -12,6 +12,9 @@ export const IPC = {
   terminalClose: 'terminal:close',
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
+  filesList: 'files:list',
+  filesPush: 'files:push',
+  filesPull: 'files:pull',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -28,4 +31,34 @@ export interface CockpitApi {
   terminalClose(sessionId: string): void;
   onTerminalData(cb: (sessionId: string, chunk: string) => void): () => void;
   onTerminalExit(cb: (sessionId: string, exitCode: number | null) => void): () => void;
+  filesList(connectionId: string, remotePath: string): Promise<FileEntry[]>;
+  filesPush(connectionId: string, localPath: string, remotePath: string): Promise<void>;
+  filesPull(connectionId: string, remotePath: string, localPath: string): Promise<void>;
+}
+
+/**
+ * 能力位。**UI 依能力降级**，不依传输名。
+ *
+ * 定义放在 shared 而不是 main/hal——renderer 要用它来决定
+ * 「文件浏览器入口要不要禁用」，但 renderer 不能 import main（分层规则：
+ * renderer → preload → main）。
+ */
+export interface Capabilities {
+  /** 能跑一条命令拿结果 */
+  exec: boolean;
+  /** 能开交互式终端（真 pty，有回显与 ANSI） */
+  pty: boolean;
+  /** 能做文件传输 */
+  files: boolean;
+  /** exec 能否拿到退出码。串口为 false（事实 S5） */
+  exitCode: boolean;
+}
+
+/** 远端目录里的一个条目 */
+export interface FileEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  sizeBytes: number | null;
+  modifiedAt: string | null;
 }

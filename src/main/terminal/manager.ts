@@ -29,6 +29,8 @@ export interface TerminalManagerOptions {
   createConnection(profile: ConnectionProfile): Connection;
   /** 造一个会话日志 */
   createLog(label: string): SessionLog;
+  /** 连接建好后的通知。文件互传等模块靠它拿到「按 id 找连接」的入口 */
+  onConnectionOpen?: (connectionId: string, connection: Connection) => void;
 }
 
 interface LiveSession {
@@ -66,6 +68,7 @@ export class TerminalManager {
     });
 
     this.sessions.set(id, { id, session, connection, pty });
+    this.opts.onConnectionOpen?.(profileId, connection);
     return { sessionId: id };
   }
 

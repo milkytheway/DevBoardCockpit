@@ -10,6 +10,7 @@ import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
 import { builtinProfilesDir, userProfilesDir } from './util/paths';
 import { TerminalManager } from './terminal/manager';
+import { TransferService } from './files/transfer';
 import type { ConnectionProfile } from './profiles/schema';
 
 /**
@@ -41,10 +42,19 @@ function createConnection(profile: ConnectionProfile): Connection {
   }
 }
 
+/** 已建立的连接，按连接 profile 的 id 索引 */
+const connections = new Map<string, Connection>();
+
+const transfer = new TransferService({
+  getConnection: (id) => connections.get(id),
+});
+
 const terminal = new TerminalManager({
   listProfiles,
   createConnection,
   createLog: (label) => new SessionLog({ label, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') }),
+  // 连接建好后登记一份，文件互传模块靠它按 id 找连接
+  onConnectionOpen: (connectionId, connection) => connections.set(connectionId, connection),
 });
 
 // 主进程 → renderer 的推送
@@ -63,6 +73,17 @@ ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: numbe
   terminal.resize(sessionId, cols, rows),
 );
 ipcMain.on(IPC.terminalClose, (_e, sessionId: string) => terminal.close(sessionId));
+
+// ── 文件互传 ────────────────────────────────────────────────────────
+ipcMain.handle(IPC.filesList, async (_e, connectionId: string, remotePath: string) =>
+  transfer.list(connectionId, remotePath),
+);
+ipcMain.handle(IPC.filesPush, async (_e, connectionId: string, localPath: string, remotePath: string) =>
+  transfer.push(connectionId, localPath, remotePath),
+);
+ipcMain.handle(IPC.filesPull, async (_e, connectionId: string, remotePath: string, localPath: string) =>
+  transfer.pull(connectionId, remotePath, localPath),
+);
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({

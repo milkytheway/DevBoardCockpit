@@ -14,21 +14,12 @@ import type { TransportKind } from '../profiles/schema';
  *
  * 旧工程吃过这个亏：终端模式（pty/pipe）曾由传输名推断，
  * 新注册的传输就被当成了真终端。这里把能力显式化。
+ *
+ * 定义在 `shared/ipc-contract.ts`——renderer 也要用它决定
+ * 「文件浏览器入口要不要禁用」，而 renderer 不能 import main。
  */
-export interface Capabilities {
-  /** 能跑一条命令拿结果 */
-  exec: boolean;
-  /** 能开交互式终端（真 pty，有回显与 ANSI） */
-  pty: boolean;
-  /** 能做文件传输 */
-  files: boolean;
-  /**
-   * exec 能否拿到退出码。
-   * 串口为 false——它拿不到 exit status（事实 S5）。
-   * 没有这个位，运行时就得靠猜「这条命令成功了吗」。
-   */
-  exitCode: boolean;
-}
+export type { Capabilities } from '../../shared/ipc-contract';
+import type { Capabilities } from '../../shared/ipc-contract';
 
 export interface ExecResult {
   /** null = 拿不到（串口）。超时一律是 124 */

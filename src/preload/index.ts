@@ -23,6 +23,11 @@ const api: CockpitApi = {
     ipcRenderer.on(IPC.terminalExit, handler);
     return () => ipcRenderer.off(IPC.terminalExit, handler);
   },
+  filesList: (connectionId, remotePath) => ipcRenderer.invoke(IPC.filesList, connectionId, remotePath),
+  filesPush: (connectionId, localPath, remotePath) =>
+    ipcRenderer.invoke(IPC.filesPush, connectionId, localPath, remotePath),
+  filesPull: (connectionId, remotePath, localPath) =>
+    ipcRenderer.invoke(IPC.filesPull, connectionId, remotePath, localPath),
 };
 
 contextBridge.exposeInMainWorld('cockpit', api);
