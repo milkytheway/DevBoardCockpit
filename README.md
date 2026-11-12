@@ -25,16 +25,20 @@
 
 | 阶段 | 状态 | 说明 |
 |---|---|---|
-| 契约层 | ✅ 已迁入并追认 | `docs/spec/` 五份 + `data/tag-vocabulary.yaml` + 板型包（**无实现代码**，见 ADR-D13） |
+| 契约层 | ✅ 已迁入并追认 | `docs/spec/` 五份 + `data/tag-vocabulary.yaml` + 板型包 |
 | 资产迁移 | ✅ 已完成 | 设备事实清单、真机样本、连接 profile |
 | 架构设计 | 🟡 待用户逐节确认 | `docs/04-架构设计.md` |
-| 评审 | ✅ 两轮已出 | `docs/07-评审报告.md`、`docs/08-独立评审-k3.1pro.md` |
+| 评审 | ✅ 契约层两轮 + 设计两份 | `docs/07`、`docs/08`（契约层）· `docs/10`×2（独立设计） |
+| 实现层评审 | ✅ 一轮 57 条 | `docs/11-计划1评审报告.md`（含真机实测） |
 | 契约核对 | 🔵 部分已定 | `docs/06-契约核对.md`（C1–C7 共 7 条；C1/C2/C3/C6/C7 已定，C4/C5 待拍板） |
-| 实施计划 | ⬜ 未开始 | 设计确认后产出 |
-| 代码实现 | 🟡 进行中 | **计划 1**（工程骨架 + 终端三通道）已实现，见 `src/` |
+| 实施计划 | ✅ 计划 1 已写 | `docs/superpowers/plans/2026-11-12-plan1-*.md` |
+| 代码实现 | 🟡 计划 1 已实现 | 工程骨架 + 终端三通道 + 文件互传，见 `src/`；**真机验收前不算完成** |
 | 真机验收 | 🔵 待做 | 需在 Windows 宿主机上跑 `docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md` |
 
-**当前仓库不含任何应用代码**——这是刻意的：契约与设计没冻结之前不写实现。
+**代码在 `src/`，148 条测试。** 但**计划 1 还不算完成**——
+两份实现层评审查出 5 条 P0（应用起不来、错误到不了眼前、ADB 终端不通、串口 exec 永久超时、文件互传两条路都不通），
+已全部修掉；**剩下的缺口是「没在真机上跑过」**，清单在
+`docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md`。
 
 ## 文档地图（按这个顺序读）
 
@@ -96,7 +100,7 @@ npm test
 另外两个跟「不漂移」有关的：
 
 ```powershell
-npm run gen:vocabulary -- --check   # 词表三份一致：YAML = 文档表格 = 代码词表
+npm run gen:vocabulary:check   # 词表三份一致：YAML = 文档表格 = 代码词表
 npm run mutation:check               # 变异测试：证明回归测试真的在守
 ```
 
@@ -125,19 +129,27 @@ npm run mutation:check               # 变异测试：证明回归测试真的�
 
 ```
 DevBoardCockpit/
+├─ src/
+│  ├─ main/                 ★ 唯一持有设备 I/O 的地方（hal / terminal / files / util / logging）
+│  ├─ preload/              contextBridge 白名单（唯一出口）
+│  ├─ renderer/             只画界面（terminal / files / theme）
+│  └─ shared/               IPC 契约、错误形状、词表（生成物）
+├─ tests/                   unit / integration / web 三组
+├─ scripts/                 词表生成器、构建产物自检、变异测试
 ├─ docs/
 │  ├─ spec/                 ★ 权威契约（五份 + data/ 词表）
 │  ├─ legacy/               旧工程原始文档
-│  └─ 00~10                 愿景 / 现状 / 事实 / 迁移 / 设计 / ADR / 核对 / 评审 / 总纲 / 独立设计
+│  ├─ superpowers/plans/    实现计划与真机验收清单
+│  └─ 00~11                 愿景 / 现状 / 事实 / 迁移 / 设计 / ADR / 核对 / 评审 / 总纲 / 独立设计×2 / 实现层评审
 ├─ profiles/
 │  ├─ boards/rk3588-atk/    板型包（board.yaml）
 │  ├─ targets/              连接实例 profile（怎么连上）
 │  └─ settings.json         宿主工具路径等全局设置
 ├─ fixtures/                真机样本（黄金测试向量）
+├─ electron.vite.config.ts  main/preload/renderer 三段构建
+├─ package.json
 └─ AGENTS.md / README.md / LICENSE
 ```
-
-> `src/` 与 `package.json` 还没有——它们等契约评审通过后才建。
 
 ## 事实标注规矩
 

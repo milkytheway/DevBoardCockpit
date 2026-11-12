@@ -80,7 +80,7 @@ README.md
 | **提交前跑测试** | `npm run lint && npm run typecheck && npm test` 全绿才提交 |
 | **修完 bug 要验测试真的在守** | 把修复**改回去**，确认对应测试**变红**，再还原确认变绿。<br>「测试通过」不等于「测试能抓住这个 bug」——只有变异能区分。<br>跑 `npm run mutation:check` 看当前这批修复是否都还守着 |
 | **替身按行为建模，不按结论建模** | 假实现要模拟**真实行为**（回显每一行、执行命令、异步回调），<br>不能直接返回「契约期待的那个答案」——那样会把协议形状的 bug 盖住 |
-| **词表只有一个源头** | 改词表改 `docs/spec/data/tag-vocabulary.yaml`，然后 `npm run gen:vocabulary`。<br>跑 `npm run gen:vocabulary -- --check` 确认「YAML = 文档表格 = 代码词表」三份一致 |
+| **词表只有一个源头** | 改词表改 `docs/spec/data/tag-vocabulary.yaml`，然后 `npm run gen:vocabulary`。<br>跑 `npm run gen:vocabulary:check` 确认「YAML = 文档表格 = 代码词表」三份一致 |
 
 ## 4. 事实从哪来
 
@@ -118,17 +118,26 @@ README.md
 
 ```powershell
 npm run dev                # electron-vite 开发模式
+npm run build              # 三段构建 + 构建产物自检（preload 文件真的在吗）
 npm run lint               # ESLint
 npm run typecheck          # tsc --noEmit
 npm test                   # vitest
-npm run validate:profiles  # 板型包 + 卡片 manifest 校验
-npm run probe:board        # 对着真板跑 reader，核对输出
+# 板型包 + 卡片 manifest 校验 —— **计划 2（M3/M4）起才有**
+# 对着真板跑 reader，核对输出 —— **计划 2（M3/M4）起才有**
 npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
-npm run gen:vocabulary -- --check   # 校验三份一致，不一致就退出码 1
-npm run mutation:check     # 变异测试：证明回归测试真的在守着
+npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
+npm run mutation:check     # 变异测试：证明回归测试真的在守着（12 项）
 ```
 
-> 这些命令**现在还不存在**——`package.json` 与 `src/` 都要等契约评审通过后才建。
+
+> **上面 8 条命令现在都有**（`package.json` 里就是这 8 条）。
+> `validate:profiles` 与 `probe:board` **属于计划 2（M3/M4）**，现在还不存在——
+> 文档里引用它们的地方已标注「计划 2 起可用」，别照抄一个不存在的命令。
+>
+> **`npm run gen:vocabulary:check` 不要写成 `npm run gen:vocabulary -- --check`。**
+> PowerShell 下的 `npm.ps1` 会把 `--` 之后的内容吃掉——
+> 于是「校验」静默退化成「生成」，**而生成会改写契约文档**。
+> 独立的脚本条目不经这层转发，跨平台都对。
 
 ---
 
