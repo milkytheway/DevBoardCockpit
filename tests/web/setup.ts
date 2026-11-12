@@ -1,4 +1,12 @@
 import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// 每个测试后卸载已渲染的组件——否则同一文件里的多次 render 会叠加，
+// getByTestId 会找到多个同名的元素。
+afterEach(() => {
+  cleanup();
+});
 
 /**
  * jsdom 缺 xterm 与我们组件需要的浏览器 API：

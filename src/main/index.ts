@@ -122,6 +122,15 @@ function createWindow(): BrowserWindow {
     void win.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
+  // 拖一个文件进窗口，Electron 默认会**导航到那个文件**——
+  // 整个窗口被替换成文件内容，应用看起来「崩了」。
+  // 拦住它，拖放交给 renderer 的文件浏览器处理。
+  win.webContents.on('will-navigate', (event, url) => {
+    const current = win.webContents.getURL();
+    if (url !== current) event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   return win;
 }
 

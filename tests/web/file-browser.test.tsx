@@ -17,6 +17,21 @@ describe('FileBrowser', () => {
     expect(onPush).toHaveBeenCalled();
   });
 
+  it('拖入文件也能上传（RF-4：拖放不是选文件）', () => {
+    const onPush = vi.fn();
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={{ exec: true, pty: true, files: true, exitCode: true }}
+        onPush={onPush}
+      />,
+    );
+    const drop = screen.getByTestId('file-drop');
+    const file = new File(['x'], 'a.txt');
+    fireEvent.drop(drop, { dataTransfer: { files: [file] } });
+    expect(onPush).toHaveBeenCalledWith(file);
+  });
+
   it('连接不支持传输时，入口禁用且给出说明', () => {
     render(
       <FileBrowser

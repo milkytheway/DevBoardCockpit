@@ -36,10 +36,25 @@ export function FileBrowser({ connectionId, capabilities, onPush }: FileBrowserP
     onPush(file);
   };
 
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>): void => {
+    // 不 preventDefault 的话，Electron 会把文件当成导航，
+    // **整个窗口被替换成那个文件**——应用看起来「崩了」。
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    setPending(file.name);
+    onPush(file);
+  };
+
   return (
     <section className="cockpit-files" data-connection={connectionId}>
-      <label className="cockpit-files__label">
-        上传到远端
+      <label
+        className="cockpit-files__label"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        data-testid="file-drop"
+      >
+        上传到远端（可拖进来）
         <input
           ref={inputRef}
           type="file"

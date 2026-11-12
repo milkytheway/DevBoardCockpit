@@ -103,6 +103,18 @@ describe('SerialConnection.exec', () => {
     await first;
   });
 
+  it('中文写出去是 UTF-8 字节，不被截断（RF-2）', async () => {
+    const { factory, sent } = fakeBoard();
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+    await conn.exec('echo 中文');
+    // 写出去的是「命令行 + marker」的 UTF-8 字节
+    const bytes = Buffer.from(sent[0], 'utf8');
+    expect(bytes.toString('utf8')).toContain('中文');
+    // 且不是被截断的半个字符（U+FFFD）
+    expect(bytes.toString('utf8')).not.toContain('\uFFFD');
+  });
+
   it('超时时返回 124 且 timedOut 为 true（事实 S5）', async () => {
     // 假板子不回话 → 只能靠超时
     const factory: SerialPortFactory = async () => ({
