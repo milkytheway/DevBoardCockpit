@@ -1,11 +1,28 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { IPC, type CockpitApi } from '../shared/ipc-contract';
 
 /**
- * 卡片与 renderer 能碰到的宿主能力。
+ * 宿主能力的唯一出口。
  *
- * v1 只有占位——Task 8 加终端通道，Task 9 加文件通道。
- * 新增方法时**同时**在 `src/shared/ipc-contract.ts` 登记通道名。
+ * renderer 与卡片都只能经这里触达 main——
+ * 没有 `ipcRenderer` 本身，没有 fs，没有 child_process（AGENTS.md §3）。
  */
-const api = {};
+const api: CockpitApi = {
+  terminalOpen: (profileId) => ipcRenderer.invoke(IPC.terminalOpen, profileId),
+  terminalWrite: (sessionId, data) => ipcRenderer.send(IPC.terminalWrite, sessionId, data),
+  terminalResize: (sessionId, cols, rows) => ipcRenderer.send(IPC.terminalResize, sessionId, cols, rows),
+  terminalClose: (sessionId) => ipcRenderer.send(IPC.terminalClose, sessionId),
+  onTerminalData: (cb) => {
+    const handler = (_e: IpcRendererEvent, sessionId: string, chunk: string): void => cb(sessionId, chunk);
+    ipcRenderer.on(IPC.terminalData, handler);
+    return () => ipcRenderer.off(IPC.terminalData, handler);
+  },
+  onTerminalExit: (cb) => {
+    const handler = (_e: IpcRendererEvent, sessionId: string, exitCode: number | null): void =>
+      cb(sessionId, exitCode);
+    ipcRenderer.on(IPC.terminalExit, handler);
+    return () => ipcRenderer.off(IPC.terminalExit, handler);
+  },
+};
 
 contextBridge.exposeInMainWorld('cockpit', api);

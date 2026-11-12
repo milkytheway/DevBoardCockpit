@@ -79,6 +79,10 @@ class LocalSession extends Session {
     this.record(data);
   }
 
+  onData(_cb: (chunk: string) => void): void {
+    // 本机 pty 的输出流在 Task 8 的 node-pty 会话里接上
+  }
+
   resize(_cols: number, _rows: number): void {
     // 本机 pty 的尺寸同步在 Task 8 的 node-pty 会话里做
   }

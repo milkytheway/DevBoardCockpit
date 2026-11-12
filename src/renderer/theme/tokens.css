@@ -1,0 +1,65 @@
+/**
+ * 主题 token。
+ *
+ * 契约在 `docs/04-架构设计.md` §6.5：**卡片不得硬编码颜色，只用宿主注入的 CSS 变量**。
+ * 换主题 = 换一套变量值 = 所有卡片跟着变，不用重写任何卡片。
+ *
+ * 这套值是「暗色仪表台」的方向：开发工具常年开着，
+ * 低亮度背景 + 高对比正文，长时间盯着不累。
+ * 语义色（ok / warn / danger / unavailable）对应 tag 的五种状态，
+ * 让「不可用」和「真的是 0」在视觉上就分得开——这是 `unavailable ≠ 0` 的 UI 侧兑现。
+ */
+
+:root {
+  --cockpit-bg: #14171c;
+  --cockpit-bg-elevated: #1c2027;
+  --cockpit-border: #2b313a;
+
+  --cockpit-text: #dfe4ec;
+  --cockpit-text-dim: #9aa4b2;
+  --cockpit-text-faint: #667080;
+
+  --cockpit-accent: #58a6ff;
+  --cockpit-accent-2: #7ee787;
+
+  /* 语义色 ↔ tag 五态 */
+  --cockpit-ok: #7ee787;
+  --cockpit-warn: #e3b341;
+  --cockpit-danger: #f85149;
+  --cockpit-unavailable: #6e7681;
+
+  --cockpit-radius: 4px;
+  --cockpit-font-mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --cockpit-font-ui: 'Segoe UI', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 13px;
+}
+
+.cockpit-terminal {
+  height: 100%;
+  width: 100%;
+  padding: 8px;
+  background: var(--cockpit-bg);
+  overflow: hidden;
+}
+
+/* xterm 自己的背景要跟着 token 走 */
+.cockpit-terminal .xterm {
+  height: 100%;
+}

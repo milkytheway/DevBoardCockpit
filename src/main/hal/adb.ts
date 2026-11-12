@@ -135,6 +135,11 @@ class AdbSession extends Session {
     this.record(data);
   }
 
+  onData(_cb: (chunk: string) => void): void {
+    // adb 的命令输出走 exec 的返回值；交互式会话的连续输出在 Task 8 的
+    // node-pty 会话里接上——这里没有可订阅的流。
+  }
+
   resize(_cols: number, _rows: number): void {
     // adb shell 没有窗口尺寸概念
   }

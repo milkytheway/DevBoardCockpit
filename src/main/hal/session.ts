@@ -72,6 +72,9 @@ export abstract class Session {
   /** 关闭会话 */
   abstract close(): void;
 
+  /** 订阅远端输出。传输层把收到的数据喂进来 */
+  abstract onData(cb: (chunk: string) => void): void;
+
   /**
    * 退出码。**串口恒为 null**——串口拿不到 exit status（事实 S5）：
    * 有文本回包算 0，超时算 124。

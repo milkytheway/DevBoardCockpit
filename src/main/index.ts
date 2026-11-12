@@ -1,5 +1,16 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
+import { IPC } from '../shared/ipc-contract';
+import { AdbConnection } from './hal/adb';
+import { LocalConnection } from './hal/local';
+import { SerialConnection } from './hal/serial';
+import { SshConnection } from './hal/ssh';
+import type { Connection } from './hal/connection';
+import { SessionLog } from './logging/session-log';
+import { loadProfiles } from './profiles/loader';
+import { builtinProfilesDir, userProfilesDir } from './util/paths';
+import { TerminalManager } from './terminal/manager';
+import type { ConnectionProfile } from './profiles/schema';
 
 /**
  * Electron main 入口。
@@ -7,6 +18,51 @@ import { join } from 'node:path';
  * **唯一持有设备 I/O 的地方**（`docs/04-架构设计.md` §2.1）。
  * renderer 只画界面；卡片 iframe 只经 preload 的白名单 API 触达这里。
  */
+
+/** 连接 profile 的来源：内置目录 + 用户目录，用户优先 */
+function listProfiles(): ConnectionProfile[] {
+  return loadProfiles({
+    builtinDir: builtinProfilesDir(app.getAppPath()),
+    userDir: userProfilesDir(),
+  });
+}
+
+function createConnection(profile: ConnectionProfile): Connection {
+  const log = new SessionLog({ label: profile.id, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') });
+  switch (profile.transport) {
+    case 'serial':
+      return new SerialConnection(profile, log);
+    case 'adb':
+      return new AdbConnection(profile, log);
+    case 'ssh':
+      return new SshConnection(profile, log);
+    case 'local':
+      return new LocalConnection(profile, log);
+  }
+}
+
+const terminal = new TerminalManager({
+  listProfiles,
+  createConnection,
+  createLog: (label) => new SessionLog({ label, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') }),
+});
+
+// 主进程 → renderer 的推送
+function broadcast(channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(channel, ...args);
+  }
+}
+
+terminal.onData((sessionId, chunk) => broadcast(IPC.terminalData, sessionId, chunk));
+terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, exitCode));
+
+ipcMain.handle(IPC.terminalOpen, async (_e, profileId: string) => terminal.open(profileId));
+ipcMain.on(IPC.terminalWrite, (_e, sessionId: string, data: string) => terminal.write(sessionId, data));
+ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: number) =>
+  terminal.resize(sessionId, cols, rows),
+);
+ipcMain.on(IPC.terminalClose, (_e, sessionId: string) => terminal.close(sessionId));
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({

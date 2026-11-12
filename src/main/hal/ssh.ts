@@ -190,6 +190,10 @@ class SshSession extends Session {
     this.channel.write(data);
   }
 
+  onData(cb: (chunk: string) => void): void {
+    this.channel.on('data', (d: Buffer) => cb(d.toString('utf8')));
+  }
+
   resize(cols: number, rows: number): void {
     this.channel.setWindow(rows, cols, 0, 0);
   }

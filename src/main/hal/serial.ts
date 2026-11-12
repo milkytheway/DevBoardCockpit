@@ -181,6 +181,10 @@ class SerialSession extends Session {
     this.record(data);
   }
 
+  onData(cb: (chunk: string) => void): void {
+    this.port.onData(cb);
+  }
+
   resize(_cols: number, _rows: number): void {
     // 串口没有窗口尺寸概念
   }
