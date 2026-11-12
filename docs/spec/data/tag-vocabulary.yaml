@@ -1,0 +1,168 @@
+# 核心词表 —— 机器可读权威
+#
+# 本文件是核心词表的**唯一权威**。`docs/spec/01-tag-contract.md` 里那张 Markdown 表格
+# 是本文件的**人类可读渲染**，由本文件生成；两者必须逐条一致，
+# 实现层也必须从本文件生成机器可读形态（校验器、运行时、describe_tag 共用一份）。
+#
+# 规则（来自 spec/01 §一、§六）：
+#   1. 名字**不含板型**：`cpu.usage` 在任何板上含义必须一致。
+#   2. 语义写不清楚的量，不要进核心词表。
+#   3. 新增核心 tag = 契约升版本的事。board pack 只能声明自己实现了哪些核心 tag。
+#   4. `type` ∈ {number, string, boolean, enum}。
+#   5. `unit` 用 SI 单位或无量纲；单位名入名（`mem.total_bytes`）。
+#   6. `v1`：本版实现是否要求板型包提供。
+#        required —— v1 的板型包应提供；缺失时该 tag 报 unavailable。
+#        reserved —— 词表保留但 v1 不要求任何包提供（语义已占位，实现随版本推进）。
+#
+# 格式：每个条目一段 YAML，字段顺序固定，便于逐条对拍。
+#
+# 背光为什么不在核心词表：这块板有两块背光（backlight 与 backlight1），
+# 命名与刻度都是板子特有的，不满足「语义在所有板上一致」的准入门槛。
+# 所以两个实例都走 `custom.rk3588-atk.*`（用户 2026-11-12 拍板，见 docs/06 C2）。
+entries:
+  - pattern: cpu.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: 过去 1 秒内，所有 CPU 核心执行非空闲指令的时间占比
+    v1: required
+
+  - pattern: cpu.core.*.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: 过去 1 秒内，单个 CPU 核心执行非空闲指令的时间占比
+    v1: required
+
+  - pattern: cpu.core.*.cluster
+    type: string
+    unit: "-"
+    range: open-enum
+    semantics: CPU 核心所属的簇名，如 A55 / A76。未知名字按字符串原样上报，不报错。
+    v1: required
+
+  - pattern: cpu.governor
+    type: enum
+    unit: "-"
+    range: open-enum
+    semantics: 当前生效的 CPU 调频策略（cpufreq 的 scaling_governor），如 schedutil。取 cpu0 的值；各核可独立设置。
+    v1: required
+
+  - pattern: gpu.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: GPU 当前读数：执行非空闲指令的时间占比。采样窗口由驱动决定，不是固定的 1 秒。
+    v1: required
+
+  - pattern: gpu.freq_hz
+    type: number
+    unit: hertz
+    range: ">=0"
+    semantics: GPU 当前工作频率
+    v1: required
+
+  - pattern: npu.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: NPU 当前读数：各计算核利用率的**最大值**。采样窗口由驱动决定，不是固定的 1 秒。
+    v1: required
+
+  - pattern: npu.core.*.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: 单个 NPU 计算核的当前利用率
+    v1: required
+
+  - pattern: mem.total_bytes
+    type: number
+    unit: byte
+    range: ">0"
+    semantics: 物理内存总量
+    v1: required
+
+  - pattern: mem.available_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 无需交换即可分配给新进程的内存（MemAvailable）
+    v1: required
+
+  - pattern: mem.used_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 已用内存 = MemTotal - MemAvailable（**不含**可回收的 page cache）
+    v1: required
+
+  - pattern: mem.usage
+    type: number
+    unit: percent
+    range: [0, 100]
+    semantics: 已用内存占物理内存总量的百分比
+    v1: required
+
+  - pattern: temp.soc
+    type: number
+    unit: celsius
+    range: "-"
+    semantics: SoC 核心温度，按 thermal zone 的 type 归并，不依赖 zone 序号
+    v1: required
+
+  - pattern: temp.gpu
+    type: number
+    unit: celsius
+    range: "-"
+    semantics: GPU 温度，按 thermal zone 的 type 归并
+    v1: required
+
+  - pattern: temp.npu
+    type: number
+    unit: celsius
+    range: "-"
+    semantics: NPU 温度，按 thermal zone 的 type 归并
+    v1: required
+
+  - pattern: board.model
+    type: string
+    unit: "-"
+    range: "-"
+    semantics: 板子型号字符串，用于自动识别板型包
+    v1: required
+
+  - pattern: board.kernel
+    type: string
+    unit: "-"
+    range: "-"
+    semantics: 运行中的内核版本字符串
+    v1: reserved
+
+  - pattern: net.rx_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 自启动以来累计接收的字节数
+    v1: reserved
+
+  - pattern: net.tx_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 自启动以来累计发送的字节数
+    v1: reserved
+
+  - pattern: disk.*.free_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 某个挂载点所在文件系统的可用字节数
+    v1: reserved
+
+  - pattern: disk.*.total_bytes
+    type: number
+    unit: byte
+    range: ">=0"
+    semantics: 某个挂载点所在文件系统的总字节数
+    v1: reserved

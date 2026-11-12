@@ -2,7 +2,7 @@
   "id": "ubuntu-ssh",
   "label": "Ubuntu · SSH",
   "transport": "ssh",
-  "board": null,
+  "board_pack": null,
   "options": {
     "host": "192.168.136.131",
     "port": 22,

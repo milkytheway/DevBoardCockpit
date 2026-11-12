@@ -26,13 +26,16 @@ requires:
   capabilities: [shell, exec, stream, files]
   min_contract: devboard/v1
 
+# 危险地板表的版本（契约 spec/02 §5.2.1）。地板属于契约，不属于包；
+# 这里声明的是「本包是按哪一版地板写的」。v1 的表见 spec/02。
+danger_floor_version: 1
+
 # 自动识别：连接没指名 board_pack 时，运行时读板子的型号来匹配。
 # mode: exact = 型号字符串完全相同；substring = 包含其中之一即可。
 match:
   mode: substring
   models:
     - ATK-DLRK3588
-    - ATK-DLRK3XXX
 
 # ── 轮询分组 ─────────────────────────────────────────────────────────────
 # 一个组 = 一次往返。同组的所有 reader 合成一条命令，一次取回。
@@ -50,11 +53,11 @@ poll_groups:
 
   - id: slow
     interval_ms: 2000
-    readers: [mem, temp]
+    readers: [mem, temp, cpu_governor]
 
   - id: rare
     interval_ms: 30000
-    readers: [board, npu_devfreq]
+    readers: [board, npu_devfreq, npu_freq, backlight, backlight1]
 
 # ── 数据源 ─────────────────────────────────────────────────────────────
 readers:
@@ -104,6 +107,8 @@ readers:
     provides:
       - tag: mem.total_bytes
         sample: total_bytes
+      - tag: mem.available_bytes
+        sample: available_bytes
       - tag: mem.used_bytes
         sample: used_bytes
       - tag: mem.usage
@@ -126,6 +131,16 @@ readers:
       - tag: temp.npu
         sample: zone.npu
 
+  - id: cpu_governor
+    kind: file_read
+    args:
+      path: /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+      format: string
+      strip_trailing_null: true
+    provides:
+      - tag: cpu.governor
+        sample: value
+
   - id: board
     kind: file_read
     args:
@@ -146,6 +161,10 @@ actions:
         type: integer
         min: 0
         max: 255
+    # 参数域（契约 spec/02 §5.5）：0–15 太暗、看着像屏幕坏了，
+    # 归到「温和」范围之外，要单独确认一次。guard 只能缩小范围，不能扩大。
+    guard:
+      value: {min: 16, max: 255}
     command: "echo {value} > /sys/class/backlight/backlight/brightness"
     readback:
       kind: file_equals
@@ -153,13 +172,27 @@ actions:
       expect: "{value}"
       tolerance: 1
 
+  - id: system.reboot
+    label: 重启板子
+    danger: destructive
+    params: {}
+    command: "reboot"
+    readback:
+      # 重启命令返回 0 只说明 shell 接受了它，不说明板子重启成功了。
+      # verify 是动作**之后**执行的二次验证：等板子回来，看 uptime 变了。
+      kind: verify
+      command: "uptime -s"
+      timeout_ms: 60000
+
   - id: cpu.governor.set
     label: 设置 CPU 调频策略
     danger: reversible
     params:
       governor:
         type: enum
-        values: [performance, schedutil, powersave, ondemand, userspace]
+        # 实测可选值（docs/02 §3.1）：interactive conservative ondemand userspace
+        # powersave performance schedutil
+        values: [performance, schedutil, powersave, ondemand, userspace, interactive, conservative]
       cpu:
         type: integer
         min: 0
@@ -174,26 +207,52 @@ actions:
 # ── 板型私有量 ─────────────────────────────────────────────────────────
 # 不在核心词表里，别的板不保证有。命名空间 = custom.<pack id>.*
 #
-# ⚠️ 待你拍板（docs/06-契约核对.md 的 Q1/Q7）：这里的路径原先写的是
-# /sys/kernel/debug/rknpu/devfreq/cur_freq，实测该目录在板上**不存在**
-# （rknpu/ 下只有 delayms freq load power reset version volt）。
-# 现改用实测存在的 /sys/class/devfreq/fdab0000.npu/load，内容形如
-# "100@1000000000Hz" —— 前半是**占空比**，后半是当前频率 Hz。
+# ⚠️ 这里的路径改过一次又改回来（docs/06-契约核对.md 的 C1/C7）：
+#   迁入时写的是 /sys/kernel/debug/rknpu/devfreq/cur_freq —— 实测该目录在板上
+#   **不存在**（rknpu/ 下只有 delayms freq load power reset version volt）。
+#   第一次修订把它换成了 /sys/class/devfreq/fdab0000.npu/load —— 但那个文件里的
+#   "@<freq>Hz" 是「duty 在哪个频率上测的」，**不是当前频率**，语义被冒名了。
+#   现在按用户 2026-11-12 的拍板**回滚**到真正表示当前频率的路径。
 #
-# 这样一块板子同时给出两个对照量：
+# 三个量的语义各自干净：
 #   npu.usage            ← rknpu debugfs 的真实利用率（空闲 0%）
-#   custom...npu.duty    ← devfreq 的占空比      （空闲 100%）
-# 对照着看才不至于把「板子闲着但时钟满速待命」误判成「板子在满负荷」。
+#   custom...npu.duty    ← devfreq 的时钟占空比  （空闲 100%）
+#   custom...npu.freq_hz ← 当前频率（不是 load 里那个 @freq）
 custom:
+  - id: backlight
+    kind: file_read
+    args:
+      path: /sys/class/backlight/backlight/brightness
+      format: integer
+    provides:
+      - tag: custom.rk3588-atk.backlight.brightness
+        sample: value
+
+  - id: backlight1
+    kind: file_read
+    args:
+      path: /sys/class/backlight/backlight1/brightness
+      format: integer
+    provides:
+      - tag: custom.rk3588-atk.backlight1.brightness
+        sample: value
+
   - id: npu_devfreq
     kind: devfreq_load
     args:
       path: /sys/class/devfreq/fdab0000.npu/load
-      # 这一条确实是占空比，不是利用率。所以它只绑到 .duty / .freq_hz
-      # 这种名字上，不绑任何 *.usage。校验器会拦住「占空比当利用率发布」。
+      # 这一条确实是占空比，不是利用率。所以它只绑到 .duty 这种名字上，
+      # 不绑任何 *.usage。校验器会拦住「占空比当利用率发布」。
       measure: duty_cycle
     provides:
       - tag: custom.rk3588-atk.npu.duty
         sample: duty
+
+  - id: npu_freq
+    kind: file_read
+    args:
+      path: /sys/class/devfreq/fdab0000.npu/cur_freq
+      format: integer
+    provides:
       - tag: custom.rk3588-atk.npu.freq_hz
-        sample: freq_hz
+        sample: value

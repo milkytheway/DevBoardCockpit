@@ -7,10 +7,15 @@
 RK3588，Buildroot 6.1.141，8 核（Cortex-A55 ×4 + Cortex-A76 ×4）。
 板子的 USB 被宿主机认领，**不装 VMware 直通也能从宿主的 `adb.exe` 直连**。
 
-## 包里的每条路径都实测过
+## 包里的路径来自哪里
 
 来源是旧工程 `core/metrics.py` 的文档字符串与 README 的「Hardware metrics」一节，
 以及 `docs/02-设备事实清单.md` 里对真板的核对记录。
+
+> **注意**：这里说的是「**来自实测记录**」，不是「每条都实测过」。
+> 迁入时有一条指向了实测不存在的路径（`rknpu/devfreq/cur_freq`），
+> 又被改成了语义不对的路径（见下面第一个坑）。逐条的核实状态见
+> `docs/06-契约核对.md` §一 与 §四。
 
 ## 三个被编码进包里的坑
 
@@ -22,13 +27,17 @@ RK3588，Buildroot 6.1.141，8 核（Cortex-A55 ×4 + Cortex-A76 ×4）。
 所以 `npu.usage` 来自 `rknpu_load`（读 `/sys/kernel/debug/rknpu/load`，实测
 `NPU load: Core0: 0%, Core1: 0%, Core2: 0%`），不是 devfreq。
 
-本包同时把 devfreq 那条链绑成两个**板型私有量**，让卡片能对照着看：
+本包同时把 devfreq 那条链绑成**板型私有量**，让卡片能对照着看：
 
-| tag | 含义 | 空闲时的值 |
-|---|---|---|
-| `npu.usage` | 真实利用率 | 0% |
-| `custom.rk3588-atk.npu.duty` | 时钟占空比 | 100% |
-| `custom.rk3588-atk.npu.freq_hz` | 当前频率 | 1000000000 |
+| tag | 来源 | 含义 | 空闲时的值 |
+|---|---|---|---|
+| `npu.usage` | rknpu debugfs | 真实利用率 | 0% |
+| `custom.rk3588-atk.npu.duty` | devfreq `load` | 时钟占空比 | 100% |
+| `custom.rk3588-atk.npu.freq_hz` | devfreq `cur_freq` | 当前频率 | 1000000000 |
+
+> **三者的来源各不相同**：`load` 里的 `@<freq>Hz` 是「这条 duty 在哪个频率上测的」，
+> **不是当前频率**——所以 `duty` 只绑 duty，频率另从 `cur_freq` 取。
+> 这三个量混着看，就会把「板子闲着但时钟满速待命」误判成「板子在满负荷」。
 
 只显示占空比会误判成满载，只显示利用率则看不出时钟在待命。**两个一起看才对。**
 
@@ -39,13 +48,15 @@ coreutils 那个索引在别的板、别的内核版本上会指向别的 zone�
 `thermal_zone5` 是 `gpu-thermal`）。
 本包用 glob 遍历 + `type` 文件归并，所以换板子不会读错。
 
-**三、`/sys/kernel/debug` 默认没挂载。**
-NPU 的读法依赖它。没挂载时 `npu.usage` 报 `unavailable`，
+**三、`/sys/kernel/debug` 不保证已挂载。**
+NPU 的读法依赖它。挂载与否取决于板子的 `/etc/fstab` 与 init 脚本，**不持久**——
+本机实测时它**是挂载的**，但重启后可能丢。
+没挂载时 `npu.usage` 报 `unavailable`，
 **不退回去读 devfreq 那个占空比**——那会显示 100% 但板子是闲的。
 
 ## 验证这个包
 
-契约层（`docs/spec/02` §七）列了 **19 条校验规则**——实现层必须逐条实现它们。
+契约层（`docs/spec/02` §七）列了 **24 条校验规则**——实现层必须逐条实现它们。
 命令入口由实现层决定（约定为 `npm run validate:profiles`）。
 
 校验是纯静态的，不需要板子。它会检查：tag 名在不在核心词表里、有没有两个 reader
@@ -55,12 +66,19 @@ NPU 的读法依赖它。没挂载时 `npu.usage` 报 `unavailable`，
 要对着真板验证：
 
 ```bash
-# 板子接在宿主的 adb 上
+# 板子接在宿主的 adb 上（默认用 profiles/targets 里第一个能连上的板型包）
 npm run probe:board
 
-# 或者走 SSH
-npm run probe:board -- --transport ssh --host 192.168.1.102 --username root
+# 指定板型包
+npm run probe:board -- --pack rk3588-atk
+
+# 走 SSH 连（需要 --pack 之外的传输参数）
+npm run probe:board -- --pack rk3588-atk --transport ssh --host 192.168.1.102 --username root
 ```
+
+> **命令行契约以 `docs/04-架构设计.md` §12 为准**：`--pack <pack-id>` 选板型包，
+> `--transport` / `--host` / `--username` / `--port` 选传输。
+> 这里的示例与它一致。
 
 probe 会跑两轮（CPU 占用率需要两次采样做差），然后按卡片看到的样子打印每个 tag 的
 值和状态。任何一个 tag 出不来，它会明说「did not produce a value」——**这比显示 0 强**。
@@ -69,20 +87,23 @@ probe 会跑两轮（CPU 占用率需要两次采样做差），然后按卡片�
 > 需要立刻验证板型包时，可以用评审通过后重写的校验器，
 > 或对照 `docs/02-设备事实清单.md` 里已核实的事实逐条核对。
 
-## ⚠️ 待你拍板
+## 契约核对清单的状态
 
-`docs/06-契约核对.md` 列了 5 条需要你定的条目（Q1–Q5），本包现在的状态：
+`docs/06-契约核对.md` 列了 **C1–C7** 共 7 条（不是 5 条），本包现在的状态：
 
-| # | 事项 | 本包现在的处理 |
-|---|---|---|
-| Q1 | `npu_devfreq` 的路径 | **已改**：用实测存在的 `/sys/class/devfreq/fdab0000.npu/load`（原路径 `/sys/kernel/debug/rknpu/devfreq/cur_freq` 实测不存在） |
-| Q2 | 双背光进核心词表还是走 custom | 未处理：本包只做了主屏 `backlight.set` |
-| Q3 | `cpu.governor` / `npu.governor` 是否进核心词表 | 未处理：词表里还没有这两个 tag |
-| Q4 | 是否补三个动作（含 destructive 的 `system.reboot`） | 未处理：本包只有两个 reversible 动作 |
-| Q5 | `unavailable` 是否带 reason 码 | 参考实现里叫 `detail`，词表与契约都还没定这个字段 |
+| # | 事项 | 本包现在的处理 | 状态 |
+|---|---|---|---|
+| C1 | `npu_devfreq` 的路径 | **已回滚**：`npu_devfreq` 读 devfreq 的 `load` 但**只提供 `duty`**；频率另由 `npu_freq` 读 `fdab0000.npu/cur_freq` | ✅ 已拍板（2026-11-12） |
+| C2 | 双背光进核心词表还是走 custom | **走 custom**：本包提供 `custom.rk3588-atk.backlight.brightness` 与 `...backlight1.brightness` 两个 reader | ✅ 已拍板（2026-11-12） |
+| C3 | `cpu.governor` / `npu.governor` 是否进核心词表 | **`cpu.governor` 进核心词表**（本包有 `cpu_governor` reader）；`npu.governor` 不进——它的 `available_governors` 是 rkdevfreq 全局列表，语义不一致 | ✅ 已拍板（2026-11-12） |
+| C4 | 是否补三个动作（含 destructive 的 `system.reboot`） | 🔶 **部分已定**：已补 `system.reboot`（`danger: destructive` + `verify` 回读 `uptime -s`）；`npu.governor.set` 与 `debugfs.mount` 待定 | 🔶 部分 |
+| C5 | `unavailable` 是否带 reason 码 | ✅ **已定**：`reason`（封闭枚举 7 码，带版本）+ `detail`（自由文本），见 `docs/spec/01` §2.1.1 | ✅ |
+| C6 | 单位换算责任 | 已写入契约：reader 负责换算，契约只认 byte | ✅ 已定 |
+| C7 | NPU 占空比对照量 | 保留 `custom.rk3588-atk.npu.duty`，但**只提供 duty**，不冒名提供频率 | ✅ 已定 |
 
-**Q1 是我按实测数据先改了**（原路径指向一个不存在的目录，留着必然报 `unavailable`）。
-其余四条等你拍板后再动。
+> **C1 改过两次**：迁入时写的路径实测不存在 → 第一次修订改成读 devfreq 的 `load`
+> （但那个文件里的 `@freq` 是「duty 在哪个频率上测的」，不是当前频率，语义被冒名）
+> → 现按用户拍板**回滚**：占空比只提供占空比，频率另取一处。
 
 ## 未验证的部分
 

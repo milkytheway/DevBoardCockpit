@@ -2,7 +2,7 @@
   "id": "local",
   "label": "本机",
   "transport": "local",
-  "board": null,
+  "board_pack": null,
   "options": {
     "pty": true,
     "commands": "ssh"

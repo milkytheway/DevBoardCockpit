@@ -2,7 +2,7 @@
   "id": "board-adb",
   "label": "板子 · ADB",
   "transport": "adb",
-  "board": "atklrk3588",
+  "board_pack": "rk3588-atk",
   "options": {
     "pty": false,
     "prompt": "root@ATK-DLRK3588",

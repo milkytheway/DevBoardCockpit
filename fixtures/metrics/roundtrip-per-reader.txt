@@ -1,0 +1,50 @@
+# 一次 poll group 往返 —— 按契约的 per-reader 围栏格式
+#
+# 契约 spec/02 §1.2 规定：同组的所有 reader 合成一条命令，
+# 每个 reader 的输出用**自己的** marker 隔开：
+#
+#   echo '###R cpu STAT'; ...; echo '###E cpu'; echo '###R gpu LOAD'; ...; echo '###E gpu'
+#
+# ⚠️ 这个文件是**构造**的：内容取自 metrics/snapshot-sample.txt（真实抓取），
+# 只是把「扁平分段」重排成契约的 per-reader 围栏格式。
+# 目的是让「一次真实往返长什么样」有一个符合契约的向量；
+# 契约格式下的真机抓取样本仍值得补（只增不改）。
+#
+# 解析要点（实现层要对的行为）：
+#   1. 看到 `###R <reader> <KIND>` 开始一个 section，遇到 `###E <reader>` 结束；
+#   2. section 为空 = 该 reader 本轮没产出 = 报 unavailable，**不能报 0**；
+#   3. 一个 reader 的 section 坏了，不影响同组其他 reader；
+#   4. `###R` / `###E` 必须配对，reader 名必须一致。
+#
+###R cpu STAT
+cpu  25288 0 16570 41447116 2271 0 95 0 0 0
+cpu0 15399 0 4709 5163405 26 0 41 0 0 0
+cpu1 8455 0 5674 5163231 21 0 36 0 0 0
+cpu2 449 0 2066 5187843 2116 0 1 0 0 0
+cpu3 264 0 411 5186862 15 0 14 0 0 0
+cpu4 56 0 128 5192852 17 0 0 0 0 0
+cpu5 76 0 202 5192938 20 0 0 0 0 0
+cpu6 87 0 2311 5190284 18 0 0 0 0 0
+cpu7 490 0 1075 5191285 36 0 0 0 0 0
+###E cpu
+###R cpuinfo INFO
+processor	: 0
+CPU part	: 0xd05
+processor	: 4
+CPU part	: 0xd0b
+###E cpuinfo
+###R gpu LOAD
+0@300000000Hz
+###E gpu
+###R npu LOAD
+NPU load:  Core0:  0%, Core1:  0%, Core2:  0%,
+###E npu
+###R mem MEMINFO
+MemTotal:        8107744 kB
+MemAvailable:     6104320 kB
+###E mem
+###R temp THERMAL
+soc-thermal=32384
+gpu-thermal=31461
+npu-thermal=32384
+###E temp

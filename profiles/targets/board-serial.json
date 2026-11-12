@@ -2,7 +2,7 @@
   "id": "board-serial",
   "label": "板子 · 串口",
   "transport": "serial",
-  "board": "atklrk3588",
+  "board_pack": "rk3588-atk",
   "options": {
     "port": "COM3",
     "baudrate": 1500000,

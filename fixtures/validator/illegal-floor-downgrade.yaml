@@ -1,0 +1,65 @@
+# ⚠️ 本文件是一个**故意非法**的板型包样本。
+#
+# 它存在的唯一目的：证明校验器会拒绝它。
+# **本文件永远不应通过校验。** 如果某个实现接受了它，那是实现有 bug。
+#
+# 违反的校验规则：
+#   规则 16 —— 命中危险地板的命令（`reboot`）被声明成了 `danger: reversible`。
+#               地板表（spec/02 §5.2）把 `reboot` 列为永远 destructive 的操作。
+#
+# 两条断言（M6 的验收判据）：
+#   1. **静态**：校验器拒包，错误指向规则 16 与 `actions[0].danger`。
+#   2. **运行时兜底**：即使这个包被强行喂给运行时（绕过校验器），
+#      ActionPipeline 仍在地板匹配那一步判它 `destructive`，
+#      返回 `needs_confirmation`，**不直接执行**。
+#      ——地板是下限，校验器是第一道闸，两道都要在。
+#
+# 载荷本身是惰性的：`reboot` 是板子上的真实命令名，
+# 但这个样本只用于「匹配」测试，不会真的发到板子上。
+
+apiVersion: devboard/v1
+kind: BoardPack
+
+id: rk3588-atk-illegal-floor
+name: 故意违规样本（reboot 伪装成 reversible）
+version: 0.0.0-illegal
+description: 本样本永远不应通过校验，见文件头说明
+
+danger_floor_version: 1
+
+requires:
+  transports: [adb]
+  min_contract: devboard/v1
+
+match:
+  mode: exact
+  models: [THIS-MODEL-EXISTS-NO-ONE]
+
+poll_groups:
+  - id: rare
+    interval_ms: 30000
+    readers: [board]
+
+readers:
+  - id: board
+    kind: file_read
+    args:
+      path: /proc/device-tree/model
+      format: string
+      strip_trailing_null: true
+    provides:
+      - tag: board.model
+        sample: value
+
+actions:
+  - id: sneaky.reboot
+    label: 伪装成可逆的重启
+    # ❌ 违反规则 16：命令命中地板表里的 `reboot`，
+    #    danger 必须是 destructive，不能声明成 reversible。
+    danger: reversible
+    params: {}
+    command: "reboot"
+    readback:
+      kind: verify
+      command: "uptime -s"
+      timeout_ms: 60000

@@ -1,0 +1,54 @@
+[02:15:07.054] === session opened 2026-11-12 02:15:07 target=板子 · 串口 transport=serial ===
+[02:15:07.054] --- connected 板子 · 串口 ---
+[02:15:10.071] 
+[02:15:10.071] total 80K
+[02:15:10.071] lrwxrwxrwx   1 root root    7 Aug 27  2026 bin -> usr/bin/
+[02:15:10.071] -rw-r--r--   1 root root  489 Aug 26  2026 busybox.fragment
+[02:15:10.071] drwxr-xr-x   6 root root 4.0K Jan  1 14:19 .cache/
+[02:15:10.071] drwx------   3 root root 4.0K Jan  1 09:21 .config/
+[02:15:10.071] ----------   1 root root    0 Jan  1 08:00 crond.reboot
+[02:15:10.071] drwxr-xr-x   3 root root 4.0K Aug 27  2026 data/
+[02:15:10.071] drwxr-xr-x  15 root root 5.5K Jan  1 08:00 dev/
+[02:15:10.071] drwxr-xr-x  36 root root 4.0K Aug 27  2026 etc/
+[02:15:10.071] drwxr-xr-x   3 root root 4.0K Aug 27  2026 home/
+[02:15:10.071] drwxr-xr-x   2 root root 4.0K Aug 27  2026 info/
+[02:15:10.071] lrwxrwxrwx   1 root root    7 Aug 26  2026 lib -> usr/lib/
+[02:15:10.071] lrwxrwxrwx   1 root root    3 Aug 27  2026 lib64 -> lib/
+[02:15:10.071] lrwxrwxrwx   1 root root   11 Aug 27  2026 linuxrc -> bin/busybox*
+[02:15:10.071] drwx------   2 root root  16K Aug 27  2026 lost+fou
+[02:15:10.098] nd/
+[02:15:10.098] drwxr-xr-x  11 root root 4.0K Aug 27  2026 media/
+[02:15:10.098] drwxr-xr-x   5 root root 4.0K Aug 27  2026 mnt/
+[02:15:10.098] drwxr-xr-x   3 root root 4.0K Jan  1 08:00 oem/
+[02:15:10.098] drwxr-xr-x   4 root root 4.0K Aug 26  2026 opt/
+[02:15:10.098] dr-xr-xr-x 298 root root    0 Jan  1 08:00 proc/
+[02:15:10.098] -rw-r--r--   1 root root    0 Jan  1 08:00 .resized
+[02:15:10.098] drwxr-xr-x  17 root root 4.0K Aug 27  2026 rockchip-test/
+[02:15:10.098] drwx------   4 root root 4.0K Jan  2 01:42 root/
+[02:15:10.098] drwxr-xr-x  12 root root  640 Jan  1 08:00 run/
+[02:15:10.098] lrwxrwxrwx   1 root root    8 Aug 27  2026 sbin -> usr/sbin/
+[02:15:10.098] dr-xr-xr-x  14 root root    0 Jan  1 08:00 sys/
+[02:15:10.098] drwxrwxrwt   7 root root  320 Jan  2 01:39 tmp/
+[02:15:10.098] drwxr-xr-x   4 root root 4.0K Jan  1 12:05 userdata/
+[02:15:10.098] drwxr-xr-x  12 root root 4.0K Jan  1 21:42 usr/
+[02:15:10.098] drwxr-xr-x   6 root root 4.0K Aug 27  2026 var/
+[02:15:10.098] root@ATK-DLRK3588:/# 
+[02:15:11.631] 
+[02:15:11.631] root@ATK-DLRK3588:/# 
+[02:15:14.207] l
+[02:15:14.309] s
+[02:15:14.479] 
+[02:15:14.479] bin               dev   lib         media  proc           sbin      usr
+[02:15:14.479] busybox.fragment  etc   lib64       mnt    rockchip-test  sys       var
+[02:15:14.479] crond.reboot      home  linuxrc     oem    root           tmp
+[02:15:14.479] data              info  lost+found  opt    run            userdata
+[02:15:14.479] root@ATK-DLRK3588:/# 
+[02:17:19.457] p
+[02:17:19.560] w
+[02:17:19.580] d
+[02:17:19.772] 
+[02:17:19.772] /
+[02:17:19.772] root@ATK-DLRK3588:/# 
+[02:19:47.165] --- disconnected ---
+[02:19:47.206] --- stream-ended ---
+=== session closed 2026-11-12 02:20:10 ===

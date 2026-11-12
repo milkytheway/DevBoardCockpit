@@ -12,6 +12,11 @@ logs/
 *.log
 *.tmp
 
+# ...but fixtures/ 里的是**黄金测试向量**，必须入库
+# （fixtures/session-log/serial-session.log 曾被上面的 *.log 误伤，
+#   导致它只存在于工作树、不在 git 里——评审时才发现）
+!fixtures/**/*.log
+
 # Local settings (machine-specific paths, do not commit)
 profiles/settings.local.json
 
