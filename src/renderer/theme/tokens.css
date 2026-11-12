@@ -17,7 +17,13 @@
 
   --cockpit-text: #dfe4ec;
   --cockpit-text-dim: #9aa4b2;
-  --cockpit-text-faint: #667080;
+  /**
+   * 弱化文字。**对比度必须 ≥ 4.5:1**（WCAG AA 对正文的要求）——
+   * 「未选择」「选一个连接开始」这类空状态提示就是用它写的，
+   * 低视力用户读不到就等于没有。
+   * （实测值见 `tests/web/terminal-theme.test.tsx` 里的对拍测试）
+   */
+  --cockpit-text-faint: #7d879a;
 
   --cockpit-accent: #58a6ff;
   --cockpit-accent-2: #7ee787;
@@ -26,7 +32,12 @@
   --cockpit-ok: #7ee787;
   --cockpit-warn: #e3b341;
   --cockpit-danger: #f85149;
-  --cockpit-unavailable: #6e7681;
+  /**
+   * 「不可用」——五态之一，`unavailable ≠ 0` 的视觉兑现。
+   * 同样要 ≥ 4.5:1：它承载的是「这块板不提供这个能力」这句话，
+   * 读不到就等于把「不可用」说成了「正常」。
+   */
+  --cockpit-unavailable: #78828f;
 
   --cockpit-radius: 4px;
   --cockpit-font-mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
@@ -136,6 +147,63 @@ body {
 .cockpit-empty {
   color: var(--cockpit-text-faint);
   padding: 24px;
+}
+
+/**
+ * 错误条与状态条。
+ *
+ * 之前 `.cockpit-error` **根本没有 CSS 规则**——错误渲染成一个普通段落，
+ * 没有颜色、没有边框，跟正文混在一起。而文件互传的错误（`.cockpit-files__error`）
+ * 是有样式的：**两条错误路径的视觉不一致**，用户会以为文件那边才是出错的。
+ */
+.cockpit-error {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--cockpit-danger);
+  background: color-mix(in srgb, var(--cockpit-danger) 12%, transparent);
+  border-bottom: 1px solid var(--cockpit-danger);
+  font-weight: 500;
+}
+
+.cockpit-status {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--cockpit-text-dim);
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+/* ── 终端面板 ──────────────────────────────────────────────────────── */
+
+/**
+ * 每个标签的终端面板。
+ *
+ * **所有标签都挂着，只是把不活动的那个藏起来。**
+ *
+ * 之前只渲染活动标签的终端，于是切标签时 React 复用组件实例、
+ * effect 重跑、旧 xterm 被 dispose——**回滚历史没了**，
+ * 而且后台标签的输出没人订阅，**直接丢掉**。
+ */
+.cockpit-terminals {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.cockpit-tabpanel {
+  position: absolute;
+  inset: 0;
+  /* hidden 属性的元素不占布局 —— 但 ResizeObserver 会因此触发重排，
+     切回来时自动 refit */
+}
+
+.cockpit-tabpanel[hidden] {
+  display: none;
+}
+
+.cockpit-toolbar__transport {
+  margin-left: 6px;
+  color: var(--cockpit-text-faint);
+  font-size: 11px;
 }
 
 /* ── 文件浏览器 ────────────────────────────────────────────────────── */

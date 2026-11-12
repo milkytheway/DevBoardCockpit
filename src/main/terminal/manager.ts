@@ -4,6 +4,7 @@ import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { Connection } from '../hal/connection';
 import type { Session } from '../hal/session';
+import { PipeLineEditor } from './line-editor';
 
 /**
  * 终端会话的生命周期。
@@ -30,9 +31,9 @@ export interface TerminalManagerOptions {
   /** 造一个会话日志 */
   createLog(label: string): SessionLog;
   /** 连接建好后的通知。文件互传等模块靠它拿到「按 id 找连接」的入口 */
-  onConnectionOpen?: (connectionId: string, connection: Connection) => void;
+  onConnectionOpen?: (sessionId: string, connection: Connection) => void;
   /** 连接关掉后的通知。否则 connections Map 里会留下已关闭的连接 */
-  onConnectionClose?: (connectionId: string) => void;
+  onConnectionClose?: (sessionId: string) => void;
 }
 
 interface LiveSession {
@@ -40,6 +41,8 @@ interface LiveSession {
   session: Session;
   connection: Connection;
   pty: boolean;
+  /** pipe 模式的行规程。每个会话一份（各会话的输入行互不相干） */
+  editor: PipeLineEditor;
 }
 
 export class TerminalManager {
@@ -72,7 +75,15 @@ export class TerminalManager {
     const connection = this.opts.createConnection(profile);
     await connection.open();
 
-    const session = await connection.openSession({ cols: 80, rows: 24 });
+    let session: Session;
+    try {
+      session = await connection.openSession({ cols: 80, rows: 24 });
+    } catch (err) {
+      // 开不出会话就把连接收掉——否则 ssh 客户端与 socket 永久挂着，
+      // 而且连接没进 Map，没有任何东西能回收它。
+      await connection.close().catch(() => undefined);
+      throw err;
+    }
     const id = randomUUID();
     const pty = connection.capabilities().pty;
 
@@ -83,18 +94,30 @@ export class TerminalManager {
       for (const cb of this.dataCbs) cb(id, chunk);
     });
 
-    this.sessions.set(id, { id, session, connection, pty });
-    this.opts.onConnectionOpen?.(profileId, connection);
+    this.sessions.set(id, { id, session, connection, pty, editor: new PipeLineEditor() });
+    // **按 sessionId 登记**：一个标签一个连接。
+    // 按 profileId 登记的话，同一个 profile 开两个标签会互相覆盖。
+    this.opts.onConnectionOpen?.(id, connection);
     return { sessionId: id };
   }
 
   write(sessionId: string, data: string): void {
     const live = this.require(sessionId);
-    live.session.write(data);
 
-    // pipe 模式：远端不回显，宿主把输入也送进数据通道
-    if (!live.pty) {
-      for (const cb of this.dataCbs) cb(sessionId, data);
+    if (live.pty) {
+      // pty 模式：远端有真终端（getty / sshd），行规程与回显都在那边。
+      // 宿主**只转发**，多回显一次用户就看到两行字。
+      live.session.write(data);
+      return;
+    }
+
+    // pipe 模式：远端没有行规程——宿主做行编辑并回显。
+    // 回车必须译成 LF 发过去，否则远端 shell 永远等不到行尾
+    // （`docs/11-计划1评审报告.md` R-01 的真机实测）。
+    const edit = live.editor.input(data);
+    if (edit.toRemote.length > 0) live.session.write(edit.toRemote);
+    if (edit.echo.length > 0) {
+      for (const cb of this.dataCbs) cb(sessionId, edit.echo);
     }
   }
 
@@ -109,7 +132,7 @@ export class TerminalManager {
     void live.connection.close();
     this.sessions.delete(sessionId);
     // 连接也要注销——否则按 id 找连接会拿到一个已关闭的
-    this.opts.onConnectionClose?.(live.connection.id);
+    this.opts.onConnectionClose?.(sessionId);
     for (const cb of this.exitCbs) cb(sessionId, live.session.exitCode);
   }
 

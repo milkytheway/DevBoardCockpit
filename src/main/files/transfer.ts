@@ -1,5 +1,5 @@
 import { makeError } from '../../shared/errors';
-import type { Capabilities, Connection } from '../hal/connection';
+import type { Capabilities, Connection, FileEntry } from '../hal/connection';
 
 /**
  * 文件互传。
@@ -9,13 +9,7 @@ import type { Capabilities, Connection } from '../hal/connection';
  * 这个检查做**两道**：UI 禁用入口（防误操作）+ 服务端拒绝（防绕过）。
  */
 
-export interface FileEntry {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  sizeBytes: number | null;
-  modifiedAt: string | null;
-}
+export type { FileEntry };
 
 export interface FileTransfer {
   list(connectionId: string, remotePath: string): Promise<FileEntry[]>;
@@ -38,19 +32,30 @@ export interface TransferServiceOptions {
 export class TransferService implements FileTransfer {
   constructor(private readonly opts: TransferServiceOptions) {}
 
+  /**
+   * 列远端目录。
+   *
+   * **按传输分派**（计划 Task 9 Step 3）：
+   * adb 走 `adb shell ls -la`，ssh 走 sftp 的 readdir，本机走 fs。
+   *
+   * 原来这里对所有传输都跑一条 `ls -la`——
+   * 本机在 Windows 上那是 cmd.exe，**根本没有 ls**，
+   * 于是本机连接的文件树永远是空的。
+   */
   async list(connectionId: string, remotePath: string): Promise<FileEntry[]> {
     const conn = this.require(connectionId);
-    const result = await conn.exec(`ls -la ${quotePath(remotePath)}`);
-    if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
-        detail: { remotePath, stderr: result.stderr },
-      });
-    }
-    return parseLsOutput(result.stdout, remotePath);
+    return conn.list(remotePath);
   }
 
   async pull(connectionId: string, remotePath: string, localPath: string): Promise<void> {
     const conn = this.require(connectionId);
+    if (localPath.length === 0) {
+      // 空路径会让 `adb pull <remote> ''` / `copyFile(remote, '')` 直接失败，
+      // 而且失败信息毫无意义。**宿主必须先定好落盘位置。**
+      throw makeError('FILE_TRANSFER_FAILED', '没有本地落盘路径', {
+        detail: { remotePath },
+      });
+    }
     // **按传输分派**：adb 用 `adb pull`，ssh 用 sftp，本机用 fs。
     // 不能跑远端的 `pull` 命令——板子上没有这个命令。
     await conn.pull(remotePath, localPath);
@@ -58,6 +63,9 @@ export class TransferService implements FileTransfer {
 
   async push(connectionId: string, localPath: string, remotePath: string): Promise<void> {
     const conn = this.require(connectionId);
+    if (localPath.length === 0) {
+      throw makeError('FILE_TRANSFER_FAILED', '没有本地源路径', { detail: { remotePath } });
+    }
     await conn.push(localPath, remotePath);
   }
 
@@ -70,91 +78,4 @@ export class TransferService implements FileTransfer {
     assertTransferAllowed(conn.capabilities());
     return conn;
   }
-}
-
-/**
- * 路径转义。
- *
- * 远端路径原样拼进 shell 命令时，路径里有空格就断，
- * 而且 `;` 之类能让命令变成两条。**单引号包裹并转义内部的单引号**。
- */
-export function quotePath(path: string): string {
-  return `'${path.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * 解析 `ls -l` 的大小列。
- *
- * 管道下的 GNU ls 给原始字节数（`4096`），
- * 但有些环境给人类可读值（`4.0K`）——真机样本里就有 `drwxr-xr-x 6 root root 4.0K`。
- * 两种都要认。
- */
-export function parseSize(text: string): number | null {
-  const t = text.trim();
-  if (/^\d+$/.test(t)) return Number(t);
-  const m = /^(\d+(?:\.\d+)?)([KMGTP]?)$/i.exec(t);
-  if (!m) return null;
-  const units: Record<string, number> = {
-    '': 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4, P: 1024 ** 5,
-  };
-  const unit = (m[2] ?? '').toUpperCase();
-  const factor = units[unit];
-  if (factor === undefined) return null;
-  return Math.round(Number(m[1]) * factor);
-}
-
-/**
- * `ls -la` 的时间格式是 `Nov 12 09:30` 或 `Nov 12  2024`——
- * **不带年份**，且这个格式 `Date` 解析不了。
- * 所以手工解析：补上当前年份，把月份名换成数字。
- * 解析不出来就返回 null——时间显示不出来不是致命问题，条目本身仍然有用。
- */
-export function parseLsDate(text: string): string | null {
-  const months: Record<string, number> = {
-    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-  };
-  const m = /^([A-Z][a-z]{2})\s+(\d{1,2})\s+(?:(\d{1,2}):(\d{2})|(\d{4}))$/.exec(text.trim());
-  if (!m) return null;
-  const month = months[m[1]];
-  if (month === undefined) return null;
-  const day = Number(m[2]);
-  const now = new Date();
-  if (m[3] !== undefined) {
-    const d = new Date(now.getFullYear(), month, day, Number(m[3]), Number(m[4]));
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
-  }
-  const d = new Date(Number(m[5]), month, day);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-/**
- * 解析 `ls -la` 的输出。
- *
- * 只取名字、类型、大小、修改时间——够文件浏览器画树了。
- * 解析不了的行直接跳过：远端的 ls 输出格式各家不同，
- * 一行解析不了不该毁掉整次列举。
- */
-export function parseLsOutput(stdout: string, basePath: string): FileEntry[] {
-  const entries: FileEntry[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    // -rw-r--r-- 1 root root  1234 Nov 12 09:30 name
-    // 日期必须显式匹配（它内部有空格），剩下的才是文件名
-    const m = /^([dlbcps-])([rwxstST-]{9})\s+\d+\s+\S+\s+\S+\s+(\S+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4}))\s+(.+)$/.exec(
-      trimmed,
-    );
-    if (!m) continue;
-    const [, type, , size, date, name] = m;
-    if (name === '.' || name === '..') continue;
-    entries.push({
-      name,
-      path: `${basePath.replace(/\/$/, '')}/${name}`,
-      isDirectory: type === 'd',
-      sizeBytes: parseSize(size),
-      modifiedAt: parseLsDate(date),
-    });
-  }
-  return entries;
 }

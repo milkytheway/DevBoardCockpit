@@ -1,11 +1,12 @@
-import { copyFile } from 'node:fs/promises';
+import { copyFile, readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { runProcess } from '../util/spawn';
 import { Session } from './session';
 import { createLocalPtySession } from '../terminal/pty';
-import type { Capabilities, Connection, ExecResult } from './connection';
+import type { Capabilities, Connection, ExecResult, FileEntry } from './connection';
 
 /**
  * 本机传输。
@@ -59,6 +60,54 @@ export class LocalConnection implements Connection {
     const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
     const args = process.platform === 'win32' ? ['/c', command] : ['-c', command];
     return this.runner(shell, args, { timeoutMs: opts?.timeoutMs });
+  }
+
+  /**
+   * 列目录：**用 fs 读，不用 `ls -la`**。
+   *
+   * 本机的 exec 走的是 cmd.exe（Windows）或 `/bin/sh`（其他），
+   * 而 `ls -la` 是 POSIX 命令——在 cmd.exe 上它根本不存在，
+   * 于是本机连接的文件树**永远是空的**。
+   *
+   * 计划 Task 9 写的是「adb 用 `adb shell ls -la`，ssh 用 sftp」——
+   * 本机当然用自己的文件系统。
+   */
+  async list(remotePath: string): Promise<FileEntry[]> {
+    // 根目录映射到**当前工作目录**。
+    //
+    // 文件浏览器默认的远端路径是 '/'（那是板子上的根），
+    // 但在 Windows 上 '/' 不是一个目录——`readdir('/')` 必然失败，
+    // 于是本机连接的文件树永远是空的。
+    // 本机这个「目标」没有板子意义上的根，用工作目录当根最自然。
+    const dir = remotePath === '/' || remotePath.length === 0 ? process.cwd() : remotePath;
+    let dirents;
+    try {
+      dirents = await readdir(dir, { withFileTypes: true });
+    } catch (err) {
+      throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+        detail: { remotePath, resolved: dir, cause: err instanceof Error ? err.message : String(err) },
+      });
+    }
+
+    const out: FileEntry[] = [];
+    for (const dirent of dirents) {
+      const path = join(remotePath, dirent.name);
+      let isDirectory = dirent.isDirectory();
+      let sizeBytes: number | null = null;
+      let modifiedAt: string | null = null;
+      try {
+        // stat 跟随软链接——所以软链接指向目录时 isDirectory 是对的
+        const st = await stat(path);
+        isDirectory = st.isDirectory();
+        // **目录的大小不是 0，是不知道**（事实 G2：读不到的东西不是 0）
+        if (!isDirectory) sizeBytes = st.size;
+        modifiedAt = st.mtime.toISOString();
+      } catch {
+        // 读不到就留 null。条目本身仍然有用。
+      }
+      out.push({ name: dirent.name, path, isDirectory, sizeBytes, modifiedAt });
+    }
+    return out;
   }
 
   /** 下载：宿主文件系统直读 */

@@ -32,12 +32,32 @@ const mgrWith = (conn: unknown) => new TerminalManager({
 });
 
 describe('TerminalManager', () => {
-  it('open 后写入的数据被转交给连接', async () => {
-    const { conn, written } = fakeConn({ pty: false });
+  it('pty 模式：写入的数据原样转交给远端', async () => {
+    const { conn, written } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
     mgr.write(sessionId, 'ls\r');
     expect(written).toEqual(['ls\r']);
+  });
+
+  it('pipe 模式：回车发给远端的是 LF —— 远端 shell 只认 LF', async () => {
+    // 这条是真机实测出来的（`docs/11-计划1评审报告.md` R-01）：
+    // pipe 模式下 `'\r'` 原样发过去，busybox 的 shell 永远等不到行尾。
+    const { conn, written } = fakeConn({ pty: false });
+    const mgr = mgrWith(conn);
+    const { sessionId } = await mgr.open('p1');
+    mgr.write(sessionId, 'ls\r');
+    expect(written).toEqual(['ls\n']);
+  });
+
+  it('pipe 模式：打字过程中不发给远端，回车才把整行发过去', async () => {
+    const { conn, written } = fakeConn({ pty: false });
+    const mgr = mgrWith(conn);
+    const { sessionId } = await mgr.open('p1');
+    mgr.write(sessionId, 'ls');
+    expect(written).toEqual([]);
+    mgr.write(sessionId, '\r');
+    expect(written).toEqual(['ls\n']);
   });
 
   it('多字节输入原样透传，不截断不替换（RF-2）', async () => {

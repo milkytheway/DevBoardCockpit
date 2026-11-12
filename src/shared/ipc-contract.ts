@@ -5,6 +5,8 @@
  * 拼错通道名在编译期就会报错，而不是运行时静默失败。
  */
 
+import type { AppErrorPayload } from './errors';
+
 export const IPC = {
   terminalOpen: 'terminal:open',
   terminalWrite: 'terminal:write',
@@ -21,6 +23,20 @@ export const IPC = {
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
 
 /**
+ * 每个 invoke 通道的返回值。
+ *
+ * **为什么包一层 `ok`**：主进程抛错时，Electron 会把错误包成
+ * `Error invoking remote method 'x': <原错误>`。
+ * 原错误如果是普通对象，`String(error)` 就是 `[object Object]`——
+ * 用户看到的是 `[object Object]`，而「串口 COM3 被占用」这句话到不了眼前。
+ *
+ * 所以主进程**不抛**，而是返回 `{ok:false, error:{code,message,…}}`；
+ * preload 再还原成带错误码的异常抛给 renderer。
+ * 错误码因此能活着过 IPC 边界，renderer 可以按 `code` 分支。
+ */
+export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppErrorPayload };
+
+/**
  * 卡片与 renderer 能碰到的宿主能力。
  *
  * 新增方法时**同时**在上面的 `IPC` 里登记通道名。
@@ -29,13 +45,25 @@ export interface CockpitApi {
   terminalOpen(profileId: string): Promise<{ sessionId: string }>;
   terminalWrite(sessionId: string, data: string): void;
   terminalResize(sessionId: string, cols: number, rows: number): void;
-  terminalClose(sessionId: string): void;
+  terminalClose(sessionId: string): Promise<void>;
   onTerminalData(cb: (sessionId: string, chunk: string) => void): () => void;
   onTerminalExit(cb: (sessionId: string, exitCode: number | null) => void): () => void;
   filesList(connectionId: string, remotePath: string): Promise<FileEntry[]>;
-  filesPush(connectionId: string, localPath: string, remotePath: string): Promise<void>;
-  filesPull(connectionId: string, remotePath: string, localPath: string): Promise<void>;
+  filesPush(connectionId: string, localPath: string, remotePath: string): Promise<{ remotePath: string }>;
+  filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
   connectionsList(): Promise<ConnectionInfo[]>;
+  /**
+   * 取一个 File 的**宿主绝对路径**。
+   *
+   * Electron 32 起 `File.path` 已被移除，受支持的做法是
+   * `webUtils.getPathForFile(file)`——它只能在渲染进程/preload 里调，
+   * 所以由 preload 代理。
+   *
+   * 传 `file.name`（只有 basename）是不行的：那会让宿主在
+   * **自己的 CWD** 里找同名文件——要么失败，要么**传走另一个文件**
+   * （数据安全问题）。
+   */
+  getPathForFile(file: File): string;
 }
 
 /** 一个可用的连接：profile 的摘要 + 它的能力位 */
@@ -54,8 +82,7 @@ export type TransportKind = 'serial' | 'adb' | 'ssh' | 'local';
  * 能力位。**UI 依能力降级**，不依传输名。
  *
  * 定义放在 shared 而不是 main/hal——renderer 要用它来决定
- * 「文件浏览器入口要不要禁用」，但 renderer 不能 import main（分层规则：
- * renderer → preload → main）。
+ * 「文件浏览器入口要不要禁用」，但 renderer 不能 import main。
  */
 export interface Capabilities {
   /** 能跑一条命令拿结果 */

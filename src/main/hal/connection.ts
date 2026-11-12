@@ -18,8 +18,8 @@ import type { TransportKind } from '../../shared/ipc-contract';
  * 定义在 `shared/ipc-contract.ts`——renderer 也要用它决定
  * 「文件浏览器入口要不要禁用」，而 renderer 不能 import main。
  */
-export type { Capabilities } from '../../shared/ipc-contract';
-import type { Capabilities } from '../../shared/ipc-contract';
+export type { Capabilities, FileEntry } from '../../shared/ipc-contract';
+import type { Capabilities, FileEntry } from '../../shared/ipc-contract';
 
 export interface ExecResult {
   /** null = 拿不到（串口）。超时一律是 124 */
@@ -45,6 +45,17 @@ export interface Connection {
    */
   pull(remotePath: string, localPath: string): Promise<void>;
   push(localPath: string, remotePath: string): Promise<void>;
+
+  /**
+   * 列远端目录。
+   *
+   * **按传输分派**，不是跑一条远端的 `ls`——
+   * 本机是 Windows 的 cmd.exe，POSIX 的 `ls -la` 根本不存在（计划 Task 9
+   * 写的是「adb 用 `adb shell ls -la`，ssh 用 ssh2 的 `sftp`」）。
+   *
+   * 目录的 `sizeBytes` 是 `null`（读不到的东西不是 0 —— 事实 G2）。
+   */
+  list(remotePath: string): Promise<FileEntry[]>;
 
   /**
    * 打开一个交互式会话（终端用）。

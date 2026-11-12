@@ -4,7 +4,7 @@ import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { buildMarker, extractMarkerOutput, Session, TIMEOUT_EXIT_CODE } from './session';
-import type { Capabilities, Connection, ExecResult } from './connection';
+import type { Capabilities, Connection, ExecResult, FileEntry } from './connection';
 
 /**
  * 串口传输。
@@ -109,16 +109,29 @@ export class SerialConnection implements Connection {
   readonly transport = 'serial' as const;
 
   private port: SerialPortLike | undefined;
-  private transcript = '';
-  private dataCb: ((chunk: string) => void) | undefined;
   /** 最近一次端口层错误（拔线、驱动异常）。供上层查连接健康度 */
   lastError: Error | undefined;
   /**
-   * 往返互斥（契约 `spec/02` §1.2.1）。
+   * 本次 exec 的回包缓冲。`undefined` = 当前没有命令在跑。
    *
-   * 串口只有一根线、一个读线程、一份 transcript（事实 S1）。
-   * 两次 exec 并发时，两个 marker 的回包会在同一份 transcript 里交错——
-   * 每个命令认领到对方的输出。所以同一连接上**同时只能有一次往返**。
+   * **为什么是「本次的」而不是「共享的一份 transcript」**：
+   * 原来用 `transcript.length` 当绝对下标，认领时 `slice(from)`。
+   * 但 transcript 会被裁剪（64 KB 上限），下标一旦失效就永远认不回来——
+   * 大输出（`cat` 大文件、`ls -la` 大目录）之后，**这条连接上的 exec 通道永久死亡**。
+   *
+   * 改成「每次 exec 用自己的缓冲，只装命令发出之后到达的数据」，
+   * 就**没有下标这回事**了：缓冲天生只含本次命令的回包。
+   */
+  private execBuffer: string | undefined;
+  /**
+   * 往返互斥（契约 `spec/02` §1.2.1 + 事实 S1）。
+   *
+   * 串口只有一根线、一个读线程。命令通道和交互终端**共用一根线**——
+   * 所以同一连接上同时只能有一次往返。
+   *
+   * 原来这把锁只挡 exec↔exec：交互会话开着的时候，
+   * 任何一次 exec 都会把命令**追加在用户没打完的输入后面**
+   * （板端 shell 拿到的是 `ls -l /tmpuptime; echo marker`）。
    */
   private busy = false;
 
@@ -156,9 +169,9 @@ export class SerialConnection implements Connection {
     }
 
     this.port.onData((chunk) => {
-      this.transcript += chunk;
-      this.trimTranscript();
-      this.dataCb?.(chunk);
+      // 只往「本次命令的缓冲」里塞。缓冲在命令发出前清空，
+      // 所以它天生只含本次命令的回包——不需要下标。
+      if (this.execBuffer !== undefined) this.execBuffer += chunk;
     });
 
     // 端口层出错（拔线、驱动异常）要有去处——
@@ -171,6 +184,8 @@ export class SerialConnection implements Connection {
   async close(): Promise<void> {
     await this.port?.close();
     this.port = undefined;
+    this.execBuffer = undefined;
+    this.busy = false;
   }
 
   /**
@@ -203,30 +218,41 @@ export class SerialConnection implements Connection {
     const startedAt = Date.now();
     const marker = buildMarker(process.pid, Date.now());
 
-    const before = this.transcript.length;
-    // **一行协议**（事实 S2）。
-    //
-    // 板子会**回显命令**，所以同一个 marker 在 transcript 里出现**两次**：
-    //   第一次 = 回显的那一行里（`command; echo marker` 被回显出来）
-    //   第二次 = 命令跑完后 echo 打印出来
-    // 取两次之间的内容就是命令的输出。
-    //
-    // 如果把 marker 单独发一行，板子会先执行 `marker` 这个命令
-    // （sh: marker: not found），输出全错。
-    //
-    // 事实 S4：getty 期待 CR，只发 \n 可能不换行
-    this.port?.write(`${command}; echo ${marker}\r\n`);
+    // 本次命令的回包缓冲：清空后再发命令，
+    // 于是缓冲里只有「命令发出之后到达的数据」。
+    this.execBuffer = '';
+    try {
+      // **一行协议**（事实 S2）。
+      //
+      // 板子会**回显命令**，所以同一个 marker 在回包里出现**两次**：
+      //   第一次 = 回显的那一行里（`command; echo marker` 被回显出来）
+      //   第二次 = 命令跑完后 echo 打印出来
+      // 取两次之间的内容就是命令的输出。
+      //
+      // 如果把 marker 单独发一行，板子会先执行 `marker` 这个命令
+      // （sh: marker: not found），输出全错。
+      //
+      // 事实 S4：getty 期待 CR，只发 \n 可能不换行
+      this.port?.write(`${command}; echo ${marker}\r\n`);
 
-    const output = await this.waitForMarker(marker, before, timeoutMs);
-    const timedOut = output === undefined;
+      const output = await this.waitForMarker(marker, timeoutMs);
+      const timedOut = output === undefined;
 
-    return {
-      exitCode: timedOut ? TIMEOUT_EXIT_CODE : 0,
-      stdout: timedOut ? '' : output,
-      stderr: '',
-      durationMs: Date.now() - startedAt,
-      timedOut,
-    };
+      return {
+        exitCode: timedOut ? TIMEOUT_EXIT_CODE : 0,
+        stdout: timedOut ? '' : output,
+        stderr: '',
+        durationMs: Date.now() - startedAt,
+        timedOut,
+      };
+    } finally {
+      this.execBuffer = undefined;
+    }
+  }
+
+  /** 串口传不了文件（事实 S7） */
+  async list(_remotePath: string): Promise<FileEntry[]> {
+    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
   }
 
   /** 串口传不了文件（事实 S7） */
@@ -243,15 +269,26 @@ export class SerialConnection implements Connection {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
-    return new SerialSession(this.port, this.log);
+    if (this.busy) {
+      // 同一根线上已经有一次往返了（事实 S1：命令通道与交互终端共用一根线）。
+      // 宁可拒绝，也不能把命令追加在用户没打完的输入后面。
+      throw makeError('CONN_TIMEOUT', '这条连接上已经有命令在跑', {
+        detail: { id: this.id },
+      });
+    }
+    // 交互会话占住这条线，直到它关闭
+    this.busy = true;
+    return new SerialSession(this.port, this.log, () => {
+      this.busy = false;
+    });
   }
 
   /** 等 marker 出现第二次。返回输出文本；超时返回 undefined */
-  private waitForMarker(marker: string, from: number, timeoutMs: number): Promise<string | undefined> {
+  private waitForMarker(marker: string, timeoutMs: number): Promise<string | undefined> {
     const deadline = Date.now() + timeoutMs;
     return new Promise((resolve) => {
       const check = (): void => {
-        const chunk = this.transcript.slice(from);
+        const chunk = this.execBuffer ?? '';
         // marker 出现两次才算收齐（板子回显一次 + 输出后一次）
         if (chunk.split(marker).length - 1 >= 2) {
           resolve(extractMarkerOutput(chunk, marker));
@@ -266,24 +303,20 @@ export class SerialConnection implements Connection {
       check();
     });
   }
-
-  /**
-   * transcript 只用来认领最近的回包，不必无限增长。
-   * 留 64 KB 足够装下任何一次命令的输出。
-   */
-  private trimTranscript(): void {
-    const MAX = 64 * 1024;
-    if (this.transcript.length > MAX) {
-      this.transcript = this.transcript.slice(this.transcript.length - MAX);
-    }
-  }
 }
 
-/** 串口的交互式会话。串口是 pipe 模式：板子不回显，宿主自己回显 */
+/**
+ * 串口的交互式会话。
+ *
+ * **端口归连接所有，会话不关它**——关会话是连接的职责（`connection.close()`）。
+ * 会话只负责释放那把「往返互斥」的锁。
+ */
 class SerialSession extends Session {
   constructor(
     private readonly port: SerialPortLike,
     log: SessionLog,
+    /** 会话关闭时的回调。用来释放连接的往返互斥锁 */
+    private readonly onClose: () => void,
   ) {
     super(log);
   }
@@ -305,7 +338,7 @@ class SerialSession extends Session {
   }
 
   close(): void {
-    void this.port.close();
+    this.onClose();
   }
 }
 

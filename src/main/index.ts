@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
-import { IPC } from '../shared/ipc-contract';
+import { IPC, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
+import { toAppErrorPayload } from '../shared/errors';
+import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
@@ -9,6 +11,7 @@ import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TransferService } from './files/transfer';
+import { defaultDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
 
 /**
@@ -35,7 +38,16 @@ function createConnectionFor(profile: ConnectionProfile): Connection {
   return createConnection(profile, log, { adbPath });
 }
 
-/** 已建立的连接，按连接 profile 的 id 索引 */
+/**
+ * 已建立的连接，**按 sessionId 建索引**。
+ *
+ * 原来按 profileId 建索引，于是同一个 profile 开两个标签时，
+ * Map 里只剩最后一个——关掉其中一个，另一个标签还活着，
+ * 但它的文件浏览器按 id 找连接已经找不到了（报「连接不存在」）。
+ *
+ * 一个标签一个连接（`TerminalManager.open` 每次都新建连接），
+ * 所以索引就该按会话来。
+ */
 const connections = new Map<string, Connection>();
 
 const transfer = new TransferService({
@@ -47,8 +59,8 @@ const terminal = new TerminalManager({
   createConnection: createConnectionFor,
   createLog: (label) => new SessionLog({ label, dataDir: userDataDir() }),
   // 连接建好后登记一份，文件互传模块靠它按 id 找连接
-  onConnectionOpen: (connectionId, connection) => connections.set(connectionId, connection),
-  onConnectionClose: (connectionId) => connections.delete(connectionId),
+  onConnectionOpen: (sessionId, connection) => connections.set(sessionId, connection),
+  onConnectionClose: (sessionId) => connections.delete(sessionId),
 });
 
 // 主进程 → renderer 的推送
@@ -61,19 +73,46 @@ function broadcast(channel: string, ...args: unknown[]): void {
 terminal.onData((sessionId, chunk) => broadcast(IPC.terminalData, sessionId, chunk));
 terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, exitCode));
 
-ipcMain.handle(IPC.terminalOpen, async (_e, profileId: string) => terminal.open(profileId));
+/**
+ * 注册一个 invoke 通道。
+ *
+ * **主进程不抛错，而是返回 `{ok, error}`**：
+ * Electron 会把主进程抛出的错误包成
+ * `Error invoking remote method 'x': <原错误>`。
+ * 原错误若是普通对象，`String(error)` 就是 `[object Object]`——
+ * 用户在界面上看到的是 `[object Object]`，
+ * 而「串口 COM3 被占用」这句话**永远到不了眼前**。
+ *
+ * 所以错误在这里被拍平成 `{code, message, retryable, detail}`，
+ * 由 preload 还原成带错误码的异常抛给 renderer。
+ */
+function handle<T>(channel: IpcChannel, fn: (...args: unknown[]) => T | Promise<T>): void {
+  ipcMain.handle(channel, async (_e, ...args: unknown[]): Promise<IpcResult<T>> => {
+    try {
+      return { ok: true, value: await fn(...args) };
+    } catch (err) {
+      return { ok: false, error: toAppErrorPayload(err) };
+    }
+  });
+}
 
-// 这三个是无返回值通道（ipcMain.on）：抛出的异常**没人接**，
-// 会变成未捕获异常把主进程带崩。所以在这里兜住并记日志。
+handle(IPC.terminalOpen, (profileId) => terminal.open(String(profileId)));
+
+/**
+ * 这两个是无返回值通道（ipcMain.on）：抛出的异常**没人接**，
+ * 会变成未捕获异常把主进程带崩。所以在这里兜住并记日志。
+ *
+ * 按键是 fire-and-forget 的——每个键都等一次往返会让终端没法用。
+ */
 ipcMain.on(IPC.terminalWrite, (_e, sessionId: string, data: string) =>
   guard('terminalWrite', () => terminal.write(sessionId, data)),
 );
 ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: number) =>
   guard('terminalResize', () => terminal.resize(sessionId, cols, rows)),
 );
-ipcMain.on(IPC.terminalClose, (_e, sessionId: string) =>
-  guard('terminalClose', () => terminal.close(sessionId)),
-);
+
+// 关会话走 invoke：关不掉（串口还占着）要让用户知道，不能只进控制台
+handle(IPC.terminalClose, (sessionId) => terminal.close(String(sessionId)));
 
 /** 包住可能抛出的调用。异常只记日志，不许崩主进程。 */
 function guard(what: string, fn: () => void): void {
@@ -85,7 +124,7 @@ function guard(what: string, fn: () => void): void {
 }
 
 // ── 文件互传 ────────────────────────────────────────────────────────
-ipcMain.handle(IPC.connectionsList, async () =>
+handle(IPC.connectionsList, () =>
   listProfiles().map((p) => ({
     id: p.id,
     label: p.label,
@@ -94,24 +133,45 @@ ipcMain.handle(IPC.connectionsList, async () =>
     capabilities: capabilitiesFor(p),
   })),
 );
-ipcMain.handle(IPC.filesList, async (_e, connectionId: string, remotePath: string) =>
-  transfer.list(connectionId, remotePath),
+
+handle(IPC.filesList, (connectionId, remotePath) =>
+  transfer.list(String(connectionId), String(remotePath)),
 );
-ipcMain.handle(IPC.filesPush, async (_e, connectionId: string, localPath: string, remotePath: string) =>
-  transfer.push(connectionId, localPath, remotePath),
-);
-ipcMain.handle(IPC.filesPull, async (_e, connectionId: string, remotePath: string, localPath: string) =>
-  transfer.pull(connectionId, remotePath, localPath),
-);
+
+handle(IPC.filesPush, (connectionId, localPath, remotePath) => {
+  const remote = String(remotePath);
+  return transfer.push(String(connectionId), String(localPath), remote).then(() => ({
+    remotePath: remote,
+  }));
+});
+
+handle(IPC.filesPull, (connectionId, remotePath, localPath) => {
+  // **本地落盘位置由宿主定**。
+  // renderer 只知道远端路径，不知道宿主上该放哪；
+  // 早先 renderer 传空串、宿主注释写着「用默认落盘位置」，
+  // 而那个「默认落盘位置」根本不存在——于是下载按钮必挂。
+  const target = localPath
+    ? String(localPath)
+    : defaultDownloadPath(app.getPath('downloads'), String(remotePath));
+  return transfer.pull(String(connectionId), String(remotePath), target).then(() => ({
+    localPath: target,
+  }));
+});
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      // preload 的文件名不是随手写的：与 electron-vite 的产出同名（`src/shared/build-layout.ts` 是唯一出处），
+      // `npm run build` 末尾的自检脚本会验这个文件真的存在。
+      preload: join(__dirname, '../preload', PRELOAD_FILE),
       contextIsolation: true,
       nodeIntegration: false,
+      // 渲染进程要装不可信的卡片（契约 §6.1 的 CSP 断网），
+      // 沙箱是最后一道防线——**不许为了用 ESM preload 关掉它**。
+      // ESM preload 需要 `sandbox: false`，所以 preload 一律构建成 CommonJS。
+      sandbox: true,
     },
   });
 

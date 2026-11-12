@@ -1,9 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { makeError } from '../../shared/errors';
+import type { FileEntry } from '../../shared/ipc-contract';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { runProcess } from '../util/spawn';
+import { quotePath } from '../util/shell-quote';
+import { parseLsLines } from '../util/ls-output';
 import { Session } from './session';
 import { terminalEnvScript } from './session-env';
 import type { Capabilities, Connection, ExecResult } from './connection';
@@ -29,13 +32,58 @@ export function adbCapabilities(): Capabilities {
   return { exec: true, pty: false, files: true, exitCode: true };
 }
 
+/**
+ * profile 里钉的序列号。
+ *
+ * 没钉（缺省 / 空串 / 不是字符串）就是 undefined——
+ * 「钉了哪块板子」和「随便连一块」是两种连法，语义不能混。
+ */
+function profileSerial(profile: ConnectionProfile): string | undefined {
+  const serial = profile.options['serial'];
+  return typeof serial === 'string' && serial.length > 0 ? serial : undefined;
+}
+
 /** 构造 adb 的参数数组。序列号存在时前置 `-s <serial>`。 */
 export function adbArgs(profile: ConnectionProfile, extra: string[]): string[] {
-  const serial = profile.options['serial'];
-  if (typeof serial === 'string' && serial.length > 0) {
+  const serial = profileSerial(profile);
+  if (serial !== undefined) {
     return ['-s', serial, ...extra];
   }
   return [...extra];
+}
+
+/** `adb devices` 里的一行设备记录 */
+interface DeviceRow {
+  /** 序列号（第一列） */
+  serial: string;
+  /** 状态的第一个词：device / offline / unauthorized / no … */
+  state: string;
+  /** 状态原文：`no permissions (user in plugdev group)` 这类要整段留着 */
+  stateText: string;
+}
+
+/**
+ * 解析 `adb devices` 的输出。
+ *
+ * 滤掉两类**不是设备行**的行：
+ * - `List of devices attached` 表头；
+ * - `* daemon not running; starting now at tcp:5037` 之类的 **daemon 噪声**——
+ *   它不是设备，混进 states 会把错误消息变成噪音（运维黑洞的反面）。
+ */
+function parseDeviceRows(stdout: string): DeviceRow[] {
+  const rows: DeviceRow[] = [];
+  for (const raw of stdout.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    if (line.startsWith('List of devices')) continue;
+    if (line.startsWith('*')) continue;
+    const parts = line.split(/\s+/);
+    const serial = parts[0] ?? '';
+    if (serial.length === 0) continue;
+    const stateText = parts.slice(1).join(' ').trim();
+    rows.push({ serial, state: parts[1] ?? '', stateText });
+  }
+  return rows;
 }
 
 export interface AdbConnectionOptions {
@@ -72,23 +120,49 @@ export class AdbConnection implements Connection {
    *
    * 笼统的「连接失败」是运维黑洞——用户看不出是**没插线**、
    * **没授权**还是**板子离线**。所以错误消息里带上原始状态串。
+   *
+   * **profile 钉了 serial 时只认那一块板**（事实 A7）：
+   * `adb devices` 列的是**全部**设备（`-s` 也不筛选它），
+   * 所以「有没有任意一块是 device」这种判据会放过一块**离线**的板子——
+   * 连接开成了，之后每条命令都在 `adb -s <离线板>` 上失败，
+   * **失败点离原因十万八千里**。这里按 serial 精确匹配。
    */
   async open(): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['devices']));
     const out = result.stdout;
 
-    const lines = out.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    const deviceLines = lines.filter((l) => !l.startsWith('List of devices'));
-    const connected = deviceLines.filter((l) => l.split(/\s+/)[1] === 'device');
+    const rows = parseDeviceRows(out);
+    const serial = profileSerial(this.profile);
 
-    if (connected.length === 0) {
-      const states = deviceLines
-        .map((l) => l.split(/\s+/).slice(1).join(' ').trim())
-        .filter((s) => s.length > 0);
-      const detail = states.length > 0 ? states.join(', ') : '（没有设备）';
-      throw makeError('CONN_OPEN_FAILED', `adb 没有处于 device 状态的设备：${detail}`, {
-        detail: { states, raw: out },
-      });
+    if (serial !== undefined) {
+      // 钉了板子：只认这一行
+      const row = rows.find((r) => r.serial === serial);
+      if (!row) {
+        const present = rows.map((r) => r.serial);
+        const detail = present.length > 0 ? present.join(', ') : '（没有设备）';
+        throw makeError(
+          'CONN_OPEN_FAILED',
+          `profile 指定的 serial 在 adb devices 里没有：${serial}（当前设备：${detail}）`,
+          { detail: { serial, present, raw: out } },
+        );
+      }
+      if (row.state !== 'device') {
+        throw makeError(
+          'CONN_OPEN_FAILED',
+          `profile 指定的设备 ${serial} 状态是「${row.stateText}」，不是 device`,
+          { detail: { serial, state: row.state, stateText: row.stateText, raw: out } },
+        );
+      }
+    } else {
+      // 没钉板子：老行为——至少有一块处于 device 状态
+      const connected = rows.filter((r) => r.state === 'device');
+      if (connected.length === 0) {
+        const states = rows.map((r) => r.stateText);
+        const detail = states.length > 0 ? states.join(', ') : '（没有设备）';
+        throw makeError('CONN_OPEN_FAILED', `adb 没有处于 device 状态的设备：${detail}`, {
+          detail: { states, raw: out },
+        });
+      }
     }
 
     this.opened = true;
@@ -129,6 +203,35 @@ export class AdbConnection implements Connection {
         detail: { localPath, remotePath, stderr: result.stderr },
       });
     }
+  }
+
+  /**
+   * 列远端目录：走 `adb shell ls -la <path>`（计划 Task 9 Step 3）。
+   *
+   * **列目录是连接层的能力**，跟 `pull`/`push` 一个层级——
+   * 互传服务不该知道「adb 的远端命令长什么样」，
+   * 否则每加一种传输就要改一次服务层。
+   *
+   * 目录的 `sizeBytes` 是 `null`（事实 G2）：**读不到的东西不是 0**。
+   * `ls -la` 给目录的是 inode 块数（4096），那不是目录的大小，
+   * 当成字节数报给用户就是假数据。
+   */
+  async list(remotePath: string): Promise<FileEntry[]> {
+    const result = await this.exec(`ls -la ${quotePath(remotePath)}`);
+    if (result.exitCode !== 0) {
+      throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+        detail: { remotePath, stderr: result.stderr },
+      });
+    }
+    // 末尾的 `/` 去掉再拼名字：'/root/' + 'a.txt' 不该变成 '/root//a.txt'
+    const base = remotePath.replace(/\/+$/, '');
+    return parseLsLines(result.stdout).map((e) => ({
+      name: e.name,
+      path: `${base}/${e.name}`,
+      isDirectory: e.type === 'd',
+      sizeBytes: e.type === 'd' ? null : e.size,
+      modifiedAt: e.modifiedAt,
+    }));
   }
 
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {

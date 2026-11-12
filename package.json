@@ -7,7 +7,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && tsx scripts/check-build.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "3.7.2",
+    "@eslint/js": "9.39.1",
     "@testing-library/dom": "10.4.1",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.0",
@@ -41,7 +42,6 @@
     "electron-vite": "5.0.0",
     "eslint": "9.39.1",
     "happy-dom": "20.0.11",
-    "jsdom": "26.1.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "7.3.1",

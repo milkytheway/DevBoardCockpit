@@ -1,9 +1,69 @@
 import { describe, it, expect } from 'vitest';
 import { adbCapabilities, adbArgs, AdbConnection } from '../../src/main/hal/adb';
+import type { runProcess, SpawnResult } from '../../src/main/util/spawn';
 
 const profile = (opts: Record<string, unknown>) => ({
   id: 'a', label: 'a', transport: 'adb' as const, options: opts,
 });
+
+/** 连接日志的替身：adb 的用例只关心命令，不关心日志 */
+const log = { write: () => {}, close: () => {}, filePath: 'x' } as never;
+
+/**
+ * 假 runner：**按参数分派**，模拟真实 adb 的行为。
+ *
+ * 为什么不能是「无论什么命令都回同一段 stdout」：
+ * `adb devices` 与 `adb shell ls -la` 是两条不同的命令，
+ * 真实 adb 对它们的回包完全不同（前者列所有设备与状态，后者回目录内容）。
+ * 无视参数的替身会把「到底跑了哪条命令」这类 bug 盖住——
+ * 所以这里按命令分派（规矩：替身按行为建模，不按结论建模）。
+ *
+ * 保持异步：真实 adb 是子进程，回包必然落在后面的事件循环。
+ */
+function fakeAdb(opts: {
+  /** `adb devices` 的 stdout */
+  devices?: string;
+  /** `adb shell ls -la` 的 stdout */
+  ls?: string;
+  /** `adb shell ls -la` 的退出码 */
+  lsExitCode?: number;
+  /** `adb shell ls -la` 的 stderr */
+  lsStderr?: string;
+} = {}): { runner: typeof runProcess; calls: { command: string; args: string[] }[] } {
+  const calls: { command: string; args: string[] }[] = [];
+  const runner = async (command: string, args: string[]): Promise<SpawnResult> => {
+    calls.push({ command, args });
+    // `adb devices`：列**所有**设备（`-s` 也不筛选）
+    if (args.includes('devices')) {
+      return { exitCode: 0, stdout: opts.devices ?? '', stderr: '', durationMs: 1, timedOut: false };
+    }
+    // `adb shell <命令>`
+    if (args.includes('shell')) {
+      const line = args[args.length - 1] ?? '';
+      if (line.startsWith('ls -la')) {
+        return {
+          exitCode: opts.lsExitCode ?? 0,
+          stdout: opts.ls ?? '',
+          stderr: opts.lsStderr ?? '',
+          durationMs: 1,
+          timedOut: false,
+        };
+      }
+    }
+    return { exitCode: 0, stdout: '', stderr: '', durationMs: 1, timedOut: false };
+  };
+  return { runner, calls };
+}
+
+/** 抓住 open() 的错误：既要错误码，也要消息（`toThrow` 只看得到字符串） */
+async function openError(conn: AdbConnection): Promise<{ code: string; message: string; detail?: unknown }> {
+  try {
+    await conn.open();
+  } catch (err) {
+    return err as { code: string; message: string; detail?: unknown };
+  }
+  throw new Error('open() 本该失败，却成功了');
+}
 
 describe('adbCapabilities', () => {
   it('不用 PTY（事实 A1），但能传文件、能拿退出码', () => {
@@ -23,26 +83,187 @@ describe('adbArgs', () => {
 });
 
 describe('AdbConnection.open', () => {
-  const fakeRunner = (stdout: string) => async () => ({
-    exitCode: 0, stdout, stderr: '', durationMs: 1, timedOut: false,
-  });
-
   it('只认 device 状态（事实 A7）', async () => {
-    const conn = new AdbConnection(
-      profile({ serial: 'abc' }) as never,
-      { write: () => {}, close: () => {}, filePath: 'x' } as never,
-      { runner: fakeRunner('List of devices attached\nabc\tdevice\n') as never },
-    );
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n' });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
     await expect(conn.open()).resolves.toBeUndefined();
   });
 
   it('设备处于 offline 时报错并带出原始状态（运维黑洞的解药）', async () => {
-    const conn = new AdbConnection(
-      profile({ serial: 'abc' }) as never,
-      { write: () => {}, close: () => {}, filePath: 'x' } as never,
-      { runner: fakeRunner('List of devices attached\nabc\toffline\n') as never },
-    );
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\toffline\n' });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
     await expect(conn.open()).rejects.toThrow(/offline/);
+  });
+
+  it('profile 钉了 serial 时只认那一块板：别的板子是 device 不算数', async () => {
+    // abc 离线、xyz 正常 —— 老的「有没有任意 device」判据会放行，
+    // 然后每条命令都在 `adb -s abc` 上失败，失败点离原因十万八千里
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\toffline\nxyz\tdevice\n' });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.code).toBe('CONN_OPEN_FAILED');
+    expect(err.message).toContain('abc');
+    expect(err.message).toContain('offline');
+  });
+
+  it('profile 指定的 serial 在 adb devices 里没有时报错，并说清是哪个序列号', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nxyz\tdevice\n' });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.code).toBe('CONN_OPEN_FAILED');
+    expect(err.message).toContain('abc');
+    expect(err.message).toContain('没有');   // 说清「在 adb devices 里没有」
+    // xyz 是 device 也不行：profile 钉的是 abc，它压根不在列表里
+    const present = (err.detail as { present?: string[] }).present ?? [];
+    expect(present).toEqual(['xyz']);
+  });
+
+  it('unauthorized 同样是失败：没授权的板子不能算连上了', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tunauthorized\n' });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.code).toBe('CONN_OPEN_FAILED');
+    expect(err.message).toContain('abc');
+    expect(err.message).toContain('unauthorized');
+  });
+
+  it('no permissions 时把原始状态整段带出来（运维黑洞的解药）', async () => {
+    const fake = fakeAdb({
+      devices: 'List of devices attached\nabc\tno permissions (user in plugdev group); see [http://x]\n',
+    });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.message).toContain('no permissions');
+  });
+
+  it('daemon 启动噪声不算设备行，也不进 states', async () => {
+    const fake = fakeAdb({
+      devices: [
+        '* daemon not running; starting now at tcp:5037',
+        '* daemon started successfully',
+        'List of devices attached',
+        'xyz\toffline',
+      ].join('\n'),
+    });
+    // 没钉 serial：走「有没有任意 device」这条老路
+    const conn = new AdbConnection(profile({}) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.code).toBe('CONN_OPEN_FAILED');
+    expect(err.message).not.toContain('daemon');
+    expect(err.message).not.toContain('tcp:5037');
+    const states = (err.detail as { states?: string[] }).states ?? [];
+    expect(states).toEqual(['offline']);
+  });
+
+  it('daemon 噪声也不会混进「指定 serial」分支的错误消息', async () => {
+    const fake = fakeAdb({
+      devices: [
+        '* daemon not running; starting now at tcp:5037',
+        'List of devices attached',
+        'abc\toffline',
+      ].join('\n'),
+    });
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+
+    const err = await openError(conn);
+    expect(err.message).not.toContain('daemon');
+    expect(err.message).toContain('abc');
+    expect(err.message).toContain('offline');
+  });
+
+  it('没钉 serial 时保持老行为：有一块 device 就能开', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nxyz\tdevice\nabc\toffline\n' });
+    const conn = new AdbConnection(profile({}) as never, log, { runner: fake.runner });
+    await expect(conn.open()).resolves.toBeUndefined();
+  });
+});
+
+describe('AdbConnection.list', () => {
+  const LS_OUT = [
+    'total 24',
+    'drwxr-xr-x 2 root root  4096 Nov 12 09:30 sub',
+    '-rw-r--r-- 1 root root   123 Nov 12 09:31 a.txt',
+    'drwxr-xr-x 1 root root  4096 Nov 11 22:00 ..',
+    'drwxr-xr-x 1 root root  4096 Nov 11 22:00 .',
+  ].join('\n');
+
+  const opened = async (fake: ReturnType<typeof fakeAdb>): Promise<AdbConnection> => {
+    const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
+    await conn.open();
+    return conn;
+  };
+
+  it('走 adb shell ls -la：命令里有 ls -la 和被引号包裹的路径', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
+    const conn = await opened(fake);
+
+    await conn.list('/root');
+
+    const shell = fake.calls.find((c) => c.args.includes('shell'));
+    expect(shell).toBeDefined();
+    expect(shell!.args.at(-1)).toContain('ls -la');
+    expect(shell!.args.at(-1)).toContain("'/root'");
+  });
+
+  it('解析出的条目正确：名字、路径、目录标记、大小、时间', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
+    const conn = await opened(fake);
+
+    const entries = await conn.list('/root');
+
+    // . 与 .. 不进结果
+    expect(entries.map((e) => e.name)).toEqual(['sub', 'a.txt']);
+    expect(entries[0].path).toBe('/root/sub');
+    expect(entries[0].isDirectory).toBe(true);
+    expect(entries[1].path).toBe('/root/a.txt');
+    expect(entries[1].isDirectory).toBe(false);
+    expect(entries[1].sizeBytes).toBe(123);
+    expect(entries[0].modifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('目录的 sizeBytes 是 null（读不到的东西不是 0 —— 事实 G2）', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
+    const conn = await opened(fake);
+
+    const entries = await conn.list('/root');
+
+    const dir = entries.find((e) => e.name === 'sub');
+    expect(dir?.isDirectory).toBe(true);
+    expect(dir?.sizeBytes).toBeNull();
+    expect(dir?.sizeBytes).not.toBe(0);
+  });
+
+  it('路径里有空格和单引号时也要包好（路径原样拼进命令会断）', async () => {
+    const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n' });
+    const conn = await opened(fake);
+
+    await conn.list("/root/my dir's");
+
+    const shell = fake.calls.find((c) => c.args.includes('shell'));
+    expect(shell!.args.at(-1)).toContain("'/root/my dir'\\''s'");
+  });
+
+  it('ls 非零退出时抛 FILE_TRANSFER_FAILED，并带上 remotePath 与 stderr', async () => {
+    const fake = fakeAdb({
+      devices: 'List of devices attached\nabc\tdevice\n',
+      lsExitCode: 1,
+      lsStderr: 'ls: /root: No such file or directory',
+    });
+    const conn = await opened(fake);
+
+    const err = await conn.list('/root').then(() => undefined, (e: unknown) => e as {
+      code: string; message: string; detail?: { remotePath?: string; stderr?: string };
+    });
+
+    expect(err?.code).toBe('FILE_TRANSFER_FAILED');
+    expect(err?.message).toContain('/root');
+    expect(err?.detail?.remotePath).toBe('/root');
+    expect(err?.detail?.stderr).toContain('No such file');
   });
 });
 

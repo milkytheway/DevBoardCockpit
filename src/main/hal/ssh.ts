@@ -1,5 +1,7 @@
+import { StringDecoder } from 'node:string_decoder';
 import { Client, type ClientChannel, type SFTPWrapper } from 'ssh2';
 import { makeError } from '../../shared/errors';
+import type { FileEntry } from '../../shared/ipc-contract';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { Session, TIMEOUT_EXIT_CODE } from './session';
@@ -52,6 +54,62 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
 export interface SshConnectionOptions {
   /** 注入 ssh2 客户端，测试用 */
   clientFactory?: (opts: SshConnectOptions) => Client;
+}
+
+/**
+ * sftp 的 readdir 回包一项。
+ *
+ * ssh2 给的类型是 `FileEntryWithStats`（attrs 必带一堆方法），
+ * 但真实服务端不一定给全——这里只声明我们真正用到的三个字段，
+ * 缺的按「拿不到」处理，不假装有。
+ */
+interface SftpDirEntry {
+  filename: string;
+  longname?: string;
+  attrs?: {
+    /** POSIX 模式：高位是文件类型位 */
+    mode?: number;
+    size?: number;
+    /** **秒**，不是毫秒 */
+    mtime?: number;
+  };
+}
+
+/**
+ * sftp 的一项 → 契约里的 `FileEntry`。
+ *
+ * **目录的 sizeBytes 是 null**（读不到的东西不是 0 —— 事实 G2）：
+ * `ls -la` 里目录那个 4096 是文件系统给目录分配的块数，不是它的「大小」，
+ * 当成文件大小显示出来是骗人。
+ */
+function toFileEntry(entry: SftpDirEntry, remotePath: string): FileEntry {
+  const attrs = entry.attrs ?? {};
+  const mode = typeof attrs.mode === 'number' ? attrs.mode : undefined;
+
+  // 目录判定：POSIX 模式的高位是文件类型位（0o170000），0o040000 = 目录。
+  // mode 拿不到（缺省或 0——0 不是任何合法文件类型的模式）就退回看 longname
+  // 的首字符，那是 ls -l 那套记号（d 目录 / - 文件 / l 软链接）。
+  const isDirectory =
+    mode !== undefined && mode > 0
+      ? (mode & 0o170000) === 0o040000
+      : (entry.longname ?? '').charAt(0) === 'd';
+
+  // sftp 的 mtime 是**秒**（不是毫秒）——当成毫秒会差出一千倍。
+  // mtime 为 0 是「服务端没给时间戳」，不是 1970 年：显示成 1970 是骗人，
+  // 所以按「读不到」给 null（与 sizeBytes 同一条原则，事实 G2）。
+  const mtime = typeof attrs.mtime === 'number' && Number.isFinite(attrs.mtime) ? attrs.mtime : undefined;
+  const modifiedAt = mtime !== undefined && mtime > 0 ? new Date(mtime * 1000).toISOString() : null;
+
+  const size = typeof attrs.size === 'number' ? attrs.size : null;
+
+  return {
+    name: entry.filename,
+    // remotePath 末尾的斜杠去掉再拼，免得变成 `/root//a.txt`
+    path: `${remotePath.replace(/\/+$/, '')}/${entry.filename}`,
+    isDirectory,
+    sizeBytes: isDirectory ? null : size,
+    modifiedAt,
+  };
 }
 
 export class SshConnection implements Connection {
@@ -124,6 +182,13 @@ export class SshConnection implements Connection {
       let stderr = '';
       let timedOut = false;
 
+      // **跨 chunk 重组**（约束 G15 / 风险 RF-3）：
+      // 一个中文字符可能被拆到两个 chunk 里，`Buffer.toString('utf8')` 是逐 chunk
+      // 独立解码的——那样会得到两个 U+FFFD，合法内容被静默损坏。
+      // 串口（serial.ts）与 ADB（adb.ts）都用 StringDecoder，SSH 也得用。
+      const stdoutDecoder = new StringDecoder('utf8');
+      const stderrDecoder = new StringDecoder('utf8');
+
       const timer = setTimeout(() => {
         timedOut = true;
         this.client?.end();
@@ -137,10 +202,13 @@ export class SshConnection implements Connection {
           }));
           return;
         }
-        stream.on('data', (d: Buffer) => { stdout += d.toString('utf8'); });
-        stream.stderr.on('data', (d: Buffer) => { stderr += d.toString('utf8'); });
+        stream.on('data', (d: Buffer) => { stdout += stdoutDecoder.write(d); });
+        stream.stderr.on('data', (d: Buffer) => { stderr += stderrDecoder.write(d); });
         stream.on('close', (code: number | null) => {
           clearTimeout(timer);
+          // 冲尾巴：最后一个 chunk 的尾巴可能还缓在 decoder 里
+          stdout += stdoutDecoder.end();
+          stderr += stderrDecoder.end();
           resolve({
             exitCode: timedOut ? TIMEOUT_EXIT_CODE : code,
             stdout,
@@ -191,6 +259,35 @@ export class SshConnection implements Connection {
     sftp.end();
   }
 
+  /**
+   * 列远端目录。
+   *
+   * **走 ssh2 的 sftp**（计划 Task 9 Step 3：「adb 用 `adb shell ls -la`，
+   * ssh 用 ssh2 的 `sftp`」）——**不是**跑一条远端的 `ls`。
+   * 那是 adb 那条线的做法；SSH 这边有 sftp 通道，就用它。
+   */
+  async list(remotePath: string): Promise<FileEntry[]> {
+    const sftp = await this.openSftp();
+    try {
+      const entries = await new Promise<SftpDirEntry[]>((resolve, reject) => {
+        sftp.readdir(remotePath, (err, list) => {
+          if (err) {
+            reject(makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+              detail: { remotePath, cause: err.message },
+            }));
+            return;
+          }
+          resolve(list);
+        });
+      });
+      return entries.map((entry) => toFileEntry(entry, remotePath));
+    } finally {
+      // 用完就关（同 pull / push）。**失败也要关**——
+      // sftp 通道挂在连接上，漏一条就会一直占着。
+      sftp.end();
+    }
+  }
+
   /** 打开一条 sftp 通道 */
   private openSftp(): Promise<SFTPWrapper> {
     return new Promise((resolve, reject) => {
@@ -239,6 +336,17 @@ export class SshConnection implements Connection {
 
 /** SSH 的交互式会话。远端自己回显并出 ANSI，宿主只转发按键 */
 class SshSession extends Session {
+  /**
+   * 跨 chunk 重组多字节字符（约束 G15 / 风险 RF-3）。
+   *
+   * 挂在会话实例上——一条会话一条 decoder，
+   * 否则两个终端各收各的字节，凑不出一个完整的字符。
+   */
+  private readonly decoder = new StringDecoder('utf8');
+  private readonly dataCbs: ((chunk: string) => void)[] = [];
+  /** 通道上只挂一个 data 监听：decoder.write 每块字节只能调一次 */
+  private listening = false;
+
   constructor(
     private readonly channel: ClientChannel,
     log: SessionLog,
@@ -253,7 +361,16 @@ class SshSession extends Session {
   }
 
   onData(cb: (chunk: string) => void): void {
-    this.channel.on('data', (d: Buffer) => cb(d.toString('utf8')));
+    this.dataCbs.push(cb);
+    if (this.listening) return;
+    this.listening = true;
+    this.channel.on('data', (d: Buffer) => {
+      const chunk = this.decoder.write(d);
+      // 空串 = 这块字节只带了半个字符，等下一块再说。
+      // 直接吐出去会把半个字符变成 U+FFFD。
+      if (chunk.length === 0) return;
+      for (const c of this.dataCbs) c(chunk);
+    });
   }
 
   resize(cols: number, rows: number): void {
@@ -261,6 +378,12 @@ class SshSession extends Session {
   }
 
   close(): void {
+    // 冲尾巴：远端可能只发了半个字符就断线了，那半个字符要显示成替换符，
+    // 不能悄悄丢掉（丢一半比显示成 � 更容易让人误判屏幕内容）。
+    const tail = this.decoder.end();
+    if (tail.length > 0) {
+      for (const c of this.dataCbs) c(tail);
+    }
     this.channel.close();
   }
 }
