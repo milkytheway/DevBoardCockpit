@@ -15,6 +15,7 @@ export const IPC = {
   filesList: 'files:list',
   filesPush: 'files:push',
   filesPull: 'files:pull',
+  connectionsList: 'connections:list',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -34,6 +35,16 @@ export interface CockpitApi {
   filesList(connectionId: string, remotePath: string): Promise<FileEntry[]>;
   filesPush(connectionId: string, localPath: string, remotePath: string): Promise<void>;
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<void>;
+  connectionsList(): Promise<ConnectionInfo[]>;
+}
+
+/** 一个可用的连接：profile 的摘要 + 它的能力位 */
+export interface ConnectionInfo {
+  id: string;
+  label: string;
+  transport: 'serial' | 'adb' | 'ssh' | 'local';
+  boardPack: string | null;
+  capabilities: Capabilities;
 }
 
 /**

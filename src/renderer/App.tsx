@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TerminalView } from './terminal/TerminalView';
 import { FileBrowser } from './files/FileBrowser';
-import type { Capabilities, CockpitApi } from '../shared/ipc-contract';
+import type { CockpitApi, ConnectionInfo } from '../shared/ipc-contract';
 import './theme/tokens.css';
 
 /**
  * 工作台外壳。
  *
- * v1 只有一个东西：终端标签页。
- * 布局与卡片在 M5；文件浏览器在 M2 的 Task 9。
+ * v1 只有一个东西：终端标签页 + 文件互传。
+ * 卡片与布局在 M5。
  */
 
 declare global {
@@ -23,6 +23,7 @@ interface Tab {
 }
 
 export function App(): JSX.Element {
+  const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [output, setOutput] = useState<Record<string, string>>({});
@@ -31,6 +32,9 @@ export function App(): JSX.Element {
   useEffect(() => {
     apiRef.current = window.cockpit ?? null;
     if (!apiRef.current) return;
+
+    // 连接与能力位都问宿主要——UI 不该自己猜哪个传输能干什么
+    void apiRef.current.connectionsList().then(setConnections);
 
     const offData = apiRef.current.onTerminalData((sessionId, chunk) => {
       setOutput((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? '') + chunk }));
@@ -60,42 +64,17 @@ export function App(): JSX.Element {
   }, []);
 
   const current = tabs.find((t) => t.sessionId === active) ?? null;
-
-  /**
-   * 各连接的能力位。
-   *
-   * v1 还没有「列出连接」这条 IPC，所以这里按已知的传输写死能力——
-   * 这是临时的：能力位应该由宿主问连接要（Task 10 之后接 `list_connections`）。
-   */
-  const capabilitiesOf = (profileId: string): Capabilities => {
-    switch (profileId) {
-      case 'board-serial':
-        return { exec: true, pty: false, files: false, exitCode: false };
-      case 'board-adb':
-        return { exec: true, pty: false, files: true, exitCode: true };
-      case 'ubuntu-ssh':
-        return { exec: true, pty: true, files: true, exitCode: true };
-      default:
-        return { exec: true, pty: true, files: true, exitCode: true };
-    }
-  };
+  const currentInfo = connections.find((c) => c.id === current?.profileId) ?? null;
 
   return (
     <div className="cockpit-app">
       <header className="cockpit-toolbar">
         <span className="cockpit-toolbar__title">开发板驾驶舱</span>
-        <button type="button" onClick={() => void openTab('board-serial')}>
-          串口
-        </button>
-        <button type="button" onClick={() => void openTab('board-adb')}>
-          ADB
-        </button>
-        <button type="button" onClick={() => void openTab('ubuntu-ssh')}>
-          SSH
-        </button>
-        <button type="button" onClick={() => void openTab('local')}>
-          本机
-        </button>
+        {connections.map((conn) => (
+          <button key={conn.id} type="button" onClick={() => void openTab(conn.id)}>
+            {conn.label}
+          </button>
+        ))}
       </header>
 
       <nav className="cockpit-tabs">
@@ -130,13 +109,15 @@ export function App(): JSX.Element {
               onWrite={(data) => apiRef.current?.terminalWrite(current.sessionId, data)}
               onResize={(cols, rows) => apiRef.current?.terminalResize(current.sessionId, cols, rows)}
             />
-            <FileBrowser
-              connectionId={current.profileId}
-              capabilities={capabilitiesOf(current.profileId)}
-              onPush={() => {
-                /* v1 只做本地选择，真实的传输在 Task 10 之后接 */
-              }}
-            />
+            {currentInfo ? (
+              <FileBrowser
+                connectionId={current.profileId}
+                capabilities={currentInfo.capabilities}
+                onPush={() => {
+                  /* v1 只做本地选择，真实传输在 Task 10 之后接 */
+                }}
+              />
+            ) : null}
           </>
         ) : (
           <p className="cockpit-empty">选一个连接开始</p>

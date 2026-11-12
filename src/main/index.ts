@@ -1,10 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { IPC } from '../shared/ipc-contract';
-import { AdbConnection } from './hal/adb';
-import { LocalConnection } from './hal/local';
-import { SerialConnection } from './hal/serial';
-import { SshConnection } from './hal/ssh';
+import { capabilitiesFor, createConnection } from './hal/registry';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
@@ -28,18 +25,9 @@ function listProfiles(): ConnectionProfile[] {
   });
 }
 
-function createConnection(profile: ConnectionProfile): Connection {
+function createConnectionFor(profile: ConnectionProfile): Connection {
   const log = new SessionLog({ label: profile.id, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') });
-  switch (profile.transport) {
-    case 'serial':
-      return new SerialConnection(profile, log);
-    case 'adb':
-      return new AdbConnection(profile, log);
-    case 'ssh':
-      return new SshConnection(profile, log);
-    case 'local':
-      return new LocalConnection(profile, log);
-  }
+  return createConnection(profile, log);
 }
 
 /** 已建立的连接，按连接 profile 的 id 索引 */
@@ -51,7 +39,7 @@ const transfer = new TransferService({
 
 const terminal = new TerminalManager({
   listProfiles,
-  createConnection,
+  createConnection: createConnectionFor,
   createLog: (label) => new SessionLog({ label, dataDir: userProfilesDir().replace(/profiles[/\\]targets$/, '') }),
   // 连接建好后登记一份，文件互传模块靠它按 id 找连接
   onConnectionOpen: (connectionId, connection) => connections.set(connectionId, connection),
@@ -75,6 +63,15 @@ ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: numbe
 ipcMain.on(IPC.terminalClose, (_e, sessionId: string) => terminal.close(sessionId));
 
 // ── 文件互传 ────────────────────────────────────────────────────────
+ipcMain.handle(IPC.connectionsList, async () =>
+  listProfiles().map((p) => ({
+    id: p.id,
+    label: p.label,
+    transport: p.transport,
+    boardPack: p.board_pack ?? null,
+    capabilities: capabilitiesFor(p),
+  })),
+);
 ipcMain.handle(IPC.filesList, async (_e, connectionId: string, remotePath: string) =>
   transfer.list(connectionId, remotePath),
 );
