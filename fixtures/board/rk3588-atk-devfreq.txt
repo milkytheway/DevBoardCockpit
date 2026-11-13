@@ -1,0 +1,20 @@
+# 真机样本：RK3588 ATK-DLRK3588 的 devfreq 与 rknpu 对照
+#
+# 采集于 2026-11-13，板子 serial f34dca7784396ab2。
+#
+# **这一份是 C7 要求的「npu 占空比对照量」**：
+# 同一个 NPU 的两条路径并排放——
+#   /sys/class/devfreq/fdab0000.npu/load   → 占空比（**空闲就是 100**）
+#   /sys/kernel/debug/rknpu/load            → 真正的利用率
+#
+# 契约 `spec/01` §七 警告的正是这个：**devfreq 的 load 是时钟占空比，不是利用率**。
+# 这份样本把警告从「推断」变成「实测」。
+###GPU_DEVFRQ
+0@300000000Hz
+###NPU_DEVFRQ
+100@1000000000Hz
+###NPU_RKNPU
+NPU load:  Core0:  0%, Core1:  0%, Core2:  0%,
+###DEBUGFS
+debugfs on /sys/kernel/debug type debugfs (rw,relatime)
+###END

@@ -1,0 +1,39 @@
+# 真机样本：RK3588 ATK-DLRK3588（Buildroot 2024.02，内核 6.1.141）
+#
+# 采集于 2026-11-13，板子 serial f34dca7784396ab2（adb devices 确认在 device 状态）。
+# 采集命令见 `docs/06-契约核对.md` §四。
+#
+# **样本只增不改**（AGENTS.md）：要改就新增一份文件，旧文件留作回归输入。
+total 92
+drwxr-xr-x  23 root root  4096 Jan  2 09:27 .
+drwxr-xr-x  23 root root  4096 Jan  2 09:27 ..
+lrwxrwxrwx   1 root root     7 Aug 27  2026 bin -> usr/bin
+-rw-r--r--   1 root root   489 Aug 26  2026 busybox.fragment
+drwxr-xr-x   6 root root  4096 Jan  1 14:19 .cache
+drwx------   3 root root  4096 Jan  1 09:21 .config
+----------   1 root root     0 Jan  1 08:00 crond.reboot
+drwxr-xr-x   3 root root  4096 Aug 27  2026 data
+drwxr-xr-x  15 root root  5540 Jan  1 08:00 dev
+drwxr-xr-x  36 root root  4096 Aug 27  2026 etc
+drwxr-xr-x   3 root root  4096 Aug 27  2026 home
+drwxr-xr-x   2 root root  4096 Aug 27  2026 info
+lrwxrwxrwx   1 root root     7 Aug 26  2026 lib -> usr/lib
+lrwxrwxrwx   1 root root     3 Aug 27  2026 lib64 -> lib
+lrwxrwxrwx   1 root root    11 Aug 27  2026 linuxrc -> bin/busybox
+drwx------   2 root root 16384 Aug 27  2026 lost+found
+drwxr-xr-x  11 root root  4096 Aug 27  2026 media
+drwxr-xr-x   5 root root  4096 Aug 27  2026 mnt
+drwxr-xr-x   3 root root  4096 Jan  1 08:00 oem
+drwxr-xr-x   4 root root  4096 Aug 26  2026 opt
+dr-xr-xr-x 297 root root     0 Jan  1 08:00 proc
+-rw-r--r--   1 root root     0 Jan  1 08:00 .resized
+drwxr-xr-x  17 root root  4096 Aug 27  2026 rockchip-test
+drwx------   4 root root  4096 Jan  2 01:42 root
+drwxr-xr-x  12 root root   640 Jan  2 02:12 run
+lrwxrwxrwx   1 root root     8 Aug 27  2026 sbin -> usr/sbin
+dr-xr-xr-x  14 root root     0 Jan  1 08:00 sys
+drwxrwxrwt   7 root root   260 Jan  1 22:44 tmp
+-rw-rw-rw-   1 root root    13 Nov 13  2026 up.log
+drwxr-xr-x   4 root root  4096 Jan  1 12:05 userdata
+drwxr-xr-x  12 root root  4096 Jan  1 21:42 usr
+drwxr-xr-x   6 root root  4096 Aug 27  2026 var

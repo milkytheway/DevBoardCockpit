@@ -1,0 +1,67 @@
+# 真机样本：RK3588 ATK-DLRK3588（Buildroot 2024.02，内核 6.1.141）
+#
+# 采集于 2026-11-13，板子 serial f34dca7784396ab2（adb devices 确认在 device 状态）。
+# 采集命令见 `docs/06-契约核对.md` §四。
+#
+# **样本只增不改**（AGENTS.md）：要改就新增一份文件，旧文件留作回归输入。
+# 这一份是**一次往返**采到的全部段（与前身工程的 SNAPSHOT_SCRIPT 同构：
+# 段之间用 ### 标记分隔，解析器不用猜内容在哪一段结束）。
+
+###STAT
+cpu  48788 0 34331 77513374 4041 0 237 0 0 0
+cpu0 41206 0 14200 9647289 17 0 51 0 0 0
+cpu1 2563 0 7084 9673681 3892 0 78 0 0 0
+cpu2 1907 0 3498 9682807 13 0 3 0 0 0
+cpu3 2438 0 4799 9692595 25 0 55 0 0 0
+cpu4 74 0 260 9705577 22 0 0 0 0 0
+cpu5 77 0 181 9706967 24 0 48 0 0 0
+cpu6 78 0 3466 9701118 25 0 0 0 0 0
+cpu7 441 0 840 9703336 21 0 0 0 0 0
+intr 45592787 0 182463 15277154 0 0 839 404708 0 0 0 0 0 0 10162079 1769 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 2 0 0 0 0 0 2061 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 11347713 0 0 0 1749879 0 0 0 0 61064 0 0 0 2339 0 0 2318 28 0 0 2845543 62 1 1 40 91 0 0 239 8 0 137 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 417 0 0 0 67255 933401 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1563222 1 987951 0
+ctxt 49831702
+btime 0
+processes 9738
+procs_running 1
+procs_blocked 0
+softirq 13347582 2375 4637411 9 165784 61118 0 2353 4499228 0 3979304
+###CPUINFO
+processor	: 0
+CPU implementer	: 0x41
+CPU part	: 0xd05
+processor	: 1
+CPU implementer	: 0x41
+CPU part	: 0xd05
+processor	: 2
+CPU implementer	: 0x41
+CPU part	: 0xd05
+processor	: 3
+CPU implementer	: 0x41
+CPU part	: 0xd05
+processor	: 4
+CPU implementer	: 0x41
+CPU part	: 0xd0b
+processor	: 5
+CPU implementer	: 0x41
+CPU part	: 0xd0b
+processor	: 6
+CPU implementer	: 0x41
+CPU part	: 0xd0b
+processor	: 7
+CPU implementer	: 0x41
+CPU part	: 0xd0b
+###MEM
+MemTotal:        8107744 kB
+MemAvailable:    7655500 kB
+###GPU
+0@300000000Hz
+###NPU
+NPU load:  Core0:  0%, Core1:  0%, Core2:  0%,
+###TEMP
+soc-thermal=34230
+bigcore0-thermal=34230
+bigcore1-thermal=34230
+littlecore-thermal=34230
+center-thermal=33307
+gpu-thermal=33307
+npu-thermal=34230
+###END

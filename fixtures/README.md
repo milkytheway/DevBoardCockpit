@@ -62,11 +62,31 @@
 > 地板是**下限**，校验器是**第一道闸**。两道都要在——
 > 只验静态的话，一个绕过校验器的路径就能把重启当可逆动作执行。
 
+## `board/` —— 2026-11-13 在真板上直接采的样本
+
+`metrics/` 里的样本来自**前身工程**（`DevBoardConsole`）的运行记录；
+`board/` 里的样本是 **2026-11-13 直接从板子上采的**
+（`boardctl.py sh`，板子 serial `f34dca7784396ab2`）。
+
+| 文件 | 内容 |
+|---|---|
+| `rk3588-atk-ls-root.txt` | `ls -la /` 的真实输出（5 个软链接、`----------` 权限的条目） |
+| `rk3588-atk-snapshot.txt` | 一次往返采到的 `/proc/stat`、`/proc/cpuinfo`、`/proc/meminfo`、GPU devfreq、rknpu、thermal zone |
+| `rk3588-atk-devfreq.txt` | NPU 的两条路径并排（devfreq 占空比 vs rknpu 真正利用率）+ debugfs 挂载状态 |
+| `rk3588-atk-proc-stat-pair.txt` | `/proc/stat` 的**两次真实采样**（间隔 3 秒） |
+
+**为什么还要再采一份**：`metrics/proc-stat-second.txt` 是**构造**的
+（按「1 秒 @ HZ=1000」推算出来的），不是真采样。
+`cpu.usage` 是两次采样做差算出来的，**差值向量应该来自真的两次采样**——
+否则解析器的容错（多一行、少一行、CPU 数量不同）根本没被验过。
+
+逐条结论见 `docs/06-契约核对.md` §五，对拍用例在 `tests/unit/board-fixtures.test.ts`。
+
 ## 已知缺口
 
 | 缺口 | 说明 |
 |---|---|
-| 真机的第二份 `/proc/stat` | 现用构造样本代替 |
+| ~~真机的第二份 `/proc/stat`~~ | ✅ 已补：`board/rk3588-atk-proc-stat-pair.txt`（真的两次采样） |
 | 契约格式的真机往返样本 | 现用「真实内容 + 构造排版」代替 |
 | `rare` 轮询组（30000 ms） | 整组无向量 |
 | `backlight.set` 的回读 | 实测 `200`/max 255 只在散文里 |
