@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'PORT_BUSY'
   | 'TERM_NOT_FOUND'
   | 'FILE_TRANSFER_FAILED'
+  | 'PACK_INVALID'
   | 'IPC_INVALID_PAYLOAD'
   | 'INTERNAL';
 
