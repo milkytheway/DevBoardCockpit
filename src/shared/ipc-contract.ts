@@ -6,6 +6,7 @@
  */
 
 import type { AppErrorPayload } from './errors';
+import type { TagReading } from './tag-reading';
 
 export const IPC = {
   terminalOpen: 'terminal:open',
@@ -18,6 +19,16 @@ export const IPC = {
   filesPush: 'files:push',
   filesPull: 'files:pull',
   connectionsList: 'connections:list',
+  /**
+   * tag 读数的**当前快照**。
+   *
+   * **为什么要有「取快照」而不只是「听推送」**：
+   * 晚订阅的窗口会漏掉之前的推送——**它打开时看到的应该是现在的数**，
+   * 而不是一片空白（契约 §2.1：读数有五态、有 seq，本来就是「当前状态」）。
+   */
+  tagsReadings: 'tags:readings',
+  /** tag 读数**变化**的推送 */
+  tagsChanged: 'tags:changed',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -52,6 +63,18 @@ export interface CockpitApi {
   filesPush(connectionId: string, localPath: string, remotePath: string): Promise<{ remotePath: string }>;
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
   connectionsList(): Promise<ConnectionInfo[]>;
+  /**
+   * 当前全部 tag 读数的快照。
+   *
+   * **读数只经 TagStore 出**（ADR-D22）——renderer 拿不到别处的副本。
+   */
+  tagsReadings(): Promise<TagReading[]>;
+  /**
+   * 听读数的变化。
+   *
+   * @returns 退订函数。
+   */
+  onTagChanged(cb: (reading: TagReading) => void): () => void;
   /**
    * 取一个 File 的**宿主绝对路径**。
    *

@@ -11,6 +11,7 @@ import { loadProfiles } from './profiles/loader';
 import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
+import { TagRuntime } from './tags/runtime';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
@@ -73,6 +74,41 @@ function broadcast(channel: string, ...args: unknown[]): void {
 
 terminal.onData((sessionId, chunk) => broadcast(IPC.terminalData, sessionId, chunk));
 terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, exitCode));
+
+/**
+ * tag 运行时 —— 让板子的读数**自己在动**。
+ *
+ * 它**自己建一条连接**（与终端标签的连接分开）：
+ * 面板必须在**没有终端标签**的时候也有数——
+ * 「看板子的读数」是这个产品的主线，终端是附带的。
+ *
+ * 代价明说：**串口是独占的**，运行时与终端标签各要一条连接，
+ * 同一个 COM3 上只能有一个。第二个会失败，而失败是**看得见的**。
+ */
+const runtime = new TagRuntime({
+  packsDir: join(app.getAppPath(), 'profiles', 'boards'),
+  createConnection: createConnectionFor,
+  createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
+});
+
+// 读数只经 TagStore 出（ADR-D22）：renderer 拿不到别处的副本
+handle(IPC.tagsReadings, () => runtime.readings());
+runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
+
+/**
+ * 挑一个能采的连接 profile 起运行时。
+ *
+ * **挨个试**：板子可能在 adb 上、也可能在串口上——
+ * 第一个连不上的（adb 没插板子、串口被占着）**不是**失败，
+ * 试下一个就行。都不行 → 状态留在最后一个，面板会显示**为什么**。
+ */
+async function startTagRuntime(): Promise<void> {
+  const candidates = listProfiles().filter((p) => p.board_pack !== undefined);
+  for (const profile of candidates) {
+    const status = await runtime.start(profile);
+    if (status.state === 'running') return;
+  }
+}
 
 /**
  * 注册一个 invoke 通道。
@@ -197,6 +233,10 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // 读数的运行时：**不挡着窗口起来**——
+  // 连不上是常事（板子没插、端口被占），面板会显示为什么。
+  void startTagRuntime();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

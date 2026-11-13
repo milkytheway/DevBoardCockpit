@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IPC, type CockpitApi, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
 import { appErrorToException } from '../shared/errors';
+import type { TagReading } from '../shared/tag-reading';
 
 /**
  * 宿主能力的唯一出口。
@@ -46,6 +47,12 @@ export const api: CockpitApi = {
   filesPull: (connectionId, remotePath, localPath) =>
     invoke(IPC.filesPull, connectionId, remotePath, localPath),
   connectionsList: () => invoke(IPC.connectionsList),
+  tagsReadings: () => invoke(IPC.tagsReadings),
+  onTagChanged: (cb) => {
+    const handler = (_e: IpcRendererEvent, reading: TagReading): void => cb(reading);
+    ipcRenderer.on(IPC.tagsChanged, handler);
+    return () => ipcRenderer.off(IPC.tagsChanged, handler);
+  },
   getPathForFile: (file) => webUtils.getPathForFile(file),
 };
 

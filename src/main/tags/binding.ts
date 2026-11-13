@@ -35,7 +35,7 @@ export interface ModelReader {
   exec(
     command: string,
     opts?: { timeoutMs?: number },
-  ): Promise<{ exitCode: number; stdout: string; stderr?: string }>;
+  ): Promise<{ exitCode: number | null; stdout: string; stderr?: string }>;
 }
 
 /** 契约 §十 的 match 规则 */

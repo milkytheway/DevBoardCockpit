@@ -385,3 +385,76 @@ body {
   color: var(--cockpit-danger);
   margin: 8px 0 0;
 }
+
+/**
+ * 最小读数面板。
+ *
+ * **只用现有的 token**（O1 视觉体系还没拍板，
+ * 这里不引入任何 UI 库，也不定视觉语言）。
+ */
+.readings-panel {
+  border-bottom: 1px solid var(--cockpit-border);
+  padding: 12px 16px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.readings-panel__title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-dim);
+}
+
+.readings-panel__empty,
+.readings-panel__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cockpit-text-faint);
+}
+
+.readings-panel__error {
+  color: var(--cockpit-danger);
+}
+
+.readings-panel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 2px 16px;
+}
+
+.readings-panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-family: var(--cockpit-font-mono);
+}
+
+.readings-panel__tag {
+  color: var(--cockpit-text-dim);
+}
+
+.readings-panel__value {
+  color: var(--cockpit-text);
+}
+
+.readings-panel__value--ok {
+  color: var(--cockpit-ok);
+}
+
+.readings-panel__value--stale {
+  color: var(--cockpit-warn);
+}
+
+.readings-panel__value--error {
+  color: var(--cockpit-danger);
+}
+
+.readings-panel__value--unavailable {
+  color: var(--cockpit-unavailable);
+}

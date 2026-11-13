@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TerminalView } from './terminal/TerminalView';
 import { FileBrowser } from './files/FileBrowser';
+import { ReadingsPanel } from './tags/ReadingsPanel';
 import type { CockpitApi, ConnectionInfo } from '../shared/ipc-contract';
 import './theme/tokens.css';
 
@@ -299,6 +300,9 @@ export function App(): JSX.Element {
       ) : null}
 
       <main className="cockpit-main">
+        {/* 读数面板：**没有终端标签时也要在**——
+            「看板子的读数」是这个产品的主线，终端是附带的。 */}
+        <ReadingsPanel />
         {tabs.length === 0 ? (
           <p className="cockpit-empty">选一个连接开始</p>
         ) : (
