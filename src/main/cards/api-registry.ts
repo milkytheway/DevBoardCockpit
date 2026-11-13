@@ -25,6 +25,8 @@ export interface CardApiContext {
   cardId: string;
   instanceId: string;
   connectionId: string | null;
+  /** 当前连接的身份（**不给 connectionId**——契约 §7.8：卡片代码里没有这个词） */
+  connection: { label: string; transport: string } | null;
   /** 会话服务（读侧 / 存储 / 日志 / 通知）——由 main 侧注入 */
   services: CardServices;
 }
@@ -71,12 +73,6 @@ export interface CardApiDef {
   make: (services: CardServices) => CardApiHandler;
 }
 
-/** M5 的占位实现 —— Task 9 会把它们换成真的 */
-function pending(services: CardServices): CardApiHandler {
-  void services;
-  return () => ({ ok: false, reason: 'not_implemented' });
-}
-
 /**
  * M5 的卡片 API 全集。
  *
@@ -89,14 +85,20 @@ export function cardApis(): CardApiDef[] {
       name: 'capabilities',
       permission: 'none',
       params: [],
-      make: pending,
+      // **本 build 实际有的方法**（不是契约全集）——否则卡片会以为能调还不存在的方法
+      make: (services) => (ctx) => ({
+        apiVersion: 'devboard/v1',
+        methods: cardApis().map((api) => api.name),
+        connection: ctx.connection,
+        tags: services.tags.list().map((r) => r.tag),
+      }),
     },
     {
       name: 'tags.get',
       permission: 'read',
       scopeArg: 'name',
       params: ['name'],
-      make: pending,
+      make: (services) => (_ctx, args) => services.tags.get(String(args['name'])),
     },
     {
       name: 'tags.subscribe',
@@ -104,7 +106,12 @@ export function cardApis(): CardApiDef[] {
       scopeArg: 'name',
       params: ['name'],
       subscribable: true,
-      make: pending,
+      // 订阅的**回调**留在卡片那边（函数不能过 postMessage）；
+      // 这里只登记「哪个订阅 id 要收哪个 tag 的推送」
+      make: (services) => (_ctx, args) => {
+        services.tags.subscribe(String(args['name']), String(args['subscriptionId']));
+        return { ok: true };
+      },
     },
     {
       name: 'tags.subscribePattern',
@@ -112,61 +119,74 @@ export function cardApis(): CardApiDef[] {
       scopeArg: 'pattern',
       params: ['pattern'],
       subscribable: true,
-      make: pending,
+      make: (services) => (_ctx, args) => {
+        services.tags.subscribePattern(String(args['pattern']), String(args['subscriptionId']));
+        return { ok: true };
+      },
     },
     {
       name: 'tags.list',
       permission: 'read',
       params: [],
-      make: pending,
+      make: (services) => () => services.tags.list(),
     },
     {
       name: 'degradation',
       permission: 'none',
       params: [],
-      make: pending,
+      make: (services) => () => services.tags.degradation(),
     },
     {
       name: 'storage.get',
       permission: 'none',
       params: ['key'],
-      make: pending,
+      make: (services) => (_ctx, args) => services.storage.get(String(args['key'])),
     },
     {
       name: 'storage.set',
       permission: 'none',
       params: ['key', 'value'],
-      make: pending,
+      make: (services) => (_ctx, args) =>
+        services.storage.set(String(args['key']), args['value']),
     },
     {
       name: 'storage.remove',
       permission: 'none',
       params: ['key'],
-      make: pending,
+      make: (services) => (_ctx, args) => services.storage.remove(String(args['key'])),
     },
     {
       name: 'storage.keys',
       permission: 'none',
       params: [],
-      make: pending,
+      make: (services) => () => services.storage.keys(),
     },
     {
       name: 'storage.clear',
       permission: 'none',
       params: [],
-      make: pending,
+      make: (services) => () => services.storage.clear(),
     },
     {
       name: 'log',
       permission: 'none',
       params: ['level', 'message'],
-      make: pending,
+      make: (services) => (_ctx, args) => {
+        const level = args['level'];
+        const level2 =
+          level === 'error' || level === 'warn' || level === 'info' ? level : 'info';
+        services.log(level2, String(args['message'] ?? ''));
+        return { ok: true };
+      },
     },
     {
       name: 'notify',
       permission: 'none',
       params: ['title', 'body'],
-      make: pending,
+      make: (services) => (_ctx, args) => {
+        services.notify(String(args['title'] ?? ''), String(args['body'] ?? ''));
+        return { ok: true };
+      },
     },
   ];
 }
