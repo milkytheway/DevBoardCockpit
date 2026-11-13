@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 · 仪表台（仪器台风格 · 对比案例） · 开发板驾驶舱 UI 设计（Codex）</title>
+<link rel="stylesheet" href="assets/codex-instrument.css">
+<style>
+html,body{margin:0;background:#E9EBEF;color:#1F2329;font-family:'Segoe UI Variable','Segoe UI','Microsoft YaHei UI',system-ui,sans-serif;}
+.page{max-width:1560px;margin:0 auto;padding:26px 22px 56px;}
+.hd{margin-bottom:18px;}
+.hd h1{font-size:22px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em;}
+.hd .meta{font-size:12.5px;color:#646A73;margin:0 0 8px;}
+.hd .note{font-size:12.5px;color:#8F959E;max-width:960px;line-height:1.65;margin:0;}
+.sign{display:inline-block;margin-top:10px;font-size:11.5px;color:#8F959E;border:1px solid #DDE0E5;background:#fff;border-radius:6px;padding:3px 9px;}
+.stage-wrap{padding:20px;border-radius:12px;}
+.ft{margin-top:22px;font-size:11.5px;color:#8F959E;display:flex;gap:16px;flex-wrap:wrap;}
+.ft a{color:#3370FF;text-decoration:none;}
+</style>
+</head><body>
+<div class="page">
+  <div class="hd">
+    <h1>02 · 仪表台（仪器台风格 · 对比案例）</h1>
+    <p class="meta">开发板驾驶舱 · UI 设计案例 · 2026-11-14</p>
+    <p class="note">深色仪器台方向：石墨底 #0E1417、青色强调 #3CC6D0、状态灯用形状 + 颜色双编码、曲线是 graticule 网格上的示波器波形、读数格不可用时用斜纹底且不出现数字。本方向已被 01 取代，保留作对比与取舍依据。</p>
+    <span class="sign">设计：Codex</span>
+  </div>
+  <div class="stage-wrap"><div id="cockpit-mock"><section data-variant="仪表台" aria-label="仪表台（暗色，产品默认）">
+    <div class="stage skin-dark" id="dash-stage">
+      <div class="rail">
+        <div class="rail__brand"><span class="rail__mark"></span>开发板驾驶舱</div>
+        <div class="rail__sep"></div>
+        <div class="rail__dev"><span class="lamp lamp--ok"></span>ATK-DLRK3588</div>
+        <div class="rail__mono">adb</div>
+        <div class="rail__sep"></div>
+        <div class="rail__muted"><span class="beat"></span>采样中 · 0.4s 前</div>
+        <div class="rail__spacer"></div>
+        <button class="iconbtn"><i data-lucide="settings" aria-hidden="true"></i></button>
+        <button class="iconbtn"><i data-lucide="power" aria-hidden="true"></i></button>
+      </div>
+      <div class="body">
+        <aside class="side">
+          <div class="side__group">
+            <div class="side__head">连接</div>
+            <div class="side__item is-on"><span class="lamp lamp--ok"></span>板子 · ADB<span class="side__tag">adb</span></div>
+            <div class="side__item"><span class="lamp lamp--unavailable"></span>板子 · 串口<span class="side__tag">serial</span></div>
+            <div class="side__item"><span class="lamp lamp--pending"></span>Ubuntu · SSH<span class="side__tag">ssh</span></div>
+            <div class="side__item"><span class="lamp lamp--unavailable"></span>本机<span class="side__tag">local</span></div>
+          </div>
+          <div class="side__group">
+            <div class="side__head">会话</div>
+            <div class="side__item is-on">board-adb<span class="side__x">×</span></div>
+          </div>
+        </aside>
+        <main class="work">
+          <div class="modes">
+            <button class="mode is-on">仪表</button>
+            <button class="mode">终端</button>
+            <button class="mode">文件</button>
+            <div class="modes__spacer"></div>
+            <div class="modes__hint">视图：默认 · 采样窗口 1s</div>
+          </div>
+          <div class="ann">
+            <span class="ann__icon"><i data-lucide="triangle-alert" aria-hidden="true"></i></span>
+            <b>npu.usage 不可用</b>
+            <span class="ann__why">· debugfs 未挂载</span>
+            <div class="ann__spacer"></div>
+            <button class="btn">挂载 debugfs</button>
+            <button class="iconbtn"><i data-lucide="x" aria-hidden="true"></i></button>
+          </div>
+          <div class="panels">
+            <div class="panel panel--grow">
+              <div class="panel__head">
+                <span class="panel__title">CPU USAGE</span>
+                <span class="lamp lamp--ok"></span>
+                <div class="panel__spacer"></div>
+                <div class="seg"><span class="is-on">1s</span><span>60s</span><span>5m</span></div>
+              </div>
+              <div class="trace">
+                <svg viewBox="0 0 640 150" preserveAspectRatio="none" role="img" aria-label="CPU 占用率随时间的曲线，1 秒采样窗口">
+                  <path vector-effect="non-scaling-stroke" class="grid" d="M0 0 H640 M0 37.5 H640 M0 75 H640 M0 112.5 H640 M0 150 H640"/>
+                  <path vector-effect="non-scaling-stroke" class="grid" d="M0 0 V150 M106.67 0 V150 M213.33 0 V150 M320 0 V150 M426.67 0 V150 M533.33 0 V150 M640 0 V150"/>
+                  
+                  <polyline vector-effect="non-scaling-stroke" class="line" points="0,132 10,129 20,133.5 30,117 40,123 50,127.5 60,130.5 70,97.5 80,105 90,126 100,129 110,132 120,133.5 130,130.5 140,78 150,67.5 160,90 170,127.5 180,130.5 190,132 200,135 210,132 220,112.5 230,117 240,129 250,130.5 260,133.5 270,132 280,60 290,42 300,82.5 310,123 320,129 330,132 340,133.5 350,130.5 360,126 370,129 380,132 390,133.5 400,132 410,129 420,105 430,111 440,130.5 450,132 460,133.5 470,132 480,130.5 490,127.5 500,132 510,133.5 520,132 530,129 540,130.5 550,132 560,133.5 570,132 580,130.5 590,120 600,126 610,132 620,133.5"/>
+                  <polyline vector-effect="non-scaling-stroke" class="line2" points="0,144 10,144 20,142.5 30,142.5 40,144 50,144 60,144 70,141 80,141 90,142.5 100,144 110,144 120,144 130,144 140,139.5 150,138 160,141 170,144 180,144 190,144 200,144 210,144 220,142.5 230,142.5 240,144 250,144 260,144 270,144 280,136.5 290,135 300,139.5 310,142.5 320,144 330,144 340,144 350,144 360,144 370,144 380,144 390,144 400,144 410,142.5 420,142.5 430,144 440,144 450,144 460,144 470,144 480,144 490,144 500,144 510,144 520,144 530,144 540,144 550,144 560,144 570,144 580,144 590,144 600,144 610,144 620,142.5 630,144 640,144 650,144"/>
+                </svg>
+                  <div class="trace__ylabels"><span>100%</span><span>75</span><span>50</span><span>25</span><span>0</span></div>
+                  <div class="trace__xlabels"><span>00:04</span><span>00:12</span><span>00:20</span></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="grid4">
+                <div class="cell">
+                  <div class="cell__top"><span class="cell__label">CPU USAGE</span><span class="lamp lamp--ok cell__lamp"></span></div>
+                  <div class="cell__val"><span class="cell__num">12.4</span><span class="cell__unit">PERCENT</span></div>
+                </div>
+                <div class="cell cell--stale">
+                  <div class="cell__top"><span class="cell__label">GPU USAGE</span><span class="lamp lamp--stale cell__lamp"></span></div>
+                  <div class="cell__val"><span class="cell__num">3.1</span><span class="cell__unit">PERCENT</span></div>
+                  <div class="cell__note">已过时 · 上次刷新失败</div>
+                </div>
+                <div class="cell cell--unavail">
+                  <div class="cell__top"><span class="cell__label">NPU USAGE</span><span class="lamp lamp--unavailable cell__lamp"></span></div>
+                  <div class="cell__val"><span class="cell__num">—</span><span class="cell__unit">PERCENT</span></div>
+                  <div class="cell__note">不可用 · debugfs 未挂载</div>
+                </div>
+                <div class="cell cell--error">
+                  <div class="cell__top"><span class="cell__label">TEMP SOC</span><span class="lamp lamp--error cell__lamp"></span></div>
+                  <div class="cell__val"><span class="cell__num">34.2</span><span class="cell__unit">CELSIUS</span></div>
+                  <div class="cell__note">读取失败，显示上一次的值</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+      <div class="status">
+        <span><span class="k">会话</span> 已连接 · adb</span>
+        <span><span class="k">板型包</span> rk3588-atk v1.0.0</span>
+        <span><span class="k">读数</span> 26 个 · 1 个不可用</span>
+        <div class="spacer"></div>
+        <span>上次采样 0.4s 前</span>
+      </div>
+    </div>
+  </section></div></div>
+  <div class="ft">
+    <span>本文件是设计稿，不落产品代码</span>
+    <span>目录索引：<a href="README.md">README.md</a></span>
+    <span>设计思路：<a href="codex-设计思路.md">codex-设计思路.md</a></span>
+  </div>
+</div>
+<script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.min.js"></script>
+<script>window.addEventListener("load",function(){ if(window.lucide){ lucide.createIcons({attrs:{width:15,height:15,"stroke-width":1.7}}); } });</script>
+
+</body></html>

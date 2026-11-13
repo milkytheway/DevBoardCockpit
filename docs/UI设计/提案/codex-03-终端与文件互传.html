@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 · 终端与文件互传（仪器台风格） · 开发板驾驶舱 UI 设计（Codex）</title>
+<link rel="stylesheet" href="assets/codex-instrument.css">
+<style>
+html,body{margin:0;background:#E9EBEF;color:#1F2329;font-family:'Segoe UI Variable','Segoe UI','Microsoft YaHei UI',system-ui,sans-serif;}
+.page{max-width:1560px;margin:0 auto;padding:26px 22px 56px;}
+.hd{margin-bottom:18px;}
+.hd h1{font-size:22px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em;}
+.hd .meta{font-size:12.5px;color:#646A73;margin:0 0 8px;}
+.hd .note{font-size:12.5px;color:#8F959E;max-width:960px;line-height:1.65;margin:0;}
+.sign{display:inline-block;margin-top:10px;font-size:11.5px;color:#8F959E;border:1px solid #DDE0E5;background:#fff;border-radius:6px;padding:3px 9px;}
+.stage-wrap{padding:20px;border-radius:12px;}
+.ft{margin-top:22px;font-size:11.5px;color:#8F959E;display:flex;gap:16px;flex-wrap:wrap;}
+.ft a{color:#3370FF;text-decoration:none;}
+</style>
+</head><body>
+<div class="page">
+  <div class="hd">
+    <h1>03 · 终端与文件互传（仪器台风格）</h1>
+    <p class="meta">开发板驾驶舱 · UI 设计案例 · 2026-11-14</p>
+    <p class="note">终端独占工作区（不与卡片上下拼）；文件树用 ▸ 三角分目录，选中项是左侧 2px 竖条而非整行填充。</p>
+    <span class="sign">设计：Codex</span>
+  </div>
+  <div class="stage-wrap"><div id="cockpit-mock"><section data-variant="终端" aria-label="终端与文件互传工作区">
+    <div class="stage skin-dark">
+      <div class="rail">
+        <div class="rail__brand"><span class="rail__mark"></span>开发板驾驶舱</div>
+        <div class="rail__sep"></div>
+        <div class="rail__dev"><span class="lamp lamp--ok"></span>ATK-DLRK3588</div>
+        <div class="rail__mono">adb</div>
+        <div class="rail__sep"></div>
+        <div class="rail__muted"><span class="beat"></span>采样中 · 0.4s 前</div>
+        <div class="rail__spacer"></div>
+        <button class="iconbtn"><i data-lucide="settings" aria-hidden="true"></i></button>
+        <button class="iconbtn"><i data-lucide="power" aria-hidden="true"></i></button>
+      </div>
+      <div class="body">
+        <aside class="side">
+          <div class="side__group">
+            <div class="side__head">连接</div>
+            <div class="side__item is-on"><span class="lamp lamp--ok"></span>板子 · ADB<span class="side__tag">adb</span></div>
+            <div class="side__item"><span class="lamp lamp--unavailable"></span>板子 · 串口<span class="side__tag">serial</span></div>
+            <div class="side__item"><span class="lamp lamp--pending"></span>Ubuntu · SSH<span class="side__tag">ssh</span></div>
+          </div>
+          <div class="side__group">
+            <div class="side__head">会话</div>
+            <div class="side__item is-on">board-adb<span class="side__x">×</span></div>
+          </div>
+        </aside>
+        <main class="work">
+          <div class="modes">
+            <button class="mode">仪表</button>
+            <button class="mode is-on">终端</button>
+            <button class="mode">文件</button>
+            <div class="modes__spacer"></div>
+            <div class="modes__hint">board-adb · adb shell</div>
+          </div>
+          <div class="term"><span class="p">root@ATK-DLRK3588</span>:<span class="dim">~</span># uname -a
+Linux ATK-DLRK3588 6.1.141-ATK #1 SMP PREEMPT_DYNAMIC
+<span class="p">root@ATK-DLRK3588</span>:<span class="dim">~</span># cat /sys/class/devfreq/fdab0000.npu/governor
+rknpu_ondemand
+<span class="p">root@ATK-DLRK3588</span>:<span class="dim">~</span># ls /sys/kernel/debug/rknpu/
+<span class="warn">ls: cannot access '/sys/kernel/debug/rknpu/': No such file or directory</span>
+<span class="p">root@ATK-DLRK3588</span>:<span class="dim">~</span># <span class="caret"></span></div>
+          <div class="termbar">
+            <span>已连接</span><span>adb</span><span>exit 0</span>
+            <span style="flex:1"></span>
+            <span>UTF-8 · LF</span>
+          </div>
+          <div class="trees">
+            <div class="tree">
+              <div class="tree__head"><span>本机</span><span class="mono" style="font-size:10.5px">C:\Users\Adm</span></div>
+              <ul class="tree__list">
+                <li><span class="dir">▸</span>Desktop</li>
+                <li><span class="dir">▸</span>Downloads</li>
+                <li class="is-sel">rk3588-tools<span class="size">2.1 MB</span></li>
+              </ul>
+            </div>
+            <div class="arrows">
+              <button class="btn" aria-label="上传到板子"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+              <button class="btn" aria-label="从板子下载"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+            </div>
+            <div class="tree">
+              <div class="tree__head"><span>板子</span><span class="mono" style="font-size:10.5px">/root</span></div>
+              <ul class="tree__list">
+                <li><span class="dir">▸</span>tools</li>
+                <li class="is-sel">boot.log<span class="size">18 KB</span></li>
+                <li><span class="dir">▸</span>scripts</li>
+              </ul>
+            </div>
+          </div>
+        </main>
+      </div>
+      <div class="status">
+        <span><span class="k">会话</span> 已连接 · adb</span>
+        <span><span class="k">读数</span> 26 个 · 1 个不可用</span>
+        <div class="spacer"></div>
+        <span>上次采样 0.4s 前</span>
+      </div>
+    </div>
+  </section></div></div>
+  <div class="ft">
+    <span>本文件是设计稿，不落产品代码</span>
+    <span>目录索引：<a href="README.md">README.md</a></span>
+    <span>设计思路：<a href="codex-设计思路.md">codex-设计思路.md</a></span>
+  </div>
+</div>
+<script src="https://unpkg.com/lucide@0.544.0/dist/umd/lucide.min.js"></script>
+<script>window.addEventListener("load",function(){ if(window.lucide){ lucide.createIcons({attrs:{width:15,height:15,"stroke-width":1.7}}); } });</script>
+
+</body></html>
