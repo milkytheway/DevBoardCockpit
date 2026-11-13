@@ -206,4 +206,23 @@ describe('卡片注册表', () => {
       cleanup();
     }
   });
+
+  it('**实例 → 卡片**能反查（协议处理器靠它找到卡片目录）', () => {
+    const { roots, cleanup } = tempRoots();
+    try {
+      makeCard(roots[1].dir, 'cpu-usage');
+      const registry = new CardRegistry({ roots, ...deps() });
+      registry.refresh();
+
+      const { instanceId } = registry.instanceFor('cpu-usage', 'board-adb');
+      expect(registry.cardOfInstance(instanceId)).toBe('cpu-usage');
+      expect(registry.dirOfInstance(instanceId)).toBe(join(roots[1].dir, 'cpu-usage'));
+      expect(registry.entryOfInstance(instanceId)).toBe('index.html');
+      // 没登记过的实例 → null（不猜）
+      expect(registry.cardOfInstance('nope')).toBeNull();
+      expect(registry.dirOfInstance('nope')).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
 });
