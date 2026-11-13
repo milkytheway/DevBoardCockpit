@@ -125,14 +125,18 @@ export class TerminalManager {
     }
     // **终端模式由 profile 决定**，不是由传输名决定。
     //
-    // `connection.capabilities().pty` 是**传输的常量**（serial=true / adb=false / …），
-    // 看都不看 profile。而 UI 侧的 `connections:list` 用的是 profile 感知的
-    // `capabilitiesFor(profile)` —— **两个能力位来源互相矛盾**：
-    // 用户把 profile 的 `pty` 改成 false，UI 报 false、运行时仍按 true 走，
+    // 这里曾经有个**两个能力位来源互相矛盾**的 bug：
+    // `connection.capabilities().pty` 报的是**传输的常量**（serial=true / adb=false / …），
+    // 看都不看 profile；而 UI 侧的 `connections:list` 用的是 profile 感知的
+    // `capabilitiesFor(profile)`。用户把 profile 的 `pty` 改成 false，
+    // UI 报 false、运行时仍按 true 走，
     // 于是宿主不做行编辑也不回显，用户打的字一个都看不见，
     // 回车原样发成 `\r`，远端永远等不到行尾。
     //
-    // 所以这里必须用**同一个**函数。
+    // **当时的绕法**：这里直接调 `capabilitiesFor(profile)`，绕开连接对象。
+    // **2026-11-13 的修法**：连接对象自己也调 `capabilitiesFor(profile)`
+    // （`Connection.capabilities()` 不再报传输常量），
+    // **矛盾本身没了**，这里仍然调同一个函数是为了让「唯一实现」名副其实。
     const pty = capabilitiesFor(profile).pty;
 
     // 开场事件行。格式与黄金样本同构（旧工程也写这几行）

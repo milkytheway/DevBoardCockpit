@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { assertTransferAllowed, TransferService } from '../../src/main/files/transfer';
-import type { Capabilities, Connection } from '../../src/main/hal/connection';
+import type { ConnectionCapabilities, Connection } from '../../src/main/hal/connection';
 
 describe('assertTransferAllowed', () => {
   it('串口不支持文件传输（事实 S7）', () => {
@@ -13,7 +13,7 @@ describe('assertTransferAllowed', () => {
 });
 
 describe('TransferService 的分派', () => {
-  const caps: Capabilities = { exec: true, pty: true, files: true, exitCode: true };
+  const caps: ConnectionCapabilities = { exec: true, pty: true, files: true, exitCode: true };
 
   /** 造一个假连接。`list` / `pull` / `push` 都是连接自己的方法 */
   function fakeConnection(overrides: Partial<Connection> = {}): Connection {

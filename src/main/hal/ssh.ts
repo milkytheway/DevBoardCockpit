@@ -6,7 +6,8 @@ import type { FileEntry } from '../../shared/ipc-contract';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { Session, TIMEOUT_EXIT_CODE } from './session';
-import type { Capabilities, Connection, ExecResult } from './connection';
+import { capabilitiesFor, transportDefaults } from './capabilities';
+import type { ConnectionCapabilities, Connection, ExecResult } from './connection';
 
 /**
  * SSH 传输。
@@ -18,8 +19,8 @@ import type { Capabilities, Connection, ExecResult } from './connection';
  * 所以宿主只转发按键（见 legacy 的两种终端模式）。
  */
 
-export function sshCapabilities(): Capabilities {
-  return { exec: true, pty: true, files: true, exitCode: true };
+export function sshCapabilities(): ConnectionCapabilities {
+  return transportDefaults('ssh');
 }
 
 export interface SshConnectOptions {
@@ -123,7 +124,7 @@ export class SshConnection implements Connection {
   lastError: Error | undefined;
 
   constructor(
-    profile: ConnectionProfile,
+    private readonly profile: ConnectionProfile,
     private readonly log: SessionLog,
     private readonly options: SshConnectionOptions = {},
   ) {
@@ -131,8 +132,9 @@ export class SshConnection implements Connection {
     this.opts = sshArgs(profile);
   }
 
-  capabilities(): Capabilities {
-    return sshCapabilities();
+  capabilities(): ConnectionCapabilities {
+    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    return capabilitiesFor(this.profile);
   }
 
   async open(): Promise<void> {

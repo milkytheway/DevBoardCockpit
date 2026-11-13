@@ -249,6 +249,7 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → {
     ok: true,
     readback: { value, unit, status, at },
+    verified: true,
     audit_id: "...",
   }
 ```
@@ -264,6 +265,27 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
     expected: true, actual: false,
   }
 ```
+
+**`verified` 字段**（2026-11-13 新增，依据 `docs/05` ADR-D25）：
+
+| 值 | 含义 |
+|---|---|
+| `true`（默认） | 动作执行了，**并且回读确认了**板子确实进入了目标状态 |
+| `false` | 动作执行了，**但没有回读**——这个动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5） |
+
+**为什么不是一个 `reason` 码**：`reason` 是**失败**的原因。
+`verified: false` **不是失败**——命令确实执行了、效果也确实有（点 LED 亮了）。
+报 `ok: false` 是**另一种撒谎**；报 `ok: true` 什么都不说又是**把「没验证」藏起来**。
+
+> **`unverified` 不在这张 `reason` 表里，也不在 `01` §2.1.1 的 tag `reason` 表里。**
+> 两张表是两回事：`01` 的 `reason` 是 **tag 读数**的原因码（`not_in_pack` /
+> `device_absent` / …），本节的 `reason` 是**动作执行**的原因码。
+> **`unverified` 不是 tag 状态**——加进去会污染所有 tag 消费者。
+
+**UI 口径（写死）**：`verified: false` → 卡片**必须**显示「**已执行，未验证**」，
+**不得**显示成「已生效」。
+这与 `02` §4.1 已有的那句「命令已发出，未确认生效」是同一件事——
+**驾驶舱不能把没验证的东西显示成生效了。**
 
 **参数**：
 
@@ -285,8 +307,10 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 5. `danger: destructive` 且未获确认 → `needs_confirmation`
 6. `dry_run: true` → 返回将要执行的命令 + 参数，**不执行**
 7. 执行 → 失败则 `failed`（命令非零退出）；串口上不支持依赖退出码的动作则 `unsupported_transport`
-8. 回读 → 不符则 `readback_mismatch`
-9. 写审计日志
+8. 回读 → 不符则 `readback_mismatch`。
+   **若该动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5）→ 跳过回读，
+   返回 `ok: true` + `verified: false`**
+9. 写审计日志（用 `none` 的动作必须在审计里标出「未验证」，`02` §5.4）
 
 **`not_found` 与 `denied` 的顺序**：先查存在性，再查授权。这样一个未授权的调用方能知道
 「这个动作存在」，但**不能知道它会做什么**——动作的 `command` 只在通过授权后才返回。

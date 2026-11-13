@@ -24,7 +24,12 @@ description: RK3588，Buildroot 6.1.141，8 核（Cortex-A55 ×4 + Cortex-A76 ×
 
 requires:
   transports: [adb, serial, ssh]
-  capabilities: [shell, exec, stream, files]
+  # 板级能力（封闭词表，契约 spec/02 §10.3）。
+  #
+  # **不写 `stream`**：Stream 的业务契约还没定（spec/00 §七），
+  # 声明了也给不出来 —— 校验规则 26 把它当**错误**拦下。
+  # 等 Stream 契约落地、规则 26 的「已实现能力集」加上它，再把它加回来。
+  capabilities: [shell, exec, files]
   min_contract: devboard/v1
 
 # 危险地板表的版本（契约 spec/02 §5.2.1）。地板属于契约，不属于包；
@@ -92,8 +97,10 @@ readers:
     kind: rknpu_load
     args:
       # 真正的 NPU 利用率在这里，不是 devfreq 的 load 文件。
-      # /sys/kernel/debug 默认没挂载 —— 缺失时 npu.usage 报 unavailable，
-      # 不能退回去读 devfreq 那个占空比，那会显示 100% 但板子是闲的。
+      # debugfs **本板默认已挂载**（实测 2026-11-13：/proc/mounts 里有 debugfs 行），
+      # 但挂载**不是持久的**——重启后可能丢（取决于板子的 fstab 与 init 脚本）。
+      # 读不到时 npu.usage 报 unavailable，不能退回去读 devfreq 那个占空比，
+      # 那会显示 100% 但板子是闲的。
       path: /sys/kernel/debug/rknpu/load
     provides:
       - tag: npu.usage

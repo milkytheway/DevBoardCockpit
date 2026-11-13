@@ -9,7 +9,8 @@ import { quotePath } from '../util/shell-quote';
 import { parseLsLines } from '../util/ls-output';
 import { Session } from './session';
 import { terminalEnvScript } from './session-env';
-import type { Capabilities, Connection, ExecResult } from './connection';
+import type { ConnectionCapabilities, Connection, ExecResult } from './connection';
+import { capabilitiesFor, transportDefaults } from './capabilities';
 
 /**
  * ADB 传输。
@@ -28,8 +29,8 @@ import type { Capabilities, Connection, ExecResult } from './connection';
  * 机器专属路径只进配置，不进代码（事实清单 §2）。
  */
 
-export function adbCapabilities(): Capabilities {
-  return { exec: true, pty: false, files: true, exitCode: true };
+export function adbCapabilities(): ConnectionCapabilities {
+  return transportDefaults('adb');
 }
 
 /**
@@ -121,8 +122,9 @@ export class AdbConnection implements Connection {
     this.spawnFn = opts.spawn ?? spawn;
   }
 
-  capabilities(): Capabilities {
-    return adbCapabilities();
+  capabilities(): ConnectionCapabilities {
+    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    return capabilitiesFor(this.profile);
   }
 
   /**

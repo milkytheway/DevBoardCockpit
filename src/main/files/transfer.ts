@@ -1,5 +1,5 @@
 import { makeError } from '../../shared/errors';
-import type { Capabilities, Connection, FileEntry } from '../hal/connection';
+import type { ConnectionCapabilities, Connection, FileEntry } from '../hal/connection';
 
 /**
  * 文件互传。
@@ -18,7 +18,7 @@ export interface FileTransfer {
 }
 
 /** 连接不支持文件传输时抛错 */
-export function assertTransferAllowed(caps: Capabilities): void {
+export function assertTransferAllowed(caps: ConnectionCapabilities): void {
   if (!caps.files) {
     throw makeError('FILE_TRANSFER_FAILED', '该连接不支持文件传输');
   }

@@ -72,19 +72,30 @@ export interface ConnectionInfo {
   label: string;
   transport: TransportKind;
   boardPack: string | null;
-  capabilities: Capabilities;
+  capabilities: ConnectionCapabilities;
 }
 
 /** 传输种类。定义在 shared —— main 与 renderer 都要用，不许各抄一份 */
 export type TransportKind = 'serial' | 'adb' | 'ssh' | 'local';
 
 /**
- * 能力位。**UI 依能力降级**，不依传输名。
+ * **连接级能力位**。**UI 依能力降级**，不依传输名。
  *
  * 定义放在 shared 而不是 main/hal——renderer 要用它来决定
  * 「文件浏览器入口要不要禁用」，但 renderer 不能 import main。
+ *
+ * ── 为什么叫「连接级」而不是「能力」 ──
+ *
+ * 契约层（`docs/spec/02` §10.3）另有一套**板级能力**词表
+ * （`shell` / `exec` / `stream` / `files`）。**那不是同一个轴**：
+ * 板级说「这块板能做什么」，连接级说「**这条连接**能做什么」。
+ * 串口传不了文件（事实 S7）但**板子**当然有文件通道——
+ * 同一个词，两个意思。
+ *
+ * 所以这里**必须**叫 `ConnectionCapabilities`：**名字撞车会让两套词混成一套**
+ * （`docs/05` ADR-D24）。板级↔连接级的对照表见 `docs/spec/02` §10.3.2。
  */
-export interface Capabilities {
+export interface ConnectionCapabilities {
   /** 能跑一条命令拿结果 */
   exec: boolean;
   /** 能开交互式终端（真 pty，有回显与 ANSI） */

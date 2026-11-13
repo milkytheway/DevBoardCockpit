@@ -7,6 +7,30 @@ describe('sshCapabilities', () => {
   });
 });
 
+describe('Connection.capabilities() 报的是哪一份能力位', () => {
+  it('是 profile 感知的，不是传输常量', () => {
+    // **曾经这里报的是传输常量**（ssh → pty 永远 true），
+    // 而 UI 侧的 `connections:list` 报的是 profile 感知的 `capabilitiesFor(profile)`
+    // ——**两个来源互相矛盾**：用户把 profile 的 pty 改成 false，
+    // UI 报 false、连接对象报 true。
+    // `terminal/manager.ts` 早就发现了这个矛盾（它绕过连接对象、直接调
+    // `capabilitiesFor`），但矛盾本身没被消掉——现在连接对象也调同一个函数。
+    const conn = new SshConnection(
+      { id: 's', label: 's', transport: 'ssh', options: { host: 'h', port: 22, pty: false } },
+      fakeLog,
+    );
+    expect(conn.capabilities().pty).toBe(false);
+  });
+
+  it('profile 没写 pty 时就是传输默认值', () => {
+    const conn = new SshConnection(
+      { id: 's', label: 's', transport: 'ssh', options: { host: 'h', port: 22 } },
+      fakeLog,
+    );
+    expect(conn.capabilities()).toEqual({ exec: true, pty: true, files: true, exitCode: true });
+  });
+});
+
 describe('sshArgs', () => {
   it('拼出 host / port / username', () => {
     const args = sshArgs({

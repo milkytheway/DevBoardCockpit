@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { Capabilities } from '../../shared/ipc-contract';
+import type { ConnectionCapabilities } from '../../shared/ipc-contract';
 
 /**
  * 双树文件浏览器。
@@ -33,7 +33,7 @@ export interface RemoteEntry {
 
 export interface FileBrowserProps {
   connectionId: string;
-  capabilities: Capabilities;
+  capabilities: ConnectionCapabilities;
   /** 上传：本地文件 → 远端目录 */
   onPush: (file: File, remotePath: string) => void;
   /** 下载：远端 → 本地 */

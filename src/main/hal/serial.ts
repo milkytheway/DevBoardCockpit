@@ -4,7 +4,8 @@ import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { buildMarker, extractMarkerOutput, Session, TIMEOUT_EXIT_CODE } from './session';
-import type { Capabilities, Connection, ExecResult, FileEntry } from './connection';
+import { capabilitiesFor, transportDefaults } from './capabilities';
+import type { ConnectionCapabilities, Connection, ExecResult, FileEntry } from './connection';
 
 /**
  * 串口传输。
@@ -31,8 +32,8 @@ import type { Capabilities, Connection, ExecResult, FileEntry } from './connecti
  * 计划的能力表把串口写成 `pty: false`，与这三条冲突，是计划错了。
  * 串口传不了文件（事实 S7）、拿不到退出码（事实 S5）——这两条不变。
  */
-export function serialCapabilities(): Capabilities {
-  return { exec: true, pty: true, files: false, exitCode: false };
+export function serialCapabilities(): ConnectionCapabilities {
+  return transportDefaults('serial');
 }
 
 /**
@@ -143,8 +144,9 @@ export class SerialConnection implements Connection {
     this.id = profile.id;
   }
 
-  capabilities(): Capabilities {
-    return serialCapabilities();
+  capabilities(): ConnectionCapabilities {
+    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    return capabilitiesFor(this.profile);
   }
 
   async open(): Promise<void> {

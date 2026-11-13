@@ -1,4 +1,4 @@
-import type { Capabilities } from '../../shared/ipc-contract';
+import type { ConnectionCapabilities } from '../../shared/ipc-contract';
 import type { ConnectionProfile } from '../profiles/schema';
 
 /**
@@ -30,14 +30,35 @@ const TRANSPORT_DEFAULTS: Record<
   local: { exec: true, files: true, exitCode: true, pty: true },
 };
 
-/** 算一个 profile 的能力位 */
-export function capabilitiesFor(profile: ConnectionProfile): Capabilities {
-  const defaults = TRANSPORT_DEFAULTS[profile.transport];
+/**
+ * 某个传输的**默认**能力位（**不看 profile**）。
+ *
+ * **这张表是能力位的唯一事实源。**
+ * 以前每个 HAL 模块（adb/local/serial/ssh）**各抄了一份字面量**，
+ * 于是同一件事有两个地方能改——改一处不改另一处，两处就对不上。
+ * 现在这些模块的 `xxxCapabilities()` 全部转调这里。
+ *
+ * **它不是「这条连接的能力位」**——那是 `capabilitiesFor(profile)`，
+ * 它会看 profile 的 `options.pty`。
+ */
+export function transportDefaults(
+  transport: ConnectionProfile['transport'],
+): ConnectionCapabilities {
+  const d = TRANSPORT_DEFAULTS[transport];
+  return { exec: d.exec, files: d.files, exitCode: d.exitCode, pty: d.pty };
+}
+
+/**
+ * 算一个 profile 的能力位。
+ *
+ * **这是「一条连接的能力位」的唯一实现**——UI 的降级判断与运行时的
+ * 模式选择都调它，不允许有第二个算法。
+ */
+export function capabilitiesFor(profile: ConnectionProfile): ConnectionCapabilities {
+  const defaults = transportDefaults(profile.transport);
   const explicit = profile.options['pty'];
   return {
-    exec: defaults.exec,
-    files: defaults.files,
-    exitCode: defaults.exitCode,
+    ...defaults,
     pty: typeof explicit === 'boolean' ? explicit : defaults.pty,
   };
 }

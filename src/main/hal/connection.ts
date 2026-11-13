@@ -18,8 +18,8 @@ import type { TransportKind } from '../../shared/ipc-contract';
  * 定义在 `shared/ipc-contract.ts`——renderer 也要用它决定
  * 「文件浏览器入口要不要禁用」，而 renderer 不能 import main。
  */
-export type { Capabilities, FileEntry } from '../../shared/ipc-contract';
-import type { Capabilities, FileEntry } from '../../shared/ipc-contract';
+export type { ConnectionCapabilities, FileEntry } from '../../shared/ipc-contract';
+import type { ConnectionCapabilities, FileEntry } from '../../shared/ipc-contract';
 
 export interface ExecResult {
   /** null = 拿不到（串口）。超时一律是 124 */
@@ -33,7 +33,7 @@ export interface ExecResult {
 export interface Connection {
   readonly id: string;
   readonly transport: TransportKind;
-  capabilities(): Capabilities;
+  capabilities(): ConnectionCapabilities;
   open(): Promise<void>;
   close(): Promise<void>;
   exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult>;

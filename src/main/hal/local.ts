@@ -6,7 +6,8 @@ import type { ConnectionProfile } from '../profiles/schema';
 import { runProcess } from '../util/spawn';
 import { Session } from './session';
 import { createLocalPtySession } from '../terminal/pty';
-import type { Capabilities, Connection, ExecResult, FileEntry } from './connection';
+import { capabilitiesFor, transportDefaults } from './capabilities';
+import type { ConnectionCapabilities, Connection, ExecResult, FileEntry } from './connection';
 
 /**
  * 本机传输。
@@ -16,8 +17,8 @@ import type { Capabilities, Connection, ExecResult, FileEntry } from './connecti
  * 有了它，终端与文件互传的代码路径在本机就能测，不必接真板。
  */
 
-export function localCapabilities(): Capabilities {
-  return { exec: true, pty: true, files: true, exitCode: true };
+export function localCapabilities(): ConnectionCapabilities {
+  return transportDefaults('local');
 }
 
 export interface LocalConnectionOptions {
@@ -33,7 +34,7 @@ export class LocalConnection implements Connection {
   private opened = false;
 
   constructor(
-    profile: ConnectionProfile,
+    private readonly profile: ConnectionProfile,
     private readonly log: SessionLog,
     opts: LocalConnectionOptions = {},
   ) {
@@ -41,8 +42,9 @@ export class LocalConnection implements Connection {
     this.runner = opts.runner ?? runProcess;
   }
 
-  capabilities(): Capabilities {
-    return localCapabilities();
+  capabilities(): ConnectionCapabilities {
+    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    return capabilitiesFor(this.profile);
   }
 
   async open(): Promise<void> {
