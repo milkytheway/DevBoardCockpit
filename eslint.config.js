@@ -29,7 +29,15 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-      globals: { console: 'readonly', process: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly' },
+      // Node 22 的全局：fetch 与 WebSocket 都是内建的
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        fetch: 'readonly',
+        WebSocket: 'readonly',
+      },
     },
   },
 ];
