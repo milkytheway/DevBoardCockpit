@@ -32,7 +32,7 @@ const fakeConn = (caps: { pty: boolean }) => {
 const mgrWith = (conn: unknown) => new TerminalManager({
   listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
   createConnection: () => conn as never,
-  createLog: () => ({ write: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+  createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
 });
 
 describe('TerminalManager', () => {
@@ -141,7 +141,7 @@ describe('TerminalManager 的 pipe 模式提示符', () => {
         { id: 'p1', label: 'p1', transport: 'adb', options: { prompt: 'root@board$ ' } },
       ],
       createConnection: () => conn as never,
-      createLog: () => ({ write: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+      createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
     });
     const seen: string[] = [];
     mgr.onData((_id, chunk) => seen.push(chunk));
@@ -156,7 +156,7 @@ describe('TerminalManager 的 pipe 模式提示符', () => {
         { id: 'p1', label: 'p1', transport: 'ssh', options: { prompt: 'root@board$ ' } },
       ],
       createConnection: () => conn as never,
-      createLog: () => ({ write: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+      createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
     });
     const seen: string[] = [];
     mgr.onData((_id, chunk) => seen.push(chunk));

@@ -165,7 +165,11 @@ const MUTATIONS = [
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
     expect: 'LF',
     apply: (s) =>
-      replace(s, '          toRemote += `${this.line}\\n`;', '          toRemote += this.line;'),
+      replace(
+        s,
+        '          toRemote += `${this.editor.commit()}\\n`;',
+        '          toRemote += this.editor.commit();',
+      ),
   },
   {
     name: 'M10 上传要传绝对路径',
@@ -185,6 +189,50 @@ const MUTATIONS = [
         '      if (this.execBuffer !== undefined) this.execBuffer += chunk;',
         '      if (this.execBuffer !== undefined) this.execBuffer = (this.execBuffer + chunk).slice(-1024);',
       ),
+  },
+  {
+    name: 'M13 日志逐行加时间戳',
+    file: 'src/main/logging/session-log.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/session-log-format.test.ts'],
+    expect: '实现能把样本喂进去',
+    apply: (s) =>
+      replace(
+        s,
+        "    for (const raw of text.replace(/\\n+$/, '').split('\\n')) {",
+        "    for (const raw of [text]) {",
+      ),
+  },
+  {
+    name: 'M14 ANSI 要剥干净（含隐藏光标与 OSC）',
+    file: 'src/main/logging/session-log.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/session-log-format.test.ts'],
+    expect: '剥掉 ESC[?25l',
+    apply: (s) =>
+      replace(
+        s,
+        '  const CSI = /\\x1b\\[[0-9;?]*[ -/]*[@-~]/g;',
+        '  const CSI = /\\x1b\\[[0-9;]*[A-Za-z]/g;',
+      ),
+  },
+  {
+    name: 'M15 pipe 模式的历史要能回来',
+    file: 'src/main/terminal/line-editor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
+    expect: '历史能回来',
+    apply: (s) =>
+      replace(
+        s,
+        '  historyPrev(): void {\n    if (this.history.length === 0) return;',
+        '  historyPrev(): void {\n    if (true) return;\n    if (this.history.length === 0) return;',
+      ),
+  },
+  {
+    name: 'M16 pipe 模式的 kill ring 要能贴回来',
+    file: 'src/main/terminal/line-editor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
+    expect: 'kill ring 能贴回来',
+    apply: (s) =>
+      replace(s, '    if (this.killed) this.insert(this.killed);', '    // 变异：不贴回来'),
   },
   {
     name: 'M12 能力位由 profile 决定',

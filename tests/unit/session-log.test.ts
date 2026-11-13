@@ -22,12 +22,14 @@ describe('logFileName', () => {
 
 describe('SessionLog', () => {
   it('每行落盘、带时间戳前缀、剥掉 ANSI', () => {
-    const log = new SessionLog({ label: 't', dataDir: dir, now: () => new Date(2026, 10, 12, 9, 5, 3) });
+    const log = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: () => new Date(2026, 10, 12, 9, 5, 3) });
     log.write('\u001b[31mhello\u001b[0m');
     log.write('world');
     log.close();
     const content = readFileSync(log.filePath, 'utf8');
-    expect(content.split('\n').filter(Boolean)).toHaveLength(2);
+    const lines = content.split('\n').filter(Boolean);
+    // 开场行 + 两行正文 + 收尾行（与黄金样本同构）
+    expect(lines).toHaveLength(4);
     expect(content).not.toContain('\u001b[');
     expect(content).toContain('hello');
     expect(content).toContain('world');

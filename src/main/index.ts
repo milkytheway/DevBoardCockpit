@@ -57,7 +57,7 @@ const transfer = new TransferService({
 const terminal = new TerminalManager({
   listProfiles,
   createConnection: createConnectionFor,
-  createLog: (label) => new SessionLog({ label, dataDir: userDataDir() }),
+  createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
   // 连接建好后登记一份，文件互传模块靠它按 id 找连接
   onConnectionOpen: (sessionId, connection) => connections.set(sessionId, connection),
   onConnectionClose: (sessionId) => connections.delete(sessionId),
