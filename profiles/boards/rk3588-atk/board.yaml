@@ -10,9 +10,10 @@
 #   2. thermal_zone5 是某个具体板的索引，不能硬编码。所以用 glob 遍历 +
 #      type 文件归并。
 #
-# 验证：`npm run validate:profiles` 与 `npm run probe:board`——
-# **这两条属于计划 2（M3/M4），现在还不存在**，别照抄一个不存在的命令。
-# （详见本目录的 README.md）
+# 验证：`npm run validate:profiles`（校验这个包）与
+# `npm run probe:board -- --profile board-adb`（对着真板子探一遍）。
+# **这两条属于计划 2（M3/M4），2026-11-13 已实现**——
+# 但真机验收（探针全绿）**还没跑过**，见 docs/06 的 C12。
 
 apiVersion: devboard/v1
 kind: BoardPack

@@ -30,7 +30,7 @@ import { createConnection } from '../src/main/hal/registry';
 import { SessionLog } from '../src/main/logging/session-log';
 import { loadBoardPack } from '../src/main/tags/pack';
 import { validatePack, errorsOf, warningsOf } from '../src/main/tags/validator';
-import { probePack, type ProbeReaderReport } from '../src/main/tags/probe';
+import { probePack, resolvePackDir, describeRequires, type ProbeReaderReport } from '../src/main/tags/probe';
 
 const REPO = process.cwd();
 
@@ -77,7 +77,8 @@ async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
 
   // ── 1. 先校验 ──
-  const packDir = args.pack ?? join(REPO, 'profiles/boards/rk3588-atk');
+  // `--pack` **包 id 也认**（文档里写的就是 id）
+  const packDir = resolvePackDir(args.pack, join(REPO, 'profiles/boards'));
   const pack = loadBoardPack(packDir);
   const issues = validatePack(pack);
   for (const w of warningsOf(issues)) {
@@ -107,6 +108,8 @@ async function main(): Promise<number> {
   }
 
   console.log(`=== ${pack.id} （连接：${profile.id} · ${profile.transport}）===`);
+  // `requires.capabilities` 在 v1 唯一的消费者（docs/06 C9 承诺的「包描述查询」）
+  console.log(describeRequires(pack));
 
   // ── 3. 连上 ──
   const settings = loadSettings(join(REPO, 'profiles/settings.json'));

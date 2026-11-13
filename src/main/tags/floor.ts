@@ -123,12 +123,27 @@ export function normalizePath(path: string): string {
   return absolute ? `/${joined}` : joined;
 }
 
+/**
+ * 词元的**basename**（`/sbin/reboot` → `reboot`）。
+ *
+ * 契约 §5.2.1 写的是「词元相等」——但真实的调用几乎都带绝对路径
+ * （`/sbin/reboot`、`/usr/sbin/shutdown`），
+ * **只按字面实现，地板在真实写法上是空的**。
+ * 这条差异记在 `docs/06` C13，由用户拍板。
+ */
+function baseName(token: string): string {
+  const parts = token.split('/');
+  return parts[parts.length - 1] ?? token;
+}
+
 /** 词元与模式的匹配：相等，或模式带 `*` 的前缀匹配 */
 function matchesPattern(token: string, pattern: string): boolean {
   if (pattern.endsWith('*')) {
     return token.startsWith(pattern.slice(0, -1));
   }
-  return token === pattern;
+  if (token === pattern) return true;
+  // **basename 也算**（`/sbin/reboot` → `reboot`）
+  return baseName(token) === pattern;
 }
 
 function isBlockDevice(path: string): boolean {
@@ -142,7 +157,7 @@ function isBlockDevice(path: string): boolean {
  * 目标参数是 `of=` 的值，或**紧随其后**的非选项参数（§5.2.1）。
  */
 function matchDd(tokens: string[]): FloorMatch | null {
-  if (tokens[0] !== 'dd') return null;
+  if (baseName(tokens[0] ?? '') !== 'dd') return null;
   let target: string | undefined;
   for (let i = 1; i < tokens.length; i += 1) {
     const t = tokens[i];
@@ -168,7 +183,7 @@ function matchDd(tokens: string[]): FloorMatch | null {
  * 它们表达的是同一件事。
  */
 function matchRmRoot(tokens: string[]): FloorMatch | null {
-  if (tokens[0] !== 'rm') return null;
+  if (baseName(tokens[0] ?? '') !== 'rm') return null;
   const flags = tokens
     .slice(1)
     .filter((t) => t.startsWith('-') && !t.includes('='))
@@ -176,7 +191,9 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
   if (!flags.includes('r') || !flags.includes('f')) return null;
   for (const t of tokens.slice(1)) {
     if (t.startsWith('-')) continue;
-    if (normalizePath(t) === '/') {
+    const p = normalizePath(t);
+    // `/*` 展开后就是根目录下的全部条目——**等价于 `/`**
+    if (p === '/' || p === '/*') {
       return { matched: true, pattern: 'rm -rf /', why: '删根' };
     }
   }
@@ -185,10 +202,10 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
 
 /** `iptables -F` / `nft flush ruleset` —— 清空防火墙规则 */
 function matchFirewall(tokens: string[]): FloorMatch | null {
-  if (tokens[0] === 'iptables' && tokens.slice(1).includes('-F')) {
+  if (baseName(tokens[0] ?? '') === 'iptables' && tokens.slice(1).includes('-F')) {
     return { matched: true, pattern: 'iptables -F', why: '清空防火墙规则' };
   }
-  if (tokens[0] === 'nft' && tokens[1] === 'flush' && tokens[2] === 'ruleset') {
+  if (baseName(tokens[0] ?? '') === 'nft' && tokens[1] === 'flush' && tokens[2] === 'ruleset') {
     return { matched: true, pattern: 'nft flush ruleset', why: '清空防火墙规则' };
   }
   return null;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { judgeReader } from '../../src/main/tags/probe';
+import { judgeReader, resolvePackDir, describeRequires } from '../../src/main/tags/probe';
 import type { TagReading } from '../../src/shared/tag-reading';
 
 /**
@@ -86,5 +86,45 @@ describe('judgeReader · 一个 reader 绿的条件', () => {
     const report = judgeReader(exp, [reading('cpu.usage'), reading('cpu.core.0.usage')]);
     expect(report.readerId).toBe('cpu');
     expect(report.kind).toBe('proc_stat');
+  });
+});
+
+describe('resolvePackDir · --pack 认包 id 也认目录路径', () => {
+  const BOARDS = '/repo/profiles/boards';
+
+  it('**包 id** → profiles/boards/<id>', () => {
+    // 文档（docs/04 §12、包的 README）写的是 `--pack rk3588-atk`（包 id），
+    // 实现只认目录路径 → **文档里那条命令跑不起来**。
+    expect(resolvePackDir('rk3588-atk', BOARDS)).toBe('/repo/profiles/boards/rk3588-atk');
+  });
+
+  it('**目录路径**原样用', () => {
+    expect(resolvePackDir('/other/place/rk3588-atk', BOARDS)).toBe('/other/place/rk3588-atk');
+    expect(resolvePackDir('profiles/boards/rk3588-atk', BOARDS)).toBe('profiles/boards/rk3588-atk');
+  });
+
+  it('不给就用默认包', () => {
+    expect(resolvePackDir(undefined, BOARDS)).toBe('/repo/profiles/boards/rk3588-atk');
+  });
+});
+
+describe('describeRequires · 探针要报出这个字段（docs/06 C9 承诺的消费者）', () => {
+  it('把 capabilities 与 transports 都报出来', () => {
+    const line = describeRequires({
+      apiVersion: 'devboard/v1',
+      kind: 'BoardPack',
+      id: 'tiny',
+      name: 'x',
+      version: '1.0.0',
+      requires: { transports: ['adb', 'serial'], capabilities: ['shell', 'exec'] },
+      poll_groups: [],
+      readers: [],
+      custom: [],
+      actions: [],
+    });
+    expect(line).toContain('capabilities');
+    expect(line).toContain('shell');
+    expect(line).toContain('transports');
+    expect(line).toContain('adb');
   });
 });

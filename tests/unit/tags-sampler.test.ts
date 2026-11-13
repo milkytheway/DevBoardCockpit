@@ -265,6 +265,42 @@ describe('采样器', () => {
     expect(store.get('gpu.usage')).toBeUndefined();
   });
 
+  it('**script 没有远端路径** → 如实报「没推上去」，不生成注定失败的命令', async () => {
+    // 脚本住在宿主上，要先推到板子的 /tmp 才跑得起来（契约 §3.3）。
+    // 运行时还没推 → **不生成那条注定失败的命令**。
+    const pack: BoardPack = {
+      ...PACK,
+      poll_groups: [
+        { id: 'fast', interval_ms: 1000, readers: ['cpu', 'gpu'] },
+        { id: 'slow', interval_ms: 2000, readers: ['mem', 'pipe'] },
+      ],
+      custom: [
+        {
+          id: 'mem',
+          kind: 'meminfo',
+          args: { path: '/proc/meminfo' },
+          provides: [{ tag: 'mem.total_bytes', sample: 'total_bytes' }],
+        },
+        {
+          id: 'pipe',
+          kind: 'script',
+          args: { path: 'scripts/pipeline_status.sh', interpreter: '/bin/sh' },
+          provides: [{ tag: 'custom.tiny.fps', sample: 'fps' }],
+        },
+      ],
+    };
+    const store = new TagStore();
+    const conn = new FakeConnection();
+    const sampler = new TagSampler(pack, conn, store);
+
+    await sampler.sampleGroup('slow');
+
+    expect(store.get('custom.tiny.fps')!.status).toBe('unavailable');
+    expect(store.get('custom.tiny.fps')!.detail).toContain('remote_path');
+    // **命令里不该有那条注定失败的脚本调用**
+    expect(conn.commands.join('\n')).not.toContain('pipeline_status.sh');
+  });
+
   it('不认识的组**报错**，不是静默什么都不做', async () => {
     const sampler = new TagSampler(PACK, new FakeConnection(), new TagStore());
     await expect(sampler.sampleGroup('nosuch')).rejects.toThrow(/nosuch/);

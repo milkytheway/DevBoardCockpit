@@ -102,19 +102,35 @@ export function buildGroupCommand(readers: GroupReaderPlan[]): GroupCommand {
   return { command: parts.join('; '), markers };
 }
 
+/** 切出来的一段 */
+export interface SplitSection {
+  /** 收到的原文 */
+  text: string;
+  /**
+   * 这一段**完整吗**（开始与结束标记都到了）。
+   *
+   * **不完整 = 板子只回了一半**——这段数据**不能当成完整数据发布**
+   * （契约 §2.1.1：「读出来了但值坏了」是 `error`）。
+   */
+  complete: boolean;
+}
+
 /**
  * 把一次往返的输出按 marker 切成每个 reader 的一段。
  *
- * @returns readerId → 该 reader 的原始文本。
+ * @returns readerId → 那一段。
  *   **`null` = marker 没出现**（这一段没跑起来）；
- *   **`''` = marker 出现了但中间没内容**（跑起来了，确实没输出）。
- *   这两件事**必须分得开**——前者是「没读到」，后者是「读到了，是空的」。
+ *   **`complete: false` = 有开始没结束**（板子只回了一半）。
+ *   这两件事**必须分得开**——前者是「没读到」，后者是「读到了一半」。
  */
-export function splitSections(output: string, markers: ReaderMarkers[]): Map<string, string | null> {
-  const out = new Map<string, string | null>();
+export function splitSections(
+  output: string,
+  markers: ReaderMarkers[],
+): Map<string, SplitSection | null> {
+  const out = new Map<string, SplitSection | null>();
   let pos = 0;
 
-  for (const m of markers) {
+  for (const [i, m] of markers.entries()) {
     const start = output.indexOf(m.start, pos);
     if (start < 0) {
       // 这一段没跑起来。**pos 不动**——后面那几段照样切得出来。
@@ -124,16 +140,25 @@ export function splitSections(output: string, markers: ReaderMarkers[]): Map<str
 
     const bodyStart = start + m.start.length;
     const end = output.indexOf(m.end, bodyStart);
-    if (end < 0) {
-      // 有开始没有结束：这一段被截断了（板子只回了一半）。
-      // 宁可给到截断处，也不要把下一段的数据算成它的。
-      out.set(m.readerId, output.slice(bodyStart).trim());
-      pos = output.length;
+    if (end >= 0) {
+      out.set(m.readerId, { text: output.slice(bodyStart, end).trim(), complete: true });
+      pos = end + m.end.length;
       continue;
     }
 
-    out.set(m.readerId, output.slice(bodyStart, end).trim());
-    pos = end + m.end.length;
+    // **有开始、没有结束**：这一段被截断了（板子只回了一半）。
+    //
+    // 切到**下一个 reader 的开始标记**为止——
+    // **不切的话，这一段会把后面 reader 的数据全吞进来**，
+    // 而后面那几段反而报「没读到」：**数据被算到了别的 reader 名下**。
+    //
+    // 但它**标记为不完整**——调用方不许把半截数据当成完整数据发布
+    // （契约 §2.1.1：截断的值是「坏了」，报 `error`，不是 `ok`）。
+    const next = markers[i + 1];
+    const boundary = next === undefined ? -1 : output.indexOf(next.start, bodyStart);
+    const text = boundary >= 0 ? output.slice(bodyStart, boundary) : output.slice(bodyStart);
+    out.set(m.readerId, { text: text.trim(), complete: false });
+    pos = boundary >= 0 ? boundary : bodyStart;
   }
 
   return out;

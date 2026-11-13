@@ -468,6 +468,28 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
+  it('**绝对路径也命中**（/sbin/reboot）', () => {
+    // 契约 §5.2.1 写的是「词元相等」，但真实的调用几乎都带绝对路径——
+    // 只按字面实现，地板在真实写法上是空的。
+    const pack = addAction(basePack(), {
+      id: 'a',
+      danger: 'reversible',
+      command: '/sbin/reboot',
+      readback: tagReadback('cpu.usage'),
+    });
+    expectOnlyRule(pack, 16);
+  });
+
+  it('**rm -rf /* 也命中**（glob 展开后就是根目录）', () => {
+    const pack = addAction(basePack(), {
+      id: 'a',
+      danger: 'reversible',
+      command: 'rm -rf /*',
+      readback: tagReadback('cpu.usage'),
+    });
+    expectOnlyRule(pack, 16);
+  });
+
   it('upgrade_status.sh **不**命中 upgrade（词元相等）', () => {
     const pack = addAction(basePack(), {
       id: 'a',
@@ -669,6 +691,19 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
       readback: { kind: 'none', consequence: '点亮板载 LED 约 1 秒' },
     });
     expect(errors(validatePack(pack))).toEqual([]);
+  });
+
+  it('**用 none 的动作要逐个记一条 warning**（ADR-D25 决策 6）', () => {
+    // 「这个可见性就是主要防线」——没有 warning，这道防线就没装。
+    const pack = addAction(basePack(), {
+      id: 'a',
+      danger: 'reversible',
+      command: 'echo 1',
+      readback: { kind: 'none', consequence: '点亮板载 LED 约 1 秒' },
+    });
+    const issues = validatePack(pack);
+    const warns = issues.filter((i) => i.severity === 'warning');
+    expect(warns.some((w) => w.rule === 27)).toBe(true);
   });
 });
 

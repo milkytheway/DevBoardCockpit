@@ -30,6 +30,8 @@ export const SCRIPT: ReaderKind = {
   },
   samples: ['value'],
   unboundedSamples: true,
+  // 取数要用**运行时推到板子上的**远端路径（契约 §3.3）
+  needsRemotePath: true,
   fetch(args) {
     // 远端路径（推上去之后）优先；没有就退回宿主路径——
     // 退回总比什么都不做要好（真机验收时它至少能看出「脚本没推上去」）。

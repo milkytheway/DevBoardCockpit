@@ -108,17 +108,17 @@ describe('splitSections · 按 marker 分段', () => {
     const group = buildGroupCommand(readers);
     const output = outputOf(group, ['STAT', 'GPU', 'NPU']);
     const sections = splitSections(output, group.markers);
-    expect(sections.get('cpu')).toBe('STAT');
-    expect(sections.get('gpu')).toBe('GPU');
-    expect(sections.get('npu')).toBe('NPU');
+    expect(sections.get('cpu')).toEqual({ text: 'STAT', complete: true });
+    expect(sections.get('gpu')).toEqual({ text: 'GPU', complete: true });
+    expect(sections.get('npu')).toEqual({ text: 'NPU', complete: true });
   });
 
   it('空 section 是**空串**，不是 null（null 是「marker 没出现」）', () => {
     const group = buildGroupCommand(readers);
     const output = outputOf(group, ['STAT', '', 'NPU']);
     const sections = splitSections(output, group.markers);
-    expect(sections.get('gpu')).toBe('');
-    expect(sections.get('cpu')).toBe('STAT');
+    expect(sections.get('gpu')).toEqual({ text: '', complete: true });
+    expect(sections.get('cpu')?.text).toBe('STAT');
   });
 
   it('marker 没出现 → null（这一段没跑起来）', () => {
@@ -126,9 +126,9 @@ describe('splitSections · 按 marker 分段', () => {
     const output = outputOf(group, ['STAT', null, 'NPU']);
     const sections = splitSections(output, group.markers);
     expect(sections.get('gpu')).toBeNull();
-    expect(sections.get('cpu')).toBe('STAT');
+    expect(sections.get('cpu')?.text).toBe('STAT');
     // 缺的**不是**最后一个时，后面的照样切得出来
-    expect(sections.get('npu')).toBe('NPU');
+    expect(sections.get('npu')?.text).toBe('NPU');
   });
 
   it('输出里一个字都没有 → 全是 null', () => {
@@ -139,16 +139,60 @@ describe('splitSections · 按 marker 分段', () => {
     }
   });
 
+  it('**有 start 没有 end** → 不吞掉后面 reader 的数据，且标记为不完整', () => {
+    // 「板子只回了一半」：中间那段的结束标记没到。
+    // **旧行为**：这一段一直取到输出末尾 → 把后面 reader 的数据全吞进来，
+    // 而后面那几段反而报「没读到」——**数据被算到了别的 reader 名下**。
+    const group = buildGroupCommand(readers);
+    const [cpu, gpu, npu] = group.markers;
+    const output = [
+      cpu!.start,
+      'STAT',
+      gpu!.start,
+      'GPU',
+      gpu!.end,
+      npu!.start,
+      'NPU',
+      npu!.end,
+    ].join('\n');
+    const sections = splitSections(output, group.markers);
+    // cpu 拿到了**自己的**那段（不含 gpu 的数据），但**标记为不完整**
+    expect(sections.get('cpu')?.text).toBe('STAT');
+    expect(sections.get('cpu')?.complete).toBe(false);
+    // 后面那几段**照样**切得出来
+    expect(sections.get('gpu')?.text).toBe('GPU');
+    expect(sections.get('npu')?.text).toBe('NPU');
+  });
+
+  it('**最后一段被截断** → 标记为不完整', () => {
+    const group = buildGroupCommand(readers);
+    const [cpu, gpu, npu] = group.markers;
+    const output = [
+      cpu!.start,
+      'STAT',
+      cpu!.end,
+      gpu!.start,
+      'GPU',
+      gpu!.end,
+      npu!.start,
+      'NPU',
+    ].join('\n');
+    const sections = splitSections(output, group.markers);
+    expect(sections.get('npu')?.text).toBe('NPU');
+    expect(sections.get('npu')?.complete).toBe(false);
+    expect(sections.get('gpu')?.complete).toBe(true);
+  });
+
   it('**上一段的输出里含下一段的开始标记，也不切错**（RF-4）', () => {
     const group = buildGroupCommand(readers);
     const stray = group.markers[1]!.start;
     const output = outputOf(group, [`STAT${stray}GHOST`, 'GPU', 'NPU']);
     const sections = splitSections(output, group.markers);
     // cpu 拿到的是**它自己的完整内容**（含那个幽灵标记）
-    expect(sections.get('cpu')).toBe(`STAT${stray}GHOST`);
+    expect(sections.get('cpu')?.text).toBe(`STAT${stray}GHOST`);
     // gpu 拿到的还是它自己的那段——**没有混进 cpu 的数据**
-    expect(sections.get('gpu')).toBe('GPU');
-    expect(sections.get('npu')).toBe('NPU');
+    expect(sections.get('gpu')?.text).toBe('GPU');
+    expect(sections.get('npu')?.text).toBe('NPU');
   });
 
   it('最后一段没有换行结尾也切得出来', () => {
@@ -156,8 +200,8 @@ describe('splitSections · 按 marker 分段', () => {
     const m = group.markers;
     const output = `${m[0]!.start}\nA\n${m[0]!.end}\n${m[1]!.start}\nB\n${m[1]!.end}`;
     const sections = splitSections(output, group.markers);
-    expect(sections.get('cpu')).toBe('A');
-    expect(sections.get('gpu')).toBe('B');
+    expect(sections.get('cpu')?.text).toBe('A');
+    expect(sections.get('gpu')?.text).toBe('B');
     expect(sections.get('npu')).toBeNull();
   });
 
@@ -168,7 +212,7 @@ describe('splitSections · 按 marker 分段', () => {
     ]);
     const output = outputOf(group, ['ZZZ', 'AAA']);
     const sections = splitSections(output, group.markers);
-    expect(sections.get('z')).toBe('ZZZ');
-    expect(sections.get('a')).toBe('AAA');
+    expect(sections.get('z')?.text).toBe('ZZZ');
+    expect(sections.get('a')?.text).toBe('AAA');
   });
 });

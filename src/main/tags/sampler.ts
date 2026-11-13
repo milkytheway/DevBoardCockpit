@@ -83,16 +83,33 @@ export class TagSampler {
 
     const readers = group.readers.map((id) => this.findReader(id));
 
-    // 取数片段
-    const plans = readers.map((r) => {
+    // 取数片段。
+    // **需要远端路径的 reader（script）**：运行时还没把脚本推到板子上，
+    // 就**不生成那条注定失败的命令**——如实报「没推上去」。
+    const plans: { id: string; fragment: string }[] = [];
+    // **没进这条命令的 reader**（运行时还没准备好）——后面那一轮不许再报一次
+    const skipped = new Set<string>();
+    for (const r of readers) {
       const kind = getKind(r.kind);
       if (kind === undefined) {
         throw makeError('PACK_INVALID', `reader「${r.id}」的 kind「${r.kind}」不在 v1 的清单里`, {
           detail: { readerId: r.id, kind: r.kind },
         });
       }
-      return { id: r.id, fragment: kind.fetch(r.args ?? {}) };
-    });
+      const args = r.args ?? {};
+      if (kind.needsRemotePath === true && typeof args['remote_path'] !== 'string') {
+        this.reportStatus(
+          r,
+          'unavailable',
+          'service_down',
+          '脚本还没推到板子上（运行时没给 remote_path）——推脚本是运行时的事（契约 §3.3）',
+        );
+        skipped.add(r.id);
+        continue;
+      }
+      plans.push({ id: r.id, fragment: kind.fetch(args) });
+    }
+    if (plans.length === 0) return;
 
     const groupCommand = buildGroupCommand(plans);
 
@@ -118,15 +135,29 @@ export class TagSampler {
     const sections = splitSections(stdout, groupCommand.markers);
 
     for (const reader of readers) {
-      const text = sections.get(reader.id);
-      if (text === null || text === undefined) {
+      // 已经报过「没推上去」的，不许再报一次「这一段没有回包」
+      if (skipped.has(reader.id)) continue;
+      const section = sections.get(reader.id);
+      if (section === null || section === undefined) {
         // 这一段没跑起来（marker 没出现）
         this.reportRoundTripFailure(reader, 'service_down', '这一段没有回包');
         continue;
       }
+      if (!section.complete) {
+        // **截断了**（板子只回了一半）——**不发布半截数据**。
+        // 契约 §2.1.1：「读出来了但值坏了」是 error，不是 ok。
+        // 把 format: integer 的 1000 截成 100 当正常值发布，是**假数**。
+        this.reportStatus(
+          reader,
+          'error',
+          'parse_error',
+          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',
+        );
+        continue;
+      }
 
       const kind = getKind(reader.kind)!;
-      const result = kind.parse(text, reader.args ?? {}, this.contextFor(reader.id));
+      const result = kind.parse(section.text, reader.args ?? {}, this.contextFor(reader.id));
 
       if (result.status === 'unavailable' || result.status === 'error') {
         // 「资源不在」与「读出来了但坏了」是**两件事**（契约 §2.1.1）：

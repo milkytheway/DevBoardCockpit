@@ -64,6 +64,14 @@ export interface ReaderKind {
    */
   needsTwoSamples?: boolean;
   /**
+   * 这个 kind 的取数片段要用**运行时提供的远端路径**（`args['remote_path']`）。
+   *
+   * `script` 是唯一一个：脚本住在宿主上，要先推到板子的 `/tmp` 里才跑得起来
+   * （契约 §3.3）。运行时**还没提供**远端路径时，
+   * 不该生成一条注定失败的命令——**如实报「没推上去」**。
+   */
+  needsRemotePath?: boolean;
+  /**
    * 取数：从板子上把数据取回来的 shell 片段。
    *
    * **必须是一行**——串口一次往返只能是一行命令（事实 S6）。

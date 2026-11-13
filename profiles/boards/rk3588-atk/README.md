@@ -69,23 +69,23 @@ NPU 的读法依赖它。挂载与否取决于板子的 `/etc/fstab` 与 init �
 # 板子接在宿主的 adb 上（默认用 profiles/targets 里第一个能连上的板型包）
 npm run probe:board
 
-# 指定板型包
+# 指定板型包（**包 id 或目录路径都认**）
 npm run probe:board -- --pack rk3588-atk
 
-# 走 SSH 连（需要 --pack 之外的传输参数）
-npm run probe:board -- --pack rk3588-atk --transport ssh --host 192.168.1.102 --username root
+# 指定连接 profile
+npm run probe:board -- --profile board-adb
 ```
 
-> **命令行契约以 `docs/04-架构设计.md` §12 为准**：`--pack <pack-id>` 选板型包，
-> `--transport` / `--host` / `--username` / `--port` 选传输。
-> 这里的示例与它一致。
+> **命令行**：`--pack <包 id 或目录>` 选板型包，`--profile <连接 profile id>` 选连接。
+> 传输参数（`--transport` / `--host` / …）**还没实现**——
+> 传输由 `profiles/targets/` 里的连接 profile 决定。
 
-probe 会跑两轮（CPU 占用率需要两次采样做差），然后按卡片看到的样子打印每个 tag 的
-值和状态。任何一个 tag 出不来，它会明说「did not produce a value」——**这比显示 0 强**。
+probe 会跑两轮（CPU 占用率需要两次采样做差），然后打印每个 reader 的
+每个 tag 的值和状态。任何一个 tag 出不来，它会**明说缺了什么**——
+**这比显示 0 强**。
 
-> 这两个命令**现在还不存在**——契约评审通过、实现层建好之后才有。
-> 需要立刻验证板型包时，可以用评审通过后重写的校验器，
-> 或对照 `docs/02-设备事实清单.md` 里已核实的事实逐条核对。
+> **真机验收还没跑过**（2026-11-13）：探针已就绪，但一次都没对着真板子跑过。
+> 见 `docs/06-契约核对.md` 的 **C12**。
 
 ## 契约核对清单的状态
 
@@ -96,7 +96,7 @@ probe 会跑两轮（CPU 占用率需要两次采样做差），然后按卡片�
 | C1 | `npu_devfreq` 的路径 | **已回滚**：`npu_devfreq` 读 devfreq 的 `load` 但**只提供 `duty`**；频率另由 `npu_freq` 读 `fdab0000.npu/cur_freq` | ✅ 已拍板（2026-11-12） |
 | C2 | 双背光进核心词表还是走 custom | **走 custom**：本包提供 `custom.rk3588-atk.backlight.brightness` 与 `...backlight1.brightness` 两个 reader | ✅ 已拍板（2026-11-12） |
 | C3 | `cpu.governor` / `npu.governor` 是否进核心词表 | **`cpu.governor` 进核心词表**（本包有 `cpu_governor` reader）；`npu.governor` 不进——它的 `available_governors` 是 rkdevfreq 全局列表，语义不一致 | ✅ 已拍板（2026-11-12） |
-| C4 | 是否补三个动作（含 destructive 的 `system.reboot`） | 🔶 **部分已定**：已补 `system.reboot`（`danger: destructive` + `verify` 回读 `uptime -s`）；`npu.governor.set` 与 `debugfs.mount` 待定 | 🔶 部分 |
+| C4 | 是否补三个动作（含 destructive 的 `system.reboot`） | ✅ **已拍板**（2026-11-13，ADR-D26）：已补 `system.reboot`；`npu.governor.set` **不补**（实测写 devfreq governor 会**锁死板子**、只有重启能救）、`debugfs.mount` **不补**（本板已挂着） | ✅ |
 | C5 | `unavailable` 是否带 reason 码 | ✅ **已定**：`reason`（封闭枚举 7 码，带版本）+ `detail`（自由文本），见 `docs/spec/01` §2.1.1 | ✅ |
 | C6 | 单位换算责任 | 已写入契约：reader 负责换算，契约只认 byte | ✅ 已定 |
 | C7 | NPU 占空比对照量 | 保留 `custom.rk3588-atk.npu.duty`，但**只提供 duty**，不冒名提供频率 | ✅ 已定 |

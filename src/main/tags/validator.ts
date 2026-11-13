@@ -330,6 +330,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       const consequence = action.readback.consequence;
       if (typeof consequence !== 'string' || consequence.trim().length === 0) {
         err(27, `${path}.readback.consequence`, 'kind: none 必须带一个非空的 consequence（用户批准的是「我知道它会做这件事」）');
+      } else {
+        // **逐动作 warning**（ADR-D25 决策 6、契约 §4.4.1 第四条规矩）：
+        // 「想偷懒跳过回读的包作者会立刻看到一串警告——**这个可见性就是主要防线**」。
+        warn(
+          27,
+          `${path}.readback`,
+          '这个动作没有可观测状态（kind: none）——用户批准的是「我知道它会做这件事」',
+        );
       }
     }
 

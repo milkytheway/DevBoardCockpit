@@ -107,6 +107,34 @@ export interface ProbeReport {
 }
 
 /**
+ * 探针的 `--pack` 参数：**包 id 也认，目录路径也认**。
+ *
+ * 文档（`docs/04` §12、`profiles/boards/rk3588-atk/README.md`）写的是
+ * `--pack rk3588-atk`（**包 id**）——实现只认目录路径的话，
+ * **文档里那条命令跑不起来**。
+ */
+export function resolvePackDir(pack: string | undefined, boardsDir: string): string {
+  const fallback = `${boardsDir}/rk3588-atk`;
+  if (pack === undefined || pack.length === 0) return fallback;
+  // 带路径分隔符的 = 目录路径，原样用
+  if (pack.includes('/') || pack.includes('\\')) return pack;
+  return `${boardsDir}/${pack}`;
+}
+
+/**
+ * 探针要报出这个包的 `requires`（capabilities 与 transports）。
+ *
+ * **这是 `requires.capabilities` 在 v1 唯一的消费者**
+ * （`docs/06` C9 承诺的「包描述查询」）——
+ * 不报出来，这个字段就仍然是「无人消费的字段」。
+ */
+export function describeRequires(pack: BoardPack): string {
+  const caps = pack.requires.capabilities.join(', ');
+  const transports = pack.requires.transports.join(', ');
+  return `  requires: capabilities=[${caps}]  transports=[${transports}]`;
+}
+
+/**
  * 一个 reader 的读数（按它声明的 tag 模式找）。
  *
  * **只认这个 reader 声明的 tag**——别的 reader 的读数不算它的。
