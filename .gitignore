@@ -41,3 +41,6 @@ venv/
 
 # 本地临时脚本（原生模块 prebuild 自检用）
 /prebuild-*.cjs
+
+# superpowers 计划工作区（ledger / briefs / review package）
+.superpowers/
