@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
 import { toAppErrorPayload } from '../shared/errors';
@@ -12,6 +12,11 @@ import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
+import { CardRegistry } from './cards/registry';
+import type { CardRoot } from './cards/roots';
+import { parseManifest } from './cards/manifest';
+import { validateCard } from './cards/validate';
+import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
@@ -95,6 +100,39 @@ const runtime = new TagRuntime({
 handle(IPC.tagsReadings, () => runtime.readings());
 handle(IPC.tagsStatus, () => runtime.status);
 runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
+
+/* ── 卡片（契约 §六）─────────────────────────────────────────────────
+   两个根：**用户目录优先**（用户能改内置卡——「卡片即文件」的前提）。
+   目录变了就重新发现（热插拔）；manifest 不合法的卡**保留上一版**。
+   ─────────────────────────────────────────────────────────────────── */
+
+const cardRoots: CardRoot[] = [
+  { dir: join(app.getAppPath(), 'cards'), kind: 'builtin' },
+  { dir: join(userDataDir(), 'cards'), kind: 'user' },
+];
+
+const cardRegistry = new CardRegistry({
+  roots: cardRoots,
+  loadManifest: (dir) => {
+    const raw = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as unknown;
+    return parseManifest(raw, dir);
+  },
+  validate: (manifest, dir) => {
+    // **离线校验**：连不上板 → 动作与 tag 的存在性是「**未验证**」，不是「不合法」
+    const result = validateCard(manifest, {
+      availableTags: null,
+      availableActions: null,
+      installedCardIds: cardRegistry.cards().map((c) => c.cardId),
+      fileExists: (rel) => existsSync(join(dir, rel)),
+    });
+    return [...result.errors, ...result.warnings];
+  },
+});
+
+cardRegistry.refresh();
+watchCardRoots(cardRoots, () => {
+  cardRegistry.refresh();
+});
 
 /**
  * 挑一个能采的连接 profile 起运行时。
