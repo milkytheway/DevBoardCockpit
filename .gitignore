@@ -35,3 +35,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# 会话本地的状态文件（不是工程内容）
+.claude/ralph-loop.local.md
