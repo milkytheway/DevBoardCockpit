@@ -44,3 +44,6 @@ venv/
 
 # superpowers 计划工作区（ledger / briefs / review package）
 .superpowers/
+
+# 平台专属原生包的备份（共享 node_modules 的固有代价）
+.cache/

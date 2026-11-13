@@ -38,6 +38,53 @@ if [ "$(uname -s)" != "Linux" ]; then
   exit 1
 fi
 
+# ── 平台专属的原生包（npm 的 optionalDependencies）──
+#
+# esbuild / rollup 这类包的**平台二进制是 optionalDependencies**——
+# npm 只会装**当前平台**的那一份。
+# 沙箱（Linux）装的，宿主（Windows）就没有 → 宿主上 tsx/vite 报
+# 「@esbuild/win32-x64 could not be found」。
+#
+# 所以：**宿主 npm install 之前先把 Linux 的那几份备份出来**，
+# 装完再拷回来。两边各有一份，互不干扰。
+#
+# 用法：
+#   bash scripts/acceptance/linux-natives.sh backup   # 备份（宿主 install 之前）
+#   bash scripts/acceptance/linux-natives.sh restore  # 还原（宿主 install 之后）
+
+CACHE="$ROOT/.cache/linux-native"
+TARBALL="$CACHE/linux-native.tgz"
+
+backup_platform_pkgs() {
+  mkdir -p "$CACHE"
+  local list
+  # 找**平台专属的 optionalDependency 包**（@esbuild/<platform>、@rollup/rollup-<platform>…）。
+  # 排除 @serialport 与 node-pty —— 它们**一个包里带着两个平台**，不是 optional dep。
+  list=$(find node_modules -type d \( -name "*linux-x64*" -o -name "*linux-arm64*" \) 2>/dev/null \
+    | grep -v "node_modules/@serialport/" | grep -v "node_modules/node-pty/")
+  if [ -z "$list" ]; then
+    echo "  没有 Linux 平台包可备份"
+    return 0
+  fi
+  # 注意 tar 的选项顺序：**-C 必须在 --files-from 之前**（否则它只是个普通参数）
+  echo "$list" | tr "\n" "\0" | tar --null -czf "$TARBALL" -C "$ROOT" --files-from=-
+  echo "  已备份 $(echo "$list" | wc -l) 个 Linux 平台包 → $TARBALL"
+}
+
+restore_platform_pkgs() {
+  if [ ! -f "$TARBALL" ]; then
+    echo "  没有备份（$TARBALL），跳过"
+    return 0
+  fi
+  tar -xzf "$TARBALL" -C "$ROOT"
+  echo "  已从 $TARBALL 还原 Linux 平台包"
+}
+
+case "${1:-restore}" in
+  backup)  backup_platform_pkgs; exit 0 ;;
+  restore) restore_platform_pkgs ;;
+esac
+
 echo "=== 1) serialport：删掉 build/，让两边各走各的 NAPI prebuild ==="
 if [ -d "$SPT/build" ]; then
   rm -rf "$SPT/build"
@@ -63,7 +110,7 @@ fi
 echo
 echo "=== 3) 自检 ==="
 node -e "
-for (const m of ['@serialport/bindings-cpp', 'node-pty']) {
+for (const m of ['@serialport/bindings-cpp', 'node-pty', 'esbuild']) {
   try { require(m); console.log('  ' + m + ' 加载 ✓'); }
   catch (e) { console.log('  ' + m + ' 加载失败：' + String(e.message).split('\n')[0]); }
 }
