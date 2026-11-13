@@ -17,6 +17,7 @@
  * → 每个方法说清楚「我的哪个参数是要被授权的那个」，
  * 宿主就不必按方法名硬编码（那是第二套规则）。
  */
+import type { ReasonCode, TagReading } from '../../shared/tag-reading';
 
 export type CardApiPermission = 'read' | 'write' | 'none';
 
@@ -40,11 +41,11 @@ export interface CardApiContext {
  */
 export interface CardServices {
   tags: {
-    get(name: string): unknown;
-    list(): unknown[];
+    get(name: string): TagReading;
+    list(): TagReading[];
     subscribe(name: string, subscriptionId: string): void;
     subscribePattern(pattern: string, subscriptionId: string): void;
-    degradation(): unknown[];
+    degradation(): { tag: string; reason: ReasonCode; detail: string }[];
   };
   storage: {
     get(key: string): unknown;
