@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:cards": "npm run build && playwright test",
     "validate:profiles": "tsx scripts/validate-profiles.ts",
     "probe:board": "tsx scripts/probe.ts",
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
@@ -45,6 +46,7 @@
     "@vitejs/plugin-react": "5.0.4",
     "electron": "34.5.8",
     "electron-vite": "5.0.0",
+    "@playwright/test": "1.65.0",
     "eslint": "9.39.1",
     "happy-dom": "20.0.11",
     "tsx": "4.20.6",
@@ -57,6 +59,7 @@
     "esbuild": true,
     "node-pty": false,
     "ssh2": false,
-    "@serialport/bindings-cpp": false
+    "@serialport/bindings-cpp": false,
+    "@playwright/test": false
   }
 }
