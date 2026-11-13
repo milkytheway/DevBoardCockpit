@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { CardBroker } from '../../src/renderer/cards/broker';
 import type { CockpitApi } from '../../src/shared/ipc-contract';
 
