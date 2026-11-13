@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -25,12 +25,15 @@ export const RKNPU_LOAD: ReaderKind = {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
   },
   parse(raw, _args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('rknpu 的 load 读不到（debugfs 没挂？）');
+    }
     const values: { index: number; value: number }[] = [];
     for (const m of raw.matchAll(/Core(\d+):\s*(\d+)%/g)) {
       values.push({ index: Number(m[1]), value: Number(m[2]) });
     }
     if (values.length === 0) {
-      return unavailable('parse_error', 'rknpu 的 load 里没有「CoreN: x%」（debugfs 没挂？）');
+      return error('parse_error', 'rknpu 的 load 里没有「CoreN: x%」（debugfs 没挂？）');
     }
 
     const samples: Record<string, number | string | boolean> = {};

@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -32,10 +32,13 @@ export const DEVFREQ_LOAD: ReaderKind = {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
   },
   parse(raw, _args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('devfreq 的 load 文件读不到（路径不对？）');
+    }
     const text = raw.trim();
     const m = /^(\d+(?:\.\d+)?)@(\d+)Hz$/.exec(text);
     if (m === null) {
-      return unavailable(
+      return error(
         'parse_error',
         `devfreq 的 load 文件格式不对（期望「<duty>@<freq>Hz」，实际是「${text}」）`,
       );
@@ -43,7 +46,7 @@ export const DEVFREQ_LOAD: ReaderKind = {
     const duty = Number(m[1]);
     const freq = Number(m[2]);
     if (!Number.isFinite(duty) || !Number.isFinite(freq)) {
-      return unavailable('parse_error', 'devfreq 的 load 文件里有读不出来的数');
+      return error('parse_error', 'devfreq 的 load 文件里有读不出来的数');
     }
     return ok({ duty, freq_hz: freq });
   },

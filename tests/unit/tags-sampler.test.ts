@@ -155,7 +155,7 @@ describe('采样器', () => {
     expect(store.get('gpu.freq_hz')).toBeUndefined();
   });
 
-  it('某个 reader 解析失败 → **只有它自己的 tag** 报 unavailable，别的照常', async () => {
+  it('某个 reader 解析失败 → **只有它自己的 tag** 报 error，别的照常', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/sys/class/devfreq/fb000000.gpu/load'] = 'not a number';
@@ -163,14 +163,15 @@ describe('采样器', () => {
 
     await sampler.sampleGroup('fast');
 
-    expect(store.get('gpu.usage')!.status).toBe('unavailable');
+    // 「读出来了但坏了」= error（契约 §2.1.1），不是 unavailable
+    expect(store.get('gpu.usage')!.status).toBe('error');
     expect(store.get('gpu.usage')!.value).toBeNull();
     expect(store.get('gpu.usage')!.reason).toBe('parse_error');
     // gpu 的失败**不影响** cpu 那一组
     expect(store.get('cpu.usage')).toBeDefined();
   });
 
-  it('往返失败 → 该组**全部** tag 报 unavailable', async () => {
+  it('往返失败 → 该组**全部** tag 报 error（还没成功过时，没有旧值可保留）', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.failWith = new Error('传输断了');
@@ -178,8 +179,34 @@ describe('采样器', () => {
 
     await sampler.sampleGroup('fast');
 
-    expect(store.get('gpu.usage')!.status).toBe('unavailable');
-    expect(store.get('cpu.usage')!.status).toBe('unavailable');
+    // 从没成功过 → error（契约 §2.1：「pending → error = 采样过程本身失败」）
+    expect(store.get('gpu.usage')!.status).toBe('error');
+    expect(store.get('cpu.usage')!.status).toBe('error');
+  });
+
+  it('**刷新失败但之前成功过** → 报 stale 并**保留旧值**（契约 §2.1）', async () => {
+    // 「ok → stale = 本次刷新失败，但保留上一次的值」——
+    // 一次 ADB 抖动不该让面板上的仪表整片消失。
+    const store = new TagStore();
+    const conn = new FakeConnection();
+    conn.bodies['/proc/stat'] = [
+      `${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`,
+      `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`,
+    ];
+    const sampler = new TagSampler(PACK, conn, store);
+
+    await sampler.sampleGroup('fast');
+    await sampler.sampleGroup('fast');
+    expect(store.get('cpu.usage')!.status).toBe('ok');
+    const good = store.get('cpu.usage')!.value;
+
+    // 接下来这次往返断了
+    conn.failWith = new Error('传输断了');
+    await sampler.sampleGroup('fast');
+
+    const after = store.get('cpu.usage')!;
+    expect(after.status).toBe('stale');
+    expect(after.value).toBe(good);
   });
 
   it('**超时**归一到 reason=timeout（事实 G1：统一 124）', async () => {

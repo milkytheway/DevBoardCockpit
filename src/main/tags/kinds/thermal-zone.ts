@@ -1,5 +1,5 @@
 import { argStr, argMap } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -35,6 +35,9 @@ export const THERMAL_ZONE: ReaderKind = {
     );
   },
   parse(raw, args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('温度 zone 读不到（路径不对？）');
+    }
     const map = argMap(args, 'type_map');
     const samples: Record<string, number | string | boolean> = {};
 
@@ -56,7 +59,7 @@ export const THERMAL_ZONE: ReaderKind = {
     }
 
     if (Object.keys(samples).length === 0) {
-      return unavailable('parse_error', '一个温度 zone 都没认出来（type_map 对不上？路径没读对？）');
+      return error('parse_error', '一个温度 zone 都没认出来（type_map 对不上？路径没读对？）');
     }
     return ok(samples);
   },

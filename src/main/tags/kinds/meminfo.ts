@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -26,8 +26,13 @@ export const MEMINFO: ReaderKind = {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
   },
   parse(raw, _args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('/proc/meminfo 读不到（路径不对？）');
+    }
     let totalKb = 0;
-    let availableKb = 0;
+    // **NaN 而不是 0**：0 是一个合法的取值（「一点都不可用」），
+    // 用 0 当初值就分不清「没读到」与「真的是 0」。
+    let availableKb = Number.NaN;
 
     for (const line of raw.split(/\r?\n/)) {
       if (line.startsWith('MemTotal:')) {
@@ -38,9 +43,23 @@ export const MEMINFO: ReaderKind = {
     }
 
     if (!Number.isFinite(totalKb) || totalKb <= 0) {
-      return unavailable('parse_error', '/proc/meminfo 里没有可用的 MemTotal');
+      return error('parse_error', '/proc/meminfo 里没有可用的 MemTotal');
     }
-    if (!Number.isFinite(availableKb) || availableKb < 0) availableKb = 0;
+    if (!Number.isFinite(availableKb) || availableKb < 0) {
+      // **不许拿 0 顶上**（N2）：没有 MemAvailable 就不知道「可用」是多少，
+      // 拿 0 顶上会让 usage 变成 100%——**板子其实闲着，面板说满载**。
+      // 那是最坏的那种假数。
+      return error(
+        'parse_error',
+        '/proc/meminfo 里没有 MemAvailable（不能拿 0 顶上——那会让占用率变成 100%）',
+      );
+    }
+    if (availableKb > totalKb) {
+      return error(
+        'out_of_domain',
+        `MemAvailable（${availableKb} kB）比 MemTotal（${totalKb} kB）还大`,
+      );
+    }
 
     // kB → byte（×1024）
     const total = totalKb * 1024;

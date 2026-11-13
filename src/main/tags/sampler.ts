@@ -101,7 +101,7 @@ export class TagSampler {
       const result = await this.connection.exec(groupCommand.command);
       if (result.timedOut) {
         for (const reader of readers) {
-          this.reportUnavailable(reader, 'timeout', '这次往返超时了（事实 G1：统一 124）');
+          this.reportRoundTripFailure(reader, 'timeout', '这次往返超时了（事实 G1：统一 124）');
         }
         return;
       }
@@ -110,7 +110,7 @@ export class TagSampler {
       const reason = reasonForError(err);
       const detail = err instanceof Error ? err.message : String(err);
       for (const reader of readers) {
-        this.reportUnavailable(reader, reason, detail);
+        this.reportRoundTripFailure(reader, reason, detail);
       }
       return;
     }
@@ -121,15 +121,17 @@ export class TagSampler {
       const text = sections.get(reader.id);
       if (text === null || text === undefined) {
         // 这一段没跑起来（marker 没出现）
-        this.reportUnavailable(reader, 'service_down', '这一段没有回包');
+        this.reportRoundTripFailure(reader, 'service_down', '这一段没有回包');
         continue;
       }
 
       const kind = getKind(reader.kind)!;
       const result = kind.parse(text, reader.args ?? {}, this.contextFor(reader.id));
 
-      if (result.status === 'unavailable') {
-        this.reportUnavailable(reader, result.reason, result.detail);
+      if (result.status === 'unavailable' || result.status === 'error') {
+        // 「资源不在」与「读出来了但坏了」是**两件事**（契约 §2.1.1）：
+        // 前者要引导用户去挂 debugfs，后者是「读失败」。
+        this.reportStatus(reader, result.status, result.reason, result.detail);
         continue;
       }
 
@@ -166,8 +168,13 @@ export class TagSampler {
     }
   }
 
-  /** 这个 reader 不可用：它那些**不带通配符**的 tag 全部报不可用 */
-  private reportUnavailable(reader: ReaderDef, reason: ReasonCode, detail: string): void {
+  /** 这个 reader 不可用/出错：它那些**不带通配符**的 tag 全部报同一个状态 */
+  private reportStatus(
+    reader: ReaderDef,
+    status: 'unavailable' | 'error',
+    reason: ReasonCode,
+    detail: string,
+  ): void {
     for (const p of reader.provides) {
       // 带通配符的 tag 现在还不知道具体名字——**不猜**（契约 §十：「不猜」）
       if (p.tag.includes('*')) continue;
@@ -175,7 +182,29 @@ export class TagSampler {
         tag: p.tag,
         value: null,
         unit: unitForTag(p.tag),
-        status: 'unavailable',
+        status,
+        reason,
+        detail,
+        at: this.now(),
+      });
+    }
+  }
+
+  /**
+   * 一次**往返失败**（超时、传输断了）：该组的 tag 报 stale 或 error。
+   *
+   * 契约 §2.1：「ok → stale = 本次刷新失败，但**保留上一次的值**」——
+   * 一次 ADB 抖动不该让面板上的仪表整片消失（那是「假数」的另一种：没有数）。
+   */
+  private reportRoundTripFailure(reader: ReaderDef, reason: ReasonCode, detail: string): void {
+    for (const p of reader.provides) {
+      if (p.tag.includes('*')) continue;
+      const status = this.store.failureStatusFor(p.tag);
+      this.store.put({
+        tag: p.tag,
+        value: null,
+        unit: unitForTag(p.tag),
+        status,
         reason,
         detail,
         at: this.now(),

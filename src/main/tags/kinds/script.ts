@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -38,14 +38,17 @@ export const SCRIPT: ReaderKind = {
     return `${quotePath(argStr(args, 'interpreter'))} ${quotePath(target)}`;
   },
   parse(raw, _args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('脚本没有输出（脚本没推上去？跑失败了吗？）');
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return unavailable('parse_error', '脚本输出不是合法 JSON');
+      return error('parse_error', '脚本输出不是合法 JSON');
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return unavailable('parse_error', '脚本输出不是一个 JSON 对象');
+      return error('parse_error', '脚本输出不是一个 JSON 对象');
     }
 
     const samples: Record<string, number | string | boolean> = {};
@@ -56,7 +59,7 @@ export const SCRIPT: ReaderKind = {
       }
     }
     if (Object.keys(samples).length === 0) {
-      return unavailable('parse_error', '脚本输出里一个能用的 sample 都没有');
+      return error('parse_error', '脚本输出里一个能用的 sample 都没有');
     }
     return ok(samples);
   },

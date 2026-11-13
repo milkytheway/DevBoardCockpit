@@ -98,13 +98,14 @@ describe('proc_stat · 真机样本', () => {
     expect(samples['core.7.cluster']).toBe('A76');
   });
 
-  it('计数器**倒退**时报 unavailable，不是负数（RF-3）', () => {
+  it('计数器**倒退**时报 error，不是负数（RF-3）', () => {
     const c = ctx();
     kind.parse(raw(pair['FIRST'] ?? ''), args, c);
     // 第二次给一个**更小**的计数器（模拟重启）
     const backwards = (pair['FIRST'] ?? '').replace('48866', '1');
     const result = kind.parse(raw(backwards), args, c);
-    expect(result.status).toBe('unavailable');
+    // 「读出来了但坏了」= error（契约 §2.1.1）；**不是** unavailable
+    expect(result.status).toBe('error');
     expect(result).not.toHaveProperty('samples');
   });
 
@@ -138,9 +139,15 @@ describe('meminfo · 真机样本', () => {
     expect(s['usage']).toBeCloseTo(((8107744 - 7655500) / 8107744) * 100, 8);
   });
 
-  it('读不到 MemTotal 报 unavailable，不是 0', () => {
+  it('读不到 MemTotal 报 error，不是 0', () => {
     const result = kind.parse('nothing here', args, ctx());
-    expect(result.status).toBe('unavailable');
+    expect(result.status).toBe('error');
+  });
+
+  it('**MemAvailable 缺了**报 error，**不许拿 0 顶上**（否则占用率变成 100%）', () => {
+    const result = kind.parse('MemTotal:        8107744 kB', args, ctx());
+    expect(result.status).toBe('error');
+    expect(result).not.toHaveProperty('samples');
   });
 });
 
@@ -163,9 +170,9 @@ describe('devfreq_load · 真机样本', () => {
     expect(s['freq_hz']).toBe(300000000);
   });
 
-  it('格式不对报 unavailable，不是 0', () => {
+  it('格式不对报 error，不是 0', () => {
     const result = kind.parse('not a number', args, ctx());
-    expect(result.status).toBe('unavailable');
+    expect(result.status).toBe('error');
   });
 });
 
@@ -218,9 +225,9 @@ describe('thermal_zone · 真机样本', () => {
     expect(s['zone.center']).toBeUndefined();
   });
 
-  it('一个 zone 都认不出来报 unavailable', () => {
+  it('一个 zone 都认不出来报 error', () => {
     const result = kind.parse('nothing', args, ctx());
-    expect(result.status).toBe('unavailable');
+    expect(result.status).toBe('error');
   });
 });
 
@@ -269,9 +276,9 @@ describe('exec_regex · 逃生门 2', () => {
     expect(s['value']).toBe('12345.67');
   });
 
-  it('不匹配报 unavailable，不是 0', () => {
+  it('不匹配报 error，不是 0', () => {
     const result = kind.parse('nothing', { command: 'x', pattern: '^([0-9.]+)' }, ctx());
-    expect(result.status).toBe('unavailable');
+    expect(result.status).toBe('error');
   });
 });
 
@@ -286,32 +293,42 @@ describe('script · 逃生门 3', () => {
     expect(s['running']).toBe(true);
   });
 
-  it('JSON 坏了报 unavailable', () => {
+  it('JSON 坏了报 error', () => {
     const result = kind.parse('{not json', { path: 's.sh', interpreter: '/bin/sh' }, ctx());
-    expect(result.status).toBe('unavailable');
+    expect(result.status).toBe('error');
   });
 });
 
 describe('畸形输入不许炸（N2 · RF-1）', () => {
-  const cases: { kind: string; args: Record<string, unknown>; raw: string }[] = [
-    { kind: 'proc_stat', args: { stat_path: '/x', cpuinfo_path: '/y' }, raw: 'garbage' },
-    { kind: 'meminfo', args: { path: '/x' }, raw: '\u0000\u0001binary' },
-    { kind: 'devfreq_load', args: { path: '/x', measure: 'duty_cycle' }, raw: 'x@y' },
-    { kind: 'rknpu_load', args: { path: '/x' }, raw: 'Core0: abc%' },
-    { kind: 'thermal_zone', args: { glob: '/x', type_map: {} }, raw: '=== not a zone' },
-    { kind: 'file_read', args: { path: '/x' }, raw: '   ' },
-    { kind: 'exec_regex', args: { command: 'x', pattern: '(' }, raw: 'x' },
-    { kind: 'script', args: { path: 's', interpreter: '/bin/sh' }, raw: 'null' },
+  // **「资源不在」与「读出来了但坏了」是两件事**（契约 §2.1）：
+  // - `unavailable` = 资源此刻不在（路径不存在、设备被拔、挂载丢失）
+  // - `error` = 资源在，但读出来的东西坏了（解析失败、越界、类型不符）
+  //
+  // **两者都不许填 0**——但它们**不是同一件事**，报错了得让人知道是哪一种。
+  const cases: { kind: string; args: Record<string, unknown>; raw: string; status: string }[] = [
+    // 读到了东西但坏了 → error
+    { kind: 'proc_stat', args: { stat_path: '/x', cpuinfo_path: '/y' }, raw: 'garbage', status: 'error' },
+    { kind: 'meminfo', args: { path: '/x' }, raw: '\u0000\u0001binary', status: 'error' },
+    { kind: 'devfreq_load', args: { path: '/x', measure: 'duty_cycle' }, raw: 'x@y', status: 'error' },
+    { kind: 'rknpu_load', args: { path: '/x' }, raw: 'Core0: abc%', status: 'error' },
+    { kind: 'thermal_zone', args: { glob: '/x', type_map: {} }, raw: '=== not a zone', status: 'error' },
+    { kind: 'exec_regex', args: { command: 'x', pattern: '(' }, raw: 'x', status: 'error' },
+    { kind: 'script', args: { path: 's', interpreter: '/bin/sh' }, raw: 'null', status: 'error' },
+    // 什么都没有 → 资源不在 → unavailable
+    { kind: 'proc_stat', args: { stat_path: '/x', cpuinfo_path: '/y' }, raw: '', status: 'unavailable' },
+    { kind: 'meminfo', args: { path: '/x' }, raw: '', status: 'unavailable' },
+    { kind: 'rknpu_load', args: { path: '/x' }, raw: '', status: 'unavailable' },
+    { kind: 'file_read', args: { path: '/x' }, raw: '   ', status: 'unavailable' },
   ];
 
   for (const c of cases) {
-    it(`${c.kind} 遇到畸形输入报 unavailable，不抛异常、不填 0`, () => {
+    it(`${c.kind} 遇到畸形输入报 ${c.status}，不抛异常、不填 0`, () => {
       const kind = getKind(c.kind)!;
       let result: unknown;
       expect(() => {
         result = kind.parse(c.raw, c.args, ctx());
       }).not.toThrow();
-      expect((result as { status: string }).status).toBe('unavailable');
+      expect((result as { status: string }).status).toBe(c.status);
       expect(result).not.toHaveProperty('samples');
     });
   }

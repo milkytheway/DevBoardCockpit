@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { ok, unavailable } from './parse-util';
+import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -32,28 +32,27 @@ export const FILE_READ: ReaderKind = {
     return `cat -- ${argStr(args, 'glob')}`;
   },
   parse(raw, args, _ctx) {
+    if (isBlank(raw)) {
+      return missing('文件是空的（路径不对？设备没挂载？）');
+    }
     let text = raw;
     if (args['strip_trailing_null'] === true) {
       text = text.replace(/\0+$/, '');
     }
     text = text.trim();
 
-    if (text.length === 0) {
-      return unavailable('device_absent', '文件是空的（路径不对？设备没挂载？）');
-    }
-
     const format = argStr(args, 'format');
     if (format === 'integer') {
       const value = Number(text);
       if (!Number.isInteger(value)) {
-        return unavailable('parse_error', `「${text}」不是整数`);
+        return error('parse_error', `「${text}」不是整数`);
       }
       return ok({ value });
     }
     if (format === 'number' || format === 'float') {
       const value = Number(text);
       if (!Number.isFinite(value)) {
-        return unavailable('parse_error', `「${text}」不是数字`);
+        return error('parse_error', `「${text}」不是数字`);
       }
       return ok({ value });
     }

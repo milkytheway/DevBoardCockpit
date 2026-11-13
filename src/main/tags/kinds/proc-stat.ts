@@ -1,6 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
-import { clampPercent, leadingInts, ok, unavailable } from './parse-util';
+import { error, isBlank, leadingInts, missing, ok, outOfRange } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -112,16 +112,19 @@ export const PROC_STAT: ReaderKind = {
     return `cat -- ${stat}; echo ${quotePath(CPUINFO_SEPARATOR)}; cat -- ${cpuinfo}`;
   },
   parse(raw, _args, ctx) {
+    if (isBlank(raw)) {
+      return missing('/proc/stat 读不到（路径不对？）');
+    }
     const at = raw.indexOf(CPUINFO_SEPARATOR);
     if (at < 0) {
-      return unavailable('parse_error', `输出里找不到「${CPUINFO_SEPARATOR}」这一段（取数片段与解析对不上？）`);
+      return error('parse_error', `输出里找不到「${CPUINFO_SEPARATOR}」这一段（取数片段与解析对不上？）`);
     }
     const statText = raw.slice(0, at);
     const cpuinfoText = raw.slice(at + CPUINFO_SEPARATOR.length);
 
     const { total, cores } = parseProcStat(statText);
     if (total === undefined) {
-      return unavailable('parse_error', '/proc/stat 里没有 cpu 汇总行');
+      return error('parse_error', '/proc/stat 里没有 cpu 汇总行');
     }
 
     const prev = ctx.state['proc_stat'] as ProcStatSnapshot | undefined;
@@ -140,10 +143,19 @@ export const PROC_STAT: ReaderKind = {
       // 计数器倒退 = 板子重启过；间隔为 0 = 采样太快。
       // **两种都不可信**——重置基准，如实报「读不到」，**不报负数**（RF-3）。
       ctx.state['proc_stat'] = { total, cores } satisfies ProcStatSnapshot;
-      return unavailable('parse_error', '计数器没有前进（或倒退）——板子重启了？采样间隔太短？');
+      return error('parse_error', '计数器没有前进（或倒退）——板子重启了？采样间隔太短？');
     }
 
-    samples['usage'] = clampPercent((dBusy / dTotal) * 100);
+    const usage = (dBusy / dTotal) * 100;
+    if (outOfRange(usage)) {
+      // 契约 §2.1.1：**不许夹到区间当 ok**（那是撒谎），也不许当 0（更糟）。
+      // 计数器只回绕一部分字段时就会算出 >100。
+      return error(
+        'out_of_domain',
+        `算出来的占用率是 ${usage}（不在 0..100）——计数器可能只回绕了一部分字段`,
+      );
+    }
+    samples['usage'] = usage;
 
     for (const [index, current] of Object.entries(cores)) {
       const before = prev.cores[Number(index)];
@@ -151,7 +163,11 @@ export const PROC_STAT: ReaderKind = {
       const dc = current[1] - before[1];
       const db = current[0] - before[0];
       if (dc <= 0 || db < 0) continue;
-      samples[`core.${index}.usage`] = clampPercent((db / dc) * 100);
+      const pct = (db / dc) * 100;
+      if (outOfRange(pct)) {
+        return error('out_of_domain', `核 ${index} 算出来的占用率是 ${pct}（不在 0..100）`);
+      }
+      samples[`core.${index}.usage`] = pct;
     }
 
     for (const [index, name] of Object.entries(parseCoreNames(cpuinfoText))) {

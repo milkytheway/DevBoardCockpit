@@ -107,6 +107,20 @@ export class TagStore {
     return this.readings.get(tag);
   }
 
+  /**
+   * 一次**刷新失败**时该用什么状态（契约 §2.1 的迁移表）。
+   *
+   * - 「ok → stale = 本次刷新失败，但保留上一次的值」
+   * - 「error → stale = 继续失败，且**之前有过一个可用的值**——保留它，标为已过时」
+   * - 「pending → error = 采样过程本身失败（命令非零、超时、传输断了）」
+   *
+   * 所以判据是「**这个 tag 有没有成功过一次**」——
+   * 有过 → stale（保留旧值，标为已过时）；没有 → error（没有旧值）。
+   */
+  failureStatusFor(tag: string): 'stale' | 'error' {
+    return this.lastGood.has(tag) ? 'stale' : 'error';
+  }
+
   /** 全部读数 */
   all(): TagReading[] {
     return [...this.readings.values()];
