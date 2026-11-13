@@ -15,6 +15,7 @@
 | `run-app.sh` | 在无显示器的 Linux 沙箱里用 **Xvfb** 起真实 Electron，带 `--remote-debugging-port` |
 | `fake-console.py` | 一块「假板子」：在 pty 另一端扮演串口控制台（**回显**每一行 + 回 marker），用来验串口的 marker 协议 |
 | `adb-forward.py` | 把本机 `127.0.0.1:5037` 转发到**宿主**的 adb server——让沙箱里的应用能连到 USB 上的真板子，**应用代码一行不用改** |
+| `linux-natives.sh` | 共享 `node_modules` 里的原生模块恢复成 Linux 能用的样子（**两边共享一个 node_modules，原生模块按平台编译，会打架**） |
 
 ## 怎么用
 
