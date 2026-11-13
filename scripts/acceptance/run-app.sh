@@ -33,8 +33,17 @@ if [ "$READY_X" != "1" ]; then
 fi
 
 cd "$ROOT"
+# **Linux 版 Electron 不在 node_modules 里**——
+# node_modules 是与 Windows 宿主**共享**的，放 Linux 二进制会挡住
+# 宿主 `npm install` 下 Windows 版（那一步在 Windows 上是必须的）。
+ELECTRON_BIN="${ELECTRON_BIN:-/tmp/electron-linux/dist/electron}"
+if [ ! -x "$ELECTRON_BIN" ]; then
+  echo "找不到 Linux 版 Electron：$ELECTRON_BIN" >&2
+  echo "从 https://npmmirror.com/mirrors/electron/ 下对应版本，解到那里即可。" >&2
+  kill "$XVFB_PID" 2>/dev/null; exit 1
+fi
 DISPLAY=":$DISP_NUM" ELECTRON_DISABLE_SECURITY_WARNINGS=1 \
-  node_modules/electron/dist/electron . \
+  "$ELECTRON_BIN" . \
   --remote-debugging-port=9222 --no-sandbox --disable-gpu >/tmp/electron.log 2>&1 &
 EL_PID=$!
 READY=0

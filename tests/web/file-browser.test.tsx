@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { FileBrowser } from '../../src/renderer/files/FileBrowser';
+import { FileBrowser, parentPath } from '../../src/renderer/files/FileBrowser';
 
 /**
  * 双树文件浏览器。
@@ -199,5 +199,67 @@ describe('FileBrowser 的目录导航（复评 S-08）', () => {
     expect(dirBtn.getAttribute('data-testid')).toBe('remote-dir');
     // 目录不会被当成可下载的文件传给 onPull
     expect(onPull).not.toHaveBeenCalled();
+  });
+});
+
+describe('远端树的目录导航（真机验收发现的两个 bug）', () => {
+  const caps = { exec: true, pty: true, files: true, exitCode: true };
+  const tree = [
+    { name: 'sub', path: '/root/sub', isDirectory: true, sizeBytes: null, modifiedAt: null },
+    { name: 'a.txt', path: '/root/a.txt', isDirectory: false, sizeBytes: 3, modifiedAt: null },
+  ];
+
+  it('进目录要**重新列那个目录** —— 路径变了列表不能还是上一个', async () => {
+    const listRemote = vi.fn(async () => tree);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={vi.fn()}
+        onPull={vi.fn()}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/'));
+    listRemote.mockClear();
+
+    fireEvent.click(screen.getByTestId('remote-dir'));
+    await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/root/sub'));
+    // **必须按新路径重新列**
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/root/sub'));
+  });
+
+  it('「↑ 上级」回到父目录 —— 根下的目录的上一级是根', async () => {
+    const listRemote = vi.fn(async () => tree);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={vi.fn()}
+        onPull={vi.fn()}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalled());
+    listRemote.mockClear();
+
+    fireEvent.click(screen.getByTestId('remote-dir'));
+    await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/root/sub'));
+    listRemote.mockClear();
+
+    fireEvent.click(screen.getByTestId('remote-up'));
+    await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/root'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/root'));
+  });
+
+  it('根下的一级目录（`/.cache`）的上一级是根，不是它自己', () => {
+    expect(parentPath('/.cache')).toBe('/');
+    expect(parentPath('/root/sub')).toBe('/root');
+    expect(parentPath('/root')).toBe('/');
+    expect(parentPath('C:\\Users\\me')).toBe('C:\\Users');
   });
 });

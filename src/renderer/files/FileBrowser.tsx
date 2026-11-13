@@ -53,7 +53,11 @@ export interface FileBrowserProps {
 export function parentPath(path: string): string {
   const m = /^(.*?)[\\/][^\\/]+[\\/]*$/.exec(path);
   if (!m) return path;
-  return m[1] || path || '/';
+  // m[1] 为空 = 路径在根下（`/.cache`）→ 上一级是根
+  if (m[1] === '') return '/';
+  // Windows 的盘符根（`C:\Users` → `C:\`）
+  if (/^[A-Za-z]:$/.test(m[1])) return `${m[1]}\\`;
+  return m[1];
 }
 
 export function FileBrowser({
@@ -80,25 +84,50 @@ export function FileBrowser({
   const [currentPath, setCurrentPath] = useState(remotePath);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const refresh = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setRemote(await listRemote(connectionId, currentPath));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setRemote([]);
-    } finally {
-      setBusy(false);
-    }
-  }, [connectionId, currentPath, listRemote]);
+  /**
+   * 列某个目录。
+   *
+   * **路径是源，列表跟着路径走**——进目录与回上级都要重新列一次，
+   * 否则会出现「路径已经变了、列表还是上一个目录的」。
+   */
+  const load = useCallback(
+    async (path: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        setRemote(await listRemote(connectionId, path));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        setRemote([]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connectionId, listRemote],
+  );
+
+  const refresh = useCallback(() => {
+    void load(currentPath);
+  }, [load, currentPath]);
 
   /** 进目录 */
-  const enter = useCallback((entry: RemoteEntry) => {
-    if (!entry.isDirectory) return;
+  const enter = useCallback(
+    (entry: RemoteEntry) => {
+      if (!entry.isDirectory) return;
+      setSelectedRemote(null);
+      setCurrentPath(entry.path);
+      void load(entry.path);
+    },
+    [load],
+  );
+
+  /** 回上级 */
+  const goUp = useCallback(() => {
     setSelectedRemote(null);
-    setCurrentPath(entry.path);
-  }, []);
+    const parent = parentPath(currentPath);
+    setCurrentPath(parent);
+    void load(parent);
+  }, [load, currentPath]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0];
@@ -196,10 +225,7 @@ export function FileBrowser({
               <button
                 type="button"
                 data-testid="remote-up"
-                onClick={() => {
-                  setSelectedRemote(null);
-                  setCurrentPath(parentPath(currentPath));
-                }}
+                onClick={goUp}
                 disabled={busy}
                 title="上一级"
               >
