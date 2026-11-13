@@ -38,8 +38,11 @@ const FLOOR_ENTRIES: readonly FloorEntry[] = [
   { pattern: 'poweroff', why: '关机' },
   { pattern: 'halt', why: '停机' },
   { pattern: 'flash*', why: '刷写存储' },
-  { pattern: 'erase*', why: '擦除存储' },
-  { pattern: 'burn*', why: '烧写存储' },
+  // `erase` / `burn` 是**精确匹配**：契约没有给它们前缀例句，
+  // 而 `erase_cache` / `burn_count` 是**无害**的常见名——
+  // 前缀匹配在这里制造的是**假阳性**，不是堵洞。
+  { pattern: 'erase', why: '擦除存储' },
+  { pattern: 'burn', why: '烧写存储' },
   { pattern: 'upgrade', why: '升级' },
   // `mkfs*` 而不是 `mkfs`：`mkfs.ext4` 与 `mkfs` 是**同一个操作**。
   // 契约 §5.2 的表写的是 `mkfs`，但 §5.2.1 的前缀规则（`flash*` 命中

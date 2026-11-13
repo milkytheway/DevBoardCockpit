@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TagStore } from '../../src/main/tags/store';
-import type { ReasonCode, TagStatus } from '../../src/shared/tag-reading';
+import { REASON_CODES, type ReasonCode, type TagStatus } from '../../src/shared/tag-reading';
 
 /**
  * TagStore —— 读数的**唯一汇点**（ADR-D22）。
@@ -21,6 +21,26 @@ function input(
 ) {
   return { tag, value, unit: 'percent', status, at: 1000, ...extra };
 }
+
+describe('reason 码表 · 封闭且最小（契约 §2.1.1）', () => {
+  it('**恰好七个**——码表保持最小，具体性由 detail 承担', () => {
+    expect([...REASON_CODES]).toEqual([
+      'not_found',
+      'device_absent',
+      'service_down',
+      'link_busy_terminal',
+      'parse_error',
+      'out_of_domain',
+      'timeout',
+    ]);
+  });
+
+  it('**没有 not_in_pack**——它合并进 not_found 了（ADR-D27 的 O14）', () => {
+    // 「你问的那个东西不存在」读侧写侧同名同义——
+    // **不给 AI 两套要互相翻译的方言**。
+    expect(REASON_CODES).not.toContain('not_in_pack');
+  });
+});
 
 describe('写入与读出', () => {
   it('写进去能读出来', () => {

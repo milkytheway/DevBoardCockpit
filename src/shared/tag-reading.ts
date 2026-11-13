@@ -15,9 +15,13 @@ export type TagStatus = 'ok' | 'stale' | 'unavailable' | 'error' | 'pending';
  *
  * **不许自造码**（N3）：具体性由 `detail` 承担，
  * 不为每个路径变体新增一个码——那张表刻意保持最小。
+ *
+ * `not_found` = **「你问的那个东西不存在」**——
+ * 动作那边也是同一个码同一个意思（契约 §2.4 的 `not_found`），
+ * **不给 AI 两套要互相翻译的方言**（ADR-D27）。
  */
 export type ReasonCode =
-  | 'not_in_pack'
+  | 'not_found'
   | 'device_absent'
   | 'service_down'
   | 'link_busy_terminal'
@@ -27,7 +31,7 @@ export type ReasonCode =
 
 /** reason 码的全集（校验与测试用） */
 export const REASON_CODES: readonly ReasonCode[] = [
-  'not_in_pack',
+  'not_found',
   'device_absent',
   'service_down',
   'link_busy_terminal',

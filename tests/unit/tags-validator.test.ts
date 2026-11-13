@@ -468,6 +468,19 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
+  it('**erase_cache 这类无害写法不命中**（前缀匹配会制造假阳性）', () => {
+    // ADR-D27 的第五条：契约没给 erase/burn 前缀例句，
+    // 而 `erase_cache` / `burn_count` 是**无害**的常见名——
+    // 把它们判成 destructive 是**假阳性**，不是堵洞。
+    const pack = addAction(basePack(), {
+      id: 'a',
+      danger: 'reversible',
+      command: 'erase_cache /tmp/x',
+      readback: tagReadback('cpu.usage'),
+    });
+    expect(errors(validatePack(pack))).toEqual([]);
+  });
+
   it('**绝对路径也命中**（/sbin/reboot）', () => {
     // 契约 §5.2.1 写的是「词元相等」，但真实的调用几乎都带绝对路径——
     // 只按字面实现，地板在真实写法上是空的。

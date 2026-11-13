@@ -54,7 +54,7 @@
 | `version` | 是 | 卡片自己的版本 |
 | `entry` | 是 | 入口 HTML，相对于卡片目录 |
 | `requires.tags` | 否 | 这张卡**想**读的 tag。用于依赖检查与降级提示 |
-| `requires.actions` | 否 | 这张卡**想**触发��动作 |
+| `requires.actions` | 否 | 这张卡**想**触发的动作 |
 | `requires.min_board_pack` | 否 | 最低板型包版本要求 |
 | `layout` | 否 | 栅格尺寸与最小尺寸 |
 | `permissions.read` | 是 | 这张卡被允许读的 tag。**超出此列表的读取一律拒绝** |

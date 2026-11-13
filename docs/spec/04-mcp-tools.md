@@ -278,8 +278,10 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 报 `ok: false` 是**另一种撒谎**；报 `ok: true` 什么都不说又是**把「没验证」藏起来**。
 
 > **`unverified` 不在这张 `reason` 表里，也不在 `01` §2.1.1 的 tag `reason` 表里。**
-> 两张表是两回事：`01` 的 `reason` 是 **tag 读数**的原因码（`not_in_pack` /
+> 两张表是两回事：`01` 的 `reason` 是 **tag 读数**的原因码（`not_found` /
 > `device_absent` / …），本节的 `reason` 是**动作执行**的原因码。
+> **但「你问的那个东西不存在」两边同名同义**（都是 `not_found`）——
+> **不给 AI 两套要互相翻译的方言**（ADR-D27）。
 > **`unverified` 不是 tag 状态**——加进去会污染所有 tag 消费者。
 
 **UI 口径（写死）**：`verified: false` → 卡片**必须**显示「**已执行，未验证**」，

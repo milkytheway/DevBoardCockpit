@@ -285,7 +285,7 @@ kind 的说明书是契约的一部分（`01` 与本文档之间），是一份*
 | kind | 参数 | 产出的 sample | 备注 |
 |---|---|---|---|
 | `proc_stat` | `stat_path`, `cpuinfo_path` | `usage`, `core.*.usage`, `core.*.cluster` | **需要两次采样**，首次为 pending |
-| `meminfo` | `path` | `total_bytes`, `used_bytes`, `usage` | 单次即可 |
+| `meminfo` | `path` | `total_bytes`, `available_bytes`, `used_bytes`, `usage` | 单次即可 |
 | `devfreq_load` | `path`, `measure` | `duty`, `freq_hz` | `measure` 说明 `duty` 是什么，见下 |
 | `rknpu_load` | `path` | `usage`, `core.*.usage` | vendor 专有格式，RK 专属 kind |
 | `thermal_zone` | `glob`, `type_map` | `zone.*` | 按 `type` 归并，不按序号 |
@@ -649,8 +649,8 @@ board pack 里的动作**不是**自动获准执行的。权限在卡片侧声�
 | 模式 | 匹配的操作 |
 |---|---|
 | `reboot` / `shutdown` / `poweroff` / `halt` | 重启与关机 |
-| `flash` / `upgrade` / `erase` / `burn` | 刷写存储 |
-| `mkfs` | 格式化 |
+| `flash*` / `upgrade` / `erase` / `burn` | 刷写存储 |
+| `mkfs*` | 格式化 |
 | `dd` 写到 `/dev/mmcblk` `/dev/sd` `/dev/nvme` | 裸写块设备 |
 | `rm -rf /` 及其等价形式 | 删根 |
 | `iptables -F` / `nft flush ruleset` | 清空防火墙规则 |
@@ -687,10 +687,11 @@ board pack 里的动作**不是**自动获准执行的。权限在卡片侧声�
 |---|---|
 | 匹配单位 | argv 的**单个词元**（不是子串） |
 | 词元相等 | `argv[i] == 模式` 才算命中；`upgrade_status.sh` **不**命中 `upgrade` |
-| 前缀匹配 | 仅当模式以 `*` 结尾才允许前缀匹配（如 `flash*` 命中 `flash_uboot`） |
+| 前缀匹配 | 仅当模式以 `*` 结尾才允许前缀匹配（如 `flash*` 命中 `flash_uboot`、`mkfs*` 命中 `mkfs.ext4`） |
+| 词元的 **basename 也算** | `/sbin/reboot` 的 basename 是 `reboot` → 命中 `reboot`。**真实的调用几乎都带绝对路径**——只按字面匹配，地板在真实写法上就是空的 |
 | 路径类模式 | 先做路径规范化（展开 `..`、合并重复 `/`、去掉尾部 `/`），再比较 |
 | `dd` 类模式 | 匹配 `dd` 词元 + **目标参数**命中块设备路径（`of=` 的值，或紧随其后的参数） |
-| `rm -rf /` 类 | 匹配 `rm` + `-rf`/`-fr` 组合 + 路径参数规范化后等于 `/` |
+| `rm -rf /` 类 | 匹配 `rm` + `-rf`/`-fr` 组合 + 路径参数规范化后等于 `/`。**`/*` 展开后就是根目录下的全部条目 → 等价于 `/`**（表里那条「及其等价形式」说的就是它） |
 | 匹配失败的方向 | **匹配不上不等于安全**。表里没有的模式按包的声明走，但**运行时必须记录一条 warning** |
 
 **地板表要有版本。** 它是契约的一部分，所以带 `danger_floor_version`：
