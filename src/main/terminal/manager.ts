@@ -26,8 +26,16 @@ import { PipeInput } from './line-editor';
 export interface TerminalManagerOptions {
   /** 列出可用的连接 profile（按 id 查） */
   listProfiles(): ConnectionProfile[];
-  /** 按 profile 造一个连接 */
-  createConnection(profile: ConnectionProfile): Connection;
+  /**
+   * 按 profile 造一个连接。
+   *
+   * **日志由 manager 造好传进来**——一个会话一份日志，
+   * 连接那份与会话那份必须是**同一个文件**：
+   * 输入（`Session.record`）与输出（manager 的 `onData`）得在同一处。
+   * 之前两边各造一份，标签还一样，于是**一次会话落两个文件**，
+   * 连接那份永远没有收尾行。
+   */
+  createConnection(profile: ConnectionProfile, log: SessionLog): Connection;
   /**
    * 造一个会话日志。
    *
@@ -68,6 +76,18 @@ export class TerminalManager {
     return log;
   }
 
+  /** 收掉一个会话的日志：断开 → （远端自己退出的话）断流 → 收尾 */
+  private closeLog(sessionId: string, remoteExited: boolean): void {
+    const log = this.logs.get(sessionId);
+    if (!log) return;
+    // 顺序与黄金样本一致：
+    //   --- disconnected --- → --- stream-ended --- → === session closed ===
+    log.writeEvent('disconnected');
+    if (remoteExited) log.writeEvent('stream-ended');
+    log.close();
+    this.logs.delete(sessionId);
+  }
+
   /** 打开一个会话。找不到 profile 就报 TERM_NOT_FOUND */
   async open(profileId: string): Promise<{ sessionId: string }> {
     const profile = this.opts.listProfiles().find((p) => p.id === profileId);
@@ -77,8 +97,20 @@ export class TerminalManager {
       });
     }
 
-    const connection = this.opts.createConnection(profile);
-    await connection.open();
+    const id = randomUUID();
+    // 会话日志：**一个会话一份**（同 profile 的两个标签要分得开），
+    // 而且连接与会话**共用这一份**——输入与输出得在同一处。
+    const log = this.logFor(id, profileId, profile.transport);
+
+    let connection: Connection;
+    try {
+      connection = this.opts.createConnection(profile, log);
+      await connection.open();
+    } catch (err) {
+      // 连不上：日志不能留一个没有收尾的半截
+      this.closeLog(id, false);
+      throw err;
+    }
 
     let session: Session;
     try {
@@ -87,13 +119,11 @@ export class TerminalManager {
       // 开不出会话就把连接收掉——否则 ssh 客户端与 socket 永久挂着，
       // 而且连接没进 Map，没有任何东西能回收它。
       await connection.close().catch(() => undefined);
+      this.closeLog(id, false);
       throw err;
     }
-    const id = randomUUID();
     const pty = connection.capabilities().pty;
 
-    // 会话日志：**一个会话一份**（同 profile 的两个标签要分得开）
-    const log = this.logFor(id, profileId, connection.transport);
     // 开场事件行。格式与黄金样本同构（旧工程也写这几行）
     log.writeEvent('connected', profileId);
 
@@ -107,8 +137,7 @@ export class TerminalManager {
     // 远端自己退出了（敲 exit / 拔线 / adbd 断连）→ 收掉会话并通知界面。
     // 没有这条，界面留着标签页，用户继续往死通道里打字。
     session.onExit((exitCode: number | null) => {
-      log.writeEvent('stream-ended');
-      this.closeSession(id, exitCode);
+      this.closeSession(id, exitCode, true);
     });
 
     // pipe 模式：远端不发提示符，宿主画（profile 的 `options.prompt`）
@@ -150,8 +179,15 @@ export class TerminalManager {
     this.require(sessionId).session.resize(cols, rows);
   }
 
-  close(sessionId: string): void {
-    this.closeSession(sessionId, this.sessions.get(sessionId)?.session.exitCode ?? null);
+  /**
+   * 关掉一个会话。
+   *
+   * **要等连接真的关掉再返回**：串口的 `close()` 是异步的（等 `port.close()` 回调），
+   * 不等就返回的话，用户「关标签 → 马上重开」会撞 `PORT_BUSY`——
+   * 而他刚关掉标签，那个「端口被占用」会让人以为端口被别人占了。
+   */
+  async close(sessionId: string): Promise<void> {
+    await this.closeSession(sessionId, this.sessions.get(sessionId)?.session.exitCode ?? null, false);
   }
 
   /**
@@ -160,18 +196,22 @@ export class TerminalManager {
    * 两条路径会走到这里：用户点关闭按钮、远端自己退出了。
    * 重复调用无害——会话从 map 里删掉后第二次就直接返回。
    */
-  private closeSession(sessionId: string, exitCode: number | null): void {
+  private async closeSession(
+    sessionId: string,
+    exitCode: number | null,
+    remoteExited: boolean,
+  ): Promise<void> {
     const live = this.sessions.get(sessionId);
     if (!live) return;
-    // 断开与收尾也要进日志——事后要能看出「这个会话是怎么结束的」
-    this.logs.get(sessionId)?.writeEvent('disconnected');
-    this.logs.get(sessionId)?.close();
-    this.logs.delete(sessionId);
+    // 会话先关：SSH 会把 decoder 里那半个字符 flush 出来——
+    // 它得落在 `=== session closed ===` **之前**。
     live.session.close();
-    void live.connection.close();
+    await live.connection.close().catch(() => undefined);
     this.sessions.delete(sessionId);
     // 连接也要注销——否则按 id 找连接会拿到一个已关闭的
     this.opts.onConnectionClose?.(sessionId);
+    // 断开与收尾也要进日志——事后要能看出「这个会话是怎么结束的」
+    this.closeLog(sessionId, remoteExited);
     for (const cb of this.exitCbs) cb(sessionId, exitCode);
   }
 

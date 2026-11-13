@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { adbCapabilities, adbArgs, AdbConnection } from '../../src/main/hal/adb';
 import type { runProcess, SpawnResult } from '../../src/main/util/spawn';
 
@@ -272,5 +273,57 @@ describe('坏字节（RF-3）', () => {
     const { runProcess } = await import('../../src/main/util/spawn');
     const r = await runProcess(process.execPath, ['-e', 'process.stdout.write(Buffer.from([0xff, 0xfe]))']);
     expect(r.stdout.length).toBeGreaterThan(0);   // 替换符，不是空串
+  });
+});
+
+describe('ADB 常驻 shell 的流错误', () => {
+  it('stdin 的 error 必须有人接 —— 否则 EPIPE 会把主进程带崩', async () => {
+    // 往已经关掉的管道写会拿到 EPIPE/ECONNRESET，
+    // 而流的 'error' 事件**没有监听器就会变成未捕获异常**——
+    // 不是终端窗口挂掉，是**整个 Electron 主进程挂掉**。
+    //
+    // 触发路径是现实的：`adb devices` 校验通过之后、板子掉线或 serial 不匹配，
+    // 构造器里那句写会话环境脚本就打在一条即将死的管道上。
+    //
+    // 串口那条线有 `port.on('error')`、SSH 那条线有 `client.on('error')`，
+    // 唯独 ADB 的 stdin 是裸的（第三轮审计发现）。
+    const stdin = new EventEmitter() as EventEmitter & {
+      write: (d: string) => void;
+      end: () => void;
+    };
+    stdin.write = () => undefined;
+    stdin.end = () => undefined;
+
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      stdin: typeof stdin;
+      kill: () => void;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = stdin;
+    child.kill = () => undefined;
+
+    const conn = new AdbConnection(
+      { id: 'a', label: 'a', transport: 'adb', options: { serial: 'xyz' } },
+      { write: () => {}, close: () => {}, filePath: 'x' } as never,
+      {
+        runner: (async () => ({
+          exitCode: 0,
+          stdout: 'List of devices attached\nxyz\tdevice\n',
+          stderr: '',
+          durationMs: 0,
+          timedOut: false,
+        })) as never,
+        spawn: (() => child) as never,
+      },
+    );
+    await conn.open();
+    await conn.openSession();
+
+    // 有监听器 → 只是被记下来，不会变成未捕获异常
+    expect(stdin.listenerCount('error')).toBeGreaterThan(0);
+    expect(() => stdin.emit('error', new Error('EPIPE'))).not.toThrow();
   });
 });

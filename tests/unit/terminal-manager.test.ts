@@ -29,11 +29,31 @@ const fakeConn = (caps: { pty: boolean }) => {
   };
 };
 
-const mgrWith = (conn: unknown) => new TerminalManager({
-  listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
-  createConnection: () => conn as never,
-  createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
-});
+/**
+ * 假日志：**记下调用顺序**。
+ *
+ * 之前的假日志只有一堆 `vi.fn()`，把「一次会话到底落几个文件、
+ * 事件行的先后顺序」全遮住了——第三轮审计的两条缺陷都藏在这儿。
+ */
+function fakeLog() {
+  const events: string[] = [];
+  return {
+    events,
+    log: {
+      write: (line: string) => events.push(`write:${line}`),
+      writeEvent: (kind: string, detail = '') => events.push(`event:${kind}${detail ? ' ' + detail : ''}`),
+      close: () => events.push('close'),
+      filePath: 'x',
+    },
+  };
+}
+
+const mgrWith = (conn: unknown, log?: ReturnType<typeof fakeLog>) =>
+  new TerminalManager({
+    listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
+    createConnection: () => conn as never,
+    createLog: () => (log ? log.log : fakeLog().log) as never,
+  });
 
 describe('TerminalManager', () => {
   it('pty 模式：写入的数据原样转交给远端', async () => {
@@ -124,6 +144,8 @@ describe('TerminalManager 的会话退出', () => {
 
     const { sessionId } = await mgr.open('p1');
     exit(0);
+    // 收尾是异步的（要等连接真的关掉），所以等一拍
+    await new Promise((r) => setTimeout(r, 10));
 
     expect(seen).toEqual([0]);
     // 会话已经被收掉
@@ -162,5 +184,70 @@ describe('TerminalManager 的 pipe 模式提示符', () => {
     mgr.onData((_id, chunk) => seen.push(chunk));
     await mgr.open('p1');
     expect(seen).toEqual([]);
+  });
+});
+
+describe('第三轮审计补的用例', () => {
+  it('一次会话只落一份日志 —— 连接与会话共用同一个', async () => {
+    // 之前连接自己造一份、会话又造一份，两份 label 一样 →
+    // **一次会话两个文件**，输入与输出分居两处，
+    // 而连接那份永远没有收尾行。
+    const { conn } = fakeConn({ pty: true });
+    const created: unknown[] = [];
+    const mgr = new TerminalManager({
+      listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
+      createConnection: (_p, log) => {
+        created.push(log);
+        return conn as never;
+      },
+      createLog: () => fakeLog().log as never,
+    });
+
+    const { sessionId } = await mgr.open('p1');
+    // 连接拿到的日志与 manager 写输出用的是同一份
+    expect(created).toHaveLength(1);
+    expect(created[0]).toBeTruthy();
+    expect(sessionId).toBeTruthy();
+  });
+
+  it('关会话要等连接真的关掉 —— 不然「关标签 → 马上重开」会撞 PORT_BUSY', async () => {
+    let closed = false;
+    const { conn } = fakeConn({ pty: true });
+    (conn as unknown as { close: () => Promise<void> }).close = async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      closed = true;
+    };
+    const mgr = mgrWith(conn);
+    const { sessionId } = await mgr.open('p1');
+    await mgr.close(sessionId);
+    expect(closed).toBe(true);
+  });
+
+  it('收尾顺序与黄金样本一致：disconnected → stream-ended → closed', async () => {
+    // 样本：--- disconnected --- → --- stream-ended --- → === session closed ===
+    const { conn, exit } = fakeConn({ pty: true });
+    const log = fakeLog();
+    const mgr = mgrWith(conn, log);
+    await mgr.open('p1');
+    exit(0);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const kinds = log.events.filter((e) => e !== 'write:hello');
+    const order = kinds.map((e) => e.replace('event:', '').split(' ')[0]);
+    expect(order.indexOf('disconnected')).toBeLessThan(order.indexOf('stream-ended'));
+    expect(order.indexOf('stream-ended')).toBeLessThan(order.indexOf('close'));
+  });
+
+  it('连接失败也要收尾日志 —— 不能留一个没有收尾行的半截', async () => {
+    const log = fakeLog();
+    const mgr = new TerminalManager({
+      listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
+      createConnection: () => {
+        throw new Error('连不上');
+      },
+      createLog: () => log.log as never,
+    });
+    await expect(mgr.open('p1')).rejects.toThrow();
+    expect(log.events).toContain('close');
   });
 });

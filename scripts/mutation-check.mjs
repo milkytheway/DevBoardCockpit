@@ -235,6 +235,54 @@ const MUTATIONS = [
       replace(s, '    if (this.killed) this.insert(this.killed);', '    // 变异：不贴回来'),
   },
   {
+    name: 'M17 重画不得越过提示符',
+    file: 'src/main/terminal/line-editor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
+    expect: '重画不得越过提示符',
+    apply: (s) =>
+      replace(
+        s,
+        '    const back = displayWidth(before.text.slice(0, before.cursor));',
+        '    const back = visibleLength(this.prompt) + displayWidth(before.text.slice(0, before.cursor));',
+      ),
+  },
+  {
+    name: 'M18 Ctrl+C 要清行',
+    file: 'src/main/terminal/line-editor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
+    expect: 'Ctrl+C 要清掉这一行',
+    apply: (s) =>
+      replace(
+        s,
+        '          this.editor.clear();\n          echo += `^C\\r\\n${this.prompt}`;',
+        '          echo += `^C\\r\\n${this.prompt}`;',
+      ),
+  },
+  {
+    name: 'M19 日志文件名要带全 HHMMSS',
+    file: 'src/main/logging/session-log.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/session-log.test.ts'],
+    expect: '文件名是',
+    apply: (s) =>
+      replace(
+        s,
+        "    const stem = logFileName(safeName(opts.label), at).replace(/\\.log$/, '');",
+        "    const stem = logFileName('', at).slice(0, 6);",
+      ),
+  },
+  {
+    name: 'M20 ADB 的 stdin 必须接 error',
+    file: 'src/main/hal/adb.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/adb.test.ts'],
+    expect: 'stdin 的 error 必须有人接',
+    apply: (s) =>
+      replace(
+        s,
+        "    child.stdin.on('error', (err: Error) => {",
+        "    // 变异：stdin 的 error 没人接\n    child.stdin.on('nothing', (err: Error) => {",
+      ),
+  },
+  {
     name: 'M12 能力位由 profile 决定',
     file: 'src/main/hal/capabilities.ts',
     check: ['npx', 'vitest', 'run', 'tests/integration/registry.test.ts'],

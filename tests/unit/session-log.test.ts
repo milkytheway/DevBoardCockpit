@@ -35,6 +35,15 @@ describe('SessionLog', () => {
     expect(content).toContain('world');
   });
 
+  it('文件名是 <label>-<HHMMSS>.log —— 之前少切了一位数字', () => {
+    // 之前写的是 `logFileName('', at).slice(0, 6)`：
+    // 空 label 会多带一个连字符，切 6 位又**少切一位数字**，
+    // 于是 09:05:03 的会话落成 `t--09050.log`。
+    const log = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: () => new Date(2026, 10, 12, 9, 5, 3) });
+    expect(log.filePath.endsWith('t-090503.log')).toBe(true);
+    log.close();
+  });
+
   it('路径落在 <dataDir>/logs/<date>/ 下', () => {
     const log = new SessionLog({ label: 't', dataDir: dir, now: () => new Date(2026, 10, 12, 9, 5, 3) });
     expect(log.filePath).toContain(join('logs', '2026-11-12'));

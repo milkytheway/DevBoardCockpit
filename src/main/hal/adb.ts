@@ -91,6 +91,14 @@ export interface AdbConnectionOptions {
   adbPath?: string;
   /** 跑 adb 的入口，测试用假实现 */
   runner?: typeof runProcess;
+  /**
+   * 起子进程的入口，测试用假实现。
+   *
+   * **为什么需要它**：`child.stdin` 的 `'error'` 有没有人接，
+   * 只有真的起一个会立刻死掉的子进程才测得到——
+   * 而「板子掉了线」正是那条路。
+   */
+  spawn?: typeof spawn;
 }
 
 export class AdbConnection implements Connection {
@@ -99,6 +107,7 @@ export class AdbConnection implements Connection {
 
   private readonly adbPath: string;
   private readonly runner: typeof runProcess;
+  private readonly spawnFn: typeof spawn;
   private opened = false;
 
   constructor(
@@ -109,6 +118,7 @@ export class AdbConnection implements Connection {
     this.id = profile.id;
     this.adbPath = opts.adbPath ?? 'adb';
     this.runner = opts.runner ?? runProcess;
+    this.spawnFn = opts.spawn ?? spawn;
   }
 
   capabilities(): Capabilities {
@@ -248,13 +258,25 @@ export class AdbConnection implements Connection {
    */
   spawnShell(): ChildProcessWithoutNullStreams {
     const args = adbArgs(this.profile, ['shell']);
-    const child = spawn(this.adbPath, args, {
+    const child = this.spawnFn(this.adbPath, args, {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env },
     });
     child.on('error', (err) => {
       console.error(`[adb shell] ${err.message}`);
+    });
+    // **stdin 也必须接 error**。
+    // 往已经关掉的管道写会拿到 EPIPE/ECONNRESET，
+    // 而流的 'error' 事件**没有监听器就会变成未捕获异常**——
+    // 不是终端窗口挂掉，是**整个 Electron 主进程挂掉**。
+    //
+    // 触发路径是现实的：`adb devices` 校验通过之后、板子掉线或 serial 不匹配，
+    // 构造器里那句写会话环境脚本就打在一条即将死的管道上。
+    // （串口那条线有 `port.on('error')`、SSH 那条线有 `client.on('error')`，
+    //   唯独 ADB 的 stdin 是裸的。）
+    child.stdin.on('error', (err: Error) => {
+      console.error(`[adb shell stdin] ${err.message}`);
     });
     return child;
   }

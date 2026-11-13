@@ -91,7 +91,10 @@ export class LocalConnection implements Connection {
 
     const out: FileEntry[] = [];
     for (const dirent of dirents) {
-      const path = join(remotePath, dirent.name);
+      // 用**解析后**的目录拼：根目录映射到了 cwd，
+      // 拿未解析的 remotePath 拼出来的路径在 Windows 上是盘根，不存在——
+      // 下载会直接 ENOENT。
+      const path = join(dir, dirent.name);
       let isDirectory = dirent.isDirectory();
       let sizeBytes: number | null = null;
       let modifiedAt: string | null = null;

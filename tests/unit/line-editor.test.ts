@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PipeInput, LineEditor, decodeActions } from '../../src/main/terminal/line-editor';
+import { PipeInput, LineEditor, decodeActions, displayWidth } from '../../src/main/terminal/line-editor';
 
 /**
  * 管道模式的行编辑。
@@ -220,5 +220,52 @@ describe('pipe 模式发往远端的协议', () => {
     type(input, 'cat file.txt');
     input.input('\x17');
     expect(input.editor.text).toBe('cat ');
+  });
+});
+
+describe('第三轮审计补的用例', () => {
+  it('重画不得越过提示符 —— 提示符被擦掉就等于没提示符', () => {
+    // 提示符与输入在同一行上，所以重画只能退到**文本区起点**，
+    // 退过头（退到提示符之前）再擦行，就把提示符本身擦掉了。
+    const input = new PipeInput('root@ATK-DLRK3588');
+    const r = input.input('l');
+    // 第一个字：光标就在文本区起点，一个字都不用退
+    expect(r.echo).not.toContain('\x1b[17D');
+    expect(r.echo).not.toContain('\x1b[15D');
+    // 第二个字：退 1 列（一个字符），不是退到行首
+    const r2 = input.input('s');
+    expect(r2.echo).toContain('\x1b[1D');
+    expect(r2.echo).not.toContain('\x1b[16D');
+  });
+
+  it('Ctrl+C 要清掉这一行 —— 用例名承诺了「清行」', () => {
+    const input = new PipeInput();
+    input.input('sleep 100');
+    input.input('\x03');
+    expect(input.editor.text).toBe('');
+    // 清完之后重新输入，回车发出去的是新命令，不是两段拼起来的
+    input.input('ls');
+    expect(input.input('\r').toRemote).toBe('ls\n');
+  });
+
+  it('Ctrl+L 是清屏（旧工程 keymap 的规格：Clear the screen）', () => {
+    const input = new PipeInput();
+    input.input('ls');
+    const r = input.input('\x0c');
+    // 清屏 + 光标归位 + 提示符重画
+    expect(r.echo).toContain('\x1b[2J');
+    expect(r.echo).toContain('\x1b[H');
+  });
+
+  it('列宽按显示宽度算 —— 一个汉字占两列', () => {
+    expect(displayWidth('中')).toBe(2);
+    expect(displayWidth('abc')).toBe(3);
+    expect(displayWidth('中文abc')).toBe(7);
+
+    const input = new PipeInput();
+    input.input('中'); // 一个汉字 = 两列
+    const r = input.input('文');
+    // 退 2 列（显示宽度），不是退 1（UTF-16 长度）
+    expect(r.echo).toContain('\x1b[2D');
   });
 });

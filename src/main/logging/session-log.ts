@@ -112,7 +112,12 @@ export class SessionLog {
 
     // 两个会话在同一秒开起来不许撞名——撞了第二个会**追加**到第一个的日志里，
     // 事后没法分清两段对话。
-    const stem = `${safeName(opts.label)}-${logFileName('', at).slice(0, 6)}`;
+    //
+    // 文件名是 `<label>-<HHMMSS>.log`（`logFileName` 定的口径）。
+    // 之前这里写的是 `logFileName('', at).slice(0, 6)`——
+    // 那个空 label 会多带一个连字符，切 6 位又**少切一位数字**，
+    // 于是 09:05:03 的会话落成 `t--09050.log`。
+    const stem = logFileName(safeName(opts.label), at).replace(/\.log$/, '');
     let path = join(dir, `${stem}.log`);
     let counter = 1;
     while (existsSync(path)) {

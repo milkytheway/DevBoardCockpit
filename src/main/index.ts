@@ -33,8 +33,8 @@ function listProfiles(): ConnectionProfile[] {
 const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'));
 const adbPath = resolveAdbPath(settings);
 
-function createConnectionFor(profile: ConnectionProfile): Connection {
-  const log = new SessionLog({ label: profile.id, dataDir: userDataDir() });
+/** 连接用 manager 给的日志——**一个会话一份**，输入输出在同一处 */
+function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
   return createConnection(profile, log, { adbPath });
 }
 

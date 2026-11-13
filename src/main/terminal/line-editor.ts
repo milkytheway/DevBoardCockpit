@@ -270,6 +270,58 @@ export function visibleLength(text: string): number {
 }
 
 /**
+ * 显示宽度：**终端的列**，不是字符个数。
+ *
+ * 一个汉字占 **2 列**，一个 emoji 也占 2 列，组合字符占 0 列。
+ * 用 `String.length` 算出来的���UTF-16 码元数」——
+ * 重画时按它退列，光标就会越退越偏（中文行一多就歪）。
+ *
+ * 口径与终端一致（wcwidth 的常见近似）：
+ * 东亚宽字符 = 2 列，组合记号 = 0 列，其余 = 1 列。
+ */
+export function displayWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp === undefined) continue;
+    if (isZeroWidth(cp)) continue;
+    width += isWide(cp) ? 2 : 1;
+  }
+  return width;
+}
+
+/** 组合记号与零宽字符：占 0 列 */
+function isZeroWidth(cp: number): boolean {
+  return (
+    (cp >= 0x0300 && cp <= 0x036f) || // 组合附加符号
+    (cp >= 0x200b && cp <= 0x200f) || // 零宽空格与方向标记
+    (cp >= 0xfe00 && cp <= 0xfe0f) || // 变体选择符
+    cp === 0xfeff
+  );
+}
+
+/** 东亚宽字符与 emoji：占 2 列 */
+function isWide(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) ||
+    (cp >= 0x2e80 && cp <= 0x303e) ||
+    (cp >= 0x3041 && cp <= 0x33ff) ||
+    (cp >= 0x3400 && cp <= 0x4dbf) ||
+    (cp >= 0x4e00 && cp <= 0x9fff) ||
+    (cp >= 0xa000 && cp <= 0xa4cf) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe10 && cp <= 0xfe19) ||
+    (cp >= 0xfe30 && cp <= 0xfe6f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1f64f) ||
+    (cp >= 0x1f900 && cp <= 0x1f9ff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+  );
+}
+
+/**
  * pipe 模式的输入层：状态 + 渲染。
  *
  * **渲染策略**：改动之后把整行重画一遍。
@@ -369,13 +421,19 @@ export class PipeInput {
           dirty = true;
           break;
         case '\x0c':
+          // 清**屏**（旧工程 keymap 的规格：Clear the screen → clear_requested → 清屏），
+          // 不是清这一行。行还在，只是屏幕被清空、提示符重画。
+          echo += '\x1b[2J\x1b[H';
           this.editor.clear();
-          dirty = true;
+          echo += this.prompt;
+          dirty = false;
           break;
         case '\x03':
           // 中断：字节发给远端（管道里没有信号，只能发字节）
           toRemote += '\x03';
-          echo += '^C\r\n';
+          // **这一行要丢掉**——不然下次回车会把「旧命令 + 新命令」拼成一条发出去
+          this.editor.clear();
+          echo += `^C\r\n${this.prompt}`;
           dirty = false;
           break;
         default:
@@ -429,12 +487,17 @@ export class PipeInput {
    * 「行首」= 提示符之后，所以要退 `提示符宽度 + 旧光标` 列。
    */
   private redraw(before: { text: string; cursor: number }): string {
-    const back = visibleLength(this.prompt) + before.cursor;
+    // **只退到文本区起点**，不能退到提示符之前——
+    // 退过头再擦行（ESC[K），就把提示符本身擦掉了，
+    // 而提示符是 pipe 模式唯一的「我在这儿」信号。
+    //
+    // 列数按**显示宽度**算：汉字占两列，用字符数会越退越偏。
+    const back = displayWidth(before.text.slice(0, before.cursor));
     let out = '';
     if (back > 0) out += `\x1b[${back}D`;
     out += '\x1b[K';
     out += this.editor.text;
-    const tail = this.editor.text.length - this.editor.cursor;
+    const tail = displayWidth(this.editor.text.slice(this.editor.cursor));
     if (tail > 0) out += `\x1b[${tail}D`;
     return out;
   }
