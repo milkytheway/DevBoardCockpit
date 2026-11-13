@@ -180,7 +180,7 @@ permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
 （`02-board-pack.md` §5.5），那是「温和参数域」。批准界面显示的不是动作名，
 而是「**这张卡可以把背光亮度改到 16–255**」这样的具体范围。
 运行时执行前检查参数是否落在 `guard` 内：落在里面直接执行，
-超出则报 `needs_approval`，走一次单独确认。
+超出则报 `needs_confirmation`，走一次单独确认（`04` §2.4）。
 
 > **为什么必须显示范围**：用户批准「可以改背光」时，脑子里想的是「调到 30」，
 > 实际拿到的是 `0..255` 全域，包括把屏幕调到全黑。
@@ -351,6 +351,16 @@ button.setState(r.readback.value);   // 用回读值
 （Electron 的 `<webview>` / `BrowserView`、或系统 WebView2 都行）；这不改变契约本身，
 但**会**影响「宿主怎么实现」的选择。本轮规格不锁这一点。
 
+**这条沙箱选择带来两件必须写下来的事**（2026-11-14，ADR-D28）：
+
+1. **卡片之间互不可见**。每个 iframe 是一个**独立的不透明源**——它们彼此不同源，
+   谁也读不到谁的 DOM、存储与 cookie。
+   （因此也**碰不到宿主的存储**：卡片的 `localStorage` 直接抛 `SecurityError`，
+   这就是 §6.2 要宿主代管存储的**前提**，不是将就。）
+2. **preload 进不了 iframe**。宿主的 preload 只挂在窗口上，**子 iframe 里没有**——
+   所以 `cockpit.*` **不能**靠 `contextBridge` 递进去，
+   **必须**由宿主**注入一个 bridge 脚本**（同源提供）来实现（§7.7）。
+
 ### 6.1 网络怎么真的被关掉
 
 **`sandbox` 属性不限制网络。** 不给 `allow-same-origin` 只是让卡片拿不到宿主的源、
@@ -419,6 +429,30 @@ Content-Security-Policy:
 
 **「布局存储的受控接口」就是这一套。** 早期版本在 §六 提过这个短语却从未定义它，
 现在它有了明确的落点：`cockpit.storage.*`。
+
+### 6.3 卡片可依赖的 CSS 变量
+
+卡片**不得硬编码颜色**（与上面「网络 / 存储 / 文件」同一个原则）：
+它只能用**宿主注入的 CSS 变量**。而**宿主到底注入哪些变量，是契约**——
+
+```
+--cockpit-bg / --cockpit-bg-elevated / --cockpit-border
+--cockpit-text / --cockpit-text-dim / --cockpit-text-faint
+--cockpit-accent / --cockpit-accent-2
+--cockpit-ok / --cockpit-warn / --cockpit-danger / --cockpit-unavailable
+--cockpit-radius / --cockpit-font-mono / --cockpit-font-ui
+```
+
+| 规则 | 内容 |
+|---|---|
+| **名字与含义是契约** | 卡片可以依赖上面这 15 个；**改名要升 `apiVersion`** |
+| **值不是契约** | 值由宿主按皮肤给出（暗色 / 浅色各一套）。两套皮肤都必须提供**全部 15 个** |
+| **宿主可以再加** | 实现可以提供更多变量，但**卡片不能依赖没写在这里的** |
+| **语义色对应 tag 五态** | `--cockpit-ok` / `--cockpit-warn` / `--cockpit-danger` / `--cockpit-unavailable` 是**有含义的**：`unavailable` 表达的是「**这块板不提供这个能力**」，读不到就等于把「不可用」说成了「正常」 |
+
+> **为什么清单要进契约**：卡片是 AI 写的，它需要一份「**可以依赖什么**」的清单，
+> 否则换个宿主版本就得靠猜——而它不会猜，**它会硬编码**。
+> 形状与取值见 `docs/UI设计/01-UI设计总纲.md` §7.2 与 §7.3。
 
 ---
 
@@ -510,6 +544,7 @@ const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 | `cockpit.tags.subscribePattern(pattern, cb)` | 读 | `permissions.read` |
 | `cockpit.tags.list()` | 读 | `permissions.read` |
 | `cockpit.degradation()` | 读 | 无（只返回本卡的降级信息） |
+| `cockpit.capabilities()` | 读 | 无（只返回本宿主的信息） |
 | `cockpit.actions.invoke(id, params)` | 写 | `permissions.write` |
 | `cockpit.storage.get/set/remove/keys/clear` | 存储 | 无（限于本卡命名空间） |
 | `cockpit.log(level, message)` | 日志 | 无 |
@@ -522,6 +557,30 @@ const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 **所有方法都不抛异常**：失败时返回 `{ ok: false, reason }`
 （与 `04` §四 的共同约定一致）。`tags.get` 例外——它返回一个**状态化**的值，
 读不到时是 `{ value: null, status: "unavailable" }`，不是异常。
+
+**本宿主没有实现的方法**，调用返回 `{ ok: false, reason: 'unknown_method' }`
+（2026-11-14，ADR-D28）。`unknown_method` **不进** `01` §2.1.1 的 tag reason 表——
+那张表是**读数**的原因码；这里说的是**方法不存在**。
+卡片想知道宿主支持什么，**先问 `capabilities()`**：
+
+```js
+const caps = await cockpit.capabilities();
+// { apiVersion: 'devboard/v1',
+//   methods: ['capabilities', 'tags.get', 'tags.subscribe', …],
+//   connection: { label: '板子 · ADB', transport: 'adb' },
+//   tags: ['cpu.usage', 'mem.usage', …] }   ← 本卡**可读**的那些
+```
+
+| 字段 | 内容 |
+|---|---|
+| `apiVersion` | 契约版本 |
+| `methods` | **本 build 实际实现的方法名**（不是契约全集） |
+| `connection` | 当前连接上下文（**不含 `connectionId`**——卡片代码里没有这个词，见 §7.8） |
+| `tags` | **本卡可读**的 tag 清单（已按 `permissions.read` 过滤） |
+
+> **为什么要有它**：卡片是 AI 写的，它**必须知道宿主支持什么**——
+> 否则它只能硬编码假设「`cockpit.tags.get` 一定在」，宿主版本一换就靠 try/catch 猜，
+> 而卡片跑在沙箱里，**猜错了没有任何提示**。
 
 ### 7.8 连接上下文（隐式作用域）
 

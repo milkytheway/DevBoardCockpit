@@ -766,8 +766,12 @@ actions:
 | 情形 | 行为 |
 |---|---|
 | 参数值落在 `guard` 内 | 属于装卡时批准的那一档，直接执行（仍记审计） |
-| 参数值超出 `guard` | 报 `needs_approval`，走一次单独确认（与 destructive 同一条确认通道） |
+| 参数值超出 `guard` | 报 `needs_confirmation`，走一次单独确认（与 destructive 同一条确认通道） |
 | 没有声明 `guard` | 等价于 `guard` = 参数的完整声明域，即不缩小范围 |
+
+> **动作执行的原因码以 `04` §2.4 的表为准**——本表不再另立一个码。
+> （原写 `needs_approval`，与 `04` §2.4 的 `needs_confirmation` **一个意思两个码**；
+> 2026-11-14 ADR-D28 统一为 `needs_confirmation`，另带 `guard_exceeded: true`。）
 
 **`guard` 只能缩小范围，不能扩大。** 校验器检查：
 `guard` 的区间必须是 `params` 声明域的子集，否则报错。
@@ -883,7 +887,7 @@ actions:
 
 | # | 检查 | 在哪查 |
 |---|---|---|
-| R1 | 参数值落在 `guard` 内，否则报 `needs_approval` | 运行时执行前 |
+| R1 | 参数值落在 `guard` 内，否则报 `needs_confirmation` | 运行时执行前 |
 | R2 | 依赖退出码的 `command_ok` / `verify` 在串口上不可用 | 运行时执行前 |
 | R3 | 地板表外的命令记一条 warning | 运行时执行前 |
 
