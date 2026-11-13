@@ -438,6 +438,42 @@ const MUTATIONS = [
         "          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',\n        );\n        // 变异：照常发布\n      }",
       ),
   },
+  {
+    name: 'M33 往返队列：同一时刻只有一次往返在飞',
+    file: 'src/main/hal/round-trip-queue.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
+    expect: '任何时刻只有一次往返在飞',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (this.draining) return;',
+        '    // 变异：去掉重入保护 → 两条链各自开跑',
+      ),
+  },
+  {
+    name: 'M34 调度器：错过的周期要**跳过**，不补发',
+    file: 'src/main/tags/scheduler.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-scheduler.test.ts'],
+    expect: '跳过',
+    apply: (s) =>
+      replace(
+        s,
+        '          if (waited > group.intervalMs + slack) {',
+        '          if (false) {  // 变异：永不跳过',
+      ),
+  },
+  {
+    name: 'M35 调度器：采样必须**经队列**，不直接碰 exec',
+    file: 'src/main/tags/scheduler.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-scheduler.test.ts'],
+    expect: '一切经队列',
+    apply: (s) =>
+      replace(
+        s,
+        "    void this.queue\n      .run('sample', async () => {",
+        '    // 变异：绕开队列，直接采\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'sample\', async () => {',
+      ),
+  },
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
