@@ -1,4 +1,5 @@
 import type { ReasonCode, TagReading } from '../../shared/tag-reading';
+import { matchTagPattern } from '../tags/vocabulary';
 import { permissionCovers, type CardPermissions } from './permissions';
 
 /**
@@ -70,7 +71,8 @@ export class TagsService {
   subscribePattern(pattern: string, cb: (r: TagReading) => void): () => void {
     if (!permissionCovers(this.perms, pattern)) return () => undefined;
     return this.deps.subscribe((reading) => {
-      if (!matchPattern(pattern, reading.tag)) return;
+      // **复用词表层那一个匹配器**（不自己写第二套——第二套迟早和第一套对不上）
+      if (!matchTagPattern(pattern, reading.tag)) return;
       // **再判一次权限**（铁律 2）
       if (!permissionCovers(this.perms, reading.tag)) return;
       cb(reading);
@@ -107,19 +109,4 @@ export class TagsService {
       seq: 0,
     };
   }
-}
-
-/** 模式匹配（`cpu.core.*.usage` 那种）——与词表层同一套语义 */
-function matchPattern(pattern: string, name: string): boolean {
-  const ps = pattern.split('.');
-  const ns = name.split('.');
-  if (ps.length !== ns.length) return false;
-  for (let i = 0; i < ps.length; i += 1) {
-    if (ps[i] === '*') {
-      if ((ns[i] ?? '').length === 0) return false;
-      continue;
-    }
-    if (ps[i] !== ns[i]) return false;
-  }
-  return true;
 }

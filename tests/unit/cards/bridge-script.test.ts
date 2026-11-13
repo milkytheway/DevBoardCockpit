@@ -25,7 +25,13 @@ describe('卡片 API 注册表', () => {
     expect(names).toContain('degradation');
     expect(names).toContain('storage.get');
     expect(names).toContain('log');
-    expect(names).toContain('notify');
+  });
+
+  it('**`notify` 不在已实现清单里**（宿主通道 M6 才有；列了 = 卡片以为通知发出去了）', () => {
+    const names = [...apiByName().keys()];
+    expect(names).not.toContain('notify');
+    // 契约 §7.7：「本宿主没有实现的方法，调用返回 unknown_method」
+    expect(apiByName().has('actions.invoke')).toBe(false);
   });
 
   it('**M5 没有写侧**（actions.invoke 属 M6）', () => {

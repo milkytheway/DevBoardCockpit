@@ -162,7 +162,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         //
         // 「非空」会让 `measure: utilzation`（拼错）一路放行——
         // 而 devfreq 的 load 文件读出的是**占空比**（空闲时 100），
-        // 于是占空��被原样发布成利用率。**那是这个工程最在意的那类假数。**
+        // 于是占空符被原样发布成利用率。**那是这个工程最在意的那类假数。**
         err(
           4,
           `${path}.provides[${i}].tag`,

@@ -51,8 +51,6 @@ export interface CardSessionManagerDeps {
   storageFor?: (cardId: string) => CardServices['storage'];
   /** 每张卡的日志 */
   logFor?: (cardId: string) => (level: 'error' | 'warn' | 'info', message: string) => void;
-  /** 通知（M6 才有真正的宿主通道） */
-  notifyFor?: (cardId: string) => (title: string, body: string) => void;
   /** 当前连接的身份（给 `capabilities()` 用） */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
@@ -137,9 +135,6 @@ export class CardSessionManager {
       storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
         this.deps.logFor?.(cardId)(level, message);
-      },
-      notify: (title, body) => {
-        this.deps.notifyFor?.(cardId)(title, body);
       },
     };
 

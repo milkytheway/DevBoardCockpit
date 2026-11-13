@@ -55,7 +55,6 @@ export interface CardServices {
     clear(): { ok: boolean; reason?: string };
   };
   log(level: 'error' | 'warn' | 'info', message: string): void;
-  notify(title: string, body: string): void;
 }
 
 export type CardApiHandler = (ctx: CardApiContext, args: Record<string, unknown>) => Promise<unknown> | unknown;
@@ -79,6 +78,12 @@ export interface CardApiDef {
  *
  * **没有 `actions.invoke`** —— 写侧属 M6（契约 §7.7 的写侧行）。
  * 卡片调它会得到 `unknown_method`（bridge 只暴露这里有的方法）。
+ *
+ * **也没有 `notify`** —— 宿主的通知通道（M6）还没接上。
+ * 契约 §7.7 明写「**本宿主没有实现的方法**，调用返回
+ * `{ ok: false, reason: 'unknown_method' }`」，
+ * 而 `capabilities().methods` 列的是「**本 build 实际有的方法**」——
+ * 所以**没实现的就不该列**（列了 = 卡片以为通知发出去了，其实没人管）。
  */
 export function cardApis(): CardApiDef[] {
   return [
@@ -173,15 +178,6 @@ export function cardApis(): CardApiDef[] {
         const level2 =
           level === 'error' || level === 'warn' || level === 'info' ? level : 'info';
         services.log(level2, String(args['message'] ?? ''));
-        return { ok: true };
-      },
-    },
-    {
-      name: 'notify',
-      permission: 'none',
-      params: ['title', 'body'],
-      make: (services) => (_ctx, args) => {
-        services.notify(String(args['title'] ?? ''), String(args['body'] ?? ''));
         return { ok: true };
       },
     },

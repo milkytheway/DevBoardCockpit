@@ -4,7 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 /**
  * 打开连接失败时，用户要看得见原因。
  *
- * 整支评���的 C6：renderer 没有错误呈现，
+ * 整支评审的 C6：renderer 没有错误呈现，
  * 「串口被占用」这种错误藏在控制台里等于没报——
  * 用户只看到「点了没反应」。
  *

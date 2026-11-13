@@ -112,9 +112,6 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     logFor: (cardId) => (level, message) => {
       log.append(cardId, { source: 'card', level, message });
     },
-    notifyFor: () => () => {
-      // 通知要先有宿主的通知通道（M6 再说）
-    },
     connectionInfo: deps.connectionInfo,
   });
 

@@ -273,7 +273,7 @@ export function visibleLength(text: string): number {
  * 显示宽度：**终端的列**，不是字符个数。
  *
  * 一个汉字占 **2 列**，一个 emoji 也占 2 列，组合字符占 0 列。
- * 用 `String.length` 算出来的���UTF-16 码元数」——
+ * 用 `String.length` 算出来的「UTF-16 码元数」——
  * 重画时按它退列，光标就会越退越偏（中文行一多就歪）。
  *
  * 口径与终端一致（wcwidth 的常见近似）：

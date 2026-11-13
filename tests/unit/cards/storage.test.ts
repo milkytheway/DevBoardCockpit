@@ -72,10 +72,11 @@ describe('卡片存储', () => {
     }
   });
 
-  it('键名以 `__` 开头 → 拒绝', () => {
+  it('键名以 `__` 开头 → 拒绝（**理由码要说对**：不是「值序列化不了」）', () => {
     const { storage, cleanup } = tempStorage();
     try {
       expect(storage.set('cpu-usage', '__x', 1).ok).toBe(false);
+      expect(storage.set('cpu-usage', '__x', 1).reason).toBe('reserved_key');
     } finally {
       cleanup();
     }

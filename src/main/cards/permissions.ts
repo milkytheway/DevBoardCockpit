@@ -30,7 +30,12 @@ export function permissionCovers(perms: CardPermissions, tag: string): boolean {
   return perms.read.some((pattern) => matchTagPattern(pattern, tag));
 }
 
-/** `requires` 的每一项都被读权限覆盖了吗？（契约 §2.2） */
+/**
+ * `requires` 的每一项都被读权限覆盖了吗？（契约 §2.2 的布尔形式）
+ *
+ * **M5 的校验器不用它**——规则 3 是**逐项报**的（告诉人「是哪一条没被覆盖」），
+ * 比一个布尔值有用。M6 的授权检查用它。
+ */
 export function requiresSatisfied(requires: string[], perms: CardPermissions): boolean {
   return requires.every((tag) => permissionCovers(perms, tag));
 }
@@ -44,6 +49,8 @@ export function requiresSatisfied(requires: string[], perms: CardPermissions): b
  *
  * 只看一条就会漏：只看 manifest → 用户没点头的动作也能写；
  * 只看授权 → manifest 没声明的动作也能写（宿主就没这个动作）。
+ *
+ * **M6 用**——M5 没有写侧（没有动作可执行，也就没有「已授权」这回事）。
  */
 export function effectiveWrite(perms: CardPermissions, granted: string[]): string[] {
   return perms.write.filter((id) => granted.includes(id));

@@ -64,7 +64,8 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * 真实的串口工厂。
  *
  * **导出是为了能被测。** 之前的实现在模块内私有，于是「端口到底开没开」
- * 这件事没有任何测试守着——把 `await port.open()` 删掉，测试全绿。
+ * 这件事**现在有测试守着**了——把 `await port.open()` 删掉，
+ * `tests/unit/serial-real-factory.test.ts` 会立刻变红（变异守卫 M40）。
  * 而那正是整支评审的 C1：端口不开，用户第一次按键就崩主进程。
  */
 export const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {

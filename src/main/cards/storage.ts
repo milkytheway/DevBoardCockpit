@@ -24,7 +24,8 @@ import { join } from 'node:path';
  */
 export interface StorageResult {
   ok: boolean;
-  reason?: 'quota_exceeded' | 'not_serializable';
+  /** 失败的原因（**理由要对**——`reserved_key` 不是「值序列化不了」） */
+  reason?: 'quota_exceeded' | 'not_serializable' | 'reserved_key';
 }
 
 /** 单键上限（字节） */
@@ -46,7 +47,9 @@ export class CardStorage {
 
   /** 写一个键 */
   set(cardId: string, key: string, value: unknown): StorageResult {
-    if (key.startsWith('__')) return { ok: false, reason: 'not_serializable' };
+    // **`__` 前缀留给宿主**（契约 §6.2）——**理由码要说对**：
+    // 这不是「值序列化不了」，是「这个键名你不许用」
+    if (key.startsWith('__')) return { ok: false, reason: 'reserved_key' };
 
     let encoded: string;
     try {
