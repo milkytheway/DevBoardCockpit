@@ -92,3 +92,65 @@ export function isCoreTag(name: string): boolean {
 export function isCustomTag(name: string, packId: string): boolean {
   return name.startsWith(`custom.${packId}.`);
 }
+
+/**
+ * 把一个具体的 sample 绑成 tag（契约 §1.1）。
+ *
+ * 「`*` 的位置一一对应」——指的是**第 i 个通配段**互相对应，
+ * **不是同一个段号**：
+ *
+ * ```
+ * tag:    cpu.core.*.usage   ← 第 0 个通配段在第 2 段
+ * sample: core.*.usage       ← 第 0 个通配段在第 1 段
+ * ```
+ *
+ * sample `core.3.usage` → tag `cpu.core.3.usage`。
+ *
+ * @returns 绑不上的话返回 null（**不猜**）。
+ */
+export function bindSampleToTag(
+  tagPattern: string,
+  samplePattern: string,
+  concreteSample: string,
+): string | null {
+  const tagParts = tagPattern.split('.');
+  const sampleParts = samplePattern.split('.');
+  const concrete = concreteSample.split('.');
+
+  if (concrete.length !== sampleParts.length) return null;
+
+  // 字面段要逐位对上
+  for (let i = 0; i < sampleParts.length; i += 1) {
+    if (sampleParts[i] !== '*' && sampleParts[i] !== concrete[i]) return null;
+  }
+
+  // 收集 sample 的通配值（按出现顺序）
+  const values: string[] = [];
+  for (let i = 0; i < sampleParts.length; i += 1) {
+    if (sampleParts[i] === '*') values.push(concrete[i]!);
+  }
+
+  // 填进 tag 的通配位（按出现顺序）
+  const out = tagParts.slice();
+  let k = 0;
+  for (let i = 0; i < out.length; i += 1) {
+    if (out[i] !== '*') continue;
+    const value = values[k];
+    if (value === undefined) return null; // 通配数量不一致（规则 7）
+    out[i] = value;
+    k += 1;
+  }
+  if (k !== values.length) return null;
+
+  return out.join('.');
+}
+
+/**
+ * 一个 tag 的单位（从核心词表查）。
+ *
+ * **custom 命名空间的 tag 不在核心词表里** → 单位是 `-`（无量纲）。
+ */
+export function unitForTag(tag: string): string {
+  const entry = CORE_VOCABULARY.find((e) => matchTagPattern(e.pattern, tag));
+  return entry?.unit ?? '-';
+}
