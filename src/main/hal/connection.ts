@@ -28,6 +28,16 @@ export interface ExecResult {
   stderr: string;
   durationMs: number;
   timedOut: boolean;
+  /**
+   * **给人看的下一步**（可选）。
+   *
+   * 只在「失败形态容易误判」时给：
+   * 串口超时最常见的原因是「**回包被另一个程序吃掉了**」，
+   * 而不是「板子慢」——不说清楚，人会往错的方向查。
+   *
+   * **加字段不改语义**：超时仍然是 `exitCode: 124`（事实 G1）。
+   */
+  hint?: string;
 }
 
 export interface Connection {

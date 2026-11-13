@@ -117,8 +117,10 @@ export class TagSampler {
     try {
       const result = await this.connection.exec(groupCommand.command);
       if (result.timedOut) {
+        // 传输层可能带了「下一步查什么」（串口超时的头号嫌疑是**端口被别的程序占用**）
+        const detail = result.hint ?? '这次往返超时了（事实 G1：统一 124）';
         for (const reader of readers) {
-          this.reportRoundTripFailure(reader, 'timeout', '这次往返超时了（事实 G1：统一 124）');
+          this.reportRoundTripFailure(reader, 'timeout', detail);
         }
         return;
       }

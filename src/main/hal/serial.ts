@@ -249,12 +249,28 @@ export class SerialConnection implements Connection {
       const output = await this.waitForMarker(marker, timeoutMs);
       const timedOut = output === undefined;
 
+      const portName = this.profile.options['port'];
       return {
         exitCode: timedOut ? TIMEOUT_EXIT_CODE : 0,
         stdout: timedOut ? '' : output,
         stderr: '',
         durationMs: Date.now() - startedAt,
         timedOut,
+        // 超时的**第一嫌疑**是「回包被别的程序吃了」，不是「板子慢」。
+        //
+        // 真机上真踩过（2026-11-13）：宿主上计划 1 验收留下的 `serial-server.py`
+        // **独占打开了 COM3** —— 板子是活的、串口是通的，
+        // 但**回包被它吃掉**，所以应用自己的 exec 永远等不到。
+        // 不说清楚，人就会往「板子是不是死了」的方向查。
+        ...(timedOut
+          ? {
+              hint:
+                `串口 ${String(portName)} 一次往返超时。` +
+                '**最常见的原因是回包被另一个程序吃掉了**' +
+                '（例如计划 1 验收留下的 serial-server.py 独占着这个口）——' +
+                `先确认 ${String(portName)} 没有被别的程序占用。`,
+            }
+          : {}),
       };
     } finally {
       this.execBuffer = undefined;
