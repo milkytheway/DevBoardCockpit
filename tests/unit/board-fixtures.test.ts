@@ -109,18 +109,16 @@ describe('真机样本 · 契约层的事实', () => {
 
 describe('真机样本 · cpu.usage 的差值向量', () => {
   /** 取一段里的 `cpu` 汇总行 */
-  function totalLine(text: string, section: '###FIRST' | '###SECOND'): number[] {
-    const body = /###FIRST\n([\s\S]*?)###SECOND\n([\s\S]*)/.exec(
-      section === '###FIRST' ? statPair : statPair,
-    );
+  function totalLine(section: '###FIRST' | '###SECOND'): number[] {
+    const body = /###FIRST\n([\s\S]*?)###SECOND\n([\s\S]*)/.exec(statPair);
     const chunk = section === '###FIRST' ? body?.[1] : body?.[2];
     const line = (chunk ?? '').split('\n').find((l) => l.startsWith('cpu '));
     return (line ?? '').trim().split(/\s+/).slice(1).map(Number);
   }
 
   it('两次真采样之间的差值能算出忙碌占比', () => {
-    const a = totalLine(statPair, '###FIRST');
-    const b = totalLine(statPair, '###SECOND');
+    const a = totalLine('###FIRST');
+    const b = totalLine('###SECOND');
     expect(a.length).toBeGreaterThanOrEqual(4);
     expect(b.length).toBe(a.length);
 
