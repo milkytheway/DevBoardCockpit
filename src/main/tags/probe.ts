@@ -154,6 +154,11 @@ export function readingsOf(reader: ReaderDef, store: TagStore): TagReading[] {
   return out;
 }
 
+/** 等一小会儿（毫秒） */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * 探一个板型包。
  *
@@ -163,14 +168,18 @@ export function readingsOf(reader: ReaderDef, store: TagStore): TagReading[] {
 export async function probePack(
   pack: BoardPack,
   connection: ExecRunner,
-  opts: { rounds?: number } = {},
+  opts: { rounds?: number; gapMs?: number } = {},
 ): Promise<ProbeReport> {
   const rounds = opts.rounds ?? 2;
+  // **两轮之间要留一个间隔**——`/proc/stat` 的计数器是 10ms 一格（USER_HZ=100），
+  // 背靠背采两次可能一个 tick 都没过 → 窗口长度为 0 → 算不出占用率。
+  const gapMs = opts.gapMs ?? 500;
   const store = new TagStore();
   const sampler = new TagSampler(pack, connection, store);
 
   for (const group of pack.poll_groups) {
     for (let i = 0; i < rounds; i += 1) {
+      if (i > 0 && gapMs > 0) await sleep(gapMs);
       await sampler.sampleGroup(group.id);
     }
   }

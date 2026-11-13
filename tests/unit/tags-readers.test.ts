@@ -109,6 +109,18 @@ describe('proc_stat · 真机样本', () => {
     expect(result).not.toHaveProperty('samples');
   });
 
+  it('**窗口太短**（两次采样之间一个 tick 都没过）→ pending，不是 error', () => {
+    // 背靠背采两次可能一个 tick 都没过（/proc/stat 是 10ms 一格）→
+    // 窗口长度为 0，算不出占用率。
+    // 这是 **pending** 不是 error：**什么都没坏**，只是这一轮窗口不够长，
+    // 基准留着，下一轮就能算出来。（报 error 会让探针判红；报 0 是假数。）
+    const c = ctx();
+    kind.parse(raw(pair['FIRST'] ?? ''), args, c);
+    const same = kind.parse(raw(pair['FIRST'] ?? ''), args, c);
+    expect(same.status).toBe('pending');
+    expect(same).not.toHaveProperty('samples');
+  });
+
   it('空输入报 unavailable，不是 0', () => {
     const result = kind.parse('', args, ctx());
     expect(result.status).toBe('unavailable');

@@ -151,11 +151,19 @@ export const PROC_STAT: ReaderKind = {
     const dTotal = total[1] - prev.total[1];
     const dBusy = total[0] - prev.total[0];
 
-    if (dTotal <= 0 || dBusy < 0) {
-      // 计数器倒退 = 板子重启过；间隔为 0 = 采样太快。
-      // **两种都不可信**——重置基准，如实报「读不到」，**不报负数**（RF-3）。
+    if (dTotal < 0 || dBusy < 0) {
+      // 计数器**倒退** = 板子重启过 → 值不可信。
+      // 重置基准，如实报「读不出来」，**不报负数**（RF-3）。
       ctx.state['proc_stat'] = { total, cores } satisfies ProcStatSnapshot;
-      return error('parse_error', '计数器没有前进（或倒退）——板子重启了？采样间隔太短？');
+      return error('parse_error', '计数器倒退了——板子重启过？');
+    }
+    if (dTotal === 0) {
+      // **窗口太短**（两次采样之间一个 tick 都没过）：算不出占用率。
+      //
+      // 这是 `pending` 而不是 `error`：**什么都没坏**，只是这一轮
+      // 的窗口不够长——**基准留着**，下一轮就能算出来。
+      // （报 error 会让探针判红；报 0 是假数。）
+      return { status: 'pending' };
     }
 
     const usage = (dBusy / dTotal) * 100;

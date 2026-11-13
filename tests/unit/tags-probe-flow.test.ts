@@ -110,6 +110,17 @@ describe('probePack · 整条流程', () => {
     expect(cpu.problems.join('\n')).toContain('pending');
   });
 
+  it('**两轮之间留一个间隔**（否则窗口长度为 0，算不出占用率）', async () => {
+    const conn = new FakeConnection({
+      '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
+      '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',
+    });
+    const started = Date.now();
+    await probePack(PACK, conn, { gapMs: 60 });
+    // 至少隔了 60ms——**sleep 保证的是「至少」**，所以这条断言不会飘
+    expect(Date.now() - started).toBeGreaterThanOrEqual(60);
+  });
+
   it('某个 reader 读不到 → **它红，别的照常**', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
