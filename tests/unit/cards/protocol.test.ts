@@ -49,19 +49,19 @@ describe('CSP 头（契约 §6.1 逐条原文）', () => {
 
 describe('bridge 脚本的注入', () => {
   it('插在 `<head>` 之后', () => {
-    const html = injectBridge('<!doctype html><html><head><title>x</title></head><body></body></html>');
-    expect(html).toContain('<script type="module" src="/__host/bridge.js"></script>');
+    const html = injectBridge('<!doctype html><html><head><title>x</title></head><body></body></html>', 'inst-1');
+    expect(html).toContain('<script type="module" src="cockpit://card/inst-1/__host/bridge.js"></script>');
     expect(html.indexOf('bridge.js')).toBeLessThan(html.indexOf('<title>') + 100);
   });
 
   it('没有 head 就插在 `<html>` 之后', () => {
-    const html = injectBridge('<!doctype html><html><body>x</body></html>');
+    const html = injectBridge('<!doctype html><html><body>x</body></html>', 'inst-1');
     expect(html).toContain('bridge.js');
   });
 
   it('连 html 标签都没有就前置到文档开头', () => {
-    const html = injectBridge('hello');
-    expect(html.startsWith('<script type="module" src="/__host/bridge.js"></script>')).toBe(true);
+    const html = injectBridge('hello', 'inst-1');
+    expect(html.startsWith('<script type="module" src="cockpit://card/inst-1/__host/bridge.js"></script>')).toBe(true);
   });
 });
 
@@ -75,6 +75,26 @@ describe('协议处理器的路由', () => {
       const body = await res.text();
       expect(body).toContain('bridge.js');
       expect(body).toContain('--cockpit-bg');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**注入出来的 URL 必须真的能被处理器路由到**（相对根路径会把实例 id 吃掉）', async () => {
+    const { dir, cleanup } = cardDir();
+    try {
+      const entryUrl = 'cockpit://card/inst-1/index.html';
+      const res = handler(dir)(new Request(entryUrl));
+      const html = await res.text();
+      const src = /<script type="module" src="([^"]+)"><\/script>/.exec(html)?.[1];
+      expect(src).toBeDefined();
+      // **按浏览器的规则解析**（相对路径会在这里丢掉实例 id）
+      const resolved = new URL(src as string, entryUrl);
+      expect(resolved.href).toBe('cockpit://card/inst-1/__host/bridge.js');
+      // 拿解析出来的 URL 去请求 → 必须是 bridge 脚本，不是 404
+      const bridge = handler(dir)(new Request(resolved.href));
+      expect(bridge.status).toBe(200);
+      expect(await bridge.text()).toContain('bridge');
     } finally {
       cleanup();
     }

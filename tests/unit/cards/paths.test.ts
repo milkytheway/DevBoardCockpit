@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolveInsideCard, mimeFor } from '../../../src/main/cards/paths';
 import { join, sep } from 'node:path';
 
@@ -51,6 +53,51 @@ describe('卡片目录内的路径解析', () => {
     const resolved = resolveInsideCard(root, 'a/b/../c.js');
     expect(resolved).not.toBeNull();
     expect(resolved?.startsWith(root + sep)).toBe(true);
+  });
+});
+
+describe('符号链接（软链是最常见的绕过）', () => {
+  function scene(): { root: string; cleanup: () => void } {
+    const base = mkdtempSync(join(tmpdir(), 'card-symlink-'));
+    const root = join(base, 'card');
+    mkdirSync(root, { recursive: true });
+    // **宿主的文件**：卡片目录之外
+    writeFileSync(join(base, 'secret.txt'), 'SECRET-HOST-FILE', 'utf8');
+    return { root, cleanup: () => rmSync(base, { recursive: true, force: true }) };
+  }
+
+  it('软链指向卡片目录**之外** → null（词法上在目录里，realpath 后在外面）', () => {
+    const { root, cleanup } = scene();
+    try {
+      symlinkSync(join(root, '..', 'secret.txt'), join(root, 'link.txt'));
+      expect(resolveInsideCard(root, 'link.txt')).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('软链指向**目录之外的一个目录** → null', () => {
+    const { root, cleanup } = scene();
+    try {
+      const outsideDir = join(root, '..', 'outside');
+      mkdirSync(outsideDir, { recursive: true });
+      writeFileSync(join(outsideDir, 'x.txt'), 'X', 'utf8');
+      symlinkSync(outsideDir, join(root, 'outdir'));
+      expect(resolveInsideCard(root, 'outdir/x.txt')).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('软链指向**卡片目录之内** → 允许（同一份代码的别名不算越界）', () => {
+    const { root, cleanup } = scene();
+    try {
+      writeFileSync(join(root, 'real.txt'), 'ok', 'utf8');
+      symlinkSync(join(root, 'real.txt'), join(root, 'alias.txt'));
+      expect(resolveInsideCard(root, 'alias.txt')).not.toBeNull();
+    } finally {
+      cleanup();
+    }
   });
 });
 

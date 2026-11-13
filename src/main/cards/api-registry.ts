@@ -43,8 +43,8 @@ export interface CardServices {
   tags: {
     get(name: string): TagReading;
     list(): TagReading[];
-    subscribe(name: string, subscriptionId: string): void;
-    subscribePattern(pattern: string, subscriptionId: string): void;
+    subscribe(name: string, subscriptionId: string): { ok: boolean; reason?: string };
+    subscribePattern(pattern: string, subscriptionId: string): { ok: boolean; reason?: string };
     degradation(): { tag: string; reason: ReasonCode; detail: string }[];
   };
   storage: {
@@ -109,10 +109,8 @@ export function cardApis(): CardApiDef[] {
       subscribable: true,
       // 订阅的**回调**留在卡片那边（函数不能过 postMessage）；
       // 这里只登记「哪个订阅 id 要收哪个 tag 的推送」
-      make: (services) => (_ctx, args) => {
-        services.tags.subscribe(String(args['name']), String(args['subscriptionId']));
-        return { ok: true };
-      },
+      make: (services) => (_ctx, args) =>
+        services.tags.subscribe(String(args['name']), String(args['subscriptionId'])),
     },
     {
       name: 'tags.subscribePattern',
@@ -120,10 +118,8 @@ export function cardApis(): CardApiDef[] {
       scopeArg: 'pattern',
       params: ['pattern'],
       subscribable: true,
-      make: (services) => (_ctx, args) => {
-        services.tags.subscribePattern(String(args['pattern']), String(args['subscriptionId']));
-        return { ok: true };
-      },
+      make: (services) => (_ctx, args) =>
+        services.tags.subscribePattern(String(args['pattern']), String(args['subscriptionId'])),
     },
     {
       name: 'tags.list',

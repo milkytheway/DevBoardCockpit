@@ -84,7 +84,7 @@ export const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => 
     for (const cb of errorListeners) cb(err);
   });
 
-  // await port.open();  // 变异
+  await port.open();
 
   return {
     write(data: string) {

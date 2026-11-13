@@ -91,6 +91,8 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
 
   const storage = new CardStorage({ dir: deps.storageDir });
   const log = new CardRuntimeLog({ now });
+  /** 卡片 id → 当前实例 id（用来发现「实例换了」） */
+  const instanceByCard = new Map<string, string>();
 
   const sessions = new CardSessionManager({
     runtime: deps.runtime,
@@ -146,19 +148,38 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     storage,
     log,
     protocol,
-    list: () =>
-      registry.cards().map((card) => {
-        const connectionId = deps.currentConnectionId();
+    list: () => {
+      const cards = registry.cards();
+      const connectionId = deps.currentConnectionId();
+      const out: CardInstanceInfo[] = [];
+      for (const card of cards) {
         const { instanceId, url } = registry.instanceFor(card.cardId, connectionId);
+        const previous = instanceByCard.get(card.cardId);
+        // **实例换了（连接变了）→ 旧会话要关掉**：
+        // 它的订阅还挂在运行时上，不关就永远解不掉（RF-4）
+        if (previous !== undefined && previous !== instanceId) {
+          sessions.close(previous);
+        }
+        instanceByCard.set(card.cardId, instanceId);
         log.bind(instanceId, card.cardId);
-        return {
+        out.push({
           instanceId,
           cardId: card.cardId,
           url,
           connectionId,
           degraded: card.issues.some((i) => i.severity === 'error'),
-        };
-      }),
+        });
+      }
+      // 卡片没了（被删了）→ 它的会话也要关
+      const alive = new Set(cards.map((c) => c.cardId));
+      for (const [cardId, instanceId] of [...instanceByCard]) {
+        if (!alive.has(cardId)) {
+          sessions.close(instanceId);
+          instanceByCard.delete(cardId);
+        }
+      }
+      return out;
+    },
     handleRequest: (req) => sessions.handle(req),
     refresh: () => {
       registry.refresh();
@@ -200,7 +221,13 @@ function validateManifest(
     // **离线**：连不上板 → 动作与 tag 的存在性「未验证」，不是「不合法」
     availableTags: null,
     availableActions: null,
-    installedCardIds: registry.cards().map((c) => c.cardId),
+    // 规则 2 比的是 **manifest 的 id**，而且**要排除自己**：
+    // 比目录名的话，卡片**改一次文件**（热更新必然触发一次 refresh）
+    // 就会在第二次 refresh 里把自己判成「重名」→ 卡片无缘无故变成 degraded。
+    installedCardIds: registry
+      .cards()
+      .filter((c) => c.dir !== dir)
+      .map((c) => c.manifest.id),
     fileExists: (rel) => existsSync(join(dir, rel)),
   });
 }

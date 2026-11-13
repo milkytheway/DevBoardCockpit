@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
-import type { MessageDetails } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { IPC, type CardRequest, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
@@ -9,11 +8,13 @@ import { capabilitiesFor, createConnection } from './hal/registry';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
-import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
+import { builtinProfilesDir, cardRootsDir, cardStorageDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { createCardWiring } from './cards/wiring';
+import { cspViolationFrom } from './cards/csp-violation';
+import { SHELL_CSP } from './shell-csp';
 import type { CardRoot } from './cards/roots';
 import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
@@ -125,7 +126,7 @@ protocol.registerSchemesAsPrivileged([
 
 const cardRoots: CardRoot[] = [
   { dir: join(app.getAppPath(), 'cards'), kind: 'builtin' },
-  { dir: join(userDataDir(), 'cards'), kind: 'user' },
+  { dir: cardRootsDir(), kind: 'user' },
 ];
 
 /**
@@ -138,11 +139,6 @@ const cardRoots: CardRoot[] = [
  * 开发时走 Vite（`http://localhost:5173`），那里有真源，用另一份宽松的
  * （`script-src 'self' 'unsafe-inline'` 是给 Vite 的 inline preamble 留的口子）。
  */
-const SHELL_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; " +
-  "object-src 'none'; base-uri 'none'; frame-src 'none'";
-
 const cards = createCardWiring({
   roots: cardRoots,
   runtime: {
@@ -163,7 +159,8 @@ const cards = createCardWiring({
       write: card?.manifest.permissions.write ?? [],
     };
   },
-  storageDir: join(userDataDir(), 'cards'),
+  // **存储不在卡片根目录里**——它被 fs.watch 盯着，写一次就触发一次热刷新（回路）
+  storageDir: cardStorageDir(),
   shellDir: join(__dirname, '../renderer'),
   shellCsp: SHELL_CSP,
 });
@@ -316,13 +313,21 @@ function createWindow(): BrowserWindow {
 
   // **CSP 违规 → 卡片的运行时日志**（契约 §6.1 的承诺：「agent 能看到这张卡试图联网」）
   win.webContents.on('console-message', (...args: unknown[]) => {
-    // Electron 34 的签名是 `(event, messageDetails)`（25 起换的）；
+    // ── Electron 34 的 `WebContents.console-message` 是**旧签名** ──
+    // `(event, level, message, line, sourceId)`
+    //
+    // `MessageDetails` 那个形**只属于 `ServiceWorkers`**——
+    // 拿它读这里的参数，`args[1]` 是**一个数字**（level），
+    // `details.source` 恒 undefined → **每一条违规都在第一道门就被丢掉**
+    // → 契约 §6.1 承诺的「agent 能看到这张卡试图联网」永远兑现不了。
+    //
     // 这里不写死参数类型（主进程的 tsconfig 没有 DOM lib，写 `Event` 编不过）。
-    const details = args[1] as MessageDetails | undefined;
-    if (details === undefined) return;
-    // **只有安全类来源才算**（CSP 违规的 source 是 'violation'）
-    if (details.source !== 'violation' && details.source !== 'security') return;
-    cards.captureCspViolation({ message: details.message, sourceUrl: details.sourceUrl });
+    const level = typeof args[1] === 'number' ? args[1] : 0;
+    const message = typeof args[2] === 'string' ? args[2] : '';
+    const sourceId = typeof args[4] === 'string' ? args[4] : '';
+    const violation = cspViolationFrom(level, message, sourceId);
+    if (violation === null) return;
+    cards.captureCspViolation(violation);
   });
 
   // 拖一个文件进窗口，Electron 默认会**导航到那个文件**——

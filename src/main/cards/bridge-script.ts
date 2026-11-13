@@ -89,7 +89,12 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     subs.set(subId, cb);
     const args = { subscriptionId: subId };
     args[argName] = value;
-    return ask(method, args);
+    return ask(method, args).then((res) => {
+      // 宿主拒了（没权限 / 订阅数超限）→ **本地也别留着这个回调**：
+      // 否则卡片这边的表只增不减（RF-4：一张卡不能把自己的内存吃满）
+      if (res && res.ok === false) subs.delete(subId);
+      return res;
+    });
   }
 
   window.addEventListener('message', (event) => {
@@ -107,7 +112,14 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
       const resolve = pending.get(payload.id);
       if (!resolve) return;
       pending.delete(payload.id);
-      resolve(payload);
+      // **解包**：卡片要拿到的是「值」，不是传输信封。
+      //
+      // 契约 §7.7 的用法是：
+      //   const caps = await cockpit.capabilities();
+      //   // { apiVersion: 'devboard/v1', methods: […], … }
+      // 直接把信封（{ id, ok, value }）交给卡片的话，
+      // caps.methods 是 undefined → 卡片以为宿主什么都不支持。
+      resolve(payload.ok ? payload.value : { ok: false, reason: payload.reason || 'failed' });
     };
   });
 

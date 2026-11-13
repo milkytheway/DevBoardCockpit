@@ -47,3 +47,6 @@ venv/
 
 # 平台专属原生包的备份（共享 node_modules 的固有代价）
 .cache/
+
+# 变异测试的还原日志（进程被 SIGKILL 时靠它还原）
+.mutation-restore.json

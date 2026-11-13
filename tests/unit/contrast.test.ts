@@ -17,8 +17,12 @@ import { join } from 'node:path';
  * 所以：数值写进测试，而不是写进注释里就算数。
  */
 
+// **读的是生成产物**（`tokens.generated.css`）——
+// token 的真源是 `src/shared/theme/seed.ts`，这份 CSS 由 `npm run gen:theme` 生成，
+// `gen:theme:check` 守着它与种子一致。
+// （曾经这里读的是手写的 `tokens.css`，改名之后忘了跟着改 → 单测直接红。）
 const CSS = readFileSync(
-  join(__dirname, '../../src/renderer/theme/tokens.css'),
+  join(__dirname, '../../src/renderer/theme/tokens.generated.css'),
   'utf8',
 );
 

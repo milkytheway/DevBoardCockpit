@@ -57,8 +57,35 @@ export interface CardSessionManagerDeps {
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
 
+/**
+ * 一个实例最多能订阅几次（RF-4）。
+ *
+ * ── 为什么要有上限 ──
+ *
+ * 卡片是 AI 写的任意网页。它可以**循环订阅**：
+ * ```
+ * setInterval(() => cockpit.tags.subscribe('cpu.usage', cb), 100)
+ * ```
+ * 每订阅一次，运行时上就多一个监听器 → 每次推送都 fan-out N 份 →
+ * **main 的内存与 IPC 被打满**，工作台跟着卡死。
+ *
+ * 契约 §六：「**单卡崩溃不影响其他卡，也不影响工作台**」——
+ * 「影响」在这里就是「把 main 打满」。
+ *
+ * → 上限由**宿主**来守（卡片不会自觉）。超了回
+ * `{ ok:false, reason:'too_many_subscriptions' }`（契约 §7.7：不抛异常，回失败）。
+ */
+export const MAX_SUBSCRIPTIONS_PER_SESSION = 64;
+
 export class CardSessionManager {
   private readonly sessions = new Map<string, CardSession>();
+  /**
+   * 每个实例的订阅 → 退订函数（RF-4）。
+   *
+   * **为什么必须存着**：`deps.subscribe` 返回的退订函数是**唯一**能真正
+   * 把监听器从运行时摘掉的东西。丢掉它 = 订阅永远解不掉。
+   */
+  private readonly subscriptions = new Map<string, Map<string, () => void>>();
 
   constructor(private readonly deps: CardSessionManagerDeps) {}
 
@@ -69,6 +96,9 @@ export class CardSessionManager {
 
     const perms = this.deps.permsFor(cardId);
     const now = this.deps.now ?? (() => Date.now());
+    /** 这个实例的订阅（订阅 id → 退订函数） */
+    const subs = new Map<string, () => void>();
+    this.subscriptions.set(instanceId, subs);
     const tagsDeps: TagsServiceDeps = {
       readings: () => this.deps.runtime.readings(),
       subscribe: (cb) => this.deps.runtime.subscribe(cb),
@@ -82,14 +112,25 @@ export class CardSessionManager {
         get: (name) => tags.get(name),
         list: () => tags.list(),
         subscribe: (name, subscriptionId) => {
-          tags.subscribe(name, (reading) => {
+          if (subs.size >= MAX_SUBSCRIPTIONS_PER_SESSION) {
+            return { ok: false, reason: 'too_many_subscriptions' };
+          }
+          // **退订函数要存着**——不然这个订阅永远解不掉（RF-4）
+          const dispose = tags.subscribe(name, (reading) => {
             push?.(instanceId, { type: 'push', subscriptionId, value: reading });
           });
+          subs.set(subscriptionId, dispose);
+          return { ok: true };
         },
         subscribePattern: (pattern, subscriptionId) => {
-          tags.subscribePattern(pattern, (reading) => {
+          if (subs.size >= MAX_SUBSCRIPTIONS_PER_SESSION) {
+            return { ok: false, reason: 'too_many_subscriptions' };
+          }
+          const dispose = tags.subscribePattern(pattern, (reading) => {
             push?.(instanceId, { type: 'push', subscriptionId, value: reading });
           });
+          subs.set(subscriptionId, dispose);
+          return { ok: true };
         },
         degradation: () => tags.degradation(),
       },
@@ -112,9 +153,30 @@ export class CardSessionManager {
     return this.sessions.get(instanceId);
   }
 
-  /** 关一个会话（卡片没了） */
+  /**
+   * 关一个会话（卡片没了 / 连接变了 / 卡片重载了）。
+   *
+   * **退订函数在这里被调用**——这是「订阅不会一直挂着」的唯一保证。
+   */
   close(instanceId: string): void {
+    const subs = this.subscriptions.get(instanceId);
+    if (subs !== undefined) {
+      for (const dispose of subs.values()) {
+        // 退订失败**不能挡住宿主**（一张卡的问题不该拖垮整个会话）
+        try {
+          dispose();
+        } catch {
+          /* 忽略 */
+        }
+      }
+      this.subscriptions.delete(instanceId);
+    }
     this.sessions.delete(instanceId);
+  }
+
+  /** 这个实例现在有几个订阅（诊断用） */
+  subscriptionCount(instanceId: string): number {
+    return this.subscriptions.get(instanceId)?.size ?? 0;
   }
 
   /**
@@ -156,6 +218,12 @@ export class CardSessionManager {
     };
     try {
       const value = await api.make(session.services)(ctx, args);
+      // **方法级的失败要提到信封上**：
+      // 契约 §7.7 说「失败时返回 `{ ok: false, reason }`」——
+      // 卡片看到的就是这一层，不能让它自己去翻 `value`。
+      if (isMethodFailure(value)) {
+        return { id: req.id, ok: false, reason: value.reason };
+      }
       return { id: req.id, ok: true, value };
     } catch (err) {
       return {
@@ -165,6 +233,19 @@ export class CardSessionManager {
       };
     }
   }
+}
+
+/**
+ * 方法自己返回的失败（`{ ok:false, reason }`）。
+ *
+ * 契约 §7.7：「所有方法都不抛异常：失败时返回 `{ ok: false, reason }`」——
+ * 所以「方法失败了」这件事必须出现在**信封**上（`CardResponse.ok/reason`），
+ * 否则卡片只看到 `ok:true` + 一个藏在 `value` 里的失败。
+ */
+function isMethodFailure(value: unknown): value is { ok: false; reason: string } {
+  if (value === null || typeof value !== 'object') return false;
+  const v = value as { ok?: unknown; reason?: unknown };
+  return v.ok === false && typeof v.reason === 'string';
 }
 
 /** 还没接上存储时的占位（Task 10 会换成真的） */

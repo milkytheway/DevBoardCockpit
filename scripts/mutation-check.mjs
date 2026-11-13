@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -604,6 +604,115 @@ const MUTATIONS = [
       ),
   },
 
+  {
+    name: 'M46 外壳 CSP：frame-src 必须允许 cockpit:（否则一张卡都装不上）',
+    file: 'src/main/shell-csp.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/shell-csp.test.ts'],
+    expect: 'frame-src 必须允许',
+    apply: (s) =>
+      replace(
+        s,
+        '"object-src \'none\'; base-uri \'none\'; frame-src cockpit:";',
+        '"object-src \'none\'; base-uri \'none\'; frame-src \'none\';";',
+      ),
+  },
+  {
+    name: 'M47 bridge 注入：URL 必须带实例 id（相对根路径会把实例 id 吃掉）',
+    file: 'src/main/cards/protocol.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
+    expect: '注入出来的 URL',
+    apply: (s) =>
+      replace(
+        s,
+        'return `<script type="module" src="cockpit://card/${id}/__host/bridge.js"></script>`;',
+        'return `<script type="module" src="/__host/bridge.js"></script>`;  // 变异：实例 id 被吃掉',
+      ),
+  },
+  {
+    name: 'M48 CSP 违规：必须能被认出来（认不出 = agent 永远看不到）',
+    file: 'src/main/cards/csp-violation.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/csp-violation.test.ts'],
+    expect: '违规要被认出来',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (!CSP_MESSAGE.test(message)) return null;',
+        '  if (true) return null;  // 变异：谁都认不出来',
+      ),
+  },
+  {
+    name: 'M49 符号链接：软链不能捅穿卡片目录',
+    file: 'src/main/cards/paths.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/paths.test.ts'],
+    expect: '软链指向卡片目录',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (!isInside(realBase, realFull)) return null;',
+        '    if (!isInside(realBase, realFull)) { /* 变异：软链不判 */ }',
+      ),
+  },
+  {
+    name: 'M50 规则 2：id 名单要排除自己（否则改一次文件就成「重名」）',
+    file: 'src/main/cards/wiring.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/wiring.test.ts'],
+    expect: '第二次刷新不会把卡片自己判成重名',
+    apply: (s) =>
+      replace(
+        s,
+        '      .filter((c) => c.dir !== dir)',
+        '      .filter(() => true)  // 变异：把自己也算进去',
+      ),
+  },
+  {
+    name: 'M51 会话关闭：退订函数必须真的被调用',
+    file: 'src/main/cards/session.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
+    expect: '退订函数被调用',
+    apply: (s) =>
+      replace(
+        s,
+        '          dispose();',
+        '          void 0;  // 变异：不释放订阅',
+      ),
+  },
+  {
+    name: 'M52 bridge：必须解包（卡片要拿到值，不是传输信封）',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: '卡片拿到的是「值」',
+    apply: (s) =>
+      replace(
+        s,
+        "      resolve(payload.ok ? payload.value : { ok: false, reason: payload.reason || 'failed' });",
+        '      resolve(payload);  // 变异：把信封原样交给卡片',
+      ),
+  },
+  {
+    name: 'M53 订阅上限：一张卡不能把 main 打满',
+    file: 'src/main/cards/session.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
+    expect: 'too_many_subscriptions',
+    apply: (s) =>
+      replace(
+        s,
+        'export const MAX_SUBSCRIPTIONS_PER_SESSION = 64;',
+        'export const MAX_SUBSCRIPTIONS_PER_SESSION = 100000;  // 变异：没有上限',
+      ),
+  },
+  {
+    name: 'M54 存储目录：不能落在卡片根目录里（否则写一次存储就是一个回路）',
+    file: 'src/main/util/paths.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/card-dirs.test.ts'],
+    expect: '存储目录不在卡片根目录里',
+    apply: (s) =>
+      replace(
+        s,
+        "  return join(userDataDir(appName), 'card-storage');",
+        "  return join(userDataDir(appName), 'cards');  // 变异：落在卡片根目录里",
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
@@ -669,6 +778,62 @@ function isEnvProblem(out) {
  */
 let pendingRestore = null;
 
+/**
+ * 还原日志（journal）。
+ *
+ * ── 为什么信号钩子不够 ──
+ *
+ * `SIGKILL`（OOM killer、容器被杀、任务超时被砍）**拦不住**——
+ * `finally`、`exit` 钩子、信号处理器统统不执行。
+ *
+ * 那不是假设：2026-11-14 有一次跑变异被 SIGKILL，
+ * **三个「变异体」留在工作树里**，其中两个是上一轮评审修好的 Critical
+ * （串口端口不开、危险地板不命中），随后被 `git add -A` 一起提交了——
+ * 单元套件在 HEAD 上是**红的**。
+ *
+ * → 所以在改坏文件**之前**把原文写进 journal；
+ * 下次运行时先看它：有就说明上次被砍了 → **先还原，再跑**。
+ */
+const JOURNAL = join(ROOT, '.mutation-restore.json');
+
+function writeJournal(path, original) {
+  try {
+    writeFileSync(JOURNAL, JSON.stringify({ path, original }));
+  } catch {
+    // 记不上就只剩退出信号那条路了
+  }
+}
+
+function clearJournal() {
+  try {
+    rmSync(JOURNAL, { force: true });
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 上次被砍了？先把文件还原回来。@returns 有没有还原过 */
+function restoreFromJournal() {
+  if (!existsSync(JOURNAL)) return false;
+  let entry = null;
+  try {
+    entry = JSON.parse(readFileSync(JOURNAL, 'utf8'));
+  } catch {
+    clearJournal();
+    return false;
+  }
+  try {
+    if (entry && typeof entry.path === 'string' && typeof entry.original === 'string') {
+      writeFileSync(entry.path, entry.original, 'utf8');
+      console.log(`（已还原上次被中断的变异：${entry.path}）`);
+    }
+  } catch {
+    console.error(`✗ 还原失败：${entry?.path} —— 请手动 git checkout 它`);
+  }
+  clearJournal();
+  return true;
+}
+
 function restorePending() {
   if (!pendingRestore) return;
   try {
@@ -679,6 +844,18 @@ function restorePending() {
     console.error(`\n✗ 还原失败：${pendingRestore.path} —— 请手动 git checkout 它`);
   }
   pendingRestore = null;
+  clearJournal();
+}
+
+/** 工作树的状态（`git status --porcelain`） */
+function gitStatusPorcelain() {
+  const r = spawnSync('git', ['status', '--porcelain'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    shell: true,
+    windowsHide: true,
+  });
+  return r.status === 0 ? (r.stdout ?? '').trim() : '';
 }
 
 process.on('SIGINT', () => {
@@ -712,6 +889,24 @@ if (selected.length === 0) {
   process.exit(1);
 }
 
+// 上次被砍了？先还原（journal 里还留着原文）
+restoreFromJournal();
+
+/**
+ * **工作树必须干净**才跑变异。
+ *
+ * 在脏仓库上跑，「本来就有的改动」与「变异造成的改动」混在一起——
+ * 还原错了就说不清，出事时分不清谁是谁。
+ * 而且上一次事故正是这么发生的：脏工作树被 `git add -A` 一起提交了。
+ */
+const dirtyBefore = gitStatusPorcelain();
+if (dirtyBefore !== '') {
+  console.error('✗ 工作树不干净 —— 拒绝在脏仓库上跑变异');
+  console.error(dirtyBefore);
+  console.error('   先 commit 或 stash 干净了再跑。');
+  process.exit(1);
+}
+
 for (const m of selected) {
   const path = join(ROOT, m.file);
   const original = readFileSync(path, 'utf8');
@@ -727,6 +922,8 @@ for (const m of selected) {
 
   writeFileSync(path, mutated, 'utf8');
   pendingRestore = { path, original };
+  // **先记账再改坏**——被 SIGKILL 了也有据可查
+  writeJournal(path, original);
 
   let result;
   try {
@@ -735,6 +932,7 @@ for (const m of selected) {
     // 还原——不管验成什么样，文件必须回到原样
     writeFileSync(path, original, 'utf8');
     pendingRestore = null;
+    clearJournal();
   }
 
   if (result.rc === 0) {
@@ -755,6 +953,18 @@ for (const m of selected) {
     console.log(`✓ ${m.name}：改坏之后测试变红（守住了）`);
     pass += 1;
   }
+}
+
+/**
+ * 跑完之后**工作树必须还是干净的**。
+ *
+ * 变了 = 有文件没还原干净 → 判失败（宁可吵，也别留一颗雷）。
+ */
+const leftover = gitStatusPorcelain();
+if (leftover !== '') {
+  console.error('✗ 跑完之后工作树不干净 —— 有文件没还原干净：');
+  console.error(leftover);
+  fail += 1;
 }
 
 console.log();

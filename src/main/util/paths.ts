@@ -33,6 +33,30 @@ export function userProfilesDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'profiles', 'targets');
 }
 
+/**
+ * 卡片根目录（用户自己的那一份）。
+ *
+ * 人与 agent 的卡都放这儿。
+ */
+export function cardRootsDir(appName: string = DEFAULT_APP): string {
+  return join(userDataDir(appName), 'cards');
+}
+
+/**
+ * 卡片存储目录。
+ *
+ * ── 必须是**兄弟目录**，不能塞在卡片根目录里面 ──
+ *
+ * 卡片根目录被 `fs.watch` 盯着（热插拔）。
+ * 存储写在根目录里 → 写一次 `storage.json` 就触发一次 `refresh` +
+ * `cardsChanged` → 页面重取清单 → **回路**。
+ *
+ * → 存储放在 `card-storage/`，与 `cards/` 平级。
+ */
+export function cardStorageDir(appName: string = DEFAULT_APP): string {
+  return join(userDataDir(appName), 'card-storage');
+}
+
 /** 会话日志目录 */
 export function logDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'logs');

@@ -54,7 +54,7 @@ export interface ValidateCardResult {
   };
 }
 
-/** 已知���契约版本 */
+/** 已知的契约版本 */
 const KNOWN_API_VERSIONS = ['devboard/v1'] as const;
 
 /** 栅格的合法尺寸（12 列网格，见 `docs/UI设计/01-UI设计总纲.md` §六） */
@@ -101,7 +101,7 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   /* ── 规则 4：读权限里的 tag 必须在核心词表或 custom.* 下 ── */
   for (const tag of perms.read) {
     if (!isCoreTag(tag) && !tag.startsWith('custom.')) {
-      error(4, 'permissions.read', `「${tag}」既不在核心词表里，也不�� custom.* 下`);
+      error(4, 'permissions.read', `「${tag}」既不在核心词表里，也不是 custom.* 下`);
     }
   }
 

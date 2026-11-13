@@ -28,28 +28,48 @@ export const CARD_CSP =
   "img-src 'self' data:; font-src 'self' data:; connect-src 'none'; " +
   "form-action 'none'; frame-src 'none'; base-uri 'none'";
 
-/** 宿主注入的 bridge 脚本标签 */
-const BRIDGE_TAG = '<script type="module" src="/__host/bridge.js"></script>';
+/**
+ * 宿主注入的 bridge 脚本标签。
+ *
+ * ── 必须是**带实例 id 的绝对 URL** ──
+ *
+ * 卡片页面的地址是 `cockpit://card/<实例 id>/index.html`。
+ * 若这里写 `/__host/bridge.js`（相对根路径），浏览器会解析成
+ * `cockpit://card/__host/bridge.js`——**实例 id 被吃掉了** →
+ * 协议处理器拿 `__host` 当实例 id → 404 → `window.cockpit` 恒 undefined。
+ *
+ * → 所以用**绝对 URL**（`cockpit://card/<实例 id>/__host/bridge.js`）。
+ *
+ * 代价：**每个实例的标签不一样**（实例 id 不同）——
+ * 这正是我们要的：bridge 脚本里带着自己的实例 id（RF-1 的凭据）。
+ */
+function bridgeTagFor(instanceId: string): string {
+  const id = encodeURIComponent(instanceId);
+  return `<script type="module" src="cockpit://card/${id}/__host/bridge.js"></script>`;
+}
 
 /**
  * 把 bridge 脚本标签插进 HTML。
  *
  * 位置有讲究：**必须在卡片自己的脚本之前**——
  * 否则卡片脚本一跑，`window.cockpit` 还不存在。
+ *
+ * @param instanceId 这个实例的 id（标签里要带上它）
  */
-export function injectBridge(html: string): string {
+export function injectBridge(html: string, instanceId: string): string {
+  const tag = bridgeTagFor(instanceId);
   const head = /<head\b[^>]*>/i.exec(html);
   if (head !== null) {
     const at = head.index + head[0].length;
-    return html.slice(0, at) + BRIDGE_TAG + html.slice(at);
+    return html.slice(0, at) + tag + html.slice(at);
   }
   const htmlTag = /<html\b[^>]*>/i.exec(html);
   if (htmlTag !== null) {
     const at = htmlTag.index + htmlTag[0].length;
-    return html.slice(0, at) + BRIDGE_TAG + html.slice(at);
+    return html.slice(0, at) + tag + html.slice(at);
   }
   // 连 `<html>` 都没有 → 前置到文档开头
-  return BRIDGE_TAG + html;
+  return tag + html;
 }
 
 /** 把主题样式（`:root{--cockpit-*:…}`）插进 HTML */
@@ -139,7 +159,7 @@ export function createCardProtocol(
     let html = body.toString('utf8');
     // bridge 与主题只注入**入口**（其它页面是卡片自己的资源）
     if (rel === deps.entryOfInstance(instanceId)) {
-      html = injectBridge(html);
+      html = injectBridge(html, instanceId);
       const theme = deps.themeStyle?.() ?? '';
       if (theme !== '') html = injectTheme(html, theme);
     }

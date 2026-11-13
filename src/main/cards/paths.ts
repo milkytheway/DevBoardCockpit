@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { dirname, extname, resolve, sep } from 'node:path';
 
 /**
  * 卡片目录里的路径解析与**穿越防护**。
@@ -41,7 +41,43 @@ export function resolveInsideCard(root: string, relPath: string): string | null 
   const full = resolve(base, decoded);
   // **判据不是字符串比较**：是「解出来的路径还在 base 底下吗」
   if (full !== base && !full.startsWith(base + sep)) return null;
+
+  // ── 符号链接 ──
+  //
+  // 上面的判据是**词法**的：软链在词法上「在目录里」，
+  // 指向的却可能在**目录之外**（软链是最常见的绕过）。
+  //
+  // → 对**真实路径**再判一次。
+  const realBase = realpathOrNull(base);
+  if (realBase === null) {
+    // 根目录自己都不存在 → 里面不可能有文件可读（404 即可）
+    return full;
+  }
+  const realFull = realpathOrNull(full);
+  if (realFull !== null) {
+    // 文件存在 → 判它**真实**的位置
+    if (!isInside(realBase, realFull)) return null;
+    return full;
+  }
+  // 文件不存在 → 判它的**上一级**（上一级可能是软链）
+  const realParent = realpathOrNull(dirname(full));
+  if (realParent !== null && !isInside(realBase, realParent)) return null;
   return full;
+}
+
+/** 真实路径（解析软链）；不存在就是 null */
+function realpathOrNull(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/** `child` 是不是在 `base` 底下（**不含 base 自己**） */
+function isInside(base: string, child: string): boolean {
+  if (child === base) return true;
+  return child.startsWith(base + sep);
 }
 
 const MIME_BY_EXT: Record<string, string> = {

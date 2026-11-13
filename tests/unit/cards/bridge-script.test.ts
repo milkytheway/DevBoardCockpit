@@ -88,3 +88,94 @@ describe('bridge 脚本的生成', () => {
     expect(script).toContain('})();');
   });
 });
+
+/**
+ * bridge 脚本**真的跑起来**。
+ *
+ * ── 为什么不能只测「脚本文本里有这句话」 ──
+ *
+ * 脚本文本的断言只能证明「代码被生成出来了」，
+ * 证明不了「**卡片拿到的是不是它要的东西**」。
+ *
+ * ── 这条曾经真的错着 ──
+ *
+ * 契约 `spec/03` §7.7 写的用法是：
+ * ```js
+ * const caps = await cockpit.capabilities();
+ * // { apiVersion: 'devboard/v1', methods: […], connection: {…}, tags: […] }
+ * ```
+ * 而 bridge 把**整个传输信封**（`{ id, ok, value }`）交给了卡片 →
+ * 卡片拿到的是 `{ id: 'r1', ok: true, value: {…} }` →
+ * `caps.methods` 是 **undefined** → 卡片以为宿主不支持任何方法。
+ *
+ * → 所以 bridge 必须**解包**：成功给 `value`，失败给 `{ ok:false, reason }`。
+ */
+interface FakePort {
+  postMessage: (m: unknown) => void;
+  onmessage: ((m: { data: unknown }) => void) | null;
+}
+
+function runBridge(instanceId: string): {
+  cockpit: Record<string, Record<string, (...a: unknown[]) => Promise<unknown>>>;
+  port: FakePort;
+  hello: unknown[];
+  sent: unknown[];
+} {
+  const script = bridgeScriptFor(cardApis(), instanceId);
+  const listeners: ((e: unknown) => void)[] = [];
+  const sent: unknown[] = [];
+  const hello: unknown[] = [];
+  const fakeWindow: Record<string, unknown> = {
+    addEventListener: (type: string, cb: (e: unknown) => void) => {
+      if (type === 'message') listeners.push(cb);
+    },
+  };
+  const fakeParent = { postMessage: (m: unknown) => void hello.push(m) };
+  // `window` 与 `parent` 作为**参数**传进去，遮住全局
+  new Function('window', 'parent', script)(fakeWindow, fakeParent);
+  const port: FakePort = { postMessage: (m) => sent.push(m), onmessage: null };
+  // 宿主把 port 递给卡片
+  listeners[0]?.({ data: { type: 'cockpit-port' }, ports: [port] });
+  return {
+    cockpit: fakeWindow['cockpit'] as never,
+    port,
+    hello,
+    sent,
+  };
+}
+
+/** 从发出去的消息里取请求 id（bridge 的序号会先给订阅 id 让一步） */
+function idOf(sent: unknown[]): string {
+  const first = sent[0] as { id?: string } | undefined;
+  if (first?.id === undefined) throw new Error('bridge 没有发出请求');
+  return first.id;
+}
+
+describe('bridge 脚本 · 卡片真正看到的东西', () => {
+  it('握手时把 instanceId 报给宿主（RF-1 的凭据）', () => {
+    const { hello } = runBridge('inst-42');
+    expect(hello).toEqual([{ type: 'cockpit-hello', instanceId: 'inst-42' }]);
+  });
+
+  it('**成功 → 卡片拿到的是「值」，不是传输信封**', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = cockpit['capabilities']?.['capabilities']?.();
+    const caps = { apiVersion: 'devboard/v1', methods: ['tags.get'], connection: null, tags: [] };
+    port.onmessage?.({ data: { id: idOf(sent), ok: true, value: caps } });
+    await expect(pending).resolves.toEqual(caps);
+  });
+
+  it('**失败 → 卡片拿到 { ok:false, reason }**（契约 §7.7：不抛异常）', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = cockpit['tags']?.['get']?.('cpu.usage');
+    port.onmessage?.({ data: { id: idOf(sent), ok: false, reason: 'unknown_method' } });
+    await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
+  });
+
+  it('订阅被拒 → 卡片能看到 reason（**不是**静默接受）', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = cockpit['tags']?.['subscribe']?.('cpu.usage', () => undefined);
+    port.onmessage?.({ data: { id: idOf(sent), ok: false, reason: 'too_many_subscriptions' } });
+    await expect(pending).resolves.toEqual({ ok: false, reason: 'too_many_subscriptions' });
+  });
+});
