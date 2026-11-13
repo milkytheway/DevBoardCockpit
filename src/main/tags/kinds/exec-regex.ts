@@ -1,4 +1,5 @@
 import { argStr } from './util';
+import { ok, unavailable } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -26,5 +27,40 @@ export const EXEC_REGEX: ReaderKind = {
   samples: ['value'],
   fetch(args) {
     return argStr(args, 'command');
+  },
+  parse(raw, args, _ctx) {
+    const pattern = argStr(args, 'pattern');
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern);
+    } catch {
+      return unavailable('parse_error', `正则表达式「${pattern}」编译不过`);
+    }
+
+    const m = re.exec(raw);
+    if (m === null) {
+      return unavailable('parse_error', `输出里没有「${pattern}」匹配的东西`);
+    }
+    const text = (m[1] ?? m[0] ?? '').trim();
+    if (text.length === 0) {
+      return unavailable('parse_error', '匹配到了但是捕获组是空的');
+    }
+
+    const format = argStr(args, 'format');
+    if (format === 'integer') {
+      const value = Number(text);
+      if (!Number.isInteger(value)) {
+        return unavailable('parse_error', `「${text}」不是整数`);
+      }
+      return ok({ value });
+    }
+    if (format === 'number' || format === 'float') {
+      const value = Number(text);
+      if (!Number.isFinite(value)) {
+        return unavailable('parse_error', `「${text}」不是数字`);
+      }
+      return ok({ value });
+    }
+    return ok({ value: text });
   },
 };

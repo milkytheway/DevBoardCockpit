@@ -1,5 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
+import { ok, unavailable } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -9,6 +10,8 @@ import type { ReaderKind } from './types';
  * 空闲时读 100（时钟满速待命），满载也读 100。
  * 所以 `measure` 的取值被**规则 3/4** 看住（「沉默的默认值会骗人」）：
  * 规则 3 拦「占空比叫 usage」，规则 4 拦「叫 usage 却没说 measure」。
+ *
+ * 格式：`<duty>@<freq>Hz`（实测 `100@1000000000Hz`）。
  */
 
 export const DEVFREQ_LOAD: ReaderKind = {
@@ -27,5 +30,21 @@ export const DEVFREQ_LOAD: ReaderKind = {
   samples: ['duty', 'freq_hz'],
   fetch(args) {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
+  },
+  parse(raw, _args, _ctx) {
+    const text = raw.trim();
+    const m = /^(\d+(?:\.\d+)?)@(\d+)Hz$/.exec(text);
+    if (m === null) {
+      return unavailable(
+        'parse_error',
+        `devfreq 的 load 文件格式不对（期望「<duty>@<freq>Hz」，实际是「${text}」）`,
+      );
+    }
+    const duty = Number(m[1]);
+    const freq = Number(m[2]);
+    if (!Number.isFinite(duty) || !Number.isFinite(freq)) {
+      return unavailable('parse_error', 'devfreq 的 load 文件里有读不出来的数');
+    }
+    return ok({ duty, freq_hz: freq });
   },
 };

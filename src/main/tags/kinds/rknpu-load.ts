@@ -1,5 +1,6 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
+import { ok, unavailable } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
@@ -10,6 +11,8 @@ import type { ReaderKind } from './types';
  *
  * 依赖 debugfs 挂载；没挂时读不到 → 报 `unavailable`，
  * **不许退回去读 devfreq 的占空比**（那会显示 100% 但板子是闲的）。
+ *
+ * `usage` 是**各核的最大值**（契约 §一 的词表：npu.usage = 三个计算核的最大值）。
  */
 
 export const RKNPU_LOAD: ReaderKind = {
@@ -20,5 +23,21 @@ export const RKNPU_LOAD: ReaderKind = {
   samples: ['usage', 'core.*.usage'],
   fetch(args) {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
+  },
+  parse(raw, _args, _ctx) {
+    const values: { index: number; value: number }[] = [];
+    for (const m of raw.matchAll(/Core(\d+):\s*(\d+)%/g)) {
+      values.push({ index: Number(m[1]), value: Number(m[2]) });
+    }
+    if (values.length === 0) {
+      return unavailable('parse_error', 'rknpu 的 load 里没有「CoreN: x%」（debugfs 没挂？）');
+    }
+
+    const samples: Record<string, number | string | boolean> = {};
+    for (const { index, value } of values) {
+      samples[`core.${index}.usage`] = value;
+    }
+    samples['usage'] = Math.max(...values.map((v) => v.value));
+    return ok(samples);
   },
 };

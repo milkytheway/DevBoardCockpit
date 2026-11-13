@@ -21,7 +21,7 @@ import type { ReaderKind } from './types';
  * 都要查这张表——**所以它必须先于校验器存在**。
  */
 
-export type { ReaderKind, ParamSpec } from './types';
+export type { ReaderKind, ParamSpec, ReaderContext, ParseResult } from './types';
 
 /** 全部 kind（顺序 = 契约 §2.4 的表顺序） */
 export const READER_KINDS: readonly ReaderKind[] = [

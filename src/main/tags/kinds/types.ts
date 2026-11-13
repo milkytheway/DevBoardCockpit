@@ -1,3 +1,5 @@
+import type { ParseResult } from './parse-util';
+
 /**
  * reader kind 的形状。
  *
@@ -22,6 +24,18 @@ export interface ParamSpec {
    * 不是「一个必填、一个可选」，而是「二选一」。
    */
   oneOf?: string[];
+}
+
+/**
+ * 解析时的上下文。
+ *
+ * **解析是纯函数**（N1）：同样的输入给同样的输出。
+ * 唯一允许的状态是「两次采样之间的历史」（`proc_stat` 的上一次计数器），
+ * 且**状态由 runtime 传进来**——不许藏在模块级变量里，
+ * 否则两个连接会互相污染对方的历史。
+ */
+export interface ReaderContext {
+  state: Record<string, unknown>;
 }
 
 /** 一个 reader kind */
@@ -55,4 +69,14 @@ export interface ReaderKind {
    * **必须是一行**——串口一次往返只能是一行命令（事实 S6）。
    */
   fetch(args: Record<string, unknown>): string;
+  /**
+   * 解析：把板子返回的文本变成 sample。
+   *
+   * **纯函数**（N1）：同样的输入给同样的输出。
+   * **读不到不是 0**（N2）：解析不出来 → `unavailable`，
+   * 绝不填 0、绝不返回 NaN。
+   */
+  parse(raw: string, args: Record<string, unknown>, ctx: ReaderContext): ParseResult;
 }
+
+export type { ParseResult };

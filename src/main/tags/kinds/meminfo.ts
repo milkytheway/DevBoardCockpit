@@ -1,9 +1,10 @@
 import { quotePath } from '../../util/shell-quote';
 import { argStr } from './util';
+import { ok, unavailable } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `meminfo` —— 内存总量、已用、占用率。
+ * `meminfo` —— 内存总量、可用、已用、占用率。
  *
  * 单次采样即可（契约 §2.4）。
  *
@@ -23,5 +24,34 @@ export const MEMINFO: ReaderKind = {
   samples: ['total_bytes', 'available_bytes', 'used_bytes', 'usage'],
   fetch(args) {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
+  },
+  parse(raw, _args, _ctx) {
+    let totalKb = 0;
+    let availableKb = 0;
+
+    for (const line of raw.split(/\r?\n/)) {
+      if (line.startsWith('MemTotal:')) {
+        totalKb = Number.parseInt(line.split(/\s+/)[1] ?? '', 10);
+      } else if (line.startsWith('MemAvailable:')) {
+        availableKb = Number.parseInt(line.split(/\s+/)[1] ?? '', 10);
+      }
+    }
+
+    if (!Number.isFinite(totalKb) || totalKb <= 0) {
+      return unavailable('parse_error', '/proc/meminfo 里没有可用的 MemTotal');
+    }
+    if (!Number.isFinite(availableKb) || availableKb < 0) availableKb = 0;
+
+    // kB → byte（×1024）
+    const total = totalKb * 1024;
+    const available = availableKb * 1024;
+    const used = total - available;
+
+    return ok({
+      total_bytes: total,
+      available_bytes: available,
+      used_bytes: used,
+      usage: (used / total) * 100,
+    });
   },
 };
