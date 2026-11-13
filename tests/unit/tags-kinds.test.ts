@@ -40,7 +40,7 @@ describe('注册表', () => {
 describe('每个 kind 产出的 sample（契约 §2.4 的表）', () => {
   const expected: Record<string, string[]> = {
     proc_stat: ['usage', 'core.*.usage', 'core.*.cluster'],
-    meminfo: ['total_bytes', 'used_bytes', 'usage'],
+    meminfo: ['total_bytes', 'available_bytes', 'used_bytes', 'usage'],
     devfreq_load: ['duty', 'freq_hz'],
     rknpu_load: ['usage', 'core.*.usage'],
     thermal_zone: ['zone.*'],
@@ -82,12 +82,17 @@ describe('每个 kind 的参数（契约 §2.4 的表）', () => {
     expect(kind.params['path'].required).toBe(true);
   });
 
-  it('devfreq_load 的 measure **必填**（「measure 不是可选的」）', () => {
+  it('devfreq_load 的 measure 有取值域，且**在 schema 里不是必填**', () => {
     // 契约 §2.4 末段：「**`measure` 不是可选的**：绑到 `*.usage` 而没声明
     // `measure`，校验器报错。沉默的默认值会骗人——『没说是利用率』
     // 不能当成『是利用率』。」
+    //
+    // **但这条强制是「上下文相关」的**：只提供 `freq_hz` 的 reader 不需要它。
+    // 所以它在 schema 里是可选的，由**规则 4** 在「绑到 *.usage」时强制——
+    // 若在 schema 里写成必填，「没声明 measure」会被报成规则 9，
+    // **规则 4 就永远走不到**（两条规则管同一件事）。
     const kind = getKind('devfreq_load')!;
-    expect(kind.params['measure'].required).toBe(true);
+    expect(kind.params['measure'].required ?? false).toBe(false);
     expect(kind.params['measure'].values).toEqual(['utilization', 'duty_cycle']);
   });
 

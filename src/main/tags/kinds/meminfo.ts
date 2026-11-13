@@ -16,7 +16,11 @@ export const MEMINFO: ReaderKind = {
   params: {
     path: { type: 'string', required: true },
   },
-  samples: ['total_bytes', 'used_bytes', 'usage'],
+  // ⚠️ 契约 §2.4 的表里写的是 `total_bytes, used_bytes, usage`——
+  // **漏了 `available_bytes`**。但核心词表里有 `mem.available_bytes`，
+  // 板型包也真的用它（实测 `MemAvailable`）——所以这个 kind 必须产出它。
+  // 差异记在 `docs/06` C10，由用户拍板是否回写契约表。
+  samples: ['total_bytes', 'available_bytes', 'used_bytes', 'usage'],
   fetch(args) {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
   },
