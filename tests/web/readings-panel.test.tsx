@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { ReadingsPanel, describeReading } from '../../src/renderer/tags/ReadingsPanel';
 import type { TagReading } from '../../src/shared/tag-reading';
+import type { RuntimeStatus } from '../../src/shared/runtime-status';
 
 /**
  * 最小读数面板。
@@ -26,11 +27,17 @@ function reading(over: Partial<TagReading> = {}): TagReading {
   };
 }
 
-/** 装一个假的宿主 API */
-function installHost(initial: TagReading[] = []): { push: (r: TagReading) => void } {
+/** 装一个假的宿主 API。`status` 不给 = 宿主没有 `tagsStatus` 这个通道（旧宿主） */
+function installHost(
+  initial: TagReading[] = [],
+  status?: RuntimeStatus,
+): { push: (r: TagReading) => void } {
   const listeners: ((r: TagReading) => void)[] = [];
   (window as unknown as { cockpit: unknown }).cockpit = {
     tagsReadings: async () => initial,
+    ...(status === undefined
+      ? {}
+      : { tagsStatus: async () => status }),
     onTagChanged: (cb: (r: TagReading) => void) => {
       listeners.push(cb);
       return () => {
@@ -125,5 +132,44 @@ describe('显示规则 · 照抄契约 §2.1', () => {
 
   it('pending → 「…」', () => {
     expect(describeReading(reading({ status: 'pending', value: null }))).toBe('…');
+  });
+});
+
+/**
+ * 没有读数的时候，**面板要说人话**。
+ *
+ * ── 为什么 ──
+ *
+ * 「还没有读数——等一个采样周期」这句话**在板子没插上的时候是假的**：
+ * 真实原因是「连不上：串口 COM3 被占用」或「这块板没有板型包」。
+ * **等一个采样周期**解决不了「板子没插」——
+ * 这是这个仓库最恨的那种静默失败：**面板看起来在等，其实永远不会来**。
+ */
+describe('读数面板 · 没有读数时要说人话', () => {
+  it('状态是 error：显示原因（而不是「等一个采样周期」）', async () => {
+    installHost([], { state: 'error', detail: '串口 COM3 被占用' });
+    render(<ReadingsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/串口 COM3 被占用/)).toBeTruthy();
+    });
+  });
+
+  it('状态是 no-pack：说「没有板型包」', async () => {
+    installHost([], { state: 'no-pack', detail: '这块板没有板型包' });
+    render(<ReadingsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/板型包/)).toBeTruthy();
+    });
+  });
+
+  it('宿主没有 tagsStatus 通道（旧宿主）：**不崩**，退回旧文案', async () => {
+    installHost([]);
+    render(<ReadingsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/还没有读数/)).toBeTruthy();
+    });
   });
 });

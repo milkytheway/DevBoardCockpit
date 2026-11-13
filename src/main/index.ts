@@ -11,7 +11,7 @@ import { loadProfiles } from './profiles/loader';
 import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
-import { TagRuntime } from './tags/runtime';
+import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
@@ -93,6 +93,7 @@ const runtime = new TagRuntime({
 
 // 读数只经 TagStore 出（ADR-D22）：renderer 拿不到别处的副本
 handle(IPC.tagsReadings, () => runtime.readings());
+handle(IPC.tagsStatus, () => runtime.status);
 runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
 
 /**
@@ -100,14 +101,16 @@ runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
  *
  * **挨个试**：板子可能在 adb 上、也可能在串口上——
  * 第一个连不上的（adb 没插板子、串口被占着）**不是**失败，
- * 试下一个就行。都不行 → 状态留在最后一个，面板会显示**为什么**。
+ * 试下一个就行。都不行 → 按退避档位再试一轮
+ * （**板子后插上，面板不该永远是空的**）。
  */
 async function startTagRuntime(): Promise<void> {
-  const candidates = listProfiles().filter((p) => p.board_pack !== undefined);
-  for (const profile of candidates) {
-    const status = await runtime.start(profile);
-    if (status.state === 'running') return;
+  const candidates = pickCandidates(listProfiles());
+  if (candidates.length === 0) {
+    // 没有带板型包的连接：面板会显示「没有带板型包的连接」
+    return;
   }
+  await startWithRetry(runtime, candidates);
 }
 
 /**

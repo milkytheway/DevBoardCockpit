@@ -3,11 +3,20 @@ import type { Connection } from '../hal/connection';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { TagReading } from '../../shared/tag-reading';
+import { AppError, type ErrorCode } from '../../shared/errors';
 import { TagStore } from './store';
+import type { RuntimeState, RuntimeStatus } from '../../shared/runtime-status';
 import { TagSampler } from './sampler';
 import { PollScheduler } from './scheduler';
 import { resolvePack } from './binding';
 import { validatePack, errorsOf } from './validator';
+
+/**
+ * 运行时的状态类型**住在 shared**（`src/shared/runtime-status.ts`）——
+ * 它要经 IPC 上屏（面板得说「为什么没有数」），而 shared 是 IPC 类型的唯一住处。
+ * 这里再导出一次，既有 import 不断。
+ */
+export type { RuntimeState, RuntimeStatus };
 
 /**
  * tag 运行时 —— 把 M3/M4 写好的库**接进应用**。
@@ -34,16 +43,6 @@ import { validatePack, errorsOf } from './validator';
  * 这是串口这条路的**已知限制**，不是本模块的 bug。
  */
 
-export type RuntimeState = 'idle' | 'running' | 'no-pack' | 'error';
-
-export interface RuntimeStatus {
-  state: RuntimeState;
-  /** 人话：为什么不是 running */
-  detail?: string;
-  /** 正在采的是哪个连接 profile */
-  profileId?: string;
-}
-
 export interface TagRuntimeOptions {
   /** 板型包目录的父目录 */
   packsDir: string;
@@ -61,6 +60,8 @@ export class TagRuntime {
   private state: RuntimeState = 'idle';
   private detail: string | undefined;
   private profileId: string | undefined;
+  /** 上次失败的错误码（`RuntimeStatus.detailCode` 的来源） */
+  private detailCode: ErrorCode | undefined;
 
   constructor(private readonly opts: TagRuntimeOptions) {}
 
@@ -70,6 +71,7 @@ export class TagRuntime {
       state: this.state,
       ...(this.detail === undefined ? {} : { detail: this.detail }),
       ...(this.profileId === undefined ? {} : { profileId: this.profileId }),
+      ...(this.detailCode === undefined ? {} : { detailCode: this.detailCode }),
     };
   }
 
@@ -83,6 +85,7 @@ export class TagRuntime {
   async start(profile: ConnectionProfile): Promise<RuntimeStatus> {
     this.stop();
     this.profileId = profile.id;
+    this.detailCode = undefined;
 
     // 1) 建连接
     const log = this.opts.createLog(`tags-${profile.id}`, profile.transport);
@@ -92,6 +95,8 @@ export class TagRuntime {
     } catch (err) {
       this.state = 'error';
       this.detail = err instanceof Error ? err.message : String(err);
+      // **带上错误码**：判「串口是不是被别的程序占了」要靠封闭的码，不靠中文消息
+      this.detailCode = err instanceof AppError ? err.code : undefined;
       return this.status;
     }
     this.connection = connection;
@@ -143,6 +148,7 @@ export class TagRuntime {
     void this.closeConnection();
     this.state = 'idle';
     this.detail = undefined;
+    this.detailCode = undefined;
   }
 
   /** 当前的读数快照（**晚订阅的人靠它看到现在的数**） */
@@ -165,4 +171,115 @@ export class TagRuntime {
     if (connection === undefined) return;
     await connection.close().catch(() => undefined);
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   起不来了怎么办（计划 4 Task 2）
+   ── 三个真 bug：`docs/19` P1 / P2（2026-11-13 实测）──
+   ══════════════════════════════════════════════════════════════════ */
+
+/** 一个「可以试着起运行时」的候选 */
+export interface RuntimeCandidate {
+  profileId: string;
+  profile: ConnectionProfile;
+}
+
+/**
+ * 退避档位（毫秒）。
+ *
+ * **为什么有退避**：板子可能**还没插上**、**adb 还没授权**——
+ * 这两种情况**过一会儿就会好**，所以要隔一会儿再试。
+ * 档位到 30s 封顶：再密就吵了，再疏就慢了。
+ */
+export const RETRY_BACKOFF_MS: readonly number[] = [2000, 5000, 10000, 30000];
+
+/**
+ * 挑候选：**只留绑了板型包的 profile**。
+ *
+ * **修 P2**：原来用的是 `board_pack !== undefined`——
+ * 而 `local.json` 与 `ubuntu-ssh.json` 的 `board_pack` 是 **`null`**，
+ * `null !== undefined` 为真 → 它们**被当成了候选** →
+ * 运行时去连**本机**和 **192.168.136.131 的 SSH**，读它们的
+ * `/proc/device-tree/model`（必然认不出来）。
+ *
+ * 代价不是「白开两条连接」那么简单：串口是**独占**的，
+ * 一次失败的串口尝试可能占着端口不放，**把能用的 adb 挤掉**。
+ *
+ * 判据用 `!= null`（同时剔掉 `null` 与 `undefined`）。
+ */
+export function pickCandidates(profiles: ConnectionProfile[]): RuntimeCandidate[] {
+  return profiles
+    .filter((p) => p.board_pack != null)
+    .map((p) => ({ profileId: p.id, profile: p }));
+}
+
+/**
+ * 判「是不是端口被别的程序占了」。
+ *
+ * **先看错误码**（`PORT_BUSY` 是封闭枚举里的一项，`hal/serial.ts` 就在用），
+ * **再退回消息匹配**——消息匹配是兜底，不是主判据
+ * （改一个字就失效的那种判据不算判据）。
+ */
+export function isPortBusy(detail: string, code?: string): boolean {
+  if (code === 'PORT_BUSY') return true;
+  return /被占用|EBUSY|EACCES/i.test(detail);
+}
+
+/**
+ * 运行时能被替身冒充的那部分。
+ *
+ * **为什么是结构类型而不是 `TagRuntime`**：`TagRuntime` 有私有字段，
+ * 替身**冒充不了**（TypeScript 会拒绝）→ 测试就只能靠 `as any` 强转，
+ * **测的就不是真接口了**。这里收窄到「只需要 `start`」，
+ * 真 `TagRuntime` 天然满足，替身也能进。
+ */
+export interface TagRuntimeLike {
+  start(profile: ConnectionProfile): Promise<RuntimeStatus>;
+}
+
+/**
+ * 起运行时：挨个试候选，失败就退避重试。
+ *
+ * **修 P1**：原来每个候选只试一次就放弃 →
+ * **板子后插上面板永远空着**，必须重启应用。
+ *
+ * **串口政策**（2026-11-14 用户拍板）：某个候选**因端口被占**而失败时，
+ * **跳过它继续试下一个**，并且**后续轮次不再试它**——
+ * 占着端口的是**别的程序**，等它退出才有用，
+ * 而**面板不该被一根被占的串口拖死**。
+ *
+ * @param opts.sleep 注入的等待函数（测试用假 sleep，不真的等）
+ */
+export async function startWithRetry(
+  runtime: TagRuntimeLike,
+  candidates: RuntimeCandidate[],
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<RuntimeStatus> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  if (candidates.length === 0) {
+    return { state: 'error', detail: '没有带板型包的连接（候选为空）' };
+  }
+
+  /** 端口被占的候选：占着端口的是别的程序，重试它没有意义 */
+  const skipped = new Set<string>();
+  let last: RuntimeStatus = { state: 'error', detail: '没有试过任何候选' };
+
+  // 轮次 = 1（立刻）+ 每个退避档位之后再来一轮
+  for (let round = 0; round <= RETRY_BACKOFF_MS.length; round += 1) {
+    for (const candidate of candidates) {
+      if (skipped.has(candidate.profileId)) continue;
+      const status = await runtime.start(candidate.profile);
+      if (status.state === 'running') return status;
+      last = status;
+      if (isPortBusy(status.detail ?? '', status.detailCode)) {
+        skipped.add(candidate.profileId);
+      }
+    }
+    if (round < RETRY_BACKOFF_MS.length) {
+      await sleep(RETRY_BACKOFF_MS[round]);
+    }
+  }
+
+  return last;
 }

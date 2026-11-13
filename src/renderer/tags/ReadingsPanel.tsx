@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TagReading } from '../../shared/tag-reading';
+import type { RuntimeStatus } from '../../shared/runtime-status';
 
 /**
  * 最小读数面板。
@@ -69,9 +70,33 @@ function statusClass(reading: TagReading): string {
   }
 }
 
+/**
+ * 没有读数时，**按运行时的状态说人话**。
+ *
+ * 「还没有读数——等一个采样周期」这句话**在板子没插上的时候是假的**：
+ * 真实原因是「连不上：串口 COM3 被占用」或「这块板没有板型包」，
+ * 等一个采样周期解决不了「板子没插」。
+ *
+ * `status === null` = **宿主没有这个通道**（旧宿主）→ 退回旧文案，不崩。
+ */
+export function describeEmptyState(status: RuntimeStatus | null): string {
+  if (status === null) return '还没有读数——等一个采样周期。';
+  switch (status.state) {
+    case 'error':
+      return status.detail !== undefined ? `连不上：${status.detail}` : '连不上。';
+    case 'no-pack':
+      return status.detail !== undefined ? status.detail : '这块板没有板型包。';
+    case 'running':
+      return '正在采样——还没有读数。';
+    default:
+      return '还没有读数——等一个采样周期。';
+  }
+}
+
 export function ReadingsPanel(): JSX.Element {
   const [readings, setReadings] = useState<TagReading[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<RuntimeStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -115,12 +140,43 @@ export function ReadingsPanel(): JSX.Element {
     };
   }, []);
 
+  /**
+   * 运行时的状态**只在没有读数时**才有意义
+   * （有读数时，读数自己的五态已经在说同一件事了）。
+   *
+   * 所以：**没有读数时每 3 秒问一次**；一旦有读数就停——
+   * 板子插上以后，状态会自己从「连不上」变成「运行中」。
+   */
+  useEffect(() => {
+    if (readings.length > 0) return () => undefined;
+    const api = window.cockpit;
+    // **旧宿主没有这个通道**：面板自己降级（不是每个宿主都有新通道）
+    if (api === undefined || typeof api.tagsStatus !== 'function') return () => undefined;
+
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ask = (): void => {
+      void api
+        .tagsStatus()
+        .then((s) => {
+          if (alive) setStatus(s);
+        })
+        .catch(() => undefined);
+      timer = setTimeout(ask, 3000);
+    };
+    ask();
+    return () => {
+      alive = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [readings.length]);
+
   return (
     <section className="readings-panel" aria-label="读数">
       <h2 className="readings-panel__title">读数</h2>
       {error !== null ? <p className="readings-panel__error">{error}</p> : null}
       {error === null && readings.length === 0 ? (
-        <p className="readings-panel__empty">还没有读数——等一个采样周期。</p>
+        <p className="readings-panel__empty">{describeEmptyState(status)}</p>
       ) : null}
       <ul className="readings-panel__list">
         {readings.map((reading) => (

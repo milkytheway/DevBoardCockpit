@@ -7,6 +7,7 @@
 
 import type { AppErrorPayload } from './errors';
 import type { TagReading } from './tag-reading';
+import type { RuntimeStatus } from './runtime-status';
 
 export const IPC = {
   terminalOpen: 'terminal:open',
@@ -29,6 +30,15 @@ export const IPC = {
   tagsReadings: 'tags:readings',
   /** tag 读数**变化**的推送 */
   tagsChanged: 'tags:changed',
+  /**
+   * tag 运行时的**状态**（连上了吗 / 为什么连不上）。
+   *
+   * **为什么单独一条通道**：`tags:readings` 只给读数——
+   * **「为什么一个数都没有」这件事根本到不了面板**，
+   * 面板只能笼统地说「还没有读数」。而「板子没插上」和「等一个采样周期」
+   * 是两回事，前者等一辈子也不会好。
+   */
+  tagsStatus: 'tags:status',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -75,6 +85,13 @@ export interface CockpitApi {
    * @returns 退订函数。
    */
   onTagChanged(cb: (reading: TagReading) => void): () => void;
+  /**
+   * 取运行时的状态（连上了吗 / 为什么连不上）。
+   *
+   * **面板靠它说人话**：没有读数时，
+   * 「连不上：串口 COM3 被占用」与「等一个采样周期」是两回事。
+   */
+  tagsStatus(): Promise<RuntimeStatus>;
   /**
    * 取一个 File 的**宿主绝对路径**。
    *

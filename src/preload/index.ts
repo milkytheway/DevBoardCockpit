@@ -48,6 +48,7 @@ export const api: CockpitApi = {
     invoke(IPC.filesPull, connectionId, remotePath, localPath),
   connectionsList: () => invoke(IPC.connectionsList),
   tagsReadings: () => invoke(IPC.tagsReadings),
+  tagsStatus: () => invoke(IPC.tagsStatus),
   onTagChanged: (cb) => {
     const handler = (_e: IpcRendererEvent, reading: TagReading): void => cb(reading);
     ipcRenderer.on(IPC.tagsChanged, handler);
