@@ -55,7 +55,7 @@ describe('卡片帧经纪人 · 认人', () => {
   it('收到 hello：建通道并把端口转给那张卡', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
     broker.handleMessage({
       source: frame.contentWindow,
@@ -70,7 +70,7 @@ describe('卡片帧经纪人 · 认人', () => {
   it('**instanceId 对不上 → 丢弃**（卡片 A 导航到卡片 B 的 URL，RF-1）', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
     broker.handleMessage({
       source: frame.contentWindow,
@@ -84,7 +84,7 @@ describe('卡片帧经纪人 · 认人', () => {
     const frame = makeFrame();
     const other = makeFrame();
     const broker = new CardBroker(installApi());
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
     broker.handleMessage({
       source: other.contentWindow,
@@ -98,7 +98,7 @@ describe('卡片帧经纪人 · 认人', () => {
   it('不是 hello 的消息 → 不管', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
     broker.handleMessage({
       source: frame.contentWindow,
@@ -120,7 +120,7 @@ describe('卡片帧经纪人 · 转发', () => {
       },
     });
     const broker = new CardBroker(api);
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
     // 先握手
     broker.handleMessage({
@@ -155,7 +155,7 @@ describe('卡片帧经纪人 · 转发', () => {
       },
     });
     const broker = new CardBroker((window as unknown as { cockpit: CockpitApi }).cockpit);
-    broker.attach(frame as unknown as HTMLIFrameElement, 'inst-1');
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
     broker.handleMessage({
       source: frame.contentWindow,
       data: { type: 'cockpit-hello', instanceId: 'inst-1' },
