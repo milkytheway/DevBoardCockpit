@@ -327,3 +327,64 @@ describe('ADB 常驻 shell 的流错误', () => {
     expect(() => stdin.emit('error', new Error('EPIPE'))).not.toThrow();
   });
 });
+
+describe('ADB 会话注入的环境脚本', () => {
+  it('脚本里不能有 CR —— 落单的 CR 会被远端 shell 当成一条命令', async () => {
+    // **真机实测**（2026-11-13，板子的 shell 是 bash 不是 busybox）：
+    //
+    // ```
+    // root@ATK-DLRK3588/bin/bash: line 3: $'\r': command not found
+    // ```
+    //
+    // 根因：脚本本身以 `\n` 结尾，注入时又补了一个 `\r\n`，
+    // 那个落单的 CR 就成了一条空命令。
+    //
+    // 这条断言守的是**写出去的确切字节**——
+    // 只断言「脚本内容对」是抓不到这个 bug 的。
+    const stdinWrites: string[] = [];
+    const stdin = new EventEmitter() as EventEmitter & {
+      write: (d: string) => void;
+      end: () => void;
+    };
+    stdin.write = (d: string) => { stdinWrites.push(d); };
+    stdin.end = () => undefined;
+
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      stdin: typeof stdin;
+      kill: () => void;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = stdin;
+    child.kill = () => undefined;
+
+    const conn = new AdbConnection(
+      { id: 'a', label: 'a', transport: 'adb', options: { serial: 'xyz' } },
+      { write: () => {}, close: () => {}, filePath: 'x' } as never,
+      {
+        runner: (async () => ({
+          exitCode: 0,
+          stdout: 'List of devices attached\nxyz\tdevice\n',
+          stderr: '',
+          durationMs: 0,
+          timedOut: false,
+        })) as never,
+        spawn: (() => child) as never,
+      },
+    );
+    await conn.open();
+    await conn.openSession();
+
+    expect(stdinWrites.length).toBeGreaterThan(0);
+    const script = stdinWrites[0];
+    // 有 TERM 导出与 ls 的 shell 函数
+    expect(script).toContain('export TERM=xterm-256color');
+    expect(script).toContain('ls() {');
+    // **一个 CR 都不能有**
+    expect(script).not.toContain('\r');
+    // 行尾是 LF
+    expect(script.endsWith('\n')).toBe(true);
+  });
+});

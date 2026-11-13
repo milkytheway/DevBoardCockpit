@@ -326,8 +326,20 @@ class AdbSession extends Session {
       for (const cb of this.dataCbs) cb(chunk);
     });
 
-    // 会话环境：TERM 与 ls 的 shell 函数（事实 A2/A3）
-    this.child.stdin.write(`${terminalEnvScript()}\r\n`);
+    // 会话环境：TERM 与 ls 的 shell 函数（事实 A2/A3）。
+    //
+    // **原样写，不要再补 `\r\n`。**
+    // 脚本本身已经以 `\n` 结尾；再补一个 `\r`，那个落单的 CR 会被
+    // 远端的 shell 当成**一条命令**执行——
+    // 真机实测（2026-11-13，板子的 shell 是 bash）：
+    //
+    // ```
+    // root@ATK-DLRK3588/bin/bash: line 3: $'\r': command not found
+    // ```
+    //
+    // 串口那条线要 CR（getty 期待 CR，事实 S4），但 ADB 是 pipe 模式：
+    // 远端读的是**行**，行尾就是 LF。
+    this.child.stdin.write(terminalEnvScript());
   }
 
   readonly exitCode: number | null = null;
