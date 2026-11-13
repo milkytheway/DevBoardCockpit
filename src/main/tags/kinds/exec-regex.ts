@@ -19,7 +19,7 @@ export const EXEC_REGEX: ReaderKind = {
     command: { type: 'string', required: true },
     pattern: { type: 'string', required: true },
     format: {
-      type: 'string',
+      type: 'enum',
       required: false,
       values: ['string', 'integer', 'number', 'float'],
     },

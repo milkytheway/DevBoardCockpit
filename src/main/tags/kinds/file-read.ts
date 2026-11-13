@@ -17,7 +17,7 @@ export const FILE_READ: ReaderKind = {
     path: { type: 'string', required: false, oneOf: ['path', 'glob'] },
     glob: { type: 'glob', required: false, oneOf: ['path', 'glob'] },
     format: {
-      type: 'string',
+      type: 'enum',
       required: false,
       values: ['string', 'integer', 'number', 'float'],
     },

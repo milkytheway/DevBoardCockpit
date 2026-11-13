@@ -155,7 +155,40 @@ describe('规则 3 · devfreq_load 的 duty_cycle 不得绑到任何 *.usage', (
       args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'duty_cycle' },
       provides: [{ tag: 'gpu.usage', sample: 'duty' }],
     });
-    expectOnlyRule(pack, 3);
+    // **规则 3 与 4 同时报**：两条都是真的——
+    // 3 说「duty 是占空比，不能叫 usage」，4 说「叫 usage 必须声明 utilization」。
+    const errs = errors(validatePack(pack));
+    expect(errs.filter((e) => e.rule === 3)).toHaveLength(1);
+    expect(errs.filter((e) => e.rule === 4)).toHaveLength(1);
+  });
+});
+
+describe('规则 4 · 绑到 *.usage 必须声明 measure: utilization', () => {
+  it('**measure 拼错了**也要报（utilzation 不是 utilization）', () => {
+    // 契约规则 4 的判据是「**等于 utilization**」，不是「非空」。
+    // 拼错的 measure 一路放行 = **占空比被发布成利用率**——
+    // 那是这个工程最在意的那类 bug（假数比 0 更坏）。
+    const pack = addReader(basePack(), {
+      id: 'gpu',
+      kind: 'devfreq_load',
+      args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'utilzation' },
+      provides: [{ tag: 'gpu.usage', sample: 'duty' }],
+    });
+    // 规则 4（值不是 utilization）与规则 8（取值不在 enum 清单里）**都报**——
+    // 两条都是真的，且各自指向不同的修法。
+    const errs = errors(validatePack(pack));
+    expect(errs.filter((e) => e.rule === 4)).toHaveLength(1);
+    expect(errs.filter((e) => e.rule === 8)).toHaveLength(1);
+  });
+
+  it('measure 是 duty_cycle 但绑的不是 duty → 也报规则 4', () => {
+    const pack = addReader(basePack(), {
+      id: 'gpu',
+      kind: 'devfreq_load',
+      args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'duty_cycle' },
+      provides: [{ tag: 'gpu.usage', sample: 'freq_hz' }],
+    });
+    expectOnlyRule(pack, 4);
   });
 });
 
@@ -231,6 +264,30 @@ describe('规则 8 · reader 声明的参数必须在 kind 的 schema 里存在'
       cpuinfo_path: '/proc/cpuinfo',
       stat_pathh: '/proc/stat',
     };
+    expectOnlyRule(pack, 8);
+  });
+});
+
+describe('规则 8 · 参数的取值也要合 kind 的 schema', () => {
+  it('**enum 的取值不在清单里**要报错（measure 拼错、format 拼错）', () => {
+    // 「measure 不是可选的」的另一半：**它只能是那两个值之一**。
+    // 拼错的值一路放行 = 占空比被发布成利用率。
+    const pack = addReader(basePack(), {
+      id: 'gpu',
+      kind: 'devfreq_load',
+      args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'utilzation' },
+      provides: [{ tag: 'custom.tiny.duty', sample: 'duty' }],
+    });
+    expectOnlyRule(pack, 8);
+  });
+
+  it('file_read 的 format 拼错也报错', () => {
+    const pack = addReader(basePack(), {
+      id: 'fr',
+      kind: 'file_read',
+      args: { path: '/x', format: 'int' },
+      provides: [{ tag: 'custom.tiny.v', sample: 'value' }],
+    });
     expectOnlyRule(pack, 8);
   });
 });

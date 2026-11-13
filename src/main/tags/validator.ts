@@ -156,11 +156,19 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
           `devfreq_load 的 duty 是**时钟占空比**（空闲时读 100），不能绑到「${p.tag}」上`,
         );
       }
-      if (measure === undefined) {
+      if (measure !== 'utilization') {
+        // 契约规则 4 的判据是「**必须声明 measure: utilization**」——
+        // **等于** utilization，不是「非空」。
+        //
+        // 「非空」会让 `measure: utilzation`（拼错）一路放行——
+        // 而 devfreq 的 load 文件读出的是**占空比**（空闲时 100），
+        // 于是占空��被原样发布成利用率。**那是这个工程最在意的那类假数。**
         err(
           4,
           `${path}.provides[${i}].tag`,
-          `绑到「${p.tag}」却没有声明 measure——「没说是利用率」不能当成「是利用率」`,
+          measure === undefined
+            ? `绑到「${p.tag}」却没有声明 measure——「没说是利用率」不能当成「是利用率」`
+            : `绑到「${p.tag}」但 measure 是「${String(measure)}」——必须是 utilization`,
         );
       }
     }
@@ -201,6 +209,20 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     for (const key of Object.keys(args)) {
       if (!(key in kind.params)) {
         err(8, `${path}.args.${key}`, `kind「${kind.id}」没有这个参数（它有：${Object.keys(kind.params).join(' / ')}）`);
+        continue;
+      }
+      // **取值**也要合 schema：`measure: utilzation` 这种拼错，
+      // 参数名是对的、值不在 enum 清单里——**一路放行就是假数**。
+      const spec = kind.params[key]!;
+      if (spec.values !== undefined) {
+        const value = args[key];
+        if (typeof value === 'string' && !spec.values.includes(value)) {
+          err(
+            8,
+            `${path}.args.${key}`,
+            `kind「${kind.id}」的「${key}」只接受这些值：${spec.values.join(' / ')}（实际是「${value}」）`,
+          );
+        }
       }
     }
 
