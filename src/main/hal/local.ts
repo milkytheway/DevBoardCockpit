@@ -133,7 +133,7 @@ export class LocalConnection implements Connection {
    * `copyFile` 要的是完整文件路径，所以这里补上 basename。
    */
   async push(localPath: string, remotePath: string): Promise<void> {
-    const target = join(remotePath, basename(localPath));
+    const target = remotePath;
     try {
       await copyFile(localPath, target);
     } catch (err) {

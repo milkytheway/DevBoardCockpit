@@ -85,10 +85,22 @@ describe('读侧 · 权限过滤', () => {
   });
 
   it('订阅：没权限的**一个都不推**', () => {
-    const svc = service({ read: ['cpu.usage'], write: [] });
-    const seen: string[] = [];
-    svc.subscribePattern('cpu.core.*.usage', (r) => seen.push(r.tag));
-    expect(seen).toEqual([]);
+    // **假 store 必须真的推** —— 不推的话「一个都不推」这句断言是空的，
+    // 过滤掉了也照样绿（变异测试 M42 就是靠这条抓出来的）
+    const pushed: TagReading[] = [];
+    const svc = new TagsService(
+      { read: ['cpu.usage'], write: [] },
+      {
+        readings: () => READINGS,
+        subscribe: (cb) => {
+          cb(reading('cpu.core.3.usage', { value: 40 }));
+          return () => undefined;
+        },
+        now: () => 1000,
+      },
+    );
+    svc.subscribePattern('cpu.core.*.usage', (r) => pushed.push(r));
+    expect(pushed).toEqual([]);
   });
 
   it('订阅：有权限的按周期推', () => {

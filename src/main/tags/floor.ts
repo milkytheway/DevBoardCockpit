@@ -146,7 +146,7 @@ function matchesPattern(token: string, pattern: string): boolean {
   }
   if (token === pattern) return true;
   // **basename 也算**（`/sbin/reboot` → `reboot`）
-  return baseName(token) === pattern;
+  return token === pattern;  // 变异：去掉 basename 兜底
 }
 
 function isBlockDevice(path: string): boolean {

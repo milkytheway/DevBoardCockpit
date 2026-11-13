@@ -474,6 +474,136 @@ const MUTATIONS = [
         '    // 变异：绕开队列，直接采\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'sample\', async () => {',
       ),
   },
+  {
+    name: 'M36 读权限：覆盖判定不能恒真（恒真 = 越权读）',
+    file: 'src/main/cards/permissions.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/tags-service.test.ts'],
+    expect: '没权限的 tag',
+    apply: (s) =>
+      replace(
+        s,
+        '  return perms.read.some((pattern) => matchTagPattern(pattern, tag));',
+        '  return true;  // 变异：什么都覆盖',
+      ),
+  },
+  {
+    name: 'M37 路径穿越：越界必须挡住',
+    file: 'src/main/cards/paths.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/paths.test.ts'],
+    expect: 'null',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (full !== base && !full.startsWith(base + sep)) return null;",
+        "  // 变异：不去掉越界检查",
+      ),
+  },
+  {
+    name: 'M38 manifest：未知字段必须报错（拼错的字段不能静默忽略）',
+    file: 'src/main/cards/manifest.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/manifest.test.ts'],
+    expect: 'network',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (!allowed.includes(key)) {',
+        '    if (false) {  // 变异：未知字段不报错',
+      ),
+  },
+  {
+    name: 'M39 规则 5：离线时是「未验证」不是「不合法」',
+    file: 'src/main/cards/validate.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
+    expect: '未验证',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (ctx.availableActions === null) {',
+        '    if (false) {  // 变异：离线分支没了',
+      ),
+  },
+  {
+    name: 'M40 bridge：不认识的方法必须回 unknown_method',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: 'unknown_method',
+    apply: (s) =>
+      replace(
+        s,
+        "        return () => Promise.resolve({ ok: false, reason: 'unknown_method' });",
+        '        return undefined;  // 变异：不认识的方法不回话',
+      ),
+  },
+  {
+    name: 'M41 bridge：握手必须带 instanceId（认人的依据）',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: 'inst-42',
+    apply: (s) =>
+      replace(
+        s,
+        '  const INSTANCE_ID = ${JSON.stringify(instanceId)};',
+        "  const INSTANCE_ID = '';  // 变异：不带实例 id",
+      ),
+  },
+  {
+    name: 'M42 通配订阅：订阅路径的权限过滤不能整体消失',
+    file: 'src/main/cards/tags-service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/tags-service.test.ts'],
+    expect: '一个都不推',
+    apply: (s) =>
+      // **两处都要打掉**：权限固定时「订阅时判」与「推送时判」等价，
+      // 只打掉一处，另一处还在 → 测试照样绿（这不是测试的问题，是这两处本来就冗余）
+      replace(
+        replace(
+          s,
+          `    if (!permissionCovers(this.perms, pattern)) return () => undefined;`,
+          `    // 变异：订阅时不再判权限`,
+        ),
+        `      if (!matchPattern(pattern, reading.tag)) return;
+      // **再判一次权限**（铁律 2）
+      if (!permissionCovers(this.perms, reading.tag)) return;`,
+        `      if (!matchPattern(pattern, reading.tag)) return;
+      // 变异：推送时不再判权限`,
+      ),
+  },
+  {
+    name: 'M43 存储：单键配额必须守（否则一张卡能写满磁盘）',
+    file: 'src/main/cards/storage.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/storage.test.ts'],
+    expect: 'quota_exceeded',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (size > KEY_LIMIT_BYTES) return { ok: false, reason: 'quota_exceeded' };",
+        '    // 变异：不查单键配额',
+      ),
+  },
+  {
+    name: 'M44 CSP 违规：必须归到**对的那张卡**（sourceUrl 里的实例 id）',
+    file: 'src/main/cards/runtime-log.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/runtime-log.test.ts'],
+    expect: 'CSP 违规归到',
+    apply: (s) =>
+      replace(
+        s,
+        "  const match = /^cockpit:\\/\\/card\\/([^/]+)\\//.exec(sourceUrl);",
+        "  const match = /^(.*)$/.exec(sourceUrl);  // 变异：不从 sourceUrl 里取实例 id",
+      ),
+  },
+  {
+    name: 'M45 运行时候选：board_pack 为 null 的 profile 必须剔掉',
+    file: 'src/main/tags/runtime.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/runtime-retry.test.ts'],
+    expect: 'null 与缺省都剔掉',
+    apply: (s) =>
+      replace(
+        s,
+        '    .filter((p) => p.board_pack != null)',
+        '    .filter((p) => p.board_pack !== undefined)  // 变异：null 又被当成候选',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
