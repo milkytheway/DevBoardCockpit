@@ -58,6 +58,11 @@ export const api: CockpitApi = {
     ipcRenderer.on(IPC.cardsEvent, handler);
     return () => ipcRenderer.off(IPC.cardsEvent, handler);
   },
+  onCardsChanged: (cb) => {
+    const handler = (): void => cb();
+    ipcRenderer.on(IPC.cardsChanged, handler);
+    return () => ipcRenderer.off(IPC.cardsChanged, handler);
+  },
   onTagChanged: (cb) => {
     const handler = (_e: IpcRendererEvent, reading: TagReading): void => cb(reading);
     ipcRenderer.on(IPC.tagsChanged, handler);

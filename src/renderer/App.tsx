@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TerminalView } from './terminal/TerminalView';
 import { FileBrowser } from './files/FileBrowser';
 import { ReadingsPanel } from './tags/ReadingsPanel';
+import { CardPanel } from './cards/panel';
 import type { CockpitApi, ConnectionInfo } from '../shared/ipc-contract';
 import './theme/tokens.generated.css';
 import './theme/app.css';
@@ -304,6 +305,8 @@ export function App(): JSX.Element {
         {/* 读数面板：**没有终端标签时也要在**——
             「看板子的读数」是这个产品的主线，终端是附带的。 */}
         <ReadingsPanel />
+        {/* 卡片区：AI 写的卡热插拔到这里。**没有卡也不该是空白**（见 docs/UI设计/01 §十一）*/}
+        <CardPanel />
         {tabs.length === 0 ? (
           <p className="cockpit-empty">选一个连接开始</p>
         ) : (

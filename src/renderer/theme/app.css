@@ -418,3 +418,47 @@ body {
 .readings-panel__value--unavailable {
   color: var(--cockpit-unavailable);
 }
+
+/* ── 卡片区 ──────────────────────────────────────────────────────── */
+
+.card-panel {
+  border-bottom: 1px solid var(--cockpit-border);
+  padding: 12px 16px;
+}
+
+.card-panel__title {
+  margin: 0 0 8px;
+  font-size: var(--cockpit-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-dim);
+}
+
+.card-panel__empty {
+  margin: 0;
+  font-size: var(--cockpit-type-small);
+  color: var(--cockpit-text-faint);
+}
+
+.card-panel__error {
+  margin: 0;
+  font-size: var(--cockpit-type-small);
+  color: var(--cockpit-danger);
+}
+
+.card-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+/* 一张用户卡：沙箱 iframe。**边框是宿主画的**——
+   卡片自己碰不到宿主 chrome（契约 §六：chrome 归宿主）。 */
+.user-card {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius-card);
+  background: var(--cockpit-surface);
+}

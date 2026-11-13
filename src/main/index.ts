@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { existsSync, readFileSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, protocol } from 'electron';
+import type { MessageDetails } from 'electron';
 import { join } from 'node:path';
-import { IPC, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
-import { toAppErrorPayload } from '../shared/errors';
+import { existsSync } from 'node:fs';
+import { IPC, type CardRequest, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
+import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
 import type { Connection } from './hal/connection';
@@ -12,10 +13,8 @@ import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
-import { CardRegistry } from './cards/registry';
+import { createCardWiring } from './cards/wiring';
 import type { CardRoot } from './cards/roots';
-import { parseManifest } from './cards/manifest';
-import { validateCard } from './cards/validate';
 import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
@@ -101,6 +100,24 @@ handle(IPC.tagsReadings, () => runtime.readings());
 handle(IPC.tagsStatus, () => runtime.status);
 runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
 
+/**
+ * `cockpit://` 必须**在 ready 之前**登记为 privileged scheme。
+ *
+ * `standard: true` 让它有**真源**（`cockpit://card/<id>/…` 的 origin 是
+ * `cockpit://card`）——CSP 的 `'self'` 才有意义（契约 §6.1 的断网承诺靠它）。
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'cockpit',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
+
 /* ── 卡片（契约 §六）─────────────────────────────────────────────────
    两个根：**用户目录优先**（用户能改内置卡——「卡片即文件」的前提）。
    目录变了就重新发现（热插拔）；manifest 不合法的卡**保留上一版**。
@@ -111,28 +128,64 @@ const cardRoots: CardRoot[] = [
   { dir: join(userDataDir(), 'cards'), kind: 'user' },
 ];
 
-const cardRegistry = new CardRegistry({
+/**
+ * 外壳自己的 CSP。
+ *
+ * **为什么生产的外壳不走 `file://`**：`file://` 上的 `'self'` **匹配不到任何东西**
+ * （本地 scheme 的 origin 是 opaque 的）——外壳想用 CSP 就得有个**真源**，
+ * 所以生产的外壳从 `cockpit://app/` 伺服 ✓。
+ *
+ * 开发时走 Vite（`http://localhost:5173`），那里有真源，用另一份宽松的
+ * （`script-src 'self' 'unsafe-inline'` 是给 Vite 的 inline preamble 留的口子）。
+ */
+const SHELL_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; " +
+  "object-src 'none'; base-uri 'none'; frame-src 'none'";
+
+const cards = createCardWiring({
   roots: cardRoots,
-  loadManifest: (dir) => {
-    const raw = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as unknown;
-    return parseManifest(raw, dir);
+  runtime: {
+    readings: () => runtime.readings(),
+    subscribe: (cb) => runtime.subscribe(cb),
   },
-  validate: (manifest, dir) => {
-    // **离线校验**：连不上板 → 动作与 tag 的存在性是「**未验证**」，不是「不合法」
-    const result = validateCard(manifest, {
-      availableTags: null,
-      availableActions: null,
-      installedCardIds: cardRegistry.cards().map((c) => c.cardId),
-      fileExists: (rel) => existsSync(join(dir, rel)),
-    });
-    return [...result.errors, ...result.warnings];
+  broadcast: (channel, ...args) => broadcast(channel, ...args),
+  currentConnectionId: () => runtime.status.profileId ?? null,
+  connectionInfo: (connectionId) => {
+    const profile = listProfiles().find((p) => p.id === connectionId);
+    if (profile === undefined) return null;
+    return { label: profile.label, transport: profile.transport };
   },
+  permsFor: (cardId) => {
+    const card = cards.registry.cards().find((c) => c.cardId === cardId);
+    return {
+      read: card?.manifest.permissions.read ?? [],
+      write: card?.manifest.permissions.write ?? [],
+    };
+  },
+  storageDir: join(userDataDir(), 'cards'),
+  shellDir: join(__dirname, '../renderer'),
+  shellCsp: SHELL_CSP,
 });
 
-cardRegistry.refresh();
+cards.refresh();
 watchCardRoots(cardRoots, () => {
-  cardRegistry.refresh();
+  cards.refresh();
+  broadcast(IPC.cardsChanged);
 });
+
+handle(IPC.cardsList, () => cards.list());
+handle(IPC.cardsHello, (instanceId) => {
+  const id = String(instanceId);
+  const cardId = cards.registry.cardOfInstance(id);
+  if (cardId === null) {
+    throw makeError('PACK_INVALID', `没有登记过的卡片实例：${id}`);
+  }
+  // v1 只有一条连接上下文（契约 §7.8：由宿主注入）
+  cards.sessions.open(id, cardId, runtime.status.profileId ?? null);
+  return undefined;
+});
+handle(IPC.cardsRequest, (req) => cards.handleRequest(req as CardRequest));
 
 /**
  * 挑一个能采的连接 profile 起运行时。
@@ -257,8 +310,20 @@ function createWindow(): BrowserWindow {
   if (devUrl) {
     void win.loadURL(devUrl);
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'));
+    // **生产的外壳也走 `cockpit://app/`** —— `file://` 上的 `'self'` 匹配不到任何东西
+    void win.loadURL('cockpit://app/index.html');
   }
+
+  // **CSP 违规 → 卡片的运行时日志**（契约 §6.1 的承诺：「agent 能看到这张卡试图联网」）
+  win.webContents.on('console-message', (...args: unknown[]) => {
+    // Electron 34 的签名是 `(event, messageDetails)`（25 起换的）；
+    // 这里不写死参数类型（主进程的 tsconfig 没有 DOM lib，写 `Event` 编不过）。
+    const details = args[1] as MessageDetails | undefined;
+    if (details === undefined) return;
+    // **只有安全类来源才算**（CSP 违规的 source 是 'violation'）
+    if (details.source !== 'violation' && details.source !== 'security') return;
+    cards.captureCspViolation({ message: details.message, sourceUrl: details.sourceUrl });
+  });
 
   // 拖一个文件进窗口，Electron 默认会**导航到那个文件**——
   // 整个窗口被替换成文件内容，应用看起来「崩了」。
@@ -273,6 +338,9 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // `cockpit://` 的处理器（卡片 + 外壳）
+  protocol.handle('cockpit', (request) => cards.protocol(request));
+
   createWindow();
 
   // 读数的运行时：**不挡着窗口起来**——

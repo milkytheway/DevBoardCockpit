@@ -42,12 +42,17 @@ export interface CardSessionManagerDeps {
   now?: () => number;
   /** 推给某个实例（Task 10 接上） */
   push?: (instanceId: string, payload: unknown) => void;
-  /** 存储（Task 10 接上） */
-  storage?: CardServices['storage'];
-  /** 日志（Task 10 接上） */
-  log?: (level: 'error' | 'warn' | 'info', message: string) => void;
-  /** 通知（Task 10 接上） */
-  notify?: (title: string, body: string) => void;
+  /**
+   * 每张卡的存储（**按卡片 id 分开**——存储是每卡一个命名空间）。
+   *
+   * 做成「工厂」而不是一个实例：会话是**每卡一份**的，
+   * 存储也必须跟着卡走，否则 A 卡的写入会落到 B 卡上。
+   */
+  storageFor?: (cardId: string) => CardServices['storage'];
+  /** 每张卡的日志 */
+  logFor?: (cardId: string) => (level: 'error' | 'warn' | 'info', message: string) => void;
+  /** 通知（M6 才有真正的宿主通道） */
+  notifyFor?: (cardId: string) => (title: string, body: string) => void;
   /** 当前连接的身份（给 `capabilities()` 用） */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
@@ -88,12 +93,12 @@ export class CardSessionManager {
         },
         degradation: () => tags.degradation(),
       },
-      storage: this.deps.storage ?? emptyStorage(),
+      storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
-        this.deps.log?.(level, message);
+        this.deps.logFor?.(cardId)(level, message);
       },
       notify: (title, body) => {
-        this.deps.notify?.(title, body);
+        this.deps.notifyFor?.(cardId)(title, body);
       },
     };
 

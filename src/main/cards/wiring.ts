@@ -1,0 +1,211 @@
+import { CardRegistry } from './registry';
+import type { CardRoot } from './roots';
+import { CardSessionManager, type RuntimeReader } from './session';
+import { CardStorage } from './storage';
+import { CardRuntimeLog } from './runtime-log';
+import { createCardProtocol } from './protocol';
+import { bridgeScriptFor } from './bridge-script';
+import { cardApis } from './api-registry';
+import { parseManifest } from './manifest';
+import { validateCard } from './validate';
+import { aliasVars, themeCss } from '../../shared/theme/map';
+import { baseStyleBlock } from '../../shared/theme/base-css';
+import type { CardPermissions } from './permissions';
+import type { CardInstanceInfo, CardRequest, CardResponse } from '../../shared/ipc-contract';
+import type { ThemeName } from '../../shared/theme/seed';
+import { IPC } from '../../shared/ipc-contract';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
+import { mimeFor } from './paths';
+
+/**
+ * 卡片宿主的**接线**：把注册表、会话、协议、存储、日志接成一坨。
+ *
+ * ── 为什么单独一个模块 ──
+ *
+ * `main/index.ts` 是 Electron 的入口（窗口、IPC、标题栏），
+ * **它不该长成一张卡片接线图**。这里把「卡片怎么活起来」收在一处，
+ * 入口只调三行：
+ *
+ * ```ts
+ * const cards = createCardWiring({ … });
+ * protocol.handle('cockpit', cards.protocol);
+ * handle(IPC.cardsList, () => cards.list());
+ * ```
+ */
+export interface CardWiringDeps {
+  /** 卡片目录的两个根 */
+  roots: CardRoot[];
+  /** 读数的来源 */
+  runtime: RuntimeReader;
+  /** 推送通道（main → 页面 → 卡片） */
+  broadcast: (channel: string, ...args: unknown[]) => void;
+  /** 当前连接（v1 只有一条） */
+  currentConnectionId: () => string | null;
+  /** 当前连接的身份（给 `capabilities()` 用） */
+  connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
+  /** 这张卡的权限集（manifest + 已授权） */
+  permsFor: (cardId: string) => CardPermissions;
+  /** 存储的根目录 */
+  storageDir: string;
+  /** 外壳的构建产物目录（`cockpit://app/` 从这里伺服） */
+  shellDir?: string;
+  /** 外壳的 CSP（生产用；**开发时走 Vite，不用它**） */
+  shellCsp?: string;
+  /** 当前皮肤 */
+  theme?: () => ThemeName;
+  now?: () => number;
+}
+
+export interface CardWiring {
+  registry: CardRegistry;
+  sessions: CardSessionManager;
+  storage: CardStorage;
+  log: CardRuntimeLog;
+  /** `cockpit://` 的处理器 */
+  protocol: (request: Request) => Response;
+  /** 装着的卡片（页面据此渲染卡片区） */
+  list: () => CardInstanceInfo[];
+  /** 卡片的一个请求 */
+  handleRequest: (req: CardRequest) => Promise<CardResponse>;
+  /** 重新发现卡片（热插拔） */
+  refresh: () => void;
+  /** 把一条 CSP 违规归到卡片的运行时日志 */
+  captureCspViolation: (details: { message: string; sourceUrl: string }) => string | null;
+  /** 停止监听 */
+  stop: () => void;
+}
+
+export function createCardWiring(deps: CardWiringDeps): CardWiring {
+  const theme = deps.theme ?? ((): ThemeName => 'dark');
+  const now = deps.now ?? (() => Date.now());
+
+  const registry = new CardRegistry({
+    roots: deps.roots,
+    loadManifest: (dir) => loadManifestOf(dir),
+    validate: (manifest, dir) => {
+      const result = validateManifest(manifest, dir, registry);
+      return [...result.errors, ...result.warnings];
+    },
+  });
+
+  const storage = new CardStorage({ dir: deps.storageDir });
+  const log = new CardRuntimeLog({ now });
+
+  const sessions = new CardSessionManager({
+    runtime: deps.runtime,
+    permsFor: deps.permsFor,
+    now,
+    push: (instanceId, payload) => {
+      deps.broadcast(IPC.cardsEvent, instanceId, payload);
+    },
+    storageFor: (cardId) => ({
+      get: (key) => storage.get(cardId, key),
+      set: (key, value) => storage.set(cardId, key, value),
+      remove: (key) => storage.remove(cardId, key),
+      keys: () => storage.keys(cardId),
+      clear: () => storage.clear(cardId),
+    }),
+    logFor: (cardId) => (level, message) => {
+      log.append(cardId, { source: 'card', level, message });
+    },
+    notifyFor: () => () => {
+      // 通知要先有宿主的通知通道（M6 再说）
+    },
+    connectionInfo: deps.connectionInfo,
+  });
+
+  const cardProtocol = createCardProtocol({
+    dirOfInstance: (instanceId) => registry.dirOfInstance(instanceId),
+    entryOfInstance: (instanceId) => registry.entryOfInstance(instanceId) ?? 'index.html',
+    bridgeScript: (instanceId) => bridgeScriptFor(cardApis(), instanceId),
+    themeStyle: () => `${themeCss(theme(), ':root')}\n${baseStyleBlock()}`,
+  });
+
+  /**
+   * `cockpit://` 的处理器：`app` 是外壳，`card` 是卡片。
+   *
+   * **为什么外壳也走协议**：`file://` 上的 `'self'` **匹配不到任何东西**
+   * （本地 scheme 的 origin 是 opaque 的）——外壳想用 CSP 就得有个真源。
+   * → 生产的外壳从 `cockpit://app/` 伺服 ✓
+   */
+  const protocol = (request: Request): Response => {
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return new Response('not found', { status: 404 });
+    }
+    if (url.hostname === 'app') return serveShell(url, deps.shellDir, deps.shellCsp);
+    return cardProtocol(request);
+  };
+
+  return {
+    registry,
+    sessions,
+    storage,
+    log,
+    protocol,
+    list: () =>
+      registry.cards().map((card) => {
+        const connectionId = deps.currentConnectionId();
+        const { instanceId, url } = registry.instanceFor(card.cardId, connectionId);
+        log.bind(instanceId, card.cardId);
+        return {
+          instanceId,
+          cardId: card.cardId,
+          url,
+          connectionId,
+          degraded: card.issues.some((i) => i.severity === 'error'),
+        };
+      }),
+    handleRequest: (req) => sessions.handle(req),
+    refresh: () => {
+      registry.refresh();
+    },
+    captureCspViolation: (details) => log.attributeCspViolation(details),
+    stop: () => undefined,
+  };
+}
+
+/* ── 两个小工具 ── */
+
+/** 外壳的静态文件（`cockpit://app/…`） */
+function serveShell(url: URL, shellDir: string | undefined, shellCsp: string | undefined): Response {
+  if (shellDir === undefined) return new Response('not found', { status: 404 });
+  const rel = url.pathname === '/' || url.pathname === '' ? 'index.html' : url.pathname.slice(1);
+  // **外壳自己的目录也要防穿越**（它伺服的是构建产物，不是卡片）
+  const resolved = resolve(shellDir, rel);
+  if (resolved !== shellDir && !resolved.startsWith(shellDir + sep)) {
+    return new Response('forbidden', { status: 403 });
+  }
+  if (!existsSync(resolved)) return new Response('not found', { status: 404 });
+  const body = readFileSync(resolved);
+  const headers: Record<string, string> = { 'Content-Type': mimeFor(resolved) };
+  if (shellCsp !== undefined) headers['Content-Security-Policy'] = shellCsp;
+  return new Response(body, { status: 200, headers });
+}
+
+function loadManifestOf(dir: string): ReturnType<typeof parseManifest> {
+  const raw = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as unknown;
+  return parseManifest(raw, dir);
+}
+
+function validateManifest(
+  manifest: Parameters<typeof validateCard>[0],
+  dir: string,
+  registry: CardRegistry,
+): ReturnType<typeof validateCard> {
+  return validateCard(manifest, {
+    // **离线**：连不上板 → 动作与 tag 的存在性「未验证」，不是「不合法」
+    availableTags: null,
+    availableActions: null,
+    installedCardIds: registry.cards().map((c) => c.cardId),
+    fileExists: (rel) => existsSync(join(dir, rel)),
+  });
+}
+
+/** 主题切换时，把新的别名值推给所有卡片（不重载 iframe） */
+export function themePush(theme: ThemeName): Record<string, string> {
+  return aliasVars(theme);
+}

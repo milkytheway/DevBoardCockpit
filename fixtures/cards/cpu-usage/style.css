@@ -1,0 +1,25 @@
+/* 第一张卡的样式。
+ *
+ * **只用 var(--cockpit-*)** —— 卡片不硬编码颜色（契约 §六），
+ * 换皮肤时这张卡不用改一行。
+ */
+body {
+  margin: 0;
+  font-family: var(--cockpit-font-ui);
+  color: var(--cockpit-text);
+}
+
+.label {
+  font-size: var(--cockpit-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-dim);
+}
+
+.foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}

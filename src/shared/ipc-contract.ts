@@ -47,6 +47,8 @@ export const IPC = {
   cardsRequest: 'cards:request',
   /** main → 卡片（推给某个实例） */
   cardsEvent: 'cards:event',
+  /** 装着的卡片变了（热插拔）—— 页面据此重新取清单 */
+  cardsChanged: 'cards:changed',
 } as const;
 
 /** 一张卡片的一个实例 */
@@ -141,6 +143,12 @@ export interface CockpitApi {
    * @returns 退订函数。
    */
   onCardEvent(cb: (instanceId: string, payload: unknown) => void): () => void;
+  /**
+   * 听「装着的卡片变了」（热插拔）。
+   *
+   * @returns 退订函数。
+   */
+  onCardsChanged(cb: () => void): () => void;
   /**
    * 取一个 File 的**宿主绝对路径**。
    *
