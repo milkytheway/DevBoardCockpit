@@ -25,7 +25,7 @@ export default [
   {
     // 脚本是纯 Node（.mjs），跑在仓库根，不进浏览器也不进 Electron。
     // 它们用 console / process / setTimeout——这些在 Node 里是全局的。
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', '**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -37,6 +37,11 @@ export default [
         clearTimeout: 'readonly',
         fetch: 'readonly',
         WebSocket: 'readonly',
+        require: 'readonly',
+        module: 'writable',
+        exports: 'writable',
+        __dirname: 'readonly',
+        __filename: 'readonly',
       },
     },
   },

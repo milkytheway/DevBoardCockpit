@@ -38,3 +38,6 @@ venv/
 
 # 会话本地的状态文件（不是工程内容）
 .claude/ralph-loop.local.md
+
+# 本地临时脚本（原生模块 prebuild 自检用）
+prebuild-*.cjs
