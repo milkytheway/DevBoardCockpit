@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "validate:profiles": "tsx scripts/validate-profiles.ts",
+    "probe:board": "tsx scripts/probe.ts",
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
     "gen:vocabulary:check": "tsx scripts/gen-vocabulary.ts --check",
     "mutation:check": "node scripts/mutation-check.mjs",
