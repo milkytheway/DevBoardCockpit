@@ -1,48 +1,8 @@
-/**
- * 主题 token。
+/* 应用外壳的**组件样式**（手写）。
  *
- * 契约在 `docs/04-架构设计.md` §6.5：**卡片不得硬编码颜色，只用宿主注入的 CSS 变量**。
- * 换主题 = 换一套变量值 = 所有卡片跟着变，不用重写任何卡片。
- *
- * 这套值是「暗色仪表台」的方向：开发工具常年开着，
- * 低亮度背景 + 高对比正文，长时间盯着不累。
- * 语义色（ok / warn / danger / unavailable）对应 tag 的五种状态，
- * 让「不可用」和「真的是 0」在视觉上就分得开——这是 `unavailable ≠ 0` 的 UI 侧兑现。
+ * 变量（颜色/字体/几何）在 `tokens.generated.css` —— 那是**生成产物**，
+ * 真源是 `src/shared/theme/seed.ts`。**这里不许再写一份变量。**
  */
-
-:root {
-  --cockpit-bg: #14171c;
-  --cockpit-bg-elevated: #1c2027;
-  --cockpit-border: #2b313a;
-
-  --cockpit-text: #dfe4ec;
-  --cockpit-text-dim: #9aa4b2;
-  /**
-   * 弱化文字。**对比度必须 ≥ 4.5:1**（WCAG AA 对正文的要求）——
-   * 「未选择」「选一个连接开始」这类空状态提示就是用它写的，
-   * 低视力用户读不到就等于没有。
-   * （实测值见 `tests/web/terminal-theme.test.tsx` 里的对拍测试）
-   */
-  --cockpit-text-faint: #7d879a;
-
-  --cockpit-accent: #58a6ff;
-  --cockpit-accent-2: #7ee787;
-
-  /* 语义色 ↔ tag 五态 */
-  --cockpit-ok: #7ee787;
-  --cockpit-warn: #e3b341;
-  --cockpit-danger: #f85149;
-  /**
-   * 「不可用」——五态之一，`unavailable ≠ 0` 的视觉兑现。
-   * 同样要 ≥ 4.5:1：它承载的是「这块板不提供这个能力」这句话，
-   * 读不到就等于把「不可用」说成了「正常」。
-   */
-  --cockpit-unavailable: #7f8a99;
-
-  --cockpit-radius: 4px;
-  --cockpit-font-mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
-  --cockpit-font-ui: 'Segoe UI', system-ui, sans-serif;
-}
 
 * {
   box-sizing: border-box;

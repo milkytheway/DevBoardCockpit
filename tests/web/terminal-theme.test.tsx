@@ -14,7 +14,7 @@ import { join } from 'node:path';
  * 2. 实现没有把 `var(--...)` 直接塞进 xterm 的 theme
  */
 describe('终端主题', () => {
-  const css = readFileSync(join(process.cwd(), 'src/renderer/theme/tokens.css'), 'utf8');
+  const css = readFileSync(join(process.cwd(), 'src/renderer/theme/tokens.generated.css'), 'utf8');
   const view = readFileSync(
     join(process.cwd(), 'src/renderer/terminal/TerminalView.tsx'),
     'utf8',

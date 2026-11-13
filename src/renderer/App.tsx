@@ -3,7 +3,8 @@ import { TerminalView } from './terminal/TerminalView';
 import { FileBrowser } from './files/FileBrowser';
 import { ReadingsPanel } from './tags/ReadingsPanel';
 import type { CockpitApi, ConnectionInfo } from '../shared/ipc-contract';
-import './theme/tokens.css';
+import './theme/tokens.generated.css';
+import './theme/app.css';
 
 /**
  * 工作台外壳。
