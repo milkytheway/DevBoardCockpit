@@ -111,6 +111,18 @@ export const PROC_STAT: ReaderKind = {
     const cpuinfo = quotePath(argStr(args, 'cpuinfo_path'));
     return `cat -- ${stat}; echo ${quotePath(CPUINFO_SEPARATOR)}; cat -- ${cpuinfo}`;
   },
+  /**
+   * 解析 `/proc/stat`（与 `/proc/cpuinfo`）。
+   *
+   * ── 已知边界：**采样间隔不固定时，这个百分比没有意义** ──
+   *
+   * 契约 §1.2.1 说过「间隔不固定就没有意义」——
+   * 但**只有运行时知道上一轮是什么时候采的**（reader 拿不到时间戳），
+   * 所以「这一轮的窗口是多久」这个判断**做不了**。
+   * 本 kind 只能保证：**计数器的差值**是对的。
+   * 调度器跳过一轮、板子被 suspend —— 这些 reader 侧看不见。
+   * **这条边界记在 `docs/06` C15，由计划 3 的调度器负责。**
+   */
   parse(raw, _args, ctx) {
     if (isBlank(raw)) {
       return missing('/proc/stat 读不到（路径不对？）');
