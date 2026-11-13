@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { launchApp, writeCard, cardDir, simpleCard } from './harness';
 
 /**
- * 卡片沙箱的**十条隔离判据**（M5 的验收主体）。
+ * 卡片沙箱的**隔离判据**（M5 的验收主体）。
+ *
+ * 设计 `docs/21` §10.1 定了**六条**；这里跑了**七条**
+ * （六条 + 「卡片用不了浏览器的存储」——契约 §6.2 的前提，也得守着）。
  *
  * ── 为什么它们必须是「自动的」 ──
  *
