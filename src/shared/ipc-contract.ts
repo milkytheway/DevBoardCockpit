@@ -39,7 +39,44 @@ export const IPC = {
    * 是两回事，前者等一辈子也不会好。
    */
   tagsStatus: 'tags:status',
+  /** 装着的卡片（页面据此渲染卡片区） */
+  cardsList: 'cards:list',
+  /** 卡片实例连上了（main 开一个会话） */
+  cardsHello: 'cards:hello',
+  /** 卡片的一个请求 → main（权限判定在 main） */
+  cardsRequest: 'cards:request',
+  /** main → 卡片（推给某个实例） */
+  cardsEvent: 'cards:event',
 } as const;
+
+/** 一张卡片的一个实例 */
+export interface CardInstanceInfo {
+  instanceId: string;
+  cardId: string;
+  /** 卡片的入口地址（`cockpit://card/<实例 id>/<entry>`） */
+  url: string;
+  connectionId: string | null;
+  /** 这张卡是不是有缺失的能力（降级） */
+  degraded: boolean;
+}
+
+/** 卡片的一个请求 */
+export interface CardRequest {
+  instanceId: string;
+  /** 请求 id（回应时原样带回） */
+  id: string;
+  /** 全名，如 `tags.get` */
+  method: string;
+  args: unknown;
+}
+
+/** 卡片的一个请求的回应 */
+export interface CardResponse {
+  id: string;
+  ok: boolean;
+  value?: unknown;
+  reason?: string;
+}
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
 
@@ -92,6 +129,18 @@ export interface CockpitApi {
    * 「连不上：串口 COM3 被占用」与「等一个采样周期」是两回事。
    */
   tagsStatus(): Promise<RuntimeStatus>;
+  /** 装着的卡片 */
+  cardsList(): Promise<CardInstanceInfo[]>;
+  /** 卡片实例连上了（main 开一个会话） */
+  cardsHello(instanceId: string): Promise<void>;
+  /** 卡片的一个请求（**权限判定在 main**） */
+  cardsRequest(req: CardRequest): Promise<CardResponse>;
+  /**
+   * 听 main 的推送（读数变化等）。
+   *
+   * @returns 退订函数。
+   */
+  onCardEvent(cb: (instanceId: string, payload: unknown) => void): () => void;
   /**
    * 取一个 File 的**宿主绝对路径**。
    *

@@ -49,6 +49,15 @@ export const api: CockpitApi = {
   connectionsList: () => invoke(IPC.connectionsList),
   tagsReadings: () => invoke(IPC.tagsReadings),
   tagsStatus: () => invoke(IPC.tagsStatus),
+  cardsList: () => invoke(IPC.cardsList),
+  cardsHello: (instanceId) => invoke(IPC.cardsHello, instanceId),
+  cardsRequest: (req) => invoke(IPC.cardsRequest, req),
+  onCardEvent: (cb) => {
+    const handler = (_e: IpcRendererEvent, instanceId: string, payload: unknown): void =>
+      cb(instanceId, payload);
+    ipcRenderer.on(IPC.cardsEvent, handler);
+    return () => ipcRenderer.off(IPC.cardsEvent, handler);
+  },
   onTagChanged: (cb) => {
     const handler = (_e: IpcRendererEvent, reading: TagReading): void => cb(reading);
     ipcRenderer.on(IPC.tagsChanged, handler);
