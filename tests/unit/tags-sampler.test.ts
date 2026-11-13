@@ -80,6 +80,12 @@ class FakeConnection {
   };
   /** 整个往返失败 */
   failWith: Error | null = null;
+  /**
+   * 要把「结束标记」吞掉的片段关键字。
+   *
+   * 模拟「板子只回了一半」：开始标记到了，结束标记没到。
+   */
+  truncate: string[] = [];
   /** 每个 key 调过几次（决定取数组里的第几个） */
   private readonly counters = new Map<string, number>();
 
@@ -106,6 +112,12 @@ class FakeConnection {
       const key = Object.keys(this.bodies).find((k) => fragment.includes(k));
       const body = key === undefined ? '' : this.bodyFor(key);
       if (body === null || body === undefined) continue;
+      // 截断：只发开始标记，**不发结束标记**
+      const truncated = key !== undefined && this.truncate.some((k) => fragment.includes(k));
+      if (truncated) {
+        parts.push(m[1]!, body);
+        continue;
+      }
       parts.push(m[1]!, body, m[3]!);
     }
     return { exitCode: 0, stdout: parts.join('\n'), stderr: '', durationMs: 1, timedOut: false };
@@ -299,6 +311,24 @@ describe('采样器', () => {
     expect(store.get('custom.tiny.fps')!.detail).toContain('remote_path');
     // **命令里不该有那条注定失败的脚本调用**
     expect(conn.commands.join('\n')).not.toContain('pipeline_status.sh');
+  });
+
+  it('**截断**的那段（没收到结束标记）→ 报 error，**不发布半截数据**', async () => {
+    // 「板子只回了一半」——把 `format: integer` 的 1000 截成 100
+    // 当正常值发布，那是**假数**（事实 G2 的同一条道理）。
+    const store = new TagStore();
+    const conn = new FakeConnection();
+    conn.truncate = ['gpu/load'];
+    const sampler = new TagSampler(PACK, conn, store);
+
+    await sampler.sampleGroup('fast');
+
+    const gpu = store.get('gpu.usage')!;
+    expect(gpu.status).toBe('error');
+    expect(gpu.value).toBeNull();
+    expect(gpu.detail).toContain('只回了一半');
+    // 别的 reader 照常
+    expect(store.get('cpu.usage')).toBeDefined();
   });
 
   it('不认识的组**报错**，不是静默什么都不做', async () => {

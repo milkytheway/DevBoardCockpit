@@ -366,6 +366,78 @@ const MUTATIONS = [
         '    pty: defaults.pty,',
       ),
   },
+  {
+    name: 'M27 规则 4：绑 *.usage 必须 measure **等于** utilization',
+    file: 'src/main/tags/validator.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 4',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (measure !== 'utilization') {",
+        "      if (measure === undefined) {  // 变异：只判有没有声明",
+      ),
+  },
+  {
+    name: 'M28 规则 26：已实现能力集要真的查',
+    file: 'src/main/tags/vocabulary.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 26',
+    apply: (s) =>
+      replace(
+        s,
+        'export function isImplementedCapability(value: string): boolean {\n  return (IMPLEMENTED_CAPABILITIES as readonly string[]).includes(value);\n}',
+        'export function isImplementedCapability(value: string): boolean {\n  return true;  // 变异：什么都算已实现\n}',
+      ),
+  },
+  {
+    name: 'M29 危险地板：绝对路径也要算（basename 兜底）',
+    file: 'src/main/tags/floor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 16',
+    apply: (s) =>
+      replace(
+        s,
+        '  return baseName(token) === pattern;',
+        '  return token === pattern;  // 变异：去掉 basename 兜底',
+      ),
+  },
+  {
+    name: 'M30 危险地板：rm -rf / 与 rm -rf /* 都要拦',
+    file: 'src/main/tags/floor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 16',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (p === '/' || p === '/*') {",
+        "    if (p === '/root' || p === '/*') {  // 变异：漏掉 /",
+      ),
+  },
+  {
+    name: 'M31 TagStore：stale/error 要**保留旧值**',
+    file: 'src/main/tags/store.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-store.test.ts'],
+    expect: '保留旧值',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (input.status === 'stale' || input.status === 'error') {\n      const good = this.lastGood.get(input.tag);\n      value = good === undefined ? null : good;\n    } else if",
+        "    if (input.status === 'stale' || input.status === 'error') {\n      value = null;  // 变异：不保留旧值\n    } else if",
+      ),
+  },
+  {
+    name: 'M32 采样器：截断的那段**不许照常发布**',
+    file: 'src/main/tags/sampler.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-sampler.test.ts'],
+    expect: '截断',
+    apply: (s) =>
+      replace(
+        s,
+        "          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',\n        );\n        continue;\n      }",
+        "          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',\n        );\n        // 变异：照常发布\n      }",
+      ),
+  },
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
