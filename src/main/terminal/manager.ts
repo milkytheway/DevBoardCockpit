@@ -3,6 +3,7 @@ import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { Connection } from '../hal/connection';
+import { capabilitiesFor } from '../hal/capabilities';
 import type { Session } from '../hal/session';
 import { PipeInput } from './line-editor';
 
@@ -122,7 +123,17 @@ export class TerminalManager {
       this.closeLog(id, false);
       throw err;
     }
-    const pty = connection.capabilities().pty;
+    // **终端模式由 profile 决定**，不是由传输名决定。
+    //
+    // `connection.capabilities().pty` 是**传输的常量**（serial=true / adb=false / …），
+    // 看都不看 profile。而 UI 侧的 `connections:list` 用的是 profile 感知的
+    // `capabilitiesFor(profile)` —— **两个能力位来源互相矛盾**：
+    // 用户把 profile 的 `pty` 改成 false，UI 报 false、运行时仍按 true 走，
+    // 于是宿主不做行编辑也不回显，用户打的字一个都看不见，
+    // 回车原样发成 `\r`，远端永远等不到行尾。
+    //
+    // 所以这里必须用**同一个**函数。
+    const pty = capabilitiesFor(profile).pty;
 
     // 开场事件行。格式与黄金样本同构（旧工程也写这几行）
     log.writeEvent('connected', profileId);

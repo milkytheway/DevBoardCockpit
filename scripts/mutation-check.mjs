@@ -254,8 +254,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '          this.editor.clear();\n          echo += `^C\\r\\n${this.prompt}`;',
-        '          echo += `^C\\r\\n${this.prompt}`;',
+        "          this.editor.clear();\n          echo += '^C\\r\\n';",
+        "          echo += '^C\\r\\n';",
       ),
   },
   {
@@ -280,6 +280,42 @@ const MUTATIONS = [
         s,
         "    child.stdin.on('error', (err: Error) => {",
         "    // 变异：stdin 的 error 没人接\n    child.stdin.on('nothing', (err: Error) => {",
+      ),
+  },
+  {
+    name: 'M21 运行时的终端模式由 profile 决定',
+    file: 'src/main/terminal/manager.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/terminal-manager.test.ts'],
+    expect: '终端模式由 profile 的 pty 决定',
+    apply: (s) =>
+      replace(
+        s,
+        '    const pty = capabilitiesFor(profile).pty;',
+        '    const pty = connection.capabilities().pty;',
+      ),
+  },
+  {
+    name: 'M22 上传的远端目标要补 basename',
+    file: 'src/main/hal/local.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/local.test.ts'],
+    expect: '上传',
+    apply: (s) =>
+      replace(
+        s,
+        '    const target = join(remotePath, basename(localPath));',
+        '    const target = remotePath;',
+      ),
+  },
+  {
+    name: 'M23 提交时不要画下一个提示符',
+    file: 'src/main/terminal/line-editor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
+    expect: '提示符在下一条命令开始时才画',
+    apply: (s) =>
+      replace(
+        s,
+        "          echo += '\\r\\n';\n          this.promptPending = true;",
+        "          echo += `\\r\\n${this.prompt}`;\n          this.promptPending = false;",
       ),
   },
   {
@@ -320,6 +356,30 @@ function run(cmd, args) {
 
 let pass = 0;
 let fail = 0;
+let envProblems = 0;
+
+/**
+ * 「套件没跑起来」的判据。
+ *
+ * **为什么必须区分**：变异之后测试套件**加载失败**（比如原生模块架构不匹配）
+ * 也会让 vitest 退出非 0——但那**不是守卫失效**，是环境问题。
+ * 两者混在一起报成「形同虚设」，开发者会得出**完全相反**的结论：
+ * 「这几个回归测试是摆设」。而如果真的有一个守卫失效，它也可能被读成「环境问题」。
+ * **两个方向都会骗人。**
+ * （`docs/13-计划1复评报告.md` S-02）
+ */
+const ENV_PROBLEM = [
+  /Tests\s+no tests/i,
+  /No test files found/i,
+  /Failed to load/i,
+  /is not a valid Win32 application/i,
+  /Cannot find (module|package)/i,
+  /Failed to resolve import/i,
+];
+
+function isEnvProblem(out) {
+  return ENV_PROBLEM.some((re) => re.test(out));
+}
 
 /**
  * **待还原的文件**。
@@ -406,6 +466,11 @@ for (const m of selected) {
   if (result.rc === 0) {
     console.log(`✗ ${m.name}：改坏之后测试**仍然全绿** —— 这个测试形同虚设`);
     fail += 1;
+  } else if (isEnvProblem(result.out)) {
+    console.log(`⚠ ${m.name}：**套件没跑起来**（环境问题，不是守卫失效）`);
+    console.log('    常见原因：原生模块的架构与当前平台对不上（node_modules 是从别的系统搬来的）。');
+    console.log('    这一项**判不了**——修好环境再跑一次。');
+    envProblems += 1;
   } else if (!result.out.includes(m.expect)) {
     console.log(
       `✗ ${m.name}：红了，但**红的原因不对**（输出里找不到「${m.expect}」）—— ` +
@@ -419,5 +484,12 @@ for (const m of selected) {
 }
 
 console.log();
-console.log(`=== 结果：守住 ${pass} 项，形同虚设 ${fail} 项 ===`);
-process.exit(fail > 0 ? 1 : 0);
+console.log(
+  `=== 结果：守住 ${pass} 项，守卫失效 ${fail} 项` +
+    (envProblems > 0 ? `，环境问题 ${envProblems} 项（判不了，不是守卫失效）` : '') +
+    ' ===',
+);
+if (envProblems > 0) {
+  console.log('    「环境问题」的那些项**没有判定过**——修好环境（原生模块要与平台对得上）再跑一次。');
+}
+process.exit(fail > 0 || envProblems > 0 ? 1 : 0);

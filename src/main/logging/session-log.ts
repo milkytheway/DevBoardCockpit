@@ -63,8 +63,15 @@ export interface SessionLogOptions {
 export function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   const CSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+  /**
+   * OSC 序列：`ESC ] <内容> <终止符>`。
+   *
+   * **终止符有两个**：BEL（`\x07`）与 ST（`ESC \`）。
+   * xterm 与多数现代 shell 在 OSC 0/2（窗口标题）、OSC 8（超链接）上用 ST——
+   * 只认 BEL 的话，日志里会留下 `0;titletext` 这种半截。
+   */
   // eslint-disable-next-line no-control-regex
-  const OSC = /\x1b\][^\x07]*\x07/g;
+  const OSC = /\x1b\](?:[^\x07\x1b]|\x1b(?!\\))*(?:\x07|\x1b\\)/g;
   // eslint-disable-next-line no-control-regex
   const CH = /\x1b[@-Z\\-_]/g;
   return s.replace(CSI, '').replace(OSC, '').replace(CH, '');

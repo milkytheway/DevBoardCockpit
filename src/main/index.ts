@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
 import { toAppErrorPayload } from '../shared/errors';
@@ -11,7 +12,7 @@ import { builtinProfilesDir, userDataDir, userProfilesDir } from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TransferService } from './files/transfer';
-import { defaultDownloadPath } from './files/download-target';
+import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
 
 /**
@@ -152,7 +153,7 @@ handle(IPC.filesPull, (connectionId, remotePath, localPath) => {
   // 而那个「默认落盘位置」根本不存在——于是下载按钮必挂。
   const target = localPath
     ? String(localPath)
-    : defaultDownloadPath(app.getPath('downloads'), String(remotePath));
+    : uniqueDownloadPath(app.getPath('downloads'), String(remotePath), existsSync);
   return transfer.pull(String(connectionId), String(remotePath), target).then(() => ({
     localPath: target,
   }));

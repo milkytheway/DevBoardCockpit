@@ -42,6 +42,18 @@ export interface Connection {
    *
    * **按传输分派**，不是跑远端的 `pull`/`push` 命令——
    * 板子上没有这两个命令（adb 的 pull 是 `adb pull`，ssh 的是 sftp）。
+   *
+   * ── 语义约定：远端路径一律是「目录」 ──
+   *
+   * 三种传输的底层工具对「目标」的含义不一样：
+   * - `adb push <本地> <目录>` —— 目标是目录，adb 自己补上 basename ✓
+   * - `sftp.fastPut(<本地>, <远端文件>)` —— 目标是**完整文件路径**
+   * - `copyFile(<本地>, <远端文件>)` —— 目标是**完整文件路径**
+   *
+   * 所以**统一约定：`remotePath` 是目录**，由各传输自己补 basename。
+   * 否则「上传到某个目录」这件事，SSH 与本机必挂
+   * （`copyFile(src, '/')` → ENOENT）。
+   * （`docs/13-计划1复评报告.md` S-05）
    */
   pull(remotePath: string, localPath: string): Promise<void>;
   push(localPath: string, remotePath: string): Promise<void>;

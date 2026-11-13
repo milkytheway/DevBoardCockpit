@@ -1,4 +1,4 @@
-import { basename, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 
 /**
  * 下载的默认落盘位置。
@@ -16,8 +16,14 @@ import { basename, join } from 'node:path';
 // eslint-disable-next-line no-control-regex
 const INVALID = /[<>:"/\\|?*\u0000-\u001f]/g;
 
-/** Windows 的保留设备名（不分扩展名） */
-const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/**
+ * Windows 的保留设备名。
+ *
+ * **带扩展名的那种也是设备**：`con.txt` / `nul.log` / `COM1.tar`
+ * 在 Windows 上照样是设备名，写到这些名字上会失败（`ERROR_INVALID_NAME`），
+ * 而那个错误消息对用户毫无意义。
+ */
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 
 /**
  * 把远端文件名收拾成一个能落在 Windows 上的名字。
@@ -43,4 +49,28 @@ export function sanitizeFileName(name: string): string {
  */
 export function defaultDownloadPath(downloadsDir: string, remotePath: string): string {
   return join(downloadsDir, sanitizeFileName(basename(remotePath)));
+}
+
+/**
+ * 下载的落盘路径，**撞名就换一个**（`a.txt` → `a-1.txt` → `a-2.txt`）。
+ *
+ * 静默覆盖是数据安全问题：用户从板子上拉三次同名文件，
+ * 前两次的结果被第三次盖掉，而他一点提示都没收到。
+ * （`docs/12-计划1复评-renderer.md` P2-12）
+ */
+export function uniqueDownloadPath(
+  downloadsDir: string,
+  remotePath: string,
+  exists: (path: string) => boolean,
+): string {
+  const name = sanitizeFileName(basename(remotePath));
+  const ext = extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  const first = join(downloadsDir, name);
+  if (!exists(first)) return first;
+  for (let i = 1; i < 1000; i += 1) {
+    const candidate = join(downloadsDir, `${stem}-${i}${ext}`);
+    if (!exists(candidate)) return candidate;
+  }
+  return join(downloadsDir, `${stem}-${Date.now()}${ext}`);
 }

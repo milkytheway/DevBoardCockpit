@@ -7,7 +7,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && tsx scripts/check-build.ts",
+    "build": "node scripts/clean-out.mjs && electron-vite build && tsx scripts/check-build.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",

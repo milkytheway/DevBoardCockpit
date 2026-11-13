@@ -1,4 +1,5 @@
 import { StringDecoder } from 'node:string_decoder';
+import { basename, join } from 'node:path';
 import { Client, type ClientChannel, type SFTPWrapper } from 'ssh2';
 import { makeError } from '../../shared/errors';
 import type { FileEntry } from '../../shared/ipc-contract';
@@ -269,15 +270,21 @@ export class SshConnection implements Connection {
     }
   }
 
-  /** 上传：走 ssh2 的 sftp */
+  /**
+   * 上传：走 ssh2 的 sftp。
+   *
+   * `remotePath` 是**目录**（统一的语义，见 `connection.ts`）——
+   * `fastPut` 要的是完整文件路径，所以这里补上 basename。
+   */
   async push(localPath: string, remotePath: string): Promise<void> {
+    const target = join(remotePath, basename(localPath));
     const sftp = await this.openSftp();
     try {
       await new Promise<void>((resolve, reject) => {
-        sftp.fastPut(localPath, remotePath, (err) => {
+        sftp.fastPut(localPath, target, (err) => {
           if (err) {
             reject(makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
-              detail: { localPath, remotePath, cause: err.message },
+              detail: { localPath, remotePath, target, cause: err.message },
             }));
             return;
           }

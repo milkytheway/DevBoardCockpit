@@ -86,6 +86,12 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
     });
 
     const report = (): void => {
+      // **隐藏的标签不要报尺寸**。
+      // 标签不活动时面板是 `display:none` → 容器 0×0 → FitAddon 量出
+      // 一个极小的尺寸（cols 2 / rows 1 之类）。
+      // 把那个尺寸报给远端，远端的窗口尺寸就废了——
+      // 而那个标签用户根本没在看。
+      if (term.cols <= 2 || term.rows <= 1) return;
       onResizeRef.current?.(term.cols, term.rows);
     };
 

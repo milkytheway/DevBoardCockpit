@@ -49,8 +49,15 @@ export function App(): JSX.Element {
     apiRef.current = window.cockpit ?? null;
     if (!apiRef.current) return;
 
-    // 连接与能力位都问宿主要——UI 不该自己猜哪个传输能干什么
-    void apiRef.current.connectionsList().then(setConnections);
+    // 连接与能力位都问宿主要——UI 不该自己猜哪个传输能干什么。
+    // 拉失败也要有去处：没有 catch 就是未处理的 promise rejection——
+    // 界面上什么都不会出现，用户只看到「一个连接都没有」。
+    void apiRef.current
+      .connectionsList()
+      .then(setConnections)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
 
     const offData = apiRef.current.onTerminalData((sessionId, chunk) => {
       const writer = writersRef.current.get(sessionId);
@@ -241,26 +248,42 @@ export function App(): JSX.Element {
         ))}
       </header>
 
-      <nav className="cockpit-tabs">
+      <nav className="cockpit-tabs" role="tablist">
         {tabs.map((tab) => (
-          <button
+          // 标签本身不是 button：里面要放一个真正的关闭按钮，
+          // **嵌套的交互元素是无效 HTML**，而且原来的 <span role="button">
+          // 没有 onKeyDown —— 键盘用户按 Enter/Space 关不掉标签（R-15）。
+          <div
             key={tab.sessionId}
-            type="button"
-            className={tab.sessionId === active ? 'is-active' : undefined}
+            role="tab"
+            tabIndex={0}
+            aria-selected={tab.sessionId === active}
+            className={
+              tab.sessionId === active
+                ? 'cockpit-tab is-active'
+                : 'cockpit-tab'
+            }
             onClick={() => setActive(tab.sessionId)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setActive(tab.sessionId);
+              }
+            }}
           >
-            {tab.profileId}
-            <span
-              role="button"
-              tabIndex={0}
+            <span className="cockpit-tab__label">{tab.profileId}</span>
+            <button
+              type="button"
+              className="cockpit-tab__close"
+              aria-label={`关闭 ${tab.profileId}`}
               onClick={(e) => {
                 e.stopPropagation();
                 closeTab(tab.sessionId);
               }}
             >
               ×
-            </span>
-          </button>
+            </button>
+          </div>
         ))}
       </nav>
 

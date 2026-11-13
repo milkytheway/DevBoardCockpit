@@ -1,5 +1,5 @@
 import { copyFile, readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
@@ -124,13 +124,19 @@ export class LocalConnection implements Connection {
     }
   }
 
-  /** 上传：宿主文件系统直写 */
+  /**
+   * 上传：宿主文件系统直写。
+   *
+   * `remotePath` 是**目录**（统一的语义，见 `connection.ts`）——
+   * `copyFile` 要的是完整文件路径，所以这里补上 basename。
+   */
   async push(localPath: string, remotePath: string): Promise<void> {
+    const target = join(remotePath, basename(localPath));
     try {
-      await copyFile(localPath, remotePath);
+      await copyFile(localPath, target);
     } catch (err) {
       throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
-        detail: { localPath, remotePath, cause: err instanceof Error ? err.message : String(err) },
+        detail: { localPath, remotePath, target, cause: err instanceof Error ? err.message : String(err) },
       });
     }
   }

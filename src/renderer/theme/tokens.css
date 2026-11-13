@@ -37,7 +37,7 @@
    * 同样要 ≥ 4.5:1：它承载的是「这块板不提供这个能力」这句话，
    * 读不到就等于把「不可用」说成了「正常」。
    */
-  --cockpit-unavailable: #78828f;
+  --cockpit-unavailable: #7f8a99;
 
   --cockpit-radius: 4px;
   --cockpit-font-mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
@@ -98,8 +98,7 @@ body {
   margin-right: 8px;
 }
 
-.cockpit-toolbar button,
-.cockpit-tabs button {
+.cockpit-toolbar button {
   font: inherit;
   color: var(--cockpit-text-dim);
   background: transparent;
@@ -109,8 +108,7 @@ body {
   cursor: pointer;
 }
 
-.cockpit-toolbar button:hover,
-.cockpit-tabs button:hover {
+.cockpit-toolbar button:hover {
   color: var(--cockpit-text);
   border-color: var(--cockpit-accent);
 }
@@ -123,18 +121,55 @@ body {
   border-bottom: 1px solid var(--cockpit-border);
 }
 
-.cockpit-tabs button {
+/**
+ * 标签本身是 `role="tab"` 的 div，不是 button——
+ * 因为里面要放一个**真正的**关闭按钮（嵌套的交互元素是无效 HTML，
+ * 而 `<span role="button">` 没有 onKeyDown，键盘用户关不掉标签）。
+ */
+.cockpit-tab {
+  font: inherit;
+  color: var(--cockpit-text-dim);
+  background: transparent;
+  border: 1px solid var(--cockpit-border);
   border-bottom: none;
   border-radius: var(--cockpit-radius) var(--cockpit-radius) 0 0;
+  padding: 4px 10px;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.cockpit-tabs button.is-active {
+.cockpit-tab:hover {
+  color: var(--cockpit-text);
+  border-color: var(--cockpit-accent);
+}
+
+.cockpit-tab.is-active {
   color: var(--cockpit-text);
   background: var(--cockpit-bg);
   border-color: var(--cockpit-accent);
+}
+
+.cockpit-tab:focus-visible,
+.cockpit-tab__close:focus-visible {
+  outline: 2px solid var(--cockpit-accent);
+  outline-offset: 1px;
+}
+
+.cockpit-tab__close {
+  font: inherit;
+  line-height: 1;
+  color: var(--cockpit-text-faint);
+  background: transparent;
+  border: none;
+  border-radius: var(--cockpit-radius);
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.cockpit-tab__close:hover {
+  color: var(--cockpit-danger);
 }
 
 .cockpit-main {

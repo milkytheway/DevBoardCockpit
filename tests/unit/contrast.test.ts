@@ -49,6 +49,15 @@ function contrast(a: string, b: string): number {
 
 describe('主题 token 的对比度', () => {
   const bg = token('cockpit-bg');
+  /**
+   * 弱化文字**真正渲染在哪块背景上**，就要对那块背景达标。
+   *
+   * 上一版只测 `--cockpit-bg`，而 `--cockpit-unavailable` 实际是用在
+   * 文件浏览器那块（`--cockpit-bg-elevated`）上——于是「测的那块背景
+   * 不是它渲染的那块」，4.19:1 的不合格被漏过去了。
+   * （`docs/13-计划1复评报告.md` R-24）
+   */
+  const elevated = token('cockpit-bg-elevated');
 
   it('正文色对背景 ≥ 4.5:1', () => {
     expect(contrast(token('cockpit-text'), bg)).toBeGreaterThanOrEqual(4.5);
@@ -66,6 +75,13 @@ describe('主题 token 的对比度', () => {
   it('「不可用」语义色 ≥ 4.5:1 —— 它承载的是「这块板不提供这个能力」', () => {
     // 曾经是 #6e7681，只有 3.91:1
     expect(contrast(token('cockpit-unavailable'), bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('弱化文字在**它真正渲染的那块背景**上也 ≥ 4.5:1', () => {
+    // 文件浏览器、工具栏那些区域用的是 elevated 背景
+    expect(contrast(token('cockpit-text-faint'), elevated)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token('cockpit-text-dim'), elevated)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token('cockpit-unavailable'), elevated)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('危险色对背景 ≥ 3:1 —— 错误条是大字，只需要能分辨', () => {

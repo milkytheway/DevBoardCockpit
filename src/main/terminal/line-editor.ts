@@ -331,6 +331,35 @@ function isWide(cp: number): boolean {
 export class PipeInput {
   readonly editor = new LineEditor();
 
+  /**
+   * 「下一个提示符还没画」。
+   *
+   * ── 为什么提示符要等到用户开始打字才画 ──
+   *
+   * pipe 模式远端**不发提示符**（没有 tty，`PS1` 无从打印），
+   * 所以提示符得宿主画。但**画在提交的那一刻就会排错序**：
+   *
+   * ```
+   * root@board$ ls          ← 命令
+   * root@board$             ← 下一个提示符（提交时就画了）
+   * file1                    ← 远端的输出（**再走一次往返才回来**）
+   * ```
+   *
+   * 输出落在「下一个提示符」**后面**，读起来像是那个提示符的输出。
+   * （`docs/13-计划1复评报告.md` S-04 / `docs/12` N-1）
+   *
+   * 改成**用户开始打下一条命令时才画**：
+   *
+   * ```
+   * root@board$ ls
+   * file1                    ← 输出紧跟在它自己的命令后面
+   * root@board$ ls -l        ← 下一个提示符跟着下一条命令一起出现
+   * ```
+   *
+   * 顺序对了，提示符也还在。
+   */
+  private promptPending = false;
+
   constructor(private readonly prompt: string = '') {}
 
   /**
@@ -373,6 +402,12 @@ export class PipeInput {
         continue;
       }
 
+      // 提示符等到「用户开始打字」才画（见 promptPending 的说明）
+      if (this.promptPending) {
+        echo += this.prompt;
+        this.promptPending = false;
+      }
+
       switch (ch) {
         case '\r':
         case '\n':
@@ -384,9 +419,10 @@ export class PipeInput {
             dirty = false;
           }
           toRemote += `${this.editor.commit()}\n`;
-          // 换行后画下一个提示符——用户看到的是一条条输入行。
-          // 提示符只是画给人看的，不发给远端。
-          echo += `\r\n${this.prompt}`;
+          // **只换行，不画下一个提示符**——提示符要等下一条命令开始才画，
+          // 否则远端的输出会落在它的后面。
+          echo += '\r\n';
+          this.promptPending = true;
           dirty = false;
           before.text = this.editor.text;
           before.cursor = this.editor.cursor;
@@ -433,7 +469,8 @@ export class PipeInput {
           toRemote += '\x03';
           // **这一行要丢掉**——不然下次回车会把「旧命令 + 新命令」拼成一条发出去
           this.editor.clear();
-          echo += `^C\r\n${this.prompt}`;
+          echo += '^C\r\n';
+          this.promptPending = true;
           dirty = false;
           break;
         default:

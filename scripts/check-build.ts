@@ -55,6 +55,16 @@ function main(): void {
       : 'out/preload 里没有任何产物',
   });
 
+  // ── preload 目录里**只有**那一个产物 ──────────────────────────────
+  // 有了这一步，「陈旧产物骗过自检」就不可能：
+  // 上一次构建留下的 index.mjs 会让这一条变红。
+  const strays = produced.filter((f) => f !== PRELOAD_FILE);
+  checks.push({
+    what: `preload 目录里只有 ${PRELOAD_FILE}（没有陈旧产物）`,
+    ok: strays.length === 0,
+    detail: strays.length === 0 ? '干净' : `混进了：${strays.join(', ')}`,
+  });
+
   // ── main 产物确实引用了它 ────────────────────────────────────────
   const mainBundle = join(outDir, 'main', 'index.js');
   if (existsSync(mainBundle)) {

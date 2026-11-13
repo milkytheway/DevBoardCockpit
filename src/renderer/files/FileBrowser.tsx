@@ -44,6 +44,18 @@ export interface FileBrowserProps {
   remotePath?: string;
 }
 
+/**
+ * 上一级目录。
+ *
+ * 远端路径一般是 POSIX 的（`/root/sub`），但**本机目标**给的是 Windows 路径
+ * （`C:\Users\me`）——所以两种分隔符都得认。
+ */
+export function parentPath(path: string): string {
+  const m = /^(.*?)[\\/][^\\/]+[\\/]*$/.exec(path);
+  if (!m) return path;
+  return m[1] || path || '/';
+}
+
 export function FileBrowser({
   connectionId,
   capabilities,
@@ -57,20 +69,36 @@ export function FileBrowser({
   const [selectedLocal, setSelectedLocal] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 当前所在的远端目录。
+   *
+   * **远端树必须能进目录**——不然用户永远只能看到根目录，
+   * 而「上传到某个目录」这件事根本无从谈起
+   * （`docs/13-计划1复评报告.md` S-08：原来 `remotePath` 是个常量 prop，
+   * 组件内从不修改，点目录只是「选中」不是「进去」）。
+   */
+  const [currentPath, setCurrentPath] = useState(remotePath);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      setRemote(await listRemote(connectionId, remotePath));
+      setRemote(await listRemote(connectionId, currentPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setRemote([]);
     } finally {
       setBusy(false);
     }
-  }, [connectionId, remotePath, listRemote]);
+  }, [connectionId, currentPath, listRemote]);
+
+  /** 进目录 */
+  const enter = useCallback((entry: RemoteEntry) => {
+    if (!entry.isDirectory) return;
+    setSelectedRemote(null);
+    setCurrentPath(entry.path);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0];
@@ -99,11 +127,13 @@ export function FileBrowser({
 
   const push = (): void => {
     if (!selectedLocal) return;
-    onPush(selectedLocal, remotePath);
+    // 上传的远端目标 = **当前所在的目录**
+    onPush(selectedLocal, currentPath);
   };
 
   const pull = (): void => {
-    if (!selectedRemote) return;
+    // 目录不能下载 —— 点了也不该有反应
+    if (!selectedRemote || selectedRemote.isDirectory) return;
     onPull(connectionId, selectedRemote.path);
   };
 
@@ -159,25 +189,43 @@ export function FileBrowser({
         {/* ── 右：远端 ── */}
         <div className="cockpit-tree" data-testid="tree-remote">
           <div className="cockpit-tree__head">
-            远端
-            <button
-              type="button"
-              data-testid="remote-refresh"
-              onClick={() => void refresh()}
-              disabled={busy}
-            >
-              刷新
-            </button>
+            <span className="cockpit-tree__path" data-testid="remote-path">
+              {currentPath}
+            </span>
+            <span className="cockpit-tree__actions">
+              <button
+                type="button"
+                data-testid="remote-up"
+                onClick={() => {
+                  setSelectedRemote(null);
+                  setCurrentPath(parentPath(currentPath));
+                }}
+                disabled={busy}
+                title="上一级"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                data-testid="remote-refresh"
+                onClick={() => void refresh()}
+                disabled={busy}
+              >
+                刷新
+              </button>
+            </span>
           </div>
           <ul className="cockpit-tree__list">
             {remote.map((entry) => (
               <li key={entry.path}>
                 <button
                   type="button"
+                  data-testid={entry.isDirectory ? 'remote-dir' : 'remote-file'}
                   className={
                     selectedRemote?.path === entry.path ? 'is-selected' : undefined
                   }
-                  onClick={() => setSelectedRemote(entry)}
+                  // 点目录是**进去**，点文件是**选中**
+                  onClick={() => (entry.isDirectory ? enter(entry) : setSelectedRemote(entry))}
                 >
                   {/* 图标用 CSS class，不混在文字里——混在一起文本就匹配不到了 */}
                   <span className={entry.isDirectory ? 'is-dir' : 'is-file'} aria-hidden />

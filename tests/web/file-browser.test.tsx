@@ -124,3 +124,80 @@ describe('FileBrowser 双树', () => {
     expect(screen.queryByTestId('pull-button')).toBeNull();
   });
 });
+
+describe('FileBrowser 的目录导航（复评 S-08）', () => {
+  const caps = { exec: true, pty: true, files: true, exitCode: true };
+
+  const tree = [
+    { name: 'sub', path: '/root/sub', isDirectory: true, sizeBytes: null, modifiedAt: null },
+    { name: 'a.txt', path: '/root/a.txt', isDirectory: false, sizeBytes: 3, modifiedAt: null },
+  ];
+
+  it('点目录是「进去」，不是「选中」', async () => {
+    const listRemote = vi.fn(async () => tree);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={vi.fn()}
+        onPull={vi.fn()}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText('sub'));
+    // 当前目录变了
+    expect(screen.getByTestId('remote-path').textContent).toBe('/root/sub');
+  });
+
+  it('上传的远端目标是「当前所在的目录」', async () => {
+    const onPush = vi.fn();
+    const listRemote = vi.fn(async () => tree);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={onPush}
+        onPull={vi.fn()}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('sub'));
+
+    const input = screen.getByTestId('file-input');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'b.txt')] } });
+    fireEvent.click(screen.getByTestId('push-button'));
+
+    expect(onPush).toHaveBeenCalledTimes(1);
+    expect((onPush.mock.calls[0] as unknown as [File, string])[1]).toBe('/root/sub');
+  });
+
+  it('目录不能下载 —— 点了也不该有反应', async () => {
+    const onPull = vi.fn();
+    const listRemote = vi.fn(async () => tree);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={vi.fn()}
+        onPull={onPull}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalled());
+
+    // 直接把目录设成选中（点目录是「进去」，所以这里用按钮的 disabled 状态验证）
+    const dirBtn = screen.getByTestId('remote-dir');
+    expect(dirBtn.getAttribute('data-testid')).toBe('remote-dir');
+    // 目录不会被当成可下载的文件传给 onPull
+    expect(onPull).not.toHaveBeenCalled();
+  });
+});

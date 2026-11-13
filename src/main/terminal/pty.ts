@@ -82,6 +82,21 @@ export class LocalPtySession extends Session {
     this.proc.onData(cb);
   }
 
+  /**
+   * 本机 shell 退出了 → 上报。
+   *
+   * 没有它的话，用户在「本机」标签里敲 `exit` → powershell 退出 →
+   * **界面不知道** → 标签页留着，继续打字写进一个已死的 pty。
+   * （SSH 与 ADB 都有这个钩子，本机这条漏了——
+   *  `docs/13-计划1复评报告.md` S-07）
+   */
+  onExit(cb: (exitCode: number | null) => void): void {
+    this.proc.onExit((code) => {
+      this.exitCodeValue = code;
+      cb(code);
+    });
+  }
+
   resize(cols: number, rows: number): void {
     this.proc.resize(cols, rows);
   }

@@ -48,12 +48,27 @@ function fakeLog() {
   };
 }
 
-const mgrWith = (conn: unknown, log?: ReturnType<typeof fakeLog>) =>
-  new TerminalManager({
-    listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
+/**
+ * 造一个 manager。
+ *
+ * profile 的 `pty` **由假连接的能力位推导**——这样每个用例想测 pty 还是 pipe
+ * 只要改 `fakeConn({ pty })` 一处。
+ *
+ * 注意：**运行时的终端模式由 profile 决定**（第三轮复评 S-03）：
+ * 原来 manager 读的是 `connection.capabilities().pty`（传输的常量），
+ * 于是 profile 里的 `pty` 改不动运行时，而 UI 侧读的是 profile ——
+ * **两个能力位来源互相矛盾**。
+ */
+const mgrWith = (conn: unknown, log?: ReturnType<typeof fakeLog>) => {
+  const pty = (conn as { capabilities: () => { pty: boolean } }).capabilities().pty;
+  return new TerminalManager({
+    listProfiles: () => [
+      { id: 'p1', label: 'p1', transport: 'serial', options: { port: 'COM3', pty } },
+    ],
     createConnection: () => conn as never,
     createLog: () => (log ? log.log : fakeLog().log) as never,
   });
+};
 
 describe('TerminalManager', () => {
   it('pty 模式：写入的数据原样转交给远端', async () => {
@@ -249,5 +264,30 @@ describe('第三轮审计补的用例', () => {
     });
     await expect(mgr.open('p1')).rejects.toThrow();
     expect(log.events).toContain('close');
+  });
+});
+
+describe('第三轮复评补的用例', () => {
+  it('终端模式由 profile 的 pty 决定 —— 运行时与 UI 侧必须是同一个来源', async () => {
+    // `connection.capabilities().pty` 是**传输的常量**，看都不看 profile；
+    // 而 UI 侧的 `connections:list` 用的是 profile 感知的 `capabilitiesFor`。
+    // 两个来源互相矛盾 → 用户改 profile 的 pty，界面说 false、运行时仍按 true 走，
+    // 于是宿主不做行编辑也不回显，**用户打的字一个都看不见**。
+    //
+    // 这条测试故意让**假连接报 pty: true**，而 profile 说 false：
+    // 运行时必须听 profile 的。
+    const { conn, written } = fakeConn({ pty: true });
+    const mgr = new TerminalManager({
+      listProfiles: () => [
+        { id: 'p1', label: 'p1', transport: 'serial', options: { port: 'COM3', pty: false } },
+      ],
+      createConnection: () => conn as never,
+      createLog: () => fakeLog().log as never,
+    });
+
+    const { sessionId } = await mgr.open('p1');
+    mgr.write(sessionId, 'ls\r');
+    // pipe 模式：回车发的是 LF（不是原样的 \r）
+    expect(written).toEqual(['ls\n']);
   });
 });

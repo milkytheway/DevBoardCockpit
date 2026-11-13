@@ -168,15 +168,20 @@ describe('pipe 模式发往远端的协议', () => {
     expect(input.input('\r').toRemote).toBe('l\n');
   });
 
-  it('提示符在换行后画下一个', () => {
-    // 前身工程就是宿主画的（docs/legacy/旧工程架构说明-PySide6.md）：
-    // 「提示符由控制台画，不是从设备取——因为板子自己的 PS1 是纯文本」。
+  it('提示符在下一条命令开始时才画 —— 输出不会被下一个提示符挤到后面', () => {
+    // 提交时如果就把下一个提示符画出来，远端的输出（**再走一次往返才回来**）
+    // 会落在那个提示符**后面**——读起来像是它的输出。
     const input = new PipeInput('root@board$ ');
     type(input, 'ls');
     const r = input.input('\r');
-    expect(r.echo).toContain('root@board$ ');
-    // 提示符只是画给人看的，不发给远端
+    // 提交只换行
+    expect(r.echo).toBe('\r\n');
     expect(r.toRemote).toBe('ls\n');
+
+    // 用户开始打下一条命令，提示符跟着出来
+    const r2 = input.input('x');
+    expect(r2.echo.startsWith('root@board$ ')).toBe(true);
+    expect(r2.echo).toContain('x');
   });
 
   it('Ctrl+C 打断远端并清行', () => {
