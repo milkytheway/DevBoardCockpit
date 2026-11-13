@@ -30,7 +30,7 @@ import { createConnection } from '../src/main/hal/registry';
 import { SessionLog } from '../src/main/logging/session-log';
 import { loadBoardPack } from '../src/main/tags/pack';
 import { validatePack, errorsOf, warningsOf } from '../src/main/tags/validator';
-import { probePack, resolvePackDir, describeRequires, type ProbeReaderReport } from '../src/main/tags/probe';
+import { probePack, resolvePackDir, describeRequires, probeHint, type ProbeReaderReport } from '../src/main/tags/probe';
 
 const REPO = process.cwd();
 
@@ -133,6 +133,12 @@ async function main(): Promise<number> {
     const report = await probePack(pack, connection);
     for (const reader of report.readers) printReader(reader);
     const reports: ProbeReaderReport[] = report.readers;
+
+    const hint = probeHint(report, profile.transport);
+    if (hint !== null) {
+      console.error('');
+      console.error(hint);
+    }
 
     const green = reports.filter((r) => r.ok).length;
     if (green === reports.length) {

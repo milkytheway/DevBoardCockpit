@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { judgeReader, resolvePackDir, describeRequires } from '../../src/main/tags/probe';
+import { judgeReader, resolvePackDir, describeRequires, probeHint } from '../../src/main/tags/probe';
 import type { TagReading } from '../../src/shared/tag-reading';
 
 /**
@@ -126,5 +126,51 @@ describe('describeRequires · 探针要报出这个字段（docs/06 C9 承诺的
     expect(line).toContain('shell');
     expect(line).toContain('transports');
     expect(line).toContain('adb');
+  });
+});
+
+describe('probeHint · 探针红了的时候给一句「下一步查什么」', () => {
+  const green = {
+    packId: 'tiny',
+    ok: true,
+    readers: [{ readerId: 'cpu', kind: 'proc_stat', tags: [{ tag: 'cpu.usage', value: 1, unit: 'percent', status: 'ok' }], problems: [], ok: true }],
+  };
+  const allEmpty = {
+    packId: 'tiny',
+    ok: false,
+    readers: [
+      { readerId: 'cpu', kind: 'proc_stat', tags: [], problems: ['超时'], ok: false },
+      { readerId: 'gpu', kind: 'devfreq_load', tags: [], problems: ['超时'], ok: false },
+    ],
+  };
+
+  it('全绿时没有提示', () => {
+    expect(probeHint(green as never, 'adb')).toBeNull();
+  });
+
+  it('**一个数都没出来** → 提示「这条连接没通」，不是「reader 有问题」', () => {
+    const hint = probeHint(allEmpty as never, 'adb');
+    expect(hint).toBeTruthy();
+    expect(hint).toContain('连接');
+  });
+
+  it('走**串口**时提示「别的程序独占着那个口」', () => {
+    // 这是真机上真踩过的坑：计划 1 验收留下的 serial-server.py 独占着 COM3，
+    // **回包被它吃掉**——板子是活的，但应用永远收不到。
+    const hint = probeHint(allEmpty as never, 'serial');
+    expect(hint).toBeTruthy();
+    expect(hint).toContain('COM3');
+  });
+
+  it('只有个别 reader 红、别的有数 → 不给「连接没通」的提示', () => {
+    const mixed = {
+      packId: 'tiny',
+      ok: false,
+      readers: [
+        { readerId: 'cpu', kind: 'proc_stat', tags: [{ tag: 'cpu.usage', value: 1, unit: 'percent', status: 'ok' }], problems: [], ok: true },
+        { readerId: 'gpu', kind: 'devfreq_load', tags: [], problems: ['超时'], ok: false },
+      ],
+    };
+    expect(probeHint(mixed as never, 'serial')).toBeNull();
   });
 });

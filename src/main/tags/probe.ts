@@ -160,6 +160,45 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * 探针红了的时候，给一句「**下一步查什么**」。
+ *
+ * **为什么需要它**：探针在串口上全超时的时候，原来的形态是
+ * 「11 个 reader 各报一条超时」——**看不出是连接没通，还是 reader 有问题**，
+ * 而且要等好几分钟。**失败形态极差**：它把「一条连接没通」说成了
+ * 「每个 reader 都不行」。
+ *
+ * 真实的坑（2026-11-13 真机实测）：宿主上计划 1 验收留下的
+ * `serial-server.py` **独占打开了 COM3** —— 板子是活的、串口是通的，
+ * 但**回包被那个进程吃掉了**，所以应用自己的 `exec` 永远等不到。
+ * 这种情况下「reader 有问题」这个判断会把人带偏很远。
+ *
+ * @param report 探针报告
+ * @param transport 这条连接的传输种类
+ * @returns 一句提示；不需要提示时返回 null
+ */
+export function probeHint(report: ProbeReport, transport: string): string | null {
+  if (report.ok) return null;
+
+  // 一个数都没出来 → 整条连接一次都没通，不是 reader 的问题
+  const allEmpty = report.readers.every((r) => r.tags.length === 0);
+  if (!allEmpty) return null;
+
+  if (transport === 'serial') {
+    return [
+      '一个数都没出来 —— **多半不是 reader 的问题，是这条连接一次都没通**。',
+      '  串口最常踩的坑：**有别的程序正独占着那个口**（本机是 COM3）。',
+      '  （计划 1 验收留下的 serial-server.py 就会把回包吃掉：板子是活的、串口是通的，',
+      '    但应用自己的 exec 永远收不到 —— 于是每个 reader 都报「超时」。）',
+      '  先停掉那个进程，再重跑。',
+    ].join('\n');
+  }
+  return [
+    '一个数都没出来 —— **多半不是 reader 的问题，是这条连接一次都没通**。',
+    '  先查连接本身（能不能连上、板子在不在），再查 reader。',
+  ].join('\n');
+}
+
+/**
  * 探一个板型包。
  *
  * **每个组采 `rounds` 轮**——`proc_stat` 的占用率是**两次采样做差**
