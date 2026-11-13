@@ -15,7 +15,7 @@
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
     "gen:vocabulary:check": "tsx scripts/gen-vocabulary.ts --check",
     "mutation:check": "node scripts/mutation-check.mjs",
-    "postinstall": "electron-rebuild -f -w node-pty,serialport"
+    "postinstall": "node scripts/ensure-native.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",
