@@ -263,3 +263,37 @@ describe('远端树的目录导航（真机验收发现的两个 bug）', () => 
     expect(parentPath('C:\\Users\\me')).toBe('C:\\Users');
   });
 });
+
+describe('「↑ 上级」对根下的目录也有效', () => {
+  const caps = { exec: true, pty: true, files: true, exitCode: true };
+
+  it('组件级：进 /.cache 再点「↑ 上级」回到根，并按新路径重新列', async () => {
+    // 之前只有一条纯函数断言（`parentPath('/.cache')`）守着这条——
+    // **组件行为没被守住**：把父目录算法内联进组件，整套测试仍然全绿。
+    const listRemote = vi.fn(async () => [
+      { name: '.cache', path: '/.cache', isDirectory: true, sizeBytes: null, modifiedAt: null },
+    ]);
+    render(
+      <FileBrowser
+        connectionId="c1"
+        capabilities={caps}
+        onPush={vi.fn()}
+        onPull={vi.fn()}
+        listRemote={listRemote}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('remote-refresh'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/'));
+    listRemote.mockClear();
+
+    // 进根下的一个目录
+    fireEvent.click(screen.getByTestId('remote-dir'));
+    await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/.cache'));
+
+    listRemote.mockClear();
+    fireEvent.click(screen.getByTestId('remote-up'));
+    await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/'));
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/'));
+  });
+});

@@ -23,9 +23,29 @@ export default [
     },
   },
   {
+    // `.cjs` 按定义就是 CommonJS —— 与 `.mjs` 分开配，
+    // 不然 sourceType 写成 module 会把合法的 CJS（顶层 return、sloppy mode）报成解析错误。
+    files: ['**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        require: 'readonly',
+        module: 'writable',
+        exports: 'writable',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+      },
+    },
+  },
+  {
     // 脚本是纯 Node（.mjs），跑在仓库根，不进浏览器也不进 Electron。
     // 它们用 console / process / setTimeout——这些在 Node 里是全局的。
-    files: ['scripts/**/*.mjs', '**/*.cjs'],
+    files: ['scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

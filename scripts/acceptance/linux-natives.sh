@@ -33,8 +33,10 @@ cd "$ROOT"
 PTY="node_modules/node-pty"
 SPT="node_modules/@serialport/bindings-cpp"
 
-PTTY="node_modules/node-pty"
-SPT="node_modules/@serialport/bindings-cpp"
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "这个脚本只在 Linux 沙箱侧用（它会删掉 build/ —— 在 Windows 上那会毁掉宿主的产物）。"
+  exit 1
+fi
 
 echo "=== 1) serialport：删掉 build/，让两边各走各的 NAPI prebuild ==="
 if [ -d "$SPT/build" ]; then

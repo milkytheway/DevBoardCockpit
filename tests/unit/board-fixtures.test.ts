@@ -10,7 +10,7 @@ import { parseLsLines } from '../../src/main/util/ls-output';
  * 那份的样本来自**前身工程**的日志；这里的样本是**今天从真板上采的**，
  * 而且是**契约层的事实**（不是格式）。
  *
- * 采集命令与逐条结论见 `docs/06-契约核对.md` §四。
+ * 采集命令与逐条结论见 `docs/06-契约核对.md` §五。
  */
 
 const FIXTURES = join(__dirname, '../../fixtures/board');

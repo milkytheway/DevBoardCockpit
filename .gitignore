@@ -40,4 +40,4 @@ venv/
 .claude/ralph-loop.local.md
 
 # 本地临时脚本（原生模块 prebuild 自检用）
-prebuild-*.cjs
+/prebuild-*.cjs

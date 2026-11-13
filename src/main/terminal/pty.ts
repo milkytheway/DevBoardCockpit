@@ -5,9 +5,10 @@ import type { SessionLog } from '../logging/session-log';
 /**
  * 本机的 pty 会话。
  *
- * `node-pty` 是**原生模块**，要针对 Electron 的 ABI 重编译
- * （ADR-D11：`electron-rebuild` 固化进 `postinstall`）。
- * 这是全工程第一个 ABI 风险点——`docs/04-架构设计.md` §14 把它列为第一风险。
+ * `node-pty` 是**原生模块**，但它是 **NAPI** 的 → ABI 稳定，
+ * 包自带的 prebuilds 跨 Node 与 Electron 版本通用，
+ * **不必**为 Electron 重编译（`scripts/ensure-native.mjs`：加载不了才编译）。
+ * （⚠️ Linux 没有 node-pty 的 prebuild → Linux 侧仍要编译器。）
  *
  * 加载失败时不静默降级：原生模块没编好就跑不起来，
  * 那种「终端不显示」的错最难查。

@@ -83,6 +83,8 @@ export function FileBrowser({
    */
   const [currentPath, setCurrentPath] = useState(remotePath);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  /** 最近一次列目录请求的序号（用来丢掉过期响应） */
+  const loadSeq = useRef(0);
 
   /**
    * 列某个目录。
@@ -92,15 +94,22 @@ export function FileBrowser({
    */
   const load = useCallback(
     async (path: string) => {
+      // 请求序号：**连点两个目录时，先发的请求可能后返回**——
+      // 不守卫的话，旧目录的列表会盖掉新目录的，
+      // 于是又出现「路径变了、列表还是上一个」（这轮要消灭的那个 bug）。
+      const seq = ++loadSeq.current;
       setBusy(true);
       setError(null);
       try {
-        setRemote(await listRemote(connectionId, path));
+        const entries = await listRemote(connectionId, path);
+        if (seq !== loadSeq.current) return; // 有更新的请求了，这次的结果丢掉
+        setRemote(entries);
       } catch (err) {
+        if (seq !== loadSeq.current) return;
         setError(err instanceof Error ? err.message : String(err));
         setRemote([]);
       } finally {
-        setBusy(false);
+        if (seq === loadSeq.current) setBusy(false);
       }
     },
     [connectionId, listRemote],

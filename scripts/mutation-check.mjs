@@ -319,6 +319,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M24 ADB 的环境脚本不许带 CR',
+    file: 'src/main/hal/adb.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/adb.test.ts'],
+    expect: '脚本里不能有 CR',
+    apply: (s) =>
+      replace(
+        s,
+        '    this.child.stdin.write(terminalEnvScript());',
+        '    this.child.stdin.write(`${terminalEnvScript()}\\r\\n`);',
+      ),
+  },
+  {
+    name: 'M25 进目录要重新列',
+    file: 'src/renderer/files/FileBrowser.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/file-browser.test.tsx'],
+    expect: '进目录要**重新列那个目录**',
+    apply: (s) =>
+      replace(
+        s,
+        '      void load(entry.path);',
+        '      // 变异：不重新列',
+      ),
+  },
+  {
+    name: 'M26 「↑ 上级」要用 parentPath',
+    file: 'src/renderer/files/FileBrowser.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/file-browser.test.tsx'],
+    expect: '组件级：进 /.cache 再点「↑ 上级」回到根',
+    apply: (s) =>
+      replace(
+        s,
+        '    const parent = parentPath(currentPath);',
+        "    const parent = currentPath.replace(/\\/[^/]*$/, '');",
+      ),
+  },
+  {
     name: 'M12 能力位由 profile 决定',
     file: 'src/main/hal/capabilities.ts',
     check: ['npx', 'vitest', 'run', 'tests/integration/registry.test.ts'],

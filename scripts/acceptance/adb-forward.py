@@ -12,8 +12,11 @@
 """
 import socket, threading, sys
 
-LISTEN = ('127.0.0.1', 5037)
-TARGET = ('192.168.136.1', 5037)
+LISTEN = ('127.0.0.1', int(os.environ.get('LOCAL_ADB_PORT', '5037')))
+# 宿主的 adb server 地址。**机器专属的值不进代码**（AGENTS.md §3）：
+# 用 BOARD_ADB_HOST / BOARD_ADB_PORT 覆盖，默认值只是这台机器当时的地址。
+TARGET = (os.environ.get('BOARD_ADB_HOST', '192.168.136.1'),
+          int(os.environ.get('BOARD_ADB_PORT', '5037')))
 
 def handle(conn):
     try:
