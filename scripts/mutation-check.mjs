@@ -774,6 +774,31 @@ const MUTATIONS = [
       ),
   },
 
+  {
+    name: 'M60 监听：用户根目录不存在时要建出来（否则第一次装卡永远不被发现）',
+    file: 'src/main/cards/watcher.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/watcher.test.ts'],
+    expect: '用户根目录不存在',
+    apply: (s) =>
+      replace(
+        s,
+        '          mkdirSync(root.dir, { recursive: true });',
+        '          /* 变异：不建目录 */',
+      ),
+  },
+  {
+    name: 'M61 监听：变化后要重新挂（新装的卡，它的目录才有人看着）',
+    file: 'src/main/cards/watcher.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/watcher.test.ts'],
+    expect: '启动之后才装进来的卡',
+    apply: (s) =>
+      replace(
+        s,
+        '      ensureWatching();\n      onChange();',
+        '      onChange();  // 变异：不重新挂',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

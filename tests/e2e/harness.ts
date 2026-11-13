@@ -1,6 +1,7 @@
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 /**
@@ -26,9 +27,25 @@ export interface Launched {
   window: Page;
   /** 这次运行的 userData 目录（测试往这里放卡片） */
   userDataDir: string;
-  /** 收摊：关应用 + 关 Xvfb */
+  /** 收摊：关应用 + 关 Xvfb + 删临时目录 */
   close: () => Promise<void>;
 }
+
+/** 应用的用户数据目录名（与 `src/main/util/paths.ts` 的 DEFAULT_APP 同一个） */
+const APP_NAME = 'DevBoardCockpit';
+
+/**
+ * **整个测试进程共用**的 Xvfb。
+ *
+ * ── 为什么不能每个测试各起各的 ──
+ *
+ * 第一个测试起 Xvfb，后面的测试看到 `DISPLAY` 已经设了就**不再起**——
+ * 但如果第一个测试的 `close()` 把它杀了，**后面的测试就没有显示器了**：
+ * Electron 会以 `The platform failed to initialize` + SIGSEGV 挂掉。
+ *
+ * → Xvfb **起一次，用到进程退出**（`process.on('exit')` 收摊）。
+ */
+let sharedXvfb: ChildProcess | undefined;
 
 /**
  * Linux 上没有显示器就起一个 Xvfb。
@@ -45,6 +62,15 @@ function ensureDisplay(): ChildProcess | undefined {
   });
   proc.unref();
   process.env['DISPLAY'] = display;
+  sharedXvfb = proc;
+  // **进程退出时收摊**（不是每个测试结束时——后面的测试还要用它）
+  process.on('exit', () => {
+    try {
+      sharedXvfb?.kill();
+    } catch {
+      // 已经退了
+    }
+  });
   return proc;
 }
 
@@ -76,13 +102,39 @@ export async function launchApp(
     throw new Error(`找不到构建产物：${mainEntry} —— 先跑 npm run build`);
   }
 
+  /**
+   * **两边说的「用户数据目录」必须是同一个地方。**
+   *
+   * 宿主侧算的是 `src/main/util/paths.ts` 的 `userDataDir()`：
+   * Linux 是 `$XDG_DATA_HOME/DevBoardCockpit`，Windows 是 `%LOCALAPPDATA%\DevBoardCockpit`。
+   * 而 Electron 的 `app.getPath('userData')` 默认是 `%APPDATA%\DevBoardCockpit`（**漫游目录**）。
+   *
+   * → **不是一个地方**。测试把卡写进 Electron 那个，应用却去另一个里找 →
+   * **卡片区永远是空的** → 十条隔离判据全是「红」，而红的原因是**环境**。
+   *
+   * 顺带解决一件事：e2e **不再往用户真实的用户数据目录里写东西**。
+   */
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
+  const userDataDir = join(root, APP_NAME);
+  mkdirSync(userDataDir, { recursive: true });
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (process.platform === 'win32') {
+    env['LOCALAPPDATA'] = root;
+  } else {
+    env['XDG_DATA_HOME'] = root;
+  }
+
+  // **Electron 二进制**：默认用 node_modules 里那个；
+  // Linux 沙箱里那个是 win32 的 → 用 `ELECTRON_BIN` 指过去
+  // （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
+  const executablePath = opts.executablePath ?? process.env['ELECTRON_BIN'];
   const app = await electron.launch({
-    args: [mainEntry],
-    ...(opts.executablePath !== undefined ? { executablePath: opts.executablePath } : {}),
-    env: { ...process.env },
+    // `--user-data-dir` 让 Electron 的 userData 与 `userDataDir()` 落在同一处
+    args: [mainEntry, `--user-data-dir=${userDataDir}`],
+    ...(executablePath !== undefined ? { executablePath } : {}),
+    env,
   });
   const window = await app.firstWindow();
-  const userDataDir = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
 
   return {
     app,
@@ -90,7 +142,9 @@ export async function launchApp(
     userDataDir,
     close: async () => {
       await app.close().catch(() => undefined);
-      xvfb?.kill();
+      // **不杀 Xvfb**——它是整个测试进程共用的（见 `ensureDisplay` 的注释）
+      void xvfb;
+      rmSync(root, { recursive: true, force: true });
     },
   };
 }
