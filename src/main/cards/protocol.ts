@@ -1,4 +1,5 @@
 import { mimeFor, readFileOrNull, resolveInsideCard } from './paths';
+import { cspScriptTag } from './csp-script';
 
 /**
  * `cockpit://` 协议处理器。
@@ -48,6 +49,22 @@ function bridgeTagFor(instanceId: string): string {
   return `<script type="module" src="cockpit://card/${id}/__host/bridge.js"></script>`;
 }
 
+/** 把标签插到文档最前面（`<head>` 之后，没有 `<head>` 就 `<html>` 之后） */
+function injectAtStart(html: string, tags: string): string {
+  const head = /<head\b[^>]*>/i.exec(html);
+  if (head !== null) {
+    const at = head.index + head[0].length;
+    return html.slice(0, at) + tags + html.slice(at);
+  }
+  const htmlTag = /<html\b[^>]*>/i.exec(html);
+  if (htmlTag !== null) {
+    const at = htmlTag.index + htmlTag[0].length;
+    return html.slice(0, at) + tags + html.slice(at);
+  }
+  // 连 `<html>` 都没有 → 前置到文档开头
+  return tags + html;
+}
+
 /**
  * 把 bridge 脚本标签插进 HTML。
  *
@@ -57,19 +74,21 @@ function bridgeTagFor(instanceId: string): string {
  * @param instanceId 这个实例的 id（标签里要带上它）
  */
 export function injectBridge(html: string, instanceId: string): string {
-  const tag = bridgeTagFor(instanceId);
-  const head = /<head\b[^>]*>/i.exec(html);
-  if (head !== null) {
-    const at = head.index + head[0].length;
-    return html.slice(0, at) + tag + html.slice(at);
-  }
-  const htmlTag = /<html\b[^>]*>/i.exec(html);
-  if (htmlTag !== null) {
-    const at = htmlTag.index + htmlTag[0].length;
-    return html.slice(0, at) + tag + html.slice(at);
-  }
-  // 连 `<html>` 都没有 → 前置到文档开头
-  return tag + html;
+  return injectAtStart(html, bridgeTagFor(instanceId));
+}
+
+/**
+ * 把**宿主注入的两个脚本**插进 HTML。
+ *
+ * | 顺序 | 脚本 | 为什么在这个位置 |
+ * |---|---|---|
+ * | 1 | `__host/csp.js` | **经典脚本**（解析时同步执行）→ 在卡片自己的脚本之前就装上 CSP 违规监听 → 卡片在**解析期**的违规也抓得到 |
+ * | 2 | `__host/bridge.js` | module（defer）→ 卡片脚本跑之前 `window.cockpit` 就绪 |
+ *
+ * 顺序不能反：csp 必须在 bridge 之前（监听要早）。
+ */
+export function injectHostScripts(html: string, instanceId: string): string {
+  return injectAtStart(html, cspScriptTag(instanceId) + bridgeTagFor(instanceId));
 }
 
 /** 把主题样式（`:root{--cockpit-*:…}`）插进 HTML */
@@ -96,6 +115,8 @@ export interface CardProtocolDeps {
   entryOfInstance: (instanceId: string) => string;
   /** 注入给这个实例的 bridge 脚本（**每个实例一份**：它带着 instanceId） */
   bridgeScript: (instanceId: string) => string;
+  /** 注入给这个实例的 CSP 违规监听脚本（**每个实例一份**：它带着 instanceId） */
+  cspScript: (instanceId: string) => string;
   /** 当前主题的 CSS 变量块（Task 11 接上） */
   themeStyle?: () => string;
 }
@@ -137,6 +158,17 @@ export function createCardProtocol(
       });
     }
 
+    // 宿主注入的 CSP 违规监听脚本（**经典脚本**——要赶在卡片自己的脚本之前）
+    if (rel === '__host/csp.js') {
+      return new Response(deps.cspScript(instanceId), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/javascript; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
     const filePath = resolveInsideCard(dir, rel);
     if (filePath === null) return new Response('forbidden', { status: 403 });
 
@@ -159,7 +191,7 @@ export function createCardProtocol(
     let html = body.toString('utf8');
     // bridge 与主题只注入**入口**（其它页面是卡片自己的资源）
     if (rel === deps.entryOfInstance(instanceId)) {
-      html = injectBridge(html, instanceId);
+      html = injectHostScripts(html, instanceId);
       const theme = deps.themeStyle?.() ?? '';
       if (theme !== '') html = injectTheme(html, theme);
     }

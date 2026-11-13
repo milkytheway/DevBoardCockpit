@@ -171,3 +171,61 @@ describe('卡片帧经纪人 · 转发', () => {
     expect(() => broker.push('inst-1', { type: 'push' })).not.toThrow();
   });
 });
+
+describe('卡片帧经纪人 · CSP 违规', () => {
+  it('**收到 `cockpit-csp` → 转给 main**（带 instanceId 与违规详情）', () => {
+    const frame = makeFrame();
+    const seen: { instanceId: string; detail: unknown }[] = [];
+    const broker = new CardBroker(
+      installApi({
+        cardsCsp: async (instanceId: string, detail: unknown) => {
+          seen.push({ instanceId, detail });
+          return undefined;
+        },
+      }),
+    );
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
+
+    const detail = {
+      blockedURI: 'https://evil.example/',
+      effectiveDirective: 'connect-src',
+      violatedDirective: 'connect-src',
+      sourceFile: '',
+      lineNumber: 12,
+      sample: '',
+    };
+    broker.handleMessage({
+      source: frame.contentWindow,
+      data: { type: 'cockpit-csp', instanceId: 'inst-1', detail },
+    } as unknown as MessageEvent);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.instanceId).toBe('inst-1');
+    expect((seen[0]?.detail as { blockedURI: string }).blockedURI).toBe('https://evil.example/');
+  });
+
+  it('**instanceId 对不上 → 丢弃**（卡片不能替别的卡报错）', () => {
+    const frame = makeFrame();
+    const seen: unknown[] = [];
+    const broker = new CardBroker(
+      installApi({
+        cardsCsp: async (instanceId: string) => {
+          seen.push(instanceId);
+          return undefined;
+        },
+      }),
+    );
+    broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
+
+    broker.handleMessage({
+      source: frame.contentWindow,
+      data: {
+        type: 'cockpit-csp',
+        instanceId: 'inst-OTHER',
+        detail: { blockedURI: 'https://evil.example/' },
+      },
+    } as unknown as MessageEvent);
+
+    expect(seen).toHaveLength(0);
+  });
+});

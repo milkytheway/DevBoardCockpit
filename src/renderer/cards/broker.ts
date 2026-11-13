@@ -1,4 +1,10 @@
-import type { CockpitApi, CardInstanceInfo, CardRequest, CardResponse } from '../../shared/ipc-contract';
+import {
+  parseCardCspViolation,
+  type CockpitApi,
+  type CardInstanceInfo,
+  type CardRequest,
+  type CardResponse,
+} from '../../shared/ipc-contract';
 
 /**
  * 页面侧的**卡片帧经纪人**。
@@ -70,8 +76,13 @@ export class CardBroker {
    * **认人要认两次**：`event.source`（哪个窗口）+ `instanceId`（哪个实例）。
    */
   handleMessage(event: MessageEvent): void {
-    const data = event.data as { type?: string; instanceId?: string } | null;
+    const data = event.data as { type?: string; instanceId?: string; detail?: unknown } | null;
     if (data === null || typeof data !== 'object') return;
+    // CSP 违规（宿主注入的监听脚本报的）——不是握手
+    if (data.type === 'cockpit-csp') {
+      this.onCspViolation(event, data);
+      return;
+    }
     if (data.type !== 'cockpit-hello') return;
     const instanceId = data.instanceId;
     if (instanceId === undefined) return;
@@ -94,6 +105,30 @@ export class CardBroker {
 
     // 告诉 main「这个实例连上了」
     void this.api.cardsHello(instanceId);
+  }
+
+  /**
+   * 一张卡报了 CSP 违规 → 转给 main。
+   *
+   * **认人要认两次**（跟握手一样）：
+   * ① `event.source` 必须是**登记过的那个 iframe**；
+   * ② `instanceId` 要对得上——
+   *    否则卡片可以**替别的卡报错**（往别人的日志里塞一条「它试图联网」）。
+   *
+   * 详情是**卡片给的**（AI 写的任意网页）→ 跨进程之前先收成封闭形状。
+   */
+  private onCspViolation(
+    event: MessageEvent,
+    data: { instanceId?: string; detail?: unknown },
+  ): void {
+    const instanceId = data.instanceId;
+    if (instanceId === undefined) return;
+    const entry = this.entryOf(event.source);
+    if (entry === undefined) return;
+    if (entry.instanceId !== instanceId) return;
+    const detail = parseCardCspViolation(data.detail);
+    if (detail === null) return;
+    void this.api.cardsCsp(instanceId, detail);
   }
 
   /** main 的推送 → 那张卡的私有端口 */

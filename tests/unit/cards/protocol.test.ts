@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCardProtocol, CARD_CSP, injectBridge } from '../../../src/main/cards/protocol';
+import { cspScriptFor } from '../../../src/main/cards/csp-script';
 
 /**
  * `cockpit://` 协议处理器。
@@ -32,6 +33,7 @@ function handler(dir: string): (request: Request) => Response {
     dirOfInstance: (id) => (id === 'inst-1' ? dir : null),
     entryOfInstance: () => 'index.html',
     bridgeScript: () => '/* bridge */',
+    cspScript: (id) => cspScriptFor(id),
     themeStyle: () => ':root{--cockpit-bg:#000}',
   });
 }
@@ -117,6 +119,34 @@ describe('协议处理器的路由', () => {
       const res = handler(dir)(new Request('cockpit://card/inst-1/__host/bridge.js'));
       expect(res.status).toBe(200);
       expect(await res.text()).toContain('bridge');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**`__host/csp.js`：宿注入的 CSP 监听脚本**', async () => {
+    const { dir, cleanup } = cardDir();
+    try {
+      const res = handler(dir)(new Request('cockpit://card/inst-1/__host/csp.js'));
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('text/javascript; charset=utf-8');
+      const body = await res.text();
+      expect(body).toContain('securitypolicyviolation');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**CSP 监听脚本在 bridge 之前**（监听得早，bridge 才能用）', async () => {
+    const { dir, cleanup } = cardDir();
+    try {
+      const res = handler(dir)(new Request('cockpit://card/inst-1/index.html'));
+      const html = await res.text();
+      const cspAt = html.indexOf('__host/csp.js');
+      const bridgeAt = html.indexOf('__host/bridge.js');
+      expect(cspAt).toBeGreaterThan(-1);
+      expect(bridgeAt).toBeGreaterThan(-1);
+      expect(cspAt).toBeLessThan(bridgeAt);
     } finally {
       cleanup();
     }

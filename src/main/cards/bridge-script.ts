@@ -36,15 +36,21 @@ function splitName(name: string): [string, string] {
  */
 export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string {
   const groups = new Map<string, string[]>();
+  /** **顶层方法**（`capabilities` / `degradation` / `log` / `notify`） */
+  const topLevel: string[] = [];
   for (const api of apis) {
     const [ns, fn] = splitName(api.name);
-    const list = groups.get(ns) ?? [];
     if (fn === '') {
-      // 没有方法名 → 这个「方法」自己就是一个命名空间上的函数
-      list.push(`  ${ns}: (${api.params.join(', ')}) => ask(${JSON.stringify(api.name)}, { ${argsOf(api)} }),`);
-      groups.set(ns, list);
+      // ── 顶层方法**自己就是一个函数** ──
+      // 契约 §7.7 的用法是 `cockpit.log(level, message)`、`cockpit.capabilities()`——
+      // **不是** `cockpit.log.log(...)`。
+      // （原来把它们放进了「同名命名空间」里 → 卡片按契约写就 TypeError。）
+      topLevel.push(
+        `  ${ns}: (${api.params.join(', ')}) => ask(${JSON.stringify(api.name)}, { ${argsOf(api)} }),`,
+      );
       continue;
     }
+    const list = groups.get(ns) ?? [];
     const params = api.params;
     if (api.subscribable === true) {
       const argName = api.scopeArg ?? params[0] ?? 'name';
@@ -64,6 +70,9 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   const namespaces = [...groups.entries()]
     .map(([ns, lines]) => `cockpit.${ns} = namespace({\n${lines.join('\n')}\n});`)
     .join('\n');
+  const direct = topLevel.length
+    ? `  Object.assign(cockpit, {\n${topLevel.join('\n')}\n  });`
+    : '';
 
   return `${BRIDGE_SOURCE_MARKER}
 (() => {
@@ -127,14 +136,29 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     return new Proxy(target, {
       get(obj, prop) {
         if (prop in obj) return obj[prop];
+        // 同上：then 不能是函数（thenable 会让 await 永远挂着）
+        if (typeof prop !== 'string' || prop === 'then' || prop === 'catch' || prop === 'finally') {
+          return undefined;
+        }
         return () => Promise.resolve({ ok: false, reason: 'unknown_method' });
       },
     });
   }
 
   const cockpit = {};
+${direct}
 ${namespaces}
-  window.cockpit = cockpit;
+  // **顶层也包一层 Proxy**：不认识的名字回 unknown_method（而不是 TypeError）
+  window.cockpit = new Proxy(cockpit, {
+    get(obj, prop) {
+      if (prop in obj) return obj[prop];
+      // then 是 **thenable** 的钩子：返回函数会让 await cockpit 永远挂着
+      if (typeof prop !== 'string' || prop === 'then' || prop === 'catch' || prop === 'finally') {
+        return undefined;
+      }
+      return () => Promise.resolve({ ok: false, reason: 'unknown_method' });
+    }
+  });
 
   parent.postMessage({ type: 'cockpit-hello', instanceId: INSTANCE_ID }, '*');
 })();

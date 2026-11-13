@@ -1,7 +1,13 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { IPC, type CardRequest, type IpcChannel, type IpcResult } from '../shared/ipc-contract';
+import {
+  IPC,
+  parseCardCspViolation,
+  type CardRequest,
+  type IpcChannel,
+  type IpcResult,
+} from '../shared/ipc-contract';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
@@ -13,7 +19,7 @@ import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { createCardWiring } from './cards/wiring';
-import { cspViolationFrom } from './cards/csp-violation';
+import { cspViolationMessage } from './cards/csp-violation';
 import { SHELL_CSP } from './shell-csp';
 import type { CardRoot } from './cards/roots';
 import { watchCardRoots } from './cards/watcher';
@@ -185,6 +191,29 @@ handle(IPC.cardsHello, (instanceId) => {
 handle(IPC.cardsRequest, (req) => cards.handleRequest(req as CardRequest));
 
 /**
+ * 一张卡的 **CSP 违规** → 它的运行时日志。
+ *
+ * 契约 §6.1 的承诺：「浏览器的 CSP 违规会记在卡片运行时日志里，
+ * agent 因此能看到『这张卡试图联网』」。
+ *
+ * **为什么不用 `console-message`**（实测，Electron 34.5.8）：
+ * 那个事件的 `sourceId` 对 `connect-src` / `script-src` 违规是**空串** →
+ * 归属不到卡 → **恰恰是「试图联网」那一类抓不到**。
+ * → 改用卡片文档里的 `securitypolicyviolation` 事件
+ * （宿主注入的 `__host/csp.js` 监听）→ 归属天然精确。
+ */
+handle(IPC.cardsCsp, (instanceId, detail) => {
+  const id = String(instanceId);
+  const violation = parseCardCspViolation(detail);
+  if (violation === null) return undefined;
+  cards.captureCspViolation({
+    message: cspViolationMessage(violation),
+    sourceUrl: `cockpit://card/${id}/`,
+  });
+  return undefined;
+});
+
+/**
  * 挑一个能采的连接 profile 起运行时。
  *
  * **挨个试**：板子可能在 adb 上、也可能在串口上——
@@ -310,25 +339,6 @@ function createWindow(): BrowserWindow {
     // **生产的外壳也走 `cockpit://app/`** —— `file://` 上的 `'self'` 匹配不到任何东西
     void win.loadURL('cockpit://app/index.html');
   }
-
-  // **CSP 违规 → 卡片的运行时日志**（契约 §6.1 的承诺：「agent 能看到这张卡试图联网」）
-  win.webContents.on('console-message', (...args: unknown[]) => {
-    // ── Electron 34 的 `WebContents.console-message` 是**旧签名** ──
-    // `(event, level, message, line, sourceId)`
-    //
-    // `MessageDetails` 那个形**只属于 `ServiceWorkers`**——
-    // 拿它读这里的参数，`args[1]` 是**一个数字**（level），
-    // `details.source` 恒 undefined → **每一条违规都在第一道门就被丢掉**
-    // → 契约 §6.1 承诺的「agent 能看到这张卡试图联网」永远兑现不了。
-    //
-    // 这里不写死参数类型（主进程的 tsconfig 没有 DOM lib，写 `Event` 编不过）。
-    const level = typeof args[1] === 'number' ? args[1] : 0;
-    const message = typeof args[2] === 'string' ? args[2] : '';
-    const sourceId = typeof args[4] === 'string' ? args[4] : '';
-    const violation = cspViolationFrom(level, message, sourceId);
-    if (violation === null) return;
-    cards.captureCspViolation(violation);
-  });
 
   // 拖一个文件进窗口，Electron 默认会**导航到那个文件**——
   // 整个窗口被替换成文件内容，应用看起来「崩了」。

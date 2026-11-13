@@ -5,6 +5,7 @@ import { CardStorage } from './storage';
 import { CardRuntimeLog } from './runtime-log';
 import { createCardProtocol } from './protocol';
 import { bridgeScriptFor } from './bridge-script';
+import { cspScriptFor } from './csp-script';
 import { cardApis } from './api-registry';
 import { parseManifest } from './manifest';
 import { validateCard } from './validate';
@@ -121,6 +122,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     dirOfInstance: (instanceId) => registry.dirOfInstance(instanceId),
     entryOfInstance: (instanceId) => registry.entryOfInstance(instanceId) ?? 'index.html',
     bridgeScript: (instanceId) => bridgeScriptFor(cardApis(), instanceId),
+    cspScript: (instanceId) => cspScriptFor(instanceId),
     themeStyle: () => `${themeCss(theme(), ':root')}\n${baseStyleBlock()}`,
   });
 

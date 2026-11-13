@@ -116,7 +116,7 @@ interface FakePort {
 }
 
 function runBridge(instanceId: string): {
-  cockpit: Record<string, Record<string, (...a: unknown[]) => Promise<unknown>>>;
+  cockpit: Record<string, unknown>;
   port: FakePort;
   hello: unknown[];
   sent: unknown[];
@@ -159,7 +159,7 @@ describe('bridge 脚本 · 卡片真正看到的东西', () => {
 
   it('**成功 → 卡片拿到的是「值」，不是传输信封**', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
-    const pending = cockpit['capabilities']?.['capabilities']?.();
+    const pending = (cockpit['capabilities'] as () => Promise<unknown>)();
     const caps = { apiVersion: 'devboard/v1', methods: ['tags.get'], connection: null, tags: [] };
     port.onmessage?.({ data: { id: idOf(sent), ok: true, value: caps } });
     await expect(pending).resolves.toEqual(caps);
@@ -167,15 +167,55 @@ describe('bridge 脚本 · 卡片真正看到的东西', () => {
 
   it('**失败 → 卡片拿到 { ok:false, reason }**（契约 §7.7：不抛异常）', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
-    const pending = cockpit['tags']?.['get']?.('cpu.usage');
+    const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const pending = tags['get']?.('cpu.usage');
     port.onmessage?.({ data: { id: idOf(sent), ok: false, reason: 'unknown_method' } });
     await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
   });
 
   it('订阅被拒 → 卡片能看到 reason（**不是**静默接受）', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
-    const pending = cockpit['tags']?.['subscribe']?.('cpu.usage', () => undefined);
+    const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const pending = tags['subscribe']?.('cpu.usage', () => undefined);
     port.onmessage?.({ data: { id: idOf(sent), ok: false, reason: 'too_many_subscriptions' } });
     await expect(pending).resolves.toEqual({ ok: false, reason: 'too_many_subscriptions' });
+  });
+});
+
+describe('bridge 脚本 · 顶层方法就是函数', () => {
+  it('**`cockpit.capabilities()` 能调**（契约 §7.7 的用法，不是 `cockpit.capabilities.capabilities()`）', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = (cockpit['capabilities'] as () => Promise<unknown>)();
+    const caps = { apiVersion: 'devboard/v1', methods: ['tags.get'], connection: null, tags: [] };
+    port.onmessage?.({ data: { id: idOf(sent), ok: true, value: caps } });
+    await expect(pending).resolves.toEqual(caps);
+  });
+
+  it('**`cockpit.log(level, message)` 能调**', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = (cockpit['log'] as (...a: unknown[]) => Promise<unknown>)('error', 'hi');
+    port.onmessage?.({ data: { id: idOf(sent), ok: true, value: { ok: true } } });
+    await expect(pending).resolves.toEqual({ ok: true });
+  });
+
+  it('**`cockpit.degradation()` 能调**', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const pending = (cockpit['degradation'] as () => Promise<unknown>)();
+    port.onmessage?.({ data: { id: idOf(sent), ok: true, value: [] } });
+    await expect(pending).resolves.toEqual([]);
+  });
+
+  it('**不认识的名字仍然回 unknown_method**（不是 TypeError）', async () => {
+    const { cockpit } = runBridge('inst-42');
+    const pending = (cockpit['nope'] as () => Promise<unknown>)();
+    await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
+  });
+
+  it('**命名空间方法不受影响**（`cockpit.tags.get`）', async () => {
+    const { cockpit, port, sent } = runBridge('inst-42');
+    const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const pending = tags['get']?.('cpu.usage');
+    port.onmessage?.({ data: { id: idOf(sent), ok: true, value: { tag: 'cpu.usage' } } });
+    await expect(pending).resolves.toEqual({ tag: 'cpu.usage' });
   });
 });

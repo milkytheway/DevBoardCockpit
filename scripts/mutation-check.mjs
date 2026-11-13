@@ -713,6 +713,67 @@ const MUTATIONS = [
       ),
   },
 
+  {
+    name: 'M55 CSP 监听脚本：必须真的监听 securitypolicyviolation',
+    file: 'src/main/cards/csp-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/csp-script.test.ts'],
+    expect: '监听 securitypolicyviolation',
+    apply: (s) =>
+      replace(
+        s,
+        "addEventListener('securitypolicyviolation'",
+        "addEventListener('nothing-here'",
+      ),
+  },
+  {
+    name: 'M56 bridge：顶层方法必须自己就是函数（契约的用法）',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: '顶层方法就是函数',
+    apply: (s) =>
+      replace(
+        s,
+        '`  Object.assign(cockpit, {',
+        '`  Object.assign(cockpit.nested = {}, {',
+      ),
+  },
+  {
+    name: 'M57 经纪人：CSP 违规必须转给 main',
+    file: 'src/renderer/cards/broker.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/card-broker.test.tsx'],
+    expect: 'CSP 违规',
+    apply: (s) =>
+      replace(
+        s,
+        "if (data.type === 'cockpit-csp') {",
+        "if (false) {",
+      ),
+  },
+  {
+    name: 'M58 协议：必须伺服 __host/csp.js',
+    file: 'src/main/cards/protocol.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
+    expect: 'csp.js',
+    apply: (s) =>
+      replace(
+        s,
+        "if (rel === '__host/csp.js') {",
+        "if (rel === '__host/nothing.js') {",
+      ),
+  },
+  {
+    name: 'M59 协议：CSP 监听脚本必须在 bridge 之前（监听得早）',
+    file: 'src/main/cards/protocol.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
+    expect: 'CSP 监听脚本在 bridge 之前',
+    apply: (s) =>
+      replace(
+        s,
+        'return injectAtStart(html, cspScriptTag(instanceId) + bridgeTagFor(instanceId));',
+        'return injectAtStart(html, bridgeTagFor(instanceId) + cspScriptTag(instanceId));',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

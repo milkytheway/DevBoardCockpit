@@ -45,6 +45,14 @@ export const IPC = {
   cardsHello: 'cards:hello',
   /** 卡片的一个请求 → main（权限判定在 main） */
   cardsRequest: 'cards:request',
+  /**
+   * 一张卡的 **CSP 违规** → main（进那张卡的运行时日志）。
+   *
+   * **为什么单独一条通道**：它**不是卡片 API**——
+   * 是宿主注入的监听脚本（`__host/csp.js`）在卡片自己的文档里报的。
+   * 卡片伪造一条也只能污染**它自己**的日志。
+   */
+  cardsCsp: 'cards:csp',
   /** main → 卡片（推给某个实例） */
   cardsEvent: 'cards:event',
   /** 装着的卡片变了（热插拔）—— 页面据此重新取清单 */
@@ -78,6 +86,52 @@ export interface CardResponse {
   ok: boolean;
   value?: unknown;
   reason?: string;
+}
+
+/**
+ * 一条 CSP 违规的详情。
+ *
+ * **纯数据**（跨进程边界的约定都在本文件里）。
+ * 字段来自 DOM 的 `SecurityPolicyViolationEvent`。
+ */
+export interface CardCspViolation {
+  /** 它想访问什么（内联脚本是 `inline`） */
+  blockedURI: string;
+  /** 被违反的指令（如 `connect-src`） */
+  effectiveDirective: string;
+  /** 真正被违反的那条（`effectiveDirective` 的具体形式） */
+  violatedDirective: string;
+  /** 触发违规的文件（卡片自己的 URL） */
+  sourceFile: string;
+  /** 行号（0 = 没有） */
+  lineNumber: number;
+  /** 违规的那段代码（浏览器给的，可能为空） */
+  sample: string;
+}
+
+/**
+ * 校验一条 CSP 违规详情。
+ *
+ * **为什么要有**：这份数据是**卡片给的**（卡片是 AI 写的任意网页）——
+ * 跨进程之前必须收成**封闭形状**，否则 main 侧拿到什么都有。
+ *
+ * @returns 不合格就是 `null`（**不猜**——契约的「不猜」口径）
+ */
+export function parseCardCspViolation(raw: unknown): CardCspViolation | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const v = raw as Record<string, unknown>;
+  const str = (key: string): string => (typeof v[key] === 'string' ? (v[key] as string) : '');
+  const line = typeof v['lineNumber'] === 'number' && Number.isFinite(v['lineNumber'])
+    ? Math.trunc(v['lineNumber'])
+    : 0;
+  return {
+    blockedURI: str('blockedURI'),
+    effectiveDirective: str('effectiveDirective'),
+    violatedDirective: str('violatedDirective'),
+    sourceFile: str('sourceFile'),
+    lineNumber: line,
+    sample: str('sample'),
+  };
 }
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -137,6 +191,8 @@ export interface CockpitApi {
   cardsHello(instanceId: string): Promise<void>;
   /** 卡片的一个请求（**权限判定在 main**） */
   cardsRequest(req: CardRequest): Promise<CardResponse>;
+  /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */
+  cardsCsp(instanceId: string, detail: CardCspViolation): Promise<void>;
   /**
    * 听 main 的推送（读数变化等）。
    *
