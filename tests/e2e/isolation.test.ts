@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { launchApp, writeCard, simpleCard } from './harness';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { launchApp, writeCard, cardDir, simpleCard } from './harness';
 
 /**
  * 卡片沙箱的**十条隔离判据**（M5 的验收主体）。
@@ -109,20 +111,86 @@ test.describe('卡片沙箱', () => {
       await launched.close();
     }
   });
+
+  test('卡片碰不到别的卡', async () => {
+    const launched = await launchApp();
+    try {
+      await writeCard(launched.userDataDir, 'card-a', simpleCard('card-a'));
+      await writeCard(launched.userDataDir, 'card-b', simpleCard('card-b'));
+      await expect
+        .poll(async () => cardFrames(launched.window).length, { timeout: 20_000 })
+        .toBeGreaterThanOrEqual(2);
+      const frame = cardFrames(launched.window)[0];
+      if (frame === undefined) throw new Error('卡片 iframe 没出现');
+      const result = await frame.evaluate(() => {
+        const out: Record<string, string> = { own: 'no-throw', other: 'no-throw' };
+        try {
+          // ① 自己的存储：不透明源 → 抛 SecurityError
+          localStorage.setItem('x', '1');
+        } catch (err) {
+          out['own'] = String(err);
+        }
+        try {
+          // ② **别的卡**的存储：跨源 → 抛 SecurityError
+          const others = parent.frames;
+          for (let i = 0; i < others.length; i += 1) {
+            if (others[i] === window) continue;
+            void others[i].localStorage.getItem('x');
+          }
+        } catch (err) {
+          out['other'] = String(err);
+        }
+        return out;
+      });
+      expect(result.own).toMatch(/SecurityError/i);
+      expect(result.other).toMatch(/SecurityError/i);
+    } finally {
+      await launched.close();
+    }
+  });
+
+  test('改文件即热更新（改 card.js → 卡片重载 → 新行为生效）', async () => {
+    const launched = await launchApp();
+    try {
+      await writeCard(launched.userDataDir, 'e2e-card', simpleCard('e2e-card', 'v1'));
+      const frame = await cardFrame(launched.window);
+      expect(await frame.evaluate(() => document.body.dataset.marker)).toBe('v1');
+
+      // 改卡片里的一个字 —— **不重启**
+      const file = join(cardDir(launched.userDataDir, 'e2e-card'), 'card.js');
+      writeFileSync(file, "document.body.dataset.marker = 'v2';\n", 'utf8');
+
+      await expect
+        .poll(
+          async () => {
+            const frames = cardFrames(launched.window);
+            const first = frames[0];
+            if (first === undefined) return 'no-frame';
+            return await first.evaluate(() => document.body.dataset.marker ?? 'none').catch(() => 'gone');
+          },
+          { timeout: 20_000 },
+        )
+        .toBe('v2');
+    } finally {
+      await launched.close();
+    }
+  });
 });
+
+/** 所有卡片 iframe */
+function cardFrames(page: import('@playwright/test').Page): import('@playwright/test').Frame[] {
+  return page.frames().filter((f) => f.url().startsWith('cockpit://card/'));
+}
 
 /** 等卡片 iframe 出现并返回它 */
 async function cardFrame(page: import('@playwright/test').Page): Promise<import('@playwright/test').Frame> {
   await expect
     .poll(
-      async () => {
-        const frames = page.frames().filter((f) => f.url().startsWith('cockpit://card/'));
-        return frames.length;
-      },
+      async () => cardFrames(page).length,
       { timeout: 20_000 },
     )
     .toBeGreaterThan(0);
-  const frame = page.frames().find((f) => f.url().startsWith('cockpit://card/'));
+  const frame = cardFrames(page)[0];
   if (frame === undefined) throw new Error('卡片 iframe 没出现');
   return frame;
 }

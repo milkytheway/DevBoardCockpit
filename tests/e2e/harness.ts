@@ -172,14 +172,20 @@ export async function writeCard(
   return dir;
 }
 
-/** 一张最小的只读卡（读 cpu.usage） */
-export function simpleCard(): Record<string, string> {
+/**
+ * 一张最小的只读卡（读 cpu.usage）。
+ *
+ * @param cardId 卡片 id（目录名与 manifest 的 id 相同）
+ * @param marker 卡片自己写在 `document.body.dataset.marker` 上的标记——
+ *   **「改文件即热更新」那条判据靠它看新行为有没有生效**
+ */
+export function simpleCard(cardId = 'e2e-card', marker = 'v1'): Record<string, string> {
   return {
     'manifest.json': JSON.stringify(
       {
         apiVersion: 'devboard/v1',
         kind: 'Card',
-        id: 'e2e-card',
+        id: cardId,
         name: 'E2E 卡',
         version: '1.0.0',
         entry: 'index.html',
@@ -192,7 +198,7 @@ export function simpleCard(): Record<string, string> {
     'index.html':
       '<!doctype html><meta charset="utf-8"><body>ok<script type="module" src="./card.js"></script>',
     'card.js':
-      "document.title = 'e2e-card';\n" +
+      `document.body.dataset.marker = ${JSON.stringify(marker)};\n` +
       "const el = document.createElement('div');\n" +
       "el.id = 'value';\n" +
       "document.body.appendChild(el);\n" +

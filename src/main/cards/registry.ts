@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CardManifest } from './manifest';
 import type { CardIssue } from './validate';
 import { listCardDirs, type CardRoot } from './roots';
+import { cardRevision } from './revision';
 
 /**
  * 卡片注册表：**装了什么卡**、每个实例的地址是多少。
@@ -25,6 +26,12 @@ export interface DiscoveredCard {
   /** 这张卡的问题（`severity` 区分「不合法」与「未验证」） */
   issues: CardIssue[];
   rootKind: 'builtin' | 'user';
+  /**
+   * 卡片目录的**内容指纹**（变了 = 卡片代码变了）。
+   *
+   * 它进了实例 id → URL 变 → **iframe 重建** → 「改文件即热更新」才成立。
+   */
+  revision: string;
 }
 
 export interface CardRegistryDeps {
@@ -91,6 +98,7 @@ export class CardRegistry {
             manifest,
             issues,
             rootKind: entry.rootKind,
+            revision: cardRevision(entry.dir),
           });
         }
         continue;
@@ -102,6 +110,8 @@ export class CardRegistry {
         manifest,
         issues,
         rootKind: entry.rootKind,
+        // **内容变了 → 指纹变了 → 实例 id 变了 → iframe 会重建**
+        revision: cardRevision(entry.dir),
       });
     }
 
@@ -126,10 +136,18 @@ export class CardRegistry {
   /**
    * 取（或分配）一个实例。
    *
+   * ── 实例键里**有内容指纹** ──
+   *
+   * 实例 id 进了 iframe 的 URL；**URL 不变，浏览器就不重新加载**——
+   * 卡片里跑的会一直是旧代码。所以「卡片内容变了」必须体现在实例 id 上：
+   * 指纹变 → 键变 → **新实例 id** → URL 变 → React 的 key 变 → iframe 重建 ✓
+   * （旧会话随之被关掉，订阅不泄漏——见 `wiring.ts` 的 `list()`）
+   *
    * @param connectionId 这张卡看的是哪条连接。`null` = 还没有连接上下文
    */
   instanceFor(cardId: string, connectionId: string | null): { instanceId: string; url: string } {
-    const key = `${cardId} ${connectionId ?? ''}`;
+    const revision = this.byCard.get(cardId)?.revision ?? '';
+    const key = `${cardId} ${connectionId ?? ''} ${revision}`;
     let instanceId = this.instances.get(key);
     if (instanceId === undefined) {
       instanceId = randomUUID();

@@ -799,6 +799,19 @@ const MUTATIONS = [
       ),
   },
 
+  {
+    name: 'M62 实例键里要有内容指纹（否则改了文件卡片不重载 = 「改文件即热更新」是假的）',
+    file: 'src/main/cards/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/registry.test.ts'],
+    expect: '改了卡片文件 → 实例 id 变了',
+    apply: (s) =>
+      replace(
+        s,
+        'const key = `${cardId} ${connectionId ?? \'\'} ${revision}`;',
+        'const key = `${cardId} ${connectionId ?? \'\'}`;  // 变异：指纹不参与',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

@@ -164,6 +164,31 @@ describe('卡片注册表', () => {
     }
   });
 
+  it('**改了卡片文件 → 实例 id 变了**（所以 iframe 会重载 = 「改文件即热更新」）', () => {
+    const { roots, cleanup } = tempRoots();
+    try {
+      const dir = makeCard(roots[1].dir, 'cpu-usage');
+      writeFileSync(join(dir, 'card.js'), 'export const x = 1;', 'utf8');
+      const registry = new CardRegistry({ roots, ...deps() });
+      registry.refresh();
+
+      const before = registry.instanceFor('cpu-usage', 'board-adb');
+      // 内容没变 → 同一个实例
+      registry.refresh();
+      expect(registry.instanceFor('cpu-usage', 'board-adb').instanceId).toBe(before.instanceId);
+
+      // **改一个字** → 内容指纹变了 → 实例 id 必须变
+      writeFileSync(join(dir, 'card.js'), 'export const x = 2;', 'utf8');
+      registry.refresh();
+      const after = registry.instanceFor('cpu-usage', 'board-adb');
+      expect(after.instanceId).not.toBe(before.instanceId);
+      // URL 也跟着变 → 浏览器不会拿旧的缓存
+      expect(after.url).not.toBe(before.url);
+    } finally {
+      cleanup();
+    }
+  });
+
   it('实例：同一个 (卡片, 连接) 永远同一个 instanceId', () => {
     const { roots, cleanup } = tempRoots();
     try {
