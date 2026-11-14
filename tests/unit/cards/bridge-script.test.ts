@@ -217,6 +217,13 @@ describe('bridge 脚本 · 顶层方法就是函数', () => {
     await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
   });
 
+  it('**命名空间里不认识的方法也是 unknown_method**（顶层与命名空间是两层 Proxy）', async () => {
+    const { cockpit } = runBridge('inst-42');
+    const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const pending = tags['nope']?.();
+    await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
+  });
+
   it('**命名空间方法不受影响**（`cockpit.tags.get`）', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;

@@ -523,10 +523,22 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M40 bridge：不认识的方法必须回 unknown_method',
+    name: 'M40 bridge：不认识的方法必须回 unknown_method（**顶层那层 Proxy**）',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: 'unknown_method',
+    expect: '不认识的名字仍然回 unknown_method',
+    apply: (s) =>
+      replace(
+        s,
+        "      return () => Promise.resolve({ ok: false, reason: 'unknown_method' });",
+        '      return undefined;  // 变异：不认识的方法不回话',
+      ),
+  },
+  {
+    name: 'M40b bridge：**命名空间那层**也不认识的方法要回 unknown_method',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: '命名空间里不认识的方法也是 unknown_method',
     apply: (s) =>
       replace(
         s,
@@ -560,10 +572,10 @@ const MUTATIONS = [
           `    if (!permissionCovers(this.perms, pattern)) return () => undefined;`,
           `    // 变异：订阅时不再判权限`,
         ),
-        `      if (!matchPattern(pattern, reading.tag)) return;
+        `      if (!matchTagPattern(pattern, reading.tag)) return;
       // **再判一次权限**（铁律 2）
       if (!permissionCovers(this.perms, reading.tag)) return;`,
-        `      if (!matchPattern(pattern, reading.tag)) return;
+        `      if (!matchTagPattern(pattern, reading.tag)) return;
       // 变异：推送时不再判权限`,
       ),
   },
@@ -629,15 +641,15 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M48 CSP 违规：必须能被认出来（认不出 = agent 永远看不到）',
+    name: 'M48 CSP 违规：进日志的那句话必须说清楚「它想干什么」',
     file: 'src/main/cards/csp-violation.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/csp-violation.test.ts'],
-    expect: '违规要被认出来',
+    expect: '想干什么',
     apply: (s) =>
       replace(
         s,
-        '  if (!CSP_MESSAGE.test(message)) return null;',
-        '  if (true) return null;  // 变异：谁都认不出来',
+        "  const target = violation.blockedURI === '' ? '（没有地址）' : violation.blockedURI;",
+        "  const target = '';  // 变异：不说它想访问什么",
       ),
   },
   {
