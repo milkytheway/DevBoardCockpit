@@ -952,6 +952,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M75 外壳：「已在主区」按实例键判（不是 cardId）',
+    file: 'src/renderer/shell/nav.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
+    expect: '摆进主区的那张卡',
+    apply: (s) =>
+      replace(
+        s,
+        '    const key = slotKey(card.cardId, card.connectionId);',
+        '    const key = card.cardId; // 变异：按 cardId 判',
+      ),
+  },
+  {
+    name: 'M76 外壳：会话行要有关闭按钮（串口与 SSH 的连接是独占的）',
+    file: 'src/renderer/shell/nav.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
+    expect: '会话行有关闭按钮',
+    apply: (s) =>
+      replace(
+        s,
+        '    onClose: () => ctx.onCloseSession(session.sessionId),\n',
+        '    // 变异：没有关闭路径\n',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
