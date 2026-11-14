@@ -90,8 +90,9 @@ function harness(
       },
       consume: (): boolean => false,
     },
-    audit: (row: AuditRow): void => {
+    audit: (row: AuditRow): string => {
       audits.push(row);
+      return `audit-${audits.length}`;
     },
   };
   return { deps, executed, audits, confirmations };
@@ -137,12 +138,44 @@ describe('执行器 · 正常路径', () => {
     expect(h.audits[0]?.value).toBe('128');
   });
 
+  it('结果里的回读值与审计行里的**是同一个值**', async () => {
+    const h = harness();
+    const result = await invokeAction(ACTION, { value: 128 }, h.deps);
+    expect(result.readback?.value).toBe(h.audits[0]?.value);
+  });
+
   it('回读不符 → 不是 ok，而且 verified 是 false', async () => {
     const h = harness({ fileContent: '100' });
     const result = await invokeAction(ACTION, { value: 128 }, h.deps);
     expect(result.ok).toBe(false);
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('readback_mismatch');
+  });
+});
+
+describe('执行器 · 结果形状（**按契约**）', () => {
+  it('回读到的值在 `readback` 里（契约 spec/04 §2.4 / spec/03 §5.2）', async () => {
+    const h = harness();
+    const result = await invokeAction(ACTION, { value: 128 }, h.deps);
+    expect(result.ok).toBe(true);
+    expect(result.verified).toBe(true);
+    // **不是平铺的 `result.value`**——契约写的是 `readback.value`
+    expect(result.readback?.value).toBe('128');
+  });
+
+  it('结果里有 `audit_id`（追责单位）', async () => {
+    const h = harness();
+    const result = await invokeAction(ACTION, { value: 128 }, h.deps);
+    expect(result.audit_id).toBe('audit-1');
+  });
+
+  it('回读不符 → 带 `expected` / `actual`（契约的失败形状）', async () => {
+    const h = harness({ fileContent: '100' });
+    const result = await invokeAction(ACTION, { value: 128 }, h.deps);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('readback_mismatch');
+    expect(result.expected).toBe('128');
+    expect(result.actual).toBe('100');
   });
 });
 

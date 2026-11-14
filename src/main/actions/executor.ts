@@ -58,29 +58,57 @@ export interface ActionExecutorDeps {
   granted: () => GrantedActions;
   /** 确认凭据的存取 */
   confirmations: Confirmations;
-  /** 审计（每次尝试一行） */
-  audit: (row: AuditRow) => void;
+  /** 审计（每次尝试一行）——**返回那一行的 id**（结果要带 `audit_id`） */
+  audit: (row: AuditRow) => string;
   /** 谁触发的（卡片 id / agent / 用户） */
   actor?: string;
   /** 现在（毫秒） */
   now?: () => number;
 }
 
-/** 一次调用的结果 */
+/**
+ * 一次调用的结果。
+ *
+ * ── 形状**按契约**（不是按实现方便）──
+ *
+ * `spec/04` §2.4（`execute_action`）与 `spec/03` §5.2（`cockpit.actions.invoke`）：
+ *
+ * ```
+ * → { ok: true,  readback: { value, unit, status, at }, verified: true, audit_id: "..." }
+ * → { ok: false, reason: "readback_mismatch", expected: true, actual: false }
+ * ```
+ *
+ * → **回读到的值在 `readback` 里**（卡片按 `r.readback.value` 渲染），
+ * **不是平铺在顶层**。
+ * → 失败时带 `expected` / `actual`（人能看出「差多少」）。
+ * → `audit_id` 是**追责单位**（ADR-D31 R8 的时间线要引用它）。
+ */
 export interface ActionOutcome {
   /** 动作成功了吗 */
   ok: boolean;
   /** **确认**板子真的进入目标状态了吗 */
   verified: boolean;
+  /** 回读到的真实状态（契约 §2.4 的 `readback`） */
+  readback?: {
+    value?: unknown;
+    unit?: string;
+    /** 回读到的那个 tag 的状态（形式 1 才有） */
+    status?: TagReading['status'];
+    /** 回读的时刻（毫秒 UTC） */
+    at: number;
+  };
   /** 要人确认（带凭据：agent 带它重试） */
   needsConfirmation?: { confirmId: string; detail: string };
   /** 为什么不成功 */
   reason?: string;
-  /** 回读到的值 */
-  value?: unknown;
-  unit?: string;
+  /** 期望值（失败时给） */
+  expected?: unknown;
+  /** 实际值（失败时给） */
+  actual?: unknown;
   /** 给人看的一句话 */
   detail?: string;
+  /** 审计行的 id（追责单位） */
+  audit_id?: string;
 }
 
 /** 调一次动作 */
@@ -94,8 +122,13 @@ export async function invokeAction(
   const at = now();
   const actor = deps.actor ?? 'unknown';
 
+  /**
+   * 写一行审计，**并把它的 id 填回结果**。
+   *
+   * → 结果里的 `audit_id` = 那一行（契约 `spec/04` §2.4）。
+   */
   const record = (outcome: ActionOutcome, value?: unknown): void => {
-    deps.audit({
+    outcome.audit_id = deps.audit({
       at,
       actor,
       actionId: action.id,
@@ -197,12 +230,25 @@ export async function invokeAction(
     return { execResult, result };
   });
 
+  const hasReadback =
+    readback.value !== undefined || readback.unit !== undefined || readback.status !== undefined;
   const outcome: ActionOutcome = {
     ok: readback.ok,
     verified: readback.verified,
+    // **回读到的值在 `readback` 里**（契约 §2.4 / §5.2——卡片按 `r.readback.value` 渲染）
+    ...(hasReadback
+      ? {
+          readback: {
+            ...(readback.value === undefined ? {} : { value: readback.value }),
+            ...(readback.unit === undefined ? {} : { unit: readback.unit }),
+            ...(readback.status === undefined ? {} : { status: readback.status }),
+            at,
+          },
+        }
+      : {}),
     ...(readback.reason === undefined ? {} : { reason: readback.reason }),
-    ...(readback.value === undefined ? {} : { value: readback.value }),
-    ...(readback.unit === undefined ? {} : { unit: readback.unit }),
+    ...(readback.expected === undefined ? {} : { expected: readback.expected }),
+    ...(readback.actual === undefined ? {} : { actual: readback.actual }),
     ...(readback.detail === undefined ? {} : { detail: readback.detail }),
   };
   record(outcome, readback.value);

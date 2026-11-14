@@ -1098,6 +1098,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M90 假设备：cat 读不到文件必须**报错**（空串 + 0 = 把「文件不在」说成「值是空的」）',
+    file: 'src/main/hal/fake/file-ops.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device-files.test.ts'],
+    expect: '读不存在的文件',
+    apply: (s) =>
+      replace(
+        s,
+        '    return failure(1, `cat: ${path}: No such file or directory`);',
+        '    return failure(0, `cat: ${path}: No such file or directory`); // 变异：假装成功',
+      ),
+  },
+  {
+    name: 'M91 假设备：push 必须真的写进虚拟盘（不写 = 报告成功却没传）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device-files.test.ts'],
+    expect: 'push：宿主上的文件真的进了虚拟 fs',
+    apply: (s) =>
+      replace(
+        s,
+        '    this.fs.write(target, readFileSync(localPath));',
+        '    // 变异：读到了但不写\n    void readFileSync(localPath);',
+      ),
+  },
+  {
+    name: 'M92 bridge：端口没到要**等**（立刻回 not_connected = 卡片静默什么都不做）',
+    file: 'src/main/cards/bridge-script.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
+    expect: '调用要**等端口**',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (port !== null) return post(method, args);',
+        '    if (true) return Promise.resolve({ ok: false, reason: \'not_connected\' }); // 变异：不等',
+      ),
+  },
+  {
+    name: 'M93 控制面：回读的值必须在 `readback` 里（平铺 = 与契约 spec/04 §2.4 不符）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '回读到的值在 `readback` 里',
+    apply: (s) =>
+      replace(
+        s,
+        '          readback: {',
+        '          readback_flat: { // 变异：把 readback 摊平（契约要的是嵌套）',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

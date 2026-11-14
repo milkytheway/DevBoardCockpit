@@ -19,6 +19,14 @@ import { dirname } from 'node:path';
  * **能 grep、能 tail、能 cat**。一行一个动作，追加写、每行 flush。
  */
 export interface AuditRow {
+  /**
+   * 这一行的 id（**追责单位**）。
+   *
+   * 契约 `spec/04` §2.4：动作的结果里带 `audit_id`——
+   * 「发生了什么」与「谁让它发生的」要能互相指认。
+   * （ADR-D31 R8：流程层的时间线每一阶段也引用这个 id。）
+   */
+  id?: string;
   /** 时刻（毫秒 UTC） */
   at: number;
   /** 谁触发的（卡片 id / agent / 用户） */
@@ -46,6 +54,7 @@ function stamp(at: number): string {
 export function formatAuditRow(row: AuditRow): string {
   const parts = [
     stamp(row.at),
+    ...(row.id === undefined ? [] : [`id=${row.id}`]),
     `actor=${row.actor}`,
     `action=${row.actionId}`,
     `params=${JSON.stringify(row.params)}`,
@@ -64,11 +73,21 @@ export function formatAuditRow(row: AuditRow): string {
  * （契约 §5.4 的理由与会话日志一样：事实 G4）。
  */
 export class ActionAudit {
+  /** 行号（同一份审计里的顺序） */
+  private seq = 0;
+
   constructor(private readonly filePath: string) {}
 
-  /** 记一行 */
-  append(row: AuditRow): void {
+  /**
+   * 记一行，**返回这一行的 id**。
+   *
+   * → 结果里的 `audit_id` 就是它（契约 `spec/04` §2.4）。
+   */
+  append(row: AuditRow): string {
+    this.seq += 1;
+    const id = row.id ?? `audit-${row.at.toString(36)}-${this.seq}`;
     mkdirSync(dirname(this.filePath), { recursive: true });
-    appendFileSync(this.filePath, `${formatAuditRow(row)}\n`, 'utf8');
+    appendFileSync(this.filePath, `${formatAuditRow({ ...row, id })}\n`, 'utf8');
+    return id;
   }
 }

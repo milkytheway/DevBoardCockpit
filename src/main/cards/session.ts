@@ -244,10 +244,24 @@ export class CardSessionManager {
  * 契约 §7.7：「所有方法都不抛异常：失败时返回 `{ ok: false, reason }`」——
  * 所以「方法失败了」这件事必须出现在**信封**上（`CardResponse.ok/reason`），
  * 否则卡片只看到 `ok:true` + 一个藏在 `value` 里的失败。
+ *
+ * ── 例外：**动作的结果对象** ──
+ *
+ * 契约 `spec/04` §2.4 的动作结果**自己就有 `ok` 与 `reason`**：
+ * `{ ok:false, reason:'needs_confirmation', needsConfirmation:{confirmId} }`。
+ *
+ * 把它塌成信封失败 → **`confirm_id` 没了** → 卡片永远完成不了确认
+ * → 确认通道形同虚设。
+ *
+ * → **带 `verified` 的值是「结果」，不是「方法级失败」**：
+ * 契约的结果形状里 `verified` 是**必有**的字段（成功与失败都有）✓，
+ * 而方法级失败（订阅超限、存储不可用）没有它 ✓。
  */
 function isMethodFailure(value: unknown): value is { ok: false; reason: string } {
   if (value === null || typeof value !== 'object') return false;
-  const v = value as { ok?: unknown; reason?: unknown };
+  const v = value as { ok?: unknown; reason?: unknown; verified?: unknown };
+  // **结果对象**（契约 spec/04 §2.4）→ 不塌
+  if (typeof v.verified === 'boolean') return false;
   return v.ok === false && typeof v.reason === 'string';
 }
 

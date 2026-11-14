@@ -105,3 +105,63 @@ describe('会话 · 订阅数有上限（一张卡不能把 main 打满）', () 
     }
   });
 });
+
+describe('会话 · 动作的**结果**不被塌成信封失败', () => {
+  /**
+   * ── 为什么这条重要 ──
+   *
+   * 契约 `spec/04` §2.4 的动作结果**自己就有 `ok` 与 `reason`**：
+   * `{ ok:false, reason:'needs_confirmation', needsConfirmation:{confirmId} }`。
+   *
+   * 而会话层有一条通用规矩：「方法自己返回的失败要提到信封上」——
+   * 对 `tags.subscribe`（回 `{ok:false, reason:'too_many_subscriptions'}`）是对的，
+   * 对**动作结果**却是错的：
+   * **塌掉之后 `confirm_id` 丢了** → 卡片永远没法完成确认 → 确认通道形同虚设。
+   *
+   * → 结果**形状**的方法（动作）**不塌**：信封说「方法跑完了」，
+   * 结果（成功与否）由卡片自己读 `value.ok`（契约就是这么写的）。
+   */
+  it('要人确认时，卡片拿得到 confirm_id', async () => {
+    const m = new CardSessionManager({
+      runtime: { readings: () => [], subscribe: () => () => undefined } as never,
+      permsFor: () => ({ read: [], write: ['backlight.set'] }),
+      actionsFor: () => ({
+        invoke: () => ({
+          ok: false,
+          verified: false,
+          reason: 'needs_confirmation',
+          needsConfirmation: { confirmId: 'confirm-1', detail: '这个动作要人确认' },
+        }),
+      }),
+    });
+    m.open('inst-1', 'action-card', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'actions.invoke',
+      args: { id: 'backlight.set', params: { value: 128 } },
+    });
+    // **信封是成功的**（方法跑完了）——结果在 value 里
+    expect(res.ok).toBe(true);
+    const value = res.value as {
+      ok: boolean;
+      reason: string;
+      needsConfirmation: { confirmId: string };
+    };
+    expect(value.reason).toBe('needs_confirmation');
+    expect(value.needsConfirmation.confirmId).toBe('confirm-1');
+  });
+
+  it('但**方法级**的失败仍然塌成信封失败（老规矩不变）', async () => {
+    const m = managerWith({ readings: () => [], subscribe: () => () => undefined });
+    m.open('inst-1', 'cpu-usage', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'tags.subscribe',
+      args: { name: 'cpu.usage', subscriptionId: 's1' },
+    });
+    // 订阅数没超上限 → 不该失败
+    expect(res.ok).toBe(true);
+  });
+});

@@ -79,6 +79,7 @@ export interface CardApiDef {
   params: string[];
   /** 这张卡能不能订阅它（订阅是**长连接**，要走权限） */
   subscribable?: boolean;
+
   /** 造出这个方法的 handler。**注入会话**，所以实现不必认识 main 的其他模块 */
   make: (services: CardServices) => CardApiHandler;
 }
@@ -154,6 +155,8 @@ export function cardApis(): CardApiDef[] {
       // 模式让授权范围变大，对读来说方便，对写来说**危险**）
       scopeArg: 'id',
       params: ['id', 'params'],
+      // **返回的是结果对象**（契约 spec/04 §2.4：`{ok, verified, readback, reason, audit_id}`）
+      // → 会话层**不把它塌成信封失败**（塌了 `confirm_id` 就没了 → 确认通道形同虚设）
       make: (services) => (_ctx, args) =>
         services.actions.invoke(String(args['id']), (args['params'] ?? {}) as Record<string, unknown>),
     },
