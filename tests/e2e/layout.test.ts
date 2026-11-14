@@ -25,8 +25,11 @@ test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
       await writeCard(first.userDataDir, 'e2e-card', simpleCard('e2e-card'));
       await cardFrameFor(first.window, 'e2e-card');
 
-      // **按卡 id 选手柄**（内置卡也在网格里，`first()` 会抓到它）
-      const handle = first.window.locator('.card-board__handle[data-card-id="e2e-card"]');
+      // **按稳定钩子选手柄**（`data-cockpit-drag-handle`）——
+      // 不靠 class 名：外壳换皮、class 改名，这条判据都不该断
+      const handle = first.window.locator(
+        '[data-cockpit-drag-handle="true"][data-card-id="e2e-card"]',
+      );
       await expect(handle).toBeVisible();
       const box = await handle.boundingBox();
       if (box === null) throw new Error('拖拽手柄没有位置');

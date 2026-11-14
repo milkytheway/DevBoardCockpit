@@ -114,6 +114,9 @@ export function Board({
             {/* 拖拽手柄（宿主画的，卡片碰不到） */}
             <div
               className="card-board__handle"
+              /* **稳定钩子**（e2e 靠它找手柄）——
+                 **不靠 class 名**：外壳换皮、class 改名，e2e 都不该断 */
+              data-cockpit-drag-handle="true"
               data-card-id={card.cardId}
               title="拖动可以摆位置"
             >
