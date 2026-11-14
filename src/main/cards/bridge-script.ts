@@ -79,16 +79,53 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   'use strict';
   const INSTANCE_ID = ${JSON.stringify(instanceId)};
   let port = null;
+  /** 端口到了就 resolve 它（没到就一直等——但**有上限**） */
+  let portWaiters = [];
+  const PORT_TIMEOUT_MS = 10000;
   let seq = 0;
   const pending = new Map();
   const subs = new Map();
 
-  function ask(method, args) {
-    if (port === null) return Promise.resolve({ ok: false, reason: 'not_connected' });
+  /**
+   * 等端口。
+   *
+   * ── 为什么不能「端口没到就立刻回 not_connected」──
+   *
+   * 端口是**握手之后**才到的（页面 → iframe 的 postMessage），
+   * 而卡片的脚本**先跑**、端口**后到**是常态
+   *（尤其**热更新装进来的卡**：iframe 刚建好，脚本立刻跑，端口还在路上）。
+   *
+   * → 立刻回 not_connected = 卡片**静默地什么都不做** ✗
+   *   （AI 写的卡片最常犯的错：加载时直接调 API）。
+   * → 所以**等它**；等到上限还没来，才回 not_connected ✓。
+   */
+  function whenPort() {
+    if (port !== null) return Promise.resolve(port);
+    return new Promise((resolve) => {
+      portWaiters.push(resolve);
+      setTimeout(() => {
+        const index = portWaiters.indexOf(resolve);
+        if (index >= 0) portWaiters.splice(index, 1);
+        resolve(null);
+      }, PORT_TIMEOUT_MS);
+    });
+  }
+
+  function post(method, args) {
     const id = 'r' + (++seq);
     return new Promise((resolve) => {
       pending.set(id, resolve);
       port.postMessage({ id: id, method: method, args: args, instanceId: INSTANCE_ID });
+    });
+  }
+
+  function ask(method, args) {
+    // **端口已经在 → 同步发出去**（老行为不变：请求当场就在路上）
+    if (port !== null) return post(method, args);
+    // 端口还没到 → **等它**（热更新装进来的卡最常踩这个）
+    return whenPort().then((p) => {
+      if (p === null) return { ok: false, reason: 'not_connected' };
+      return post(method, args);
     });
   }
 
@@ -111,6 +148,10 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     if (!data || data.type !== 'cockpit-port') return;
     port = event.ports && event.ports[0];
     if (!port) return;
+    // **端口到了 → 唤醒在等的那些调用**（它们等的就是这个）
+    const waiters = portWaiters;
+    portWaiters = [];
+    for (const resolve of waiters) resolve(port);
     port.onmessage = (message) => {
       const payload = message.data || {};
       if (payload.type === 'push' && payload.subscriptionId) {

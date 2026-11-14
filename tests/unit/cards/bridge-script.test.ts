@@ -122,11 +122,16 @@ interface FakePort {
   onmessage: ((m: { data: unknown }) => void) | null;
 }
 
-function runBridge(instanceId: string): {
+function runBridge(
+  instanceId: string,
+  opts: { deliverPort?: boolean } = {},
+): {
   cockpit: Record<string, unknown>;
   port: FakePort;
   hello: unknown[];
   sent: unknown[];
+  /** 端口晚点到了就调它 */
+  deliverPort: () => void;
 } {
   const script = bridgeScriptFor(cardApis(), instanceId);
   const listeners: ((e: unknown) => void)[] = [];
@@ -142,12 +147,16 @@ function runBridge(instanceId: string): {
   new Function('window', 'parent', script)(fakeWindow, fakeParent);
   const port: FakePort = { postMessage: (m) => sent.push(m), onmessage: null };
   // 宿主把 port 递给卡片
-  listeners[0]?.({ data: { type: 'cockpit-port' }, ports: [port] });
+  const deliver = (): void => {
+    listeners[0]?.({ data: { type: 'cockpit-port' }, ports: [port] });
+  };
+  if (opts.deliverPort !== false) deliver();
   return {
     cockpit: fakeWindow['cockpit'] as never,
     port,
     hello,
     sent,
+    deliverPort: deliver,
   };
 }
 
@@ -231,5 +240,42 @@ describe('bridge 脚本 · 顶层方法就是函数', () => {
     const pending = tags['get']?.('cpu.usage');
     port.onmessage?.({ data: { id: idOf(sent), ok: true, value: { tag: 'cpu.usage' } } });
     await expect(pending).resolves.toEqual({ tag: 'cpu.usage' });
+  });
+});
+
+describe('bridge · 端口还没到的时候', () => {
+  /**
+   * ── 这条判据在防什么 ──
+   *
+   * 端口是**握手之后**才到的（页面 → iframe 的 postMessage），
+   * 而卡片的脚本**先跑**、端口**后到**是常态
+   *（尤其**热更新装进来的卡**：iframe 刚建好，脚本立刻跑，端口还在路上）。
+   *
+   * → 老行为：端口没到就立刻回 `not_connected`
+   * → 卡片**静默地什么都不做** ✗（AI 写的卡片最常犯的错：加载时直接调 API）
+   * → 新行为：**等它**（上限 10 秒），到了才真的发出去 ✓
+   *
+   * → 这条是 e2e 逮到的真 bug（`tests/e2e/action.test.ts`）。
+   */
+  it('调用要**等端口**，不是立刻回 not_connected', async () => {
+    const bridge = runBridge('inst-late', { deliverPort: false });
+    const cockpit = bridge.cockpit as {
+      tags: { get(name: string): Promise<unknown> };
+    };
+
+    const pending = cockpit.tags.get('cpu.usage');
+    // **还没发出去**（端口没到，发了也没人接）
+    expect(bridge.sent).toHaveLength(0);
+
+    // 端口到了 → **等着的那个调用真的发出去了**
+    bridge.deliverPort();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bridge.sent.length).toBe(1);
+
+    // 把它答完，调用要真的 resolve
+    const first = bridge.sent[0] as { id: string };
+    bridge.port.onmessage?.({ data: { id: first.id, ok: true, value: 42 } });
+    await expect(pending).resolves.toBe(42);
   });
 });
