@@ -976,6 +976,25 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M79 控制面：运行时地板复查必须真的撞表（不撞 = 危险动作直接放行）',
+    file: 'src/main/actions/floor-check.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/floor-check.test.ts'],
+    expect: 'reboot → 命中',
+    apply: (s) =>
+      replace(
+        s,
+        '  const match = matchDangerFloorArgv(argv);',
+        '  const match = { matched: false, pattern: null, why: null }; // 变异：不撞表',
+      ),
+  },
+  {
+    name: 'M80 控制面：basename 形态也要算（/usr/bin/reboot 与 reboot 同罪）',
+    file: 'src/main/tags/floor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/floor-check.test.ts'],
+    expect: 'basename 也算',
+    apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

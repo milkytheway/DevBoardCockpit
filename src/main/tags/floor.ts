@@ -220,7 +220,20 @@ function matchFirewall(tokens: string[]): FloorMatch | null {
  * @param command 最终命令或命令模板
  */
 export function matchDangerFloor(command: string): FloorMatch {
-  const tokens = tokenizeCommand(command);
+  return matchDangerFloorArgv(tokenizeCommand(command));
+}
+
+/**
+ * 拿 **argv** 撞地板。
+ *
+ * **为什么要有 argv 这一层**：运行时要查的是**编码后的最终命令**——
+ * 而那一条命令的词已经被切好了（`actions/encoder` 用的就是同一个
+ * `tokenizeCommand`）。再切一遍会丢掉引号信息。
+ *
+ * → 校验器查模板（`matchDangerFloor`），运行时查 argv（这个）。
+ * **匹配器只有一份**（`FLOOR_ENTRIES` + 三条特判）。
+ */
+export function matchDangerFloorArgv(tokens: string[]): FloorMatch {
   if (tokens.length === 0) return NO_MATCH;
 
   for (const entry of FLOOR_ENTRIES) {
