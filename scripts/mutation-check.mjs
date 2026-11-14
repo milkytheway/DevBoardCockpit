@@ -995,6 +995,30 @@ const MUTATIONS = [
     apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
   },
   {
+    name: 'M81 队列：四级优先级（动作必须插到采样前面）',
+    file: 'src/main/hal/round-trip-queue.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
+    expect: '四级：action-verify > manual-refresh > card-sampling > diagnostics',
+    apply: (s) =>
+      replace(
+        s,
+        "const PRIORITY: readonly RoundTripKind[] = [\n  'action-verify',\n  'manual-refresh',",
+        "const PRIORITY: readonly RoundTripKind[] = [\n  'manual-refresh',\n  'action-verify',",
+      ),
+  },
+  {
+    name: 'M82 队列：排队超过 deadline 的事务要被丢掉（不执行）',
+    file: 'src/main/hal/round-trip-queue.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
+    expect: '排队超过 deadline',
+    apply: (s) =>
+      replace(
+        s,
+        '        if (waited > entry.deadlineMs) {',
+        '        if (waited > entry.deadlineMs * 1000) { // 变异：deadline 形同虚设',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

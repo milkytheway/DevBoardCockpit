@@ -122,7 +122,7 @@ describe('PollScheduler · 按 interval_ms 驱动', () => {
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    void queue.run('action', () => blocked);
+    void queue.run('action-verify', () => blocked);
 
     const scheduler = new PollScheduler(PACK, sampler, queue, {
       now: clock.now,
@@ -156,7 +156,7 @@ describe('PollScheduler · 跳过本周期，不补发', () => {
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    void queue.run('action', () => blocked);
+    void queue.run('action-verify', () => blocked);
 
     const scheduler = new PollScheduler(PACK, sampler, queue, {
       now: clock.now,
@@ -192,7 +192,7 @@ describe('PollScheduler · 跳过本周期，不补发', () => {
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    void queue.run('action', () => blocked);
+    void queue.run('action-verify', () => blocked);
 
     const scheduler = new PollScheduler(PACK, sampler, queue, {
       now: clock.now,

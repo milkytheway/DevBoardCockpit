@@ -148,6 +148,75 @@ describe('TagRuntime · 状态机', () => {
   });
 });
 
+describe('TagRuntime · 独占事务（M6 的入口）', () => {
+  it('没连上 → 拒（不是静默等着）', async () => {
+    const dir = makePacksDir();
+    try {
+      const runtime = new TagRuntime({
+        packsDir: dir,
+        createConnection: () =>
+          ({ open: async () => undefined, close: async () => undefined, ...fakeConnection() }) as never,
+        createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+      });
+      await expect(runtime.runTransaction(async () => 'x')).rejects.toMatchObject({
+        code: 'CONN_CLOSED',
+      });
+      runtime.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('事务跑在**那条连接**上', async () => {
+    const dir = makePacksDir();
+    try {
+      const runtime = new TagRuntime({
+        packsDir: dir,
+        createConnection: () =>
+          ({ open: async () => undefined, close: async () => undefined, ...fakeConnection() }) as never,
+        createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+      });
+      await runtime.start(profile('tiny'));
+      const result = await runtime.runTransaction(async (conn) => conn.exec('echo hi'));
+      expect(result.exitCode).toBe(0);
+      runtime.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('事务与采样**不并发**（同一条队列 → 串口上不串台）', async () => {
+    const dir = makePacksDir();
+    try {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const slow = {
+        open: async () => undefined,
+        close: async () => undefined,
+        async exec(): Promise<ExecResult> {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          inFlight -= 1;
+          return { exitCode: 0, stdout: '', stderr: '', durationMs: 1, timedOut: false };
+        },
+      };
+      const runtime = new TagRuntime({
+        packsDir: dir,
+        createConnection: () => slow as never,
+        createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+      });
+      await runtime.start(profile('tiny'));
+      await runtime.runTransaction(async (conn) => conn.exec('echo hi'));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(maxInFlight).toBe(1);
+      runtime.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('TagRuntime · 读数的进出', () => {
   it('**晚订阅不丢当前值**：快照里有订阅之前就写进去的读数', async () => {
     const dir = makePacksDir();

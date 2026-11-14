@@ -54,6 +54,14 @@ export interface TagRuntimeOptions {
 
 export class TagRuntime {
   private readonly store = new TagStore();
+  /**
+   * 一切往返都经这条队列（契约 §1.2.1 · ADR-D23）。
+   *
+   * **它是实例字段，不是 `start()` 里的局部变量**——
+   * 动作执行器要用**同一条**队列跑「执行 + 回读」那个独占事务
+   * （`runTransaction`）；队列是局部的，动作执行器就够不着它。
+   */
+  private readonly queue = new RoundTripQueue();
   private readonly listeners: ((reading: TagReading) => void)[] = [];
   private scheduler: PollScheduler | undefined;
   private connection: Connection | undefined;
@@ -126,9 +134,8 @@ export class TagRuntime {
     }
 
     // 4) 起调度器（一切往返都经队列，契约 §1.2.1）
-    const queue = new RoundTripQueue();
     const sampler = new TagSampler(binding.pack, connection, this.store);
-    this.scheduler = new PollScheduler(binding.pack, sampler, queue);
+    this.scheduler = new PollScheduler(binding.pack, sampler, this.queue);
     this.scheduler.start();
 
     // 读数只经 TagStore 出（ADR-D22）
@@ -139,6 +146,27 @@ export class TagRuntime {
     this.state = 'running';
     this.detail = undefined;
     return this.status;
+  }
+
+  /**
+   * 在**这条连接**上跑一次独占事务。
+   *
+   * ── 谁用这个 ──
+   *
+   * **M6 的动作执行器**：一次动作 = 「执行命令 + 回读」，
+   * 而这两步**必须是一个不可拆分的独占事务**（ADR-D23 / SPEC-D22）：
+   * 回读若被采样插队，读到的可能是**别的命令的输出**——
+   * 「回读不符」就成了假阴性，驾驶舱会显示错的真实状态。
+   *
+   * @param fn 拿到连接去干活（执行 + 回读都在里面）
+   * @throws 没连上任何连接（`CONN_CLOSED`）
+   */
+  async runTransaction<T>(fn: (connection: Connection) => Promise<T>): Promise<T> {
+    const connection = this.connection;
+    if (connection === undefined) {
+      throw new AppError('CONN_CLOSED', '运行时还没连上任何连接');
+    }
+    return this.queue.run('action-verify', () => fn(connection));
   }
 
   /** 停下：停调度器、关连接 */

@@ -40,17 +40,109 @@ function deferred<T>(): { fn: () => Promise<T>; release: (v: T) => void; called:
   };
 }
 
+describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
+  it('四级：action-verify > manual-refresh > card-sampling > diagnostics', async () => {
+    const queue = new RoundTripQueue();
+    const order: string[] = [];
+
+    // 先占住队列（**队列空时先到的先跑** —— 优先级只对**等着的那几条**生效，
+    // 不可能为了等一个还没来的高优先级请求而空等）
+    const blocker = deferred<string>();
+    const p0 = queue.run('diagnostics', () => blocker.fn());
+
+    // **倒着入队** —— 谁先跑，看的是优先级，不是入队顺序
+    const p1 = queue.run('diagnostics', async () => {
+      order.push('diagnostics');
+      return 'd';
+    });
+    const p2 = queue.run('card-sampling', async () => {
+      order.push('card-sampling');
+      return 'c';
+    });
+    const p3 = queue.run('manual-refresh', async () => {
+      order.push('manual-refresh');
+      return 'm';
+    });
+    const p4 = queue.run('action-verify', async () => {
+      order.push('action-verify');
+      return 'a';
+    });
+
+    blocker.release('blocker');
+    await Promise.all([p0, p1, p2, p3, p4]);
+    expect(order).toEqual([
+      'action-verify',
+      'manual-refresh',
+      'card-sampling',
+      'diagnostics',
+    ]);
+  });
+
+  it('排队超过上限 → 报 conn_busy（不无限排队）', async () => {
+    const queue = new RoundTripQueue({ maxPending: 2 });
+    const d = deferred<string>();
+    const p1 = queue.run('card-sampling', () => d.fn());
+    const p2 = queue.run('card-sampling', async () => 'second');
+
+    // 第三个**立刻**被拒（不排队）
+    await expect(queue.run('card-sampling', async () => 'third')).rejects.toMatchObject({
+      code: 'CONN_BUSY',
+    });
+
+    d.release('first');
+    await Promise.all([p1, p2]);
+  });
+
+  it('排队超过 deadline → 报 conn_busy（那条事务被丢掉，不执行）', async () => {
+    let clock = 1000;
+    const queue = new RoundTripQueue({ now: () => clock });
+    const order: string[] = [];
+
+    const d = deferred<string>();
+    const p1 = queue.run('card-sampling', async () => {
+      order.push('first');
+      return d.fn();
+    });
+    const p2 = queue.run('action-verify', async () => {
+      order.push('second');
+      return 'second';
+    });
+
+    // 排队期间时间过去了 → 它的 deadline 到了
+    clock += 5000;
+    d.release('first');
+
+    await expect(p2).rejects.toMatchObject({ code: 'CONN_BUSY' });
+    await p1;
+    expect(order).toEqual(['first']); // 第二条**没有被执行**
+  });
+
+  it('deadline 可以按事务覆盖', async () => {
+    let clock = 0;
+    const queue = new RoundTripQueue({ now: () => clock, deadlineMs: 10_000 });
+    const d = deferred<string>();
+    const p1 = queue.run('card-sampling', () => d.fn());
+    const p2 = queue.run('action-verify', async () => 'second', { deadlineMs: 50 });
+
+    clock += 100;
+    d.release('first');
+
+    await expect(p2).rejects.toMatchObject({ code: 'CONN_BUSY' });
+    await p1;
+  });
+});
+
 describe('RoundTripQueue · 排队与动作优先', () => {
   it('两个采样**串行**：前一个没回来，后一个的闭包不会被调用', async () => {
     const queue = new RoundTripQueue();
     const order: string[] = [];
 
     const first = deferred<string>();
-    const p1 = queue.run('sample', async () => {
+    const p1 = queue.run('card-sampling', async () => {
       order.push('sample1');
       return first.fn();
     });
-    const p2 = queue.run('sample', async () => {
+    const p2 = queue.run('card-sampling', async () => {
       order.push('sample2');
       return 'second';
     });
@@ -69,15 +161,15 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     const order: string[] = [];
 
     const first = deferred<string>();
-    const p1 = queue.run('sample', async () => {
+    const p1 = queue.run('card-sampling', async () => {
       order.push('sample1');
       return first.fn();
     });
-    const p2 = queue.run('sample', async () => {
+    const p2 = queue.run('card-sampling', async () => {
       order.push('sample2');
       return 'second';
     });
-    const p3 = queue.run('action', async () => {
+    const p3 = queue.run('action-verify', async () => {
       order.push('action');
       return 'acted';
     });
@@ -96,14 +188,14 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    const p1 = queue.run('sample', async () => {
+    const p1 = queue.run('card-sampling', async () => {
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
       const v = await d1.fn();
       inFlight -= 1;
       return v;
     });
-    const p2 = queue.run('action', async () => {
+    const p2 = queue.run('action-verify', async () => {
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
       const v = await d2.fn();
@@ -130,8 +222,8 @@ describe('RoundTripQueue · 排队与动作优先', () => {
 
   it('`run` 的返回值是闭包的返回值（await 透传）', async () => {
     const queue = new RoundTripQueue();
-    await expect(queue.run('sample', async () => 42)).resolves.toBe(42);
-    await expect(queue.run('action', async () => 'acted')).resolves.toBe('acted');
+    await expect(queue.run('card-sampling', async () => 42)).resolves.toBe(42);
+    await expect(queue.run('action-verify', async () => 'acted')).resolves.toBe('acted');
   });
 
   it('闭包**抛错**时 run reject 同样的错误，且**队列继续可用**', async () => {
@@ -139,19 +231,19 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     const boom = new Error('boom');
 
     await expect(
-      queue.run('sample', async () => {
+      queue.run('card-sampling', async () => {
         throw boom;
       }),
     ).rejects.toBe(boom);
 
     // 「一把锁坏了，通道就废了」是更糟的失败
-    await expect(queue.run('sample', async () => 'still works')).resolves.toBe('still works');
+    await expect(queue.run('card-sampling', async () => 'still works')).resolves.toBe('still works');
   });
 
   it('同一个 run 里闭包**被调用恰好一次**', async () => {
     const queue = new RoundTripQueue();
     let called = 0;
-    await queue.run('sample', async () => {
+    await queue.run('card-sampling', async () => {
       called += 1;
       return 'x';
     });
@@ -164,8 +256,8 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     expect(queue.pending).toBe(0);
 
     const d = deferred<string>();
-    const p1 = queue.run('sample', () => d.fn());
-    const p2 = queue.run('sample', async () => 'second');
+    const p1 = queue.run('card-sampling', () => d.fn());
+    const p2 = queue.run('card-sampling', async () => 'second');
 
     await Promise.resolve();
     expect(queue.busy).toBe(true);

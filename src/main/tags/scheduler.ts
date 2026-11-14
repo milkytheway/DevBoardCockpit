@@ -137,7 +137,7 @@ export class PollScheduler {
     const enqueuedAt = this.now();
 
     void this.queue
-      .run('sample', async () => {
+      .run('card-sampling', async () => {
         try {
           // 在队列里等了多久？（不含这次采样自己的执行时间）
           const waited = this.now() - enqueuedAt;
