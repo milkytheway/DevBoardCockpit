@@ -35,12 +35,27 @@ export function Secondary({
                     className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
                       item.tone === 'muted' ? ' is-muted' : ''
                     }`}
+                    // **稳定的 e2e 钩子**（不认 class 名 —— 外壳的 DOM 可以整个换掉）
+                    data-cockpit-card-id={item.cardId}
+                    data-cockpit-session-id={item.sessionId}
                     onClick={item.onSelect}
                   >
                     <span className="secondary__label">{item.label}</span>
                     {item.badge ? <span className="secondary__badge">{item.badge}</span> : null}
                     {item.hint ? <span className="secondary__hint">{item.hint}</span> : null}
                   </button>
+                  {item.onClose ? (
+                    <button
+                      type="button"
+                      className="secondary__close"
+                      aria-label={`关闭 ${item.label}`}
+                      title="关闭会话"
+                      // **在行按钮外面**：点它不该顺手选中那一行
+                      onClick={item.onClose}
+                    >
+                      ✕
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>

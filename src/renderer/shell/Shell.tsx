@@ -194,7 +194,7 @@ export function Shell(): JSX.Element {
         runtime,
         connections,
         cards,
-        placedCardIds: [...placedKeys].map((key) => key.split('::')[0] ?? key),
+        placedSlotKeys: [...placedKeys],
         sessions: terminal.sessions,
         activeSessionId: terminal.activeSessionId,
         activity,

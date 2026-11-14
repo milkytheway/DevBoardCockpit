@@ -126,7 +126,10 @@ export function CardGrid({
         rowHeight={ROW_HEIGHT[density]}
         margin={[12, 12]}
         containerPadding={[0, 0]}
-        draggableHandle=".cockpit-card__handle"
+        // **用 data 属性，不用 class 名** ——
+        // e2e 找的就是它（`data-cockpit-drag-handle`）；
+        // 两处各写一个名字的话，改了其中一个就有一个悄悄失配。
+        draggableHandle="[data-cockpit-drag-handle='true']"
         resizeHandles={['se']}
         useCSSTransforms
         onLayoutChange={handleChange}

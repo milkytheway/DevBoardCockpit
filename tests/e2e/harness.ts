@@ -239,7 +239,10 @@ export async function placeCard(page: Page, cardId: string): Promise<void> {
       { timeout: 20_000 },
     )
     .toBeGreaterThan(0);
-  await page.locator(`.secondary__item:has(.secondary__label:text-is("${cardId}"))`).first().click();
+  // **按 data 属性找，不认 class 名** ——
+  // `docs/UI设计/07-外壳接口清单.md` §四：e2e 不认识任何 class 名，
+  // 外壳的 DOM 可以完全不同，只要接口接上了，判据就该全绿。
+  await page.locator(`[data-cockpit-card-id="${cardId}"]`).first().click();
 }
 
 /** 卡片目录在 userData 下的位置 */

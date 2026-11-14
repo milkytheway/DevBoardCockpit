@@ -773,12 +773,20 @@ select {
   padding: 0;
   list-style: none;
 }
+.secondary__list > li {
+  /* 行按钮 + 关闭按钮并排（关闭按钮在行按钮**外面**，
+     点它不该顺手选中那一行） */
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
 .secondary__item {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas: 'label badge' 'hint hint';
   gap: 1px 6px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 6px 7px;
   border: 0;
   border-radius: 7px;
@@ -822,6 +830,23 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.secondary__close {
+  flex: none;
+  align-self: center;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--cockpit-text-faint);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.secondary__close:hover {
+  background: var(--shell-raise);
+  color: var(--cockpit-text);
 }
 .secondary__empty {
   margin: 0;

@@ -1,5 +1,6 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
+import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
 
 /**
@@ -31,6 +32,17 @@ export interface SecondaryItem {
   badge?: string;
   /** Called when the row is clicked. */
   onSelect?: () => void;
+  /**
+   * A **close** button on the row.
+   *
+   * **为什么会话需要它**：串口与 SSH 的连接是**独占**的——
+   * 没有关闭路径，那个连接就一直占着（用户只能重启应用）。
+   */
+  onClose?: () => void;
+  /** The card id — the stable e2e hook (`data-cockpit-card-id`). */
+  cardId?: string;
+  /** The session id — the stable e2e hook (`data-cockpit-session-id`). */
+  sessionId?: string;
 }
 
 export interface SecondaryGroup {
@@ -44,8 +56,16 @@ export interface SecondaryContext {
   runtime: RuntimeStatus;
   connections: ConnectionInfo[];
   cards: CardInstanceInfo[];
-  /** The card ids that are placed in the main area right now. */
-  placedCardIds: string[];
+  /**
+   * The **slot keys** of the cards that are placed in the main area right now.
+   *
+   * **键是 (cardId, connectionId)，不是 cardId**——
+   * 一张卡在每条连接上各有一个实例（契约 §7.8），各占一个格子。
+   * 按 cardId 判的话，换了连接之后目录会说「已在主区」而主区里没有它，
+   * 再点只会去移除（按当前连接键过滤 → 什么也没移除）→
+   * **这张卡在新连接上再也摆不进去**。
+   */
+  placedSlotKeys: string[];
   sessions: TerminalTab[];
   activeSessionId: string | null;
   activity: ActivityEntry[];
@@ -84,17 +104,24 @@ function statusGroup(ctx: SecondaryContext): SecondaryGroup {
 
 /** The card catalogue: every installed card, placed or not. */
 function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
-  const placed = new Set(ctx.placedCardIds);
-  const items = ctx.cards.map((card) => ({
-    id: card.instanceId,
-    label: card.cardId,
-    hint: placed.has(card.cardId) ? '已在主区' : '点击摆进主区',
-    tone: placed.has(card.cardId) ? ('active' as const) : ('default' as const),
-    onSelect: () => {
-      if (placed.has(card.cardId)) ctx.onRemoveCard(card);
-      else ctx.onPlaceCard(card);
-    },
-  }));
+  const placed = new Set(ctx.placedSlotKeys);
+  const items = ctx.cards.map((card) => {
+    const key = slotKey(card.cardId, card.connectionId);
+    const isPlaced = placed.has(key);
+    return {
+      id: card.instanceId,
+      label: card.cardId,
+      // **说清楚第二次点击会发生什么** ——
+      // 摆好的卡再点一次是「撤下」，不写出来的话那是一次**静默的删除**。
+      hint: isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区',
+      tone: isPlaced ? ('active' as const) : ('default' as const),
+      cardId: card.cardId,
+      onSelect: () => {
+        if (isPlaced) ctx.onRemoveCard(card);
+        else ctx.onPlaceCard(card);
+      },
+    };
+  });
   return { id: 'cards', title: '卡片', items };
 }
 
@@ -117,7 +144,10 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     label: session.label,
     hint: session.sessionId.slice(0, 8),
     tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+    sessionId: session.sessionId,
     onSelect: () => ctx.onSelectSession(session.sessionId),
+    // **会话要能关**：串口与 SSH 的连接是独占的，没有关闭路径就一直占着。
+    onClose: () => ctx.onCloseSession(session.sessionId),
   }));
   return [
     statusGroup(ctx),
@@ -136,7 +166,9 @@ function fileGroups(ctx: SecondaryContext): SecondaryGroup[] {
     label: session.label,
     hint: session.sessionId.slice(0, 8),
     tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+    sessionId: session.sessionId,
     onSelect: () => ctx.onSelectSession(session.sessionId),
+    onClose: () => ctx.onCloseSession(session.sessionId),
   }));
   return [
     statusGroup(ctx),
