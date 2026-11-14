@@ -160,8 +160,14 @@ export class FakeDevice {
    */
   private procMeminfo(): string {
     const t = this.uptime();
+    // **可用内存是「GiB」那个量级**（总量 8 GiB，可用约 4 GiB ± 1.5 GiB）。
+    //
+    // ⚠️ 这里曾经写成 `4 * 1024 * 1024`（**MiB**）——
+    // 总量 8 GiB 对上可用 4 MiB → **占用率 99.9%**：
+    // **面板说满载，板子其实闲着**——契约 N2 说的「最坏的那种假数」。
+    // （真机跑起来才发现的：单测里没人看那个数。）
     const availableKb = Math.round(
-      (4 * 1024 * 1024 + 1.5 * 1024 * 1024 * Math.sin((2 * Math.PI * t) / 29)) / 1024,
+      (4 * 1024 * 1024 * 1024 + 1.5 * 1024 * 1024 * 1024 * Math.sin((2 * Math.PI * t) / 29)) / 1024,
     );
     return [
       `MemTotal:       ${MEM_TOTAL_KB} kB`,

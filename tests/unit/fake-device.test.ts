@@ -226,6 +226,23 @@ describe('假设备 · 走真实链路（真包 + 真 kind + 真 store + 真采�
     h.close();
   });
 
+  it('内存的可用量是「GiB」那个量级（几 MiB 会让占用率变成 99.9%）', async () => {
+    // **实测发现的 bug**：假设备把可用内存写成了「4 MiB ± 1.5 MiB」，
+    // 而总量是 8 GiB → 占用率 99.9% —— **面板说满载，板子其实闲着**。
+    // 那正是契约 N2 说的「最坏的那种假数」。
+    const h = makeHarness();
+    await h.sampler.sampleGroup('slow');
+    const available = h.store.get('mem.available_bytes');
+    const total = h.store.get('mem.total_bytes');
+    expect(available?.status).toBe('ok');
+    expect(total?.status).toBe('ok');
+    // 可用量至少是总量的四分之一
+    expect((available!.value as number) / (total!.value as number)).toBeGreaterThan(0.25);
+    // 占用率不该是「满载」
+    expect(h.store.get('mem.usage')!.value as number).toBeLessThan(90);
+    h.close();
+  });
+
   it('温度按 type 归并，不按 zone 序号', async () => {
     const h = makeHarness();
     await h.sampler.sampleGroup('slow');
