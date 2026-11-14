@@ -33,7 +33,7 @@ export interface Launched {
 }
 
 /** 应用的用户数据目录名（与 `src/main/util/paths.ts` 的 DEFAULT_APP 同一个） */
-const APP_NAME = 'DevBoardCockpit';
+export const APP_NAME = 'DevBoardCockpit';
 
 /**
  * **整个测试进程共用**的 Xvfb。
@@ -91,9 +91,10 @@ async function waitForDisplay(display: string): Promise<void> {
  * @param opts.executablePath Electron 二进制。默认用 `node_modules/electron`；
  *   Linux 沙箱里没有 npm 版的 Linux 二进制，用 `ELECTRON_BIN` 指过去
  *   （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
+ * @param opts.env 追加的环境变量（如 `COCKPIT_FAKE=only` → 只连假设备）。
  */
 export async function launchApp(
-  opts: { executablePath?: string; userDataDir?: string } = {},
+  opts: { executablePath?: string; userDataDir?: string; env?: Record<string, string> } = {},
 ): Promise<Launched> {
   const xvfb = ensureDisplay();
   if (xvfb !== undefined) await waitForDisplay(process.env['DISPLAY'] as string);
@@ -120,7 +121,7 @@ export async function launchApp(
   const root = opts.userDataDir ?? mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
   const userDataDir = join(root, APP_NAME);
   mkdirSync(userDataDir, { recursive: true });
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...(opts.env ?? {}) };
   if (process.platform === 'win32') {
     env['LOCALAPPDATA'] = root;
   } else {
@@ -162,6 +163,24 @@ export async function launchApp(
       }
     },
   };
+}
+
+/**
+ * 找到某张卡**当前**的 iframe（找不到就是 `undefined`）。
+ *
+ * ── 为什么要有「当前」这个版本 ──
+ *
+ * **热更新会让旧帧失效**：卡片文件一变 → 内容指纹变 → 实例 id 变 → iframe 重建。
+ * → 手里攥着一个 `Frame` 引用等结果的判据，会在重建的那一刻**永远等不到** ✗。
+ * → 所以要判据**每轮重新找**（用 `cardFrameFor` 那种重试逻辑，或本函数）。
+ *
+ * @param cardId 卡片 id
+ */
+export async function currentCardFrame(page: Page, cardId: string): Promise<Frame | undefined> {
+  const list = await cardsList(page);
+  const info = list.find((c) => c.cardId === cardId);
+  if (info === undefined) return undefined;
+  return page.frames().find((f) => f.url().startsWith(`cockpit://card/${info.instanceId}/`));
 }
 
 /**
@@ -212,7 +231,7 @@ export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
 }
 
 /** 问宿主要装着的卡片清单 */
-async function cardsList(page: Page): Promise<{ cardId: string; instanceId: string }[]> {
+export async function cardsList(page: Page): Promise<{ cardId: string; instanceId: string }[]> {
   return page.evaluate(() =>
     (
       window as unknown as {

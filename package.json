@@ -8,11 +8,13 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "node scripts/clean-out.mjs && electron-vite build && tsx scripts/check-build.ts",
+    "build:fake": "node scripts/clean-out.mjs && electron-vite build --mode fake",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cards": "npm run build && playwright test",
+    "test:cards:fake": "npm run build:fake && playwright test",
     "validate:profiles": "tsx scripts/validate-profiles.ts",
     "probe:board": "tsx scripts/probe.ts",
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
