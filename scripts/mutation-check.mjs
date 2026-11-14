@@ -995,6 +995,37 @@ const MUTATIONS = [
     apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
   },
   {
+    name: 'M87 控制面：结果必须照回读来（回读不符不能报 ok）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '回读不符 → 不是 ok',
+    apply: (s) =>
+      replace(
+        s,
+        '    ok: readback.ok,',
+        '    ok: true, // 变异：无视回读的结果',
+      ),
+  },
+  {
+    name: 'M88 控制面：审计行里必须有回读值（不然事后追不了责）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '审计行里有**参数**与**回读值**',
+    apply: (s) => replace(s, '  record(outcome, readback.value);', '  record(outcome); // 变异：不记回读值'),
+  },
+  {
+    name: 'M89 控制面：审计行必须带参数（参数是追责的一半）',
+    file: 'src/main/actions/audit.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/audit.test.ts'],
+    expect: '参数里的换行不能撑成两行',
+    apply: (s) =>
+      replace(
+        s,
+        '    `params=${JSON.stringify(row.params)}`,',
+        "    '    params=' + JSON.stringify({}), // 变异：不记参数",
+      ),
+  },
+  {
     name: 'M85 控制面：确认凭据必须一次性（用掉就没了）',
     file: 'src/main/actions/authorization.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],

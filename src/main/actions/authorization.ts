@@ -89,6 +89,10 @@ export function authorize(
   const guard = action.guard ?? {};
   for (const [name, spec] of Object.entries(action.params ?? {})) {
     const paramSpec = spec as PackParam;
+    // **参数域只管数值参数**——min/max 是数字，
+    // 套到 string/enum 上只会得到「永远超出」这种假拒绝。
+    // （字符串的长度由 `maxLength` 管，编码器已经拒了。）
+    if (paramSpec.type !== 'integer' && paramSpec.type !== 'number') continue;
     const range =
       grantedDomain?.[name] ?? guard[name] ?? { min: paramSpec.min, max: paramSpec.max };
     if (!withinRange(params[name], range)) {
