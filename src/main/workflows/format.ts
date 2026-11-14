@@ -103,6 +103,8 @@ export interface WorkflowStep {
   from?: WorkflowEndpoint;
   /** `file.transfer` 的目的地 */
   to?: WorkflowEndpoint;
+  /** `discover` 在哪个目录找（默认当前目录） */
+  dir?: string;
   /** `discover` 的发现规则（**不写死文件名**） */
   pattern?: string;
   /** `discover` 的排除表 */
@@ -155,6 +157,7 @@ const STEP_KEYS = [
   'params',
   'from',
   'to',
+  'dir',
   'pattern',
   'exclude',
   'out',
@@ -408,6 +411,7 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   }
   if (raw['from'] !== undefined) step.from = parseEndpoint(raw['from'], pack, ctx, 'from');
   if (raw['to'] !== undefined) step.to = parseEndpoint(raw['to'], pack, ctx, 'to');
+  if (raw['dir'] !== undefined) step.dir = nonEmptyString(raw['dir'], 'step.dir', ctx);
   if (raw['pattern'] !== undefined) step.pattern = nonEmptyString(raw['pattern'], 'step.pattern', ctx);
   if (raw['exclude'] !== undefined) {
     if (!Array.isArray(raw['exclude']) || raw['exclude'].some((v) => typeof v !== 'string')) {

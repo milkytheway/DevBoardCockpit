@@ -17,6 +17,7 @@
     "test:cards:fake": "npm run build:fake && playwright test",
     "validate:profiles": "tsx scripts/validate-profiles.ts",
     "probe:board": "tsx scripts/probe.ts",
+    "workflow:run": "tsx scripts/run-workflow.ts",
     "gen:vocabulary": "tsx scripts/gen-vocabulary.ts",
     "gen:vocabulary:check": "tsx scripts/gen-vocabulary.ts --check",
     "gen:theme": "tsx scripts/gen-theme.ts",
