@@ -113,6 +113,27 @@ README.md
 - ❌ 只靠 iframe 的 `sandbox` 断网（必须由宿主注入 CSP，见 `spec/03` §6.1）
 - ❌ 把 `unavailable` 当成 `0` 处理
 - ❌ 在实现阶段把契约文档「顺手改一改」
+- ❌ **在沙箱里直接 `npm install`**（会剪掉宿主要的 win32 平台包，见 §6.1）
+
+### 6.1 加依赖（**沙箱与宿主共享同一个 node_modules**）
+
+npm 的 `optionalDependencies` 是**按平台安装**的（`@esbuild/win32-x64` vs
+`@esbuild/linux-x64`、`@rollup/rollup-win32-*` vs `-linux-*`…）。
+→ **在 Linux 上跑一次 `npm install`，npm 会把宿主那一半当成多余的剪掉**，
+宿主上 `vitest` / `tsx` 就起不来（反过来一样）。
+
+**规矩**：
+
+| 谁加依赖 | 怎么做 |
+|---|---|
+| **沙箱（Linux）** | `bash scripts/acceptance/add-dep.sh <pkg>[@version]` —— 隔离前缀装 → 只把缺的包拷进共享树 → 改 `package.json` → `npm install --package-lock-only` 更新 lock。**共享树一个字节都不碰** |
+| **宿主（Windows）** | `npm install` → 然后**在沙箱里**跑 `bash scripts/acceptance/linux-natives.sh restore`（把 Linux 的平台包补回来；那个脚本在 Windows 上不能跑，它会动 `node-pty/build/`） |
+
+> **改 lock 用 `npm install --package-lock-only`** —— 它**只改 lock 文件，不碰 node_modules** ✓
+> （lock 里两边的平台包都记着 ✓ → 不会把对方的剪掉）。
+> 另外：`package.json` 与 `package-lock.json` **必须同步** ——
+> 漏了的话 `npm ci`（CI / 干净机器）会装不全（这个工程已经栽过一次：
+> `react-grid-layout` 与 `@playwright/test` 都在 package.json 里却不在 lock 里）。
 
 ## 7. 常用命令（实现阶段才有意义）
 
@@ -126,7 +147,8 @@ npm test                   # vitest
 # 对着真板跑 reader，核对输出 —— **计划 2（M3/M4）起才有**
 npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
 npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
-npm run mutation:check     # 变异测试：证明回归测试真的在守着（12 项）
+npm run mutation:check     # 变异测试：证明回归测试真的在守着（63 项）
+npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**
 ```
 
 
