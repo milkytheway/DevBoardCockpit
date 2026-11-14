@@ -79,7 +79,7 @@ function CardGrid({
         </p>
         <button
           type="button"
-          className="btn btn--primary btn--sm"
+          className={`btn ${hiddenCount > 0 ? 'btn--ghost' : 'btn--primary'} btn--sm`}
           onClick={hiddenCount > 0 ? onUnhideAll : onOpenLibrary}
         >
           {hiddenCount > 0 ? '全部恢复' : '去卡片库看看'}

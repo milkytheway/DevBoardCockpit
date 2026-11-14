@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ViewDensity } from '../../shared/layout';
 import { GearIcon, PlusIcon, RefreshIcon } from './Icons';
 import { VIEWS, type ViewId } from './types';
@@ -36,11 +36,32 @@ export function Toolbar({
 }): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filterText, setFilterText] = useState(tagFilter.join(', '));
+  const settingsRef = useRef<HTMLDivElement | null>(null);
 
   // Re-sync when the active view changes (each view has its own filter).
   useEffect(() => {
     setFilterText(tagFilter.join(', '));
   }, [tagFilter]);
+
+  // Popover behaves like a menu: Escape or a click outside closes it.
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const onPointerDown = (event: MouseEvent): void => {
+      const root = settingsRef.current;
+      if (root !== null && event.target instanceof Node && !root.contains(event.target)) {
+        setSettingsOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setSettingsOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [settingsOpen]);
 
   const commitFilter = (): void => {
     const patterns = filterText
@@ -59,7 +80,7 @@ export function Toolbar({
         </span>
       </div>
       <span className="spacer" />
-      <div className="view-settings">
+      <div className="view-settings" ref={settingsRef}>
         <button
           type="button"
           className={`btn btn--ghost btn--sm ${settingsOpen ? 'is-active' : ''}`}
