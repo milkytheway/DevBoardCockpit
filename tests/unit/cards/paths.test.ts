@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolveInsideCard, mimeFor } from '../../../src/main/cards/paths';
-import { join, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 /**
  * 卡片目录里的路径解析与穿越防护。
@@ -17,7 +17,10 @@ import { join, sep } from 'node:path';
  * `..` · 绝对路径 · Windows 盘符 · `%2e%2e`（URL 编码过的 `..`）· 空段。
  */
 describe('卡片目录内的路径解析', () => {
-  const root = join('/cards', 'cpu-usage');
+  // **必须 `resolve` 一下**：`join('/cards', …)` 在 Windows 上是**根相对**路径
+  // （`\cards\cpu-usage`），而实现里 `resolve()` 会补上盘符 → 断言必红。
+  // → 夹具与实现用**同一个**基准（都 `resolve` 之后）。
+  const root = resolve(join('/cards', 'cpu-usage'));
 
   it('普通相对路径 → 落在目录里', () => {
     expect(resolveInsideCard(root, 'index.html')).toBe(join(root, 'index.html'));
@@ -56,6 +59,30 @@ describe('卡片目录内的路径解析', () => {
   });
 });
 
+/**
+ * **能不能建软链**（Windows 上要开发者模式或管理员；没有就 EPERM）。
+ *
+ * → 建不出来就**跳过**那几条，而不是**红**——
+ * 「这台机器没权限」不是产品坏了。
+ *
+ * （软链穿越防护是「AI 写的卡片不能读宿主文件系统」的唯一防线，
+ * 它在 Linux 上是真验过的；Windows 上没权限就跳过，**别把跳过当通过**。）
+ */
+function canSymlink(): boolean {
+  const base = mkdtempSync(join(tmpdir(), 'card-symlink-probe-'));
+  try {
+    writeFileSync(join(base, 'target.txt'), 'x', 'utf8');
+    symlinkSync(join(base, 'target.txt'), join(base, 'link.txt'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+const SYMLINK_OK = canSymlink();
+
 describe('符号链接（软链是最常见的绕过）', () => {
   function scene(): { root: string; cleanup: () => void } {
     const base = mkdtempSync(join(tmpdir(), 'card-symlink-'));
@@ -66,7 +93,7 @@ describe('符号链接（软链是最常见的绕过）', () => {
     return { root, cleanup: () => rmSync(base, { recursive: true, force: true }) };
   }
 
-  it('软链指向卡片目录**之外** → null（词法上在目录里，realpath 后在外面）', () => {
+  it.skipIf(!SYMLINK_OK)('软链指向卡片目录**之外** → null（词法上在目录里，realpath 后在外面）', () => {
     const { root, cleanup } = scene();
     try {
       symlinkSync(join(root, '..', 'secret.txt'), join(root, 'link.txt'));
@@ -76,7 +103,7 @@ describe('符号链接（软链是最常见的绕过）', () => {
     }
   });
 
-  it('软链指向**目录之外的一个目录** → null', () => {
+  it.skipIf(!SYMLINK_OK)('软链指向**目录之外的一个目录** → null', () => {
     const { root, cleanup } = scene();
     try {
       const outsideDir = join(root, '..', 'outside');
@@ -89,7 +116,7 @@ describe('符号链接（软链是最常见的绕过）', () => {
     }
   });
 
-  it('软链指向**卡片目录之内** → 允许（同一份代码的别名不算越界）', () => {
+  it.skipIf(!SYMLINK_OK)('软链指向**卡片目录之内** → 允许（同一份代码的别名不算越界）', () => {
     const { root, cleanup } = scene();
     try {
       writeFileSync(join(root, 'real.txt'), 'ok', 'utf8');
