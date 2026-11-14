@@ -912,6 +912,53 @@ const MUTATIONS = [
         '    const dt = 0; // 变异：计数器不推进',
       ),
   },
+  {
+    name: 'M70 假设备：终端横幅必须真的发出去（构造时发 = 没人接）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '横幅要真的发出去',
+    apply: (s) =>
+      replace(
+        s,
+        "    this.emit(`⚠ 合成数据（${FAKE_DEVICE_MARKER}）—— 不是真板子；输入 help 看能做什么\r\n`);",
+        '    /* 变异：不发横幅 */',
+      ),
+  },
+  {
+    name: 'M71 假设备：得是 pipe 模式（pty 的话命令永远匹配不上）',
+    file: 'src/main/hal/fake/profile.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '假 profile 声明 pipe 模式',
+    apply: (s) => replace(s, '      pty: false,', '      pty: true,'),
+  },
+  {
+    name: 'M72 假设备没载入成功时要**拒绝**（不能回落成真本机连接）',
+    file: 'src/main/hal/fake/wiring.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-wiring.test.ts'],
+    expect: '路由：载入成功才走假设备',
+    apply: (s) =>
+      replace(s, "  return fakeReady ? 'fake' : 'refuse';", "  return 'fake'; // 变异：永远走假设备"),
+  },
+  {
+    name: 'M73 假设备：meminfo 的坏要真的注入（不然 error 那一态看不见）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: 'meminfo 坏掉',
+    apply: (s) =>
+      replace(
+        s,
+        '      broken = this.breakMeminfoEvery > 0 && this.meminfoRounds % this.breakMeminfoEvery === 0;',
+        '      broken = false; // 变异：meminfo 永远不坏',
+      ),
+  },
+  {
+    name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '超时只落在快组上',
+    apply: (s) =>
+      replace(s, '    if (isFast) {', '    if (true) { // 变异：每一组都算快组'),
+  },
 
 ];
 
