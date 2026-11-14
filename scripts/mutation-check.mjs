@@ -995,6 +995,30 @@ const MUTATIONS = [
     apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
   },
   {
+    name: 'M85 控制面：确认凭据必须一次性（用掉就没了）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: '第二次用不行',
+    apply: (s) =>
+      replace(
+        s,
+        '    // **一次性**：用掉就删\n    this.issued.delete(token);',
+        '    // 变异：不删（凭据可以重放）',
+      ),
+  },
+  {
+    name: 'M86 控制面：destructive 动作必须走确认（不能直接执行）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: 'destructive → needs_confirmation',
+    apply: (s) =>
+      replace(
+        s,
+        "  const dangerous = action.danger === 'destructive' || floor.verdict === 'destructive';",
+        "  const dangerous = action.danger === 'destructiv' || floor.verdict === 'destructive';",
+      ),
+  },
+  {
     name: 'M83 控制面：回读形式 5 必须标 verified:false（标成 true = 把没验证当验证了）',
     file: 'src/main/actions/readback.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
