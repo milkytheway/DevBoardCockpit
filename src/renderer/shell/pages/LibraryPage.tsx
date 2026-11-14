@@ -9,14 +9,15 @@ export function LibraryPage({
   onSelect,
   onOpenDetail,
   onRefresh,
-  onOpenWorkbench,
+  onPlaceOnWorkbench,
 }: {
   cards: CardInstanceInfo[];
   selectedCardId: string | null;
   onSelect: (info: CardInstanceInfo) => void;
   onOpenDetail: (info: CardInstanceInfo) => void;
   onRefresh: () => void;
-  onOpenWorkbench: () => void;
+  /** Put this card into the workbench **and** go there. */
+  onPlaceOnWorkbench: (info: CardInstanceInfo) => void;
 }): JSX.Element {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(selectedCardId);
@@ -143,7 +144,13 @@ export function LibraryPage({
               <dd>文件变化 → 校验 → 重载 iframe；不合法保留上一版</dd>
             </dl>
             <div className="library__actions">
-              <button type="button" className="btn btn--primary btn--sm" onClick={onOpenWorkbench}>
+              {/* **「放到工作台」要真的摆进去**——
+                  只切页的话，用户落到一个空网格上，还得自己去侧边栏找这张卡。 */}
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                onClick={() => onPlaceOnWorkbench(selected)}
+              >
                 放到工作台
               </button>
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(selected)}>

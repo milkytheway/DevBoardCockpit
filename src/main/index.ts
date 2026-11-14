@@ -78,6 +78,9 @@ function listProfiles(): ConnectionProfile[] {
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
+  // **编译期常量**：生产构建里它是 `false` → 下面这段是死代码 →
+  // **假设备的接线规则整个不进包**（连假 profile 的工厂也不在）。
+  if (!__COCKPIT_FAKE_BUILD__) return profiles;
   // **假设备没载入成功 → 就不列它**：
   // 列了却拿真本机连接顶替，比不列更坏（标着「合成数据」，其实是自己的机器）。
   return profilesWithFake(profiles, FAKE_MODE, fakeModule !== null);
@@ -89,6 +92,8 @@ const adbPath = resolveAdbPath(settings);
 
 /** 连接用 manager 给的日志——**一个会话一份**，输入输出在同一处 */
 function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
+  // **编译期常量**：生产构建里整段假设备的路由是死代码（见上）。
+  if (!__COCKPIT_FAKE_BUILD__) return createConnection(profile, log, { adbPath });
   const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
   if (route === 'fake' && fakeModule !== null) {
     // ⚠️ 假设备：产出的全是**合成数据**（见 `hal/fake/`）

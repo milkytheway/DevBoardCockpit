@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { LayoutState, LayoutUnit, ViewDensity } from '../../shared/layout';
-import { withDensity, withUnits } from '../../shared/layout';
+import { defaultUnit, withDensity, withUnits } from '../../shared/layout';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import { CardBroker } from '../cards/broker';
 import type { ActivityEntry, ActivityLevel } from './types';
@@ -205,15 +205,9 @@ export function useLayout(reportError: ReportError): {
       persist(
         withUnits(current, [
           ...current.units,
-          {
-            cardId: card.cardId,
-            connectionId: card.connectionId,
-            x: 0,
-            y: 0,
-            // **卡片自报的尺寸**（manifest 的 layout.w/h）——作者的心愿
-            w: card.layout?.w ?? 3,
-            h: card.layout?.h ?? 2,
-          },
+          // **默认格子只有一处**（shared/layout.ts 的 defaultUnit）：
+          // 尺寸取卡片自报的 layout.w/h——作者的心愿。
+          defaultUnit(card.cardId, card.connectionId, card.layout),
         ]),
       );
     },

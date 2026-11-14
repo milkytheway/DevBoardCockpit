@@ -1356,36 +1356,6 @@ select {
   }
 }
 
-/* ---------- details: scrollbars, narrow host cards ---------- */
-
-.app-scroll::-webkit-scrollbar,
-.readings-scroll::-webkit-scrollbar,
-.readings-table::-webkit-scrollbar,
-.library__rows::-webkit-scrollbar,
-.dock__body::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.app-scroll::-webkit-scrollbar-thumb,
-.readings-scroll::-webkit-scrollbar-thumb,
-.readings-table::-webkit-scrollbar-thumb,
-.library__rows::-webkit-scrollbar-thumb,
-.dock__body::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--cockpit-text-faint) 28%, transparent);
-}
-.app-scroll::-webkit-scrollbar-track,
-.readings-scroll::-webkit-scrollbar-track,
-.readings-table::-webkit-scrollbar-track,
-.library__rows::-webkit-scrollbar-track,
-.dock__body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.target-list .btn {
-  white-space: nowrap;
-  padding-inline: 9px;
-}
 
 /* The target card lives in a 4-of-12 slot; drop the least important column
    before anything is allowed to wrap. */
@@ -1442,22 +1412,9 @@ select {
 .app-main.is-compact .workbench {
   gap: 10px;
 }
-.app-main.is-compact .host-strip {
-  gap: 10px;
-}
-.app-main.is-compact .host-card {
-  padding: 8px 10px;
-}
-.app-main.is-compact .host-card__head {
-  min-height: 18px;
-}
-.app-main.is-compact .reading-row {
-  padding: 3px 6px;
-  font-size: 11.5px;
-}
+
+
 .app-main.is-compact .cockpit-card__head {
   height: 34px;
 }
-.app-main.is-compact .grid-section {
-  gap: 6px;
-}
+

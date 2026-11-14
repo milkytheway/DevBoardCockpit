@@ -10,15 +10,7 @@ import type { SecondaryGroup } from './nav';
  * treatment, same empty state) and means a new page is a new data function
  * rather than a new component.
  */
-export function Secondary({
-  groups,
-  emptyHint,
-}: {
-  groups: SecondaryGroup[];
-  /** Shown when the page has nothing to list. */
-  emptyHint?: string;
-}): JSX.Element {
-  const isEmpty = groups.every((group) => group.items.length === 0);
+export function Secondary({ groups }: { groups: SecondaryGroup[] }): JSX.Element {
   return (
     <nav className="secondary" aria-label="页面选项">
       {groups.map((group) => (
@@ -62,7 +54,6 @@ export function Secondary({
           )}
         </section>
       ))}
-      {isEmpty && emptyHint ? <p className="secondary__empty">{emptyHint}</p> : null}
     </nav>
   );
 }

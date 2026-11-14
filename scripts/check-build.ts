@@ -143,7 +143,8 @@ function main(): void {
   // 动态 import 那个 chunk 就不该产出；这里**验它真的没产出**。
   // 标记串住在假设备自己的模块里（`hal/fake/device.ts`），
   // 那个模块**只可能**经由动态 import 进包 → 标记在 = 假设备在。
-  const fakeHits = findFilesWithMarker(join(outDir, 'main'), FAKE_DEVICE_MARKER);
+  // **扫整个 out/**（不只 main）：假设备要是漏进 renderer 也是合成数据。
+  const fakeHits = findFilesWithMarker(outDir, FAKE_DEVICE_MARKER);
   checks.push({
     what: '生产产物里没有假设备（合成数据不许进生产包）',
     ok: fakeHits.length === 0,

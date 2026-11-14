@@ -314,7 +314,10 @@ export function Shell(): JSX.Element {
                 onSelect={selectCard}
                 onOpenDetail={openDetail}
                 onRefresh={refresh}
-                onOpenWorkbench={() => setPage('workbench')}
+                onPlaceOnWorkbench={(card) => {
+                  handlePlace(card);
+                  setPage('workbench');
+                }}
               />
             ) : null}
 
