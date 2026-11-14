@@ -473,8 +473,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    void this.queue\n      .run('sample', async () => {",
-        '    // 变异：绕开队列，直接采\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'sample\', async () => {',
+        "    void this.queue\n      .run('card-sampling', async () => {",
+        '    // 变异：绕开队列，直接采\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'card-sampling\', async () => {',
       ),
   },
   {
