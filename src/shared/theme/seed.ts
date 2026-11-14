@@ -32,7 +32,7 @@ const DARK: Record<string, string> = {
   'danger': '#F85149',
   'unknown': '#8B95A5',
   'border': '#262D37',
-  'border-strong': '#5F6C7A',
+  'border-strong': '#65727F',
   'series-1': '#58A6FF',
   'series-2': '#3FB950',
   'series-3': '#D29922',

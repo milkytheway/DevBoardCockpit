@@ -173,13 +173,17 @@ export async function launchApp(
  * @param cardId 卡片 id（目录名与 manifest 的 id 相同）
  */
 export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
-  // ── 为什么是「重试」而不是「等一次」──
+  // ── 为什么是「重试」而不是「等一次」 ──
   //
   // 卡片的内容指纹进了**实例 id** → **卡片文件一变，实例 id 就变**
   // （这是「改文件即热更新」的实现方式：URL 变 → iframe 重建）。
   // 而 e2e 写卡时是**连续写几个文件** → 实例 id 会抖几下。
   //
   // → 每轮都重新读清单、重新找帧；帧要是已经被换掉（detached）就再来一轮。
+  //
+  // 还有一个更朴素的原因：iframe 一进 DOM，`page.frames()` 就能看到它，
+  // 但这时卡片文档**可能还没导航完**（evaluate 会落在 about:blank）。
+  // → 找到帧后还要确认文档已加载、bridge 已注入，再交出去。
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const list = await cardsList(page);
     const info = list.find((c) => c.cardId === cardId);
@@ -187,7 +191,15 @@ export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
       const frame = page
         .frames()
         .find((f) => f.url().startsWith(`cockpit://card/${info.instanceId}/`));
-      if (frame !== undefined && !frame.isDetached()) return frame;
+      if (frame !== undefined && !frame.isDetached()) {
+        const ready = await frame
+          .evaluate(() => {
+            const injected = (window as unknown as { cockpit?: unknown }).cockpit;
+            return document.readyState === 'complete' && typeof injected === 'object';
+          })
+          .catch(() => false);
+        if (ready) return frame;
+      }
     }
     await new Promise((r) => setTimeout(r, 250));
   }
