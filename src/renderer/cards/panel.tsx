@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CardBroker } from './broker';
-import { UserCard } from './user-card';
+import { Board } from './board';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
+import type { LayoutUnit } from '../../shared/layout';
 
 /**
  * 用户卡区。
@@ -20,6 +21,8 @@ import type { CardInstanceInfo } from '../../shared/ipc-contract';
  */
 export function CardPanel(): JSX.Element {
   const [cards, setCards] = useState<CardInstanceInfo[]>([]);
+  /** 有效布局（宿主算好的：没挪过的卡用 manifest 的默认尺寸） */
+  const [units, setUnits] = useState<LayoutUnit[]>([]);
   const [error, setError] = useState<string | null>(null);
   // **用 state 不用 ref**：ref 在渲染时读是「上一帧的值」，
   // 第一次渲染时它是 null，卡片就渲染不出来（要等一次状态变化才补上）。
@@ -39,9 +42,12 @@ export function CardPanel(): JSX.Element {
     const refresh = (): void => {
       void api
         .cardsList()
-        .then((list) => {
+        .then(async (list) => {
           setCards(list);
           setError(null);
+          // **布局跟卡片一起取**（新装的卡要用 manifest 的默认尺寸）
+          const layout = await api.layoutGet();
+          setUnits(layout.units);
         })
         .catch((err: unknown) => {
           setError(err instanceof Error ? err.message : String(err));
@@ -63,6 +69,14 @@ export function CardPanel(): JSX.Element {
     };
   }, []);
 
+  /** 拖完了 → 存起来（**宿主的账**） */
+  const onLayoutChange = useCallback((next: LayoutUnit[]) => {
+    setUnits(next);
+    const api = window.cockpit;
+    if (api === undefined || typeof api.layoutSet !== 'function') return;
+    void api.layoutSet({ units: next, updatedAt: Date.now() });
+  }, []);
+
   return (
     <section className="card-panel" aria-label="卡片">
       <h2 className="card-panel__title">卡片</h2>
@@ -70,11 +84,9 @@ export function CardPanel(): JSX.Element {
       {error === null && cards.length === 0 ? (
         <p className="card-panel__empty">还没有卡片——把一个卡片目录放进卡片根目录就会自动出现。</p>
       ) : null}
-      <div className="card-panel__grid">
-        {cards.map((info) =>
-          broker === null ? null : <UserCard key={info.instanceId} info={info} broker={broker} />,
-        )}
-      </div>
+      {broker === null ? null : (
+        <Board units={units} cards={cards} broker={broker} onLayoutChange={onLayoutChange} />
+      )}
     </section>
   );
 }

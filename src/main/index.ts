@@ -8,6 +8,7 @@ import {
   type IpcChannel,
   type IpcResult,
 } from '../shared/ipc-contract';
+import type { LayoutState } from '../shared/layout';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
@@ -167,6 +168,8 @@ const cards = createCardWiring({
   },
   // **存储不在卡片根目录里**——它被 fs.watch 盯着，写一次就触发一次热刷新（回路）
   storageDir: cardStorageDir(),
+  // **布局是宿主记的账**（哪张卡在哪个格子里）→ 落在用户数据目录
+  layoutFile: join(userDataDir(), 'layout.json'),
   shellDir: join(__dirname, '../renderer'),
   shellCsp: SHELL_CSP,
 });
@@ -189,6 +192,12 @@ handle(IPC.cardsHello, (instanceId) => {
   return undefined;
 });
 handle(IPC.cardsRequest, (req) => cards.handleRequest(req as CardRequest));
+
+handle(IPC.layoutGet, () => cards.layoutGet());
+handle(IPC.layoutSet, (state) => {
+  cards.layoutSet(state as LayoutState);
+  return undefined;
+});
 
 /**
  * 一张卡的 **CSP 违规** → 它的运行时日志。

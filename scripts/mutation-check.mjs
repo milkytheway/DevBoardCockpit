@@ -812,6 +812,19 @@ const MUTATIONS = [
       ),
   },
 
+  {
+    name: 'M63 布局：拖完必须真的落盘（否则位置只在内存里，重启就没）',
+    file: 'src/main/cards/layout.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/layout.test.ts'],
+    expect: 'set 之后 get 等值',
+    apply: (s) =>
+      replace(
+        s,
+        "    writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');",
+        '    /* 变异：不落盘 */',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

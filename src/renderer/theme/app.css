@@ -446,10 +446,35 @@ body {
   color: var(--cockpit-danger);
 }
 
-.card-panel__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+/* 卡片区的那张网格（react-grid-layout 负责定位；这里管**格子里的东西**） */
+.card-board__cell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--cockpit-border);
+  border-radius: var(--cockpit-radius-card);
+  background: var(--cockpit-surface);
+  overflow: hidden;
+}
+
+/* 拖拽手柄：**宿主画的**（卡片碰不到宿主的 chrome，契约 §六） */
+.card-board__handle {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--cockpit-text-dim);
+  background: var(--cockpit-bg-elevated);
+  border-bottom: 1px solid var(--cockpit-border);
+  cursor: grab;
+  user-select: none;
+}
+
+.card-board__handle:active {
+  cursor: grabbing;
+}
+
+.card-board__handle-title {
+  font-family: var(--cockpit-font-mono);
 }
 
 /* 一张用户卡：沙箱 iframe。**边框是宿主画的**——

@@ -6,6 +6,7 @@ import { CardRuntimeLog } from './runtime-log';
 import { createCardProtocol } from './protocol';
 import { bridgeScriptFor } from './bridge-script';
 import { cspScriptFor } from './csp-script';
+import { LayoutStore } from './layout';
 import { cardApis } from './api-registry';
 import { parseManifest } from './manifest';
 import { validateCard } from './validate';
@@ -13,6 +14,7 @@ import { aliasVars, themeCss } from '../../shared/theme/map';
 import { baseStyleBlock } from '../../shared/theme/base-css';
 import type { CardPermissions } from './permissions';
 import type { CardInstanceInfo, CardRequest, CardResponse } from '../../shared/ipc-contract';
+import type { LayoutState } from '../../shared/layout';
 import type { ThemeName } from '../../shared/theme/seed';
 import { IPC } from '../../shared/ipc-contract';
 import { existsSync, readFileSync } from 'node:fs';
@@ -49,6 +51,8 @@ export interface CardWiringDeps {
   permsFor: (cardId: string) => CardPermissions;
   /** 存储的根目录 */
   storageDir: string;
+  /** 布局文件（**宿主记的账**：哪张卡在哪个格子里） */
+  layoutFile: string;
   /** 外壳的构建产物目录（`cockpit://app/` 从这里伺服） */
   shellDir?: string;
   /** 外壳的 CSP（生产用；**开发时走 Vite，不用它**） */
@@ -69,6 +73,10 @@ export interface CardWiring {
   list: () => CardInstanceInfo[];
   /** 卡片的一个请求 */
   handleRequest: (req: CardRequest) => Promise<CardResponse>;
+  /** 读布局 */
+  layoutGet: () => LayoutState;
+  /** 存布局 */
+  layoutSet: (state: LayoutState) => void;
   /** 重新发现卡片（热插拔） */
   refresh: () => void;
   /** 把一条 CSP 违规归到卡片的运行时日志 */
@@ -92,6 +100,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
 
   const storage = new CardStorage({ dir: deps.storageDir });
   const log = new CardRuntimeLog({ now });
+  const layout = new LayoutStore({ file: deps.layoutFile, now });
   /** 卡片 id → 当前实例 id（用来发现「实例换了」） */
   const instanceByCard = new Map<string, string>();
 
@@ -180,6 +189,35 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       return out;
     },
     handleRequest: (req) => sessions.handle(req),
+    // ── 布局的**有效值**由宿主算 ──
+    //
+    // 存着的布局只记了「谁被挪过」；没挪过的卡要用 **manifest 声明的尺寸**
+    // （那是产品的默认值，**只有宿主知道**——它读的是 manifest）。
+    // → 页面拿到的是**已经算好的格子**，不用自己懂 manifest。
+    layoutGet: () => {
+      const stored = layout.get();
+      const connectionId = deps.currentConnectionId();
+      const byKey = new Map(stored.units.map((u) => [layoutKey(u.cardId, u.connectionId), u]));
+      const units = registry.cards().map((card) => {
+        const k = layoutKey(card.cardId, connectionId);
+        return (
+          byKey.get(k) ??
+          layout.defaultFor(card.cardId, connectionId, card.manifest.layout)
+        );
+      });
+      return { units, updatedAt: stored.updatedAt };
+    },
+    // 存的时候**别把没装的卡的格子丢了**（卡片卸载了再装回来，位置还在）
+    layoutSet: (state) => {
+      const connectionId = deps.currentConnectionId();
+      const installed = new Set(
+        registry.cards().map((c) => layoutKey(c.cardId, connectionId)),
+      );
+      const kept = layout
+        .get()
+        .units.filter((u) => !installed.has(layoutKey(u.cardId, u.connectionId)));
+      layout.set({ units: [...kept, ...state.units], updatedAt: now() });
+    },
     refresh: () => {
       registry.refresh();
     },
@@ -189,6 +227,11 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
 }
 
 /* ── 两个小工具 ── */
+
+/** 布局单元的键（`(cardId, connectionId)`） */
+function layoutKey(cardId: string, connectionId: string | null): string {
+  return `${cardId}::${connectionId ?? ''}`;
+}
 
 /** 外壳的静态文件（`cockpit://app/…`） */
 function serveShell(url: URL, shellDir: string | undefined, shellCsp: string | undefined): Response {

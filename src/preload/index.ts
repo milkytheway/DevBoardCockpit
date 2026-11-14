@@ -53,6 +53,8 @@ export const api: CockpitApi = {
   cardsHello: (instanceId) => invoke(IPC.cardsHello, instanceId),
   cardsRequest: (req) => invoke(IPC.cardsRequest, req),
   cardsCsp: (instanceId, detail) => invoke(IPC.cardsCsp, instanceId, detail),
+  layoutGet: () => invoke(IPC.layoutGet),
+  layoutSet: (state) => invoke(IPC.layoutSet, state),
   onCardEvent: (cb) => {
     const handler = (_e: IpcRendererEvent, instanceId: string, payload: unknown): void =>
       cb(instanceId, payload);

@@ -22,6 +22,7 @@ import type { CardPermissions } from '../../../src/main/cards/permissions';
  */
 
 interface Fixture {
+  base: string;
   roots: string;
   storageDir: string;
   cleanup: () => void;
@@ -50,7 +51,12 @@ function fixture(): Fixture {
     'utf8',
   );
   writeFileSync(join(roots, 'cpu-usage', 'index.html'), '<!doctype html><html></html>', 'utf8');
-  return { roots, storageDir, cleanup: () => rmSync(base, { recursive: true, force: true }) };
+  return {
+    base,
+    roots,
+    storageDir,
+    cleanup: () => rmSync(base, { recursive: true, force: true }),
+  };
 }
 
 const PERMS: CardPermissions = { read: ['cpu.usage'], write: [] };
@@ -63,6 +69,7 @@ function wiringOf(fx: Fixture, opts: { connectionId?: () => string | null } = {}
     currentConnectionId: opts.connectionId ?? (() => 'board-a'),
     permsFor: () => PERMS,
     storageDir: fx.storageDir,
+    layoutFile: join(fx.base, 'layout.json'),
   });
 }
 

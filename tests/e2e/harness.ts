@@ -92,7 +92,7 @@ async function waitForDisplay(display: string): Promise<void> {
  *   （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
  */
 export async function launchApp(
-  opts: { executablePath?: string } = {},
+  opts: { executablePath?: string; userDataDir?: string } = {},
 ): Promise<Launched> {
   const xvfb = ensureDisplay();
   if (xvfb !== undefined) await waitForDisplay(process.env['DISPLAY'] as string);
@@ -114,7 +114,9 @@ export async function launchApp(
    *
    * 顺带解决一件事：e2e **不再往用户真实的用户数据目录里写东西**。
    */
-  const root = mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
+  // **复用传入的 userData**（「重启应用后位置还在」那条判据要用）——
+  // 不传就每次起一个新的临时目录（互不干扰 ✓）
+  const root = opts.userDataDir ?? mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
   const userDataDir = join(root, APP_NAME);
   mkdirSync(userDataDir, { recursive: true });
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -149,7 +151,10 @@ export async function launchApp(
       await app.close().catch(() => undefined);
       // **不杀 Xvfb**——它是整个测试进程共用的（见 `ensureDisplay` 的注释）
       void xvfb;
-      rmSync(root, { recursive: true, force: true });
+      // 复用进来的目录**不删**（那是「重启后还在」那条判据的现场）
+      if (opts.userDataDir === undefined) {
+        rmSync(root, { recursive: true, force: true });
+      }
     },
   };
 }

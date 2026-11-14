@@ -8,6 +8,7 @@
 import type { AppErrorPayload } from './errors';
 import type { TagReading } from './tag-reading';
 import type { RuntimeStatus } from './runtime-status';
+import type { LayoutState } from './layout';
 
 export const IPC = {
   terminalOpen: 'terminal:open',
@@ -57,6 +58,10 @@ export const IPC = {
   cardsEvent: 'cards:event',
   /** 装着的卡片变了（热插拔）—— 页面据此重新取清单 */
   cardsChanged: 'cards:changed',
+  /** 读布局（哪张卡在哪个格子里） */
+  layoutGet: 'layout:get',
+  /** 存布局（拖完之后） */
+  layoutSet: 'layout:set',
 } as const;
 
 /** 一张卡片的一个实例 */
@@ -191,6 +196,10 @@ export interface CockpitApi {
   cardsHello(instanceId: string): Promise<void>;
   /** 卡片的一个请求（**权限判定在 main**） */
   cardsRequest(req: CardRequest): Promise<CardResponse>;
+  /** 读布局 */
+  layoutGet(): Promise<LayoutState>;
+  /** 存布局 */
+  layoutSet(state: LayoutState): Promise<void>;
   /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */
   cardsCsp(instanceId: string, detail: CardCspViolation): Promise<void>;
   /**
