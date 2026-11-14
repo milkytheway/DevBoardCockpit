@@ -952,6 +952,15 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '超时只落在快组上',
+    apply: (s) =>
+      replace(s, '    if (isFast) {', '    if (true) { // 变异：每一组都算快组'),
+  },
+
+  {
     name: 'M75 外壳：「已在主区」按实例键判（不是 cardId）',
     file: 'src/renderer/shell/nav.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
@@ -975,15 +984,6 @@ const MUTATIONS = [
         '    // 变异：没有关闭路径\n',
       ),
   },
-  {
-    name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
-    file: 'src/main/hal/fake/connection.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '超时只落在快组上',
-    apply: (s) =>
-      replace(s, '    if (isFast) {', '    if (true) { // 变异：每一组都算快组'),
-  },
-
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
