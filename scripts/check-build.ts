@@ -15,14 +15,39 @@
  * 用法：npm run build（build 脚本末尾会自动调用）
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PRELOAD_FILE } from '../src/shared/build-layout';
+import { FAKE_DEVICE_MARKER } from '../src/main/hal/fake/device';
 
 interface Check {
   what: string;
   ok: boolean;
   detail: string;
+}
+
+/**
+ * 递归找出所有**含有某个标记**的文件（相对路径）。
+ *
+ * 目录不存在 → 空数组（不是错误：产物没建成是别处的检查负责）。
+ */
+function findFilesWithMarker(dir: string, marker: string): string[] {
+  if (!existsSync(dir)) return [];
+  const hits: string[] = [];
+  const walk = (current: string, prefix: string): void => {
+    for (const entry of readdirSync(current)) {
+      const full = join(current, entry);
+      const relative = prefix === '' ? entry : `${prefix}/${entry}`;
+      if (statSync(full).isDirectory()) {
+        walk(full, relative);
+        continue;
+      }
+      if (!/\.(js|cjs|mjs)$/.test(entry)) continue;
+      if (readFileSync(full, 'utf8').includes(marker)) hits.push(relative);
+    }
+  };
+  walk(dir, '');
+  return hits;
 }
 
 function main(): void {
@@ -108,13 +133,36 @@ function main(): void {
     detail: rendererHtml,
   });
 
+  // ── 生产产物里不许有假设备 ────────────────────────────────────────
+  //
+  // **为什么这条非写不可**：假设备是**调试用的合成数据**——
+  // 它要是混进了生产包，用户在面板上看到的就是编出来的数，
+  // 而界面不会告诉他「这是假的」。
+  //
+  // 做法：生产构建把 `__COCKPIT_FAKE_BUILD__` 编成 `false`，
+  // 动态 import 那个 chunk 就不该产出；这里**验它真的没产出**。
+  // 标记串住在假设备自己的模块里（`hal/fake/device.ts`），
+  // 那个模块**只可能**经由动态 import 进包 → 标记在 = 假设备在。
+  const fakeHits = findFilesWithMarker(join(outDir, 'main'), FAKE_DEVICE_MARKER);
+  checks.push({
+    what: '生产产物里没有假设备（合成数据不许进生产包）',
+    ok: fakeHits.length === 0,
+    detail:
+      fakeHits.length === 0
+        ? `没找到标记「${FAKE_DEVICE_MARKER}」`
+        : `标记「${FAKE_DEVICE_MARKER}」出现在：${fakeHits.join(', ')}`,
+  });
+
   // ── 汇总 ────────────────────────────────────────────────────────
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {
     console.error('✗ 构建产物自检不过：');
     for (const c of failed) console.error(`  - ${c.what}\n      ${c.detail}`);
-    console.error('\n  常见原因：main 里写死的 preload 路径与构建实际产出的文件名对不上。');
-    console.error('  这类错误在开发期看不出来——窗口打开后 `window.cockpit` 是 undefined，整个应用没有 API。');
+    console.error('\n  两种常见原因：');
+    console.error('  ① main 里写死的 preload 路径与构建实际产出的文件名对不上');
+    console.error('     —— 这类错误在开发期看不出来：窗口打开后 `window.cockpit` 是 undefined，整个应用没有 API。');
+    console.error('  ② 调试用的东西（假设备）混进了生产包');
+    console.error('     —— 生产包里出现合成数据，用户会把假数当真数看。');
     process.exit(1);
   }
 

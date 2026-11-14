@@ -18,9 +18,20 @@ import { PRELOAD_ENTRY, PRELOAD_FORMAT } from './src/shared/build-layout';
  * main 里的 preload 路径也从那里取，两边不会对不上。
  * `npm run build` 末尾的 `scripts/check-build.ts` 会再验一次产物真的存在。
  */
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: {
+      /**
+       * ⚠️ The fake device is **only in a debug build**:
+       * the production build compiles this to `false`,
+       * so `if (!__COCKPIT_FAKE_BUILD__) return;` becomes dead code,
+       * rollup drops the whole block — **and the dynamic import's chunk
+       * is never emitted** (`scripts/check-build.ts` verifies this:
+       * the marker string must not appear anywhere under `out/main/`).
+       */
+      __COCKPIT_FAKE_BUILD__: JSON.stringify(command !== 'build'),
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') },
@@ -55,4 +66,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

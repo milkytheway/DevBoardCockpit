@@ -840,6 +840,79 @@ const MUTATIONS = [
       ),
   },
 
+  // ── 假设备（调试用的合成数据）────────────────────────────────────
+  //
+  // **为什么假设备也要有守卫**：它喂的是**真 kind + 真 store**——
+  // 一旦它开始编数（而不是吐原始文本），面板上就会出现**没人能解释的值**，
+  // 而调试的人会把那些值当成板子的真实状态。
+
+  {
+    name: 'M64 假设备：读不到的文件必须给空（给 0 就是「板子满载」的假数）',
+    file: 'src/main/hal/fake/exec.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '一个字都没有',
+    apply: (s) =>
+      replace(s, "    return device.read(path.text) ?? '';", "    return device.read(path.text) ?? '0';"),
+  },
+  {
+    name: 'M65 假设备：for 循环里的变量要替换成 glob 的每一项（否则温度全是空的）',
+    file: 'src/main/hal/fake/exec.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '温度按 type 归并',
+    apply: (s) =>
+      replace(
+        s,
+        `        const substituted = bodyText.replace(
+          new RegExp(\`\\\\$\${variable}(?![A-Za-z0-9_])\`, 'g'),
+          () => match,
+        );`,
+        '        const substituted = bodyText;',
+      ),
+  },
+  {
+    name: 'M66 假设备：profile 必须指着真的板型包（不然候选挑选选不上它）',
+    file: 'src/main/hal/fake/profile.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '假 profile 带 board_pack',
+    apply: (s) => replace(s, "    board_pack: 'rk3588-atk',", "    board_pack: 'rk3588-nonexistent',"),
+  },
+  {
+    name: 'M67 假设备：超时要真的超时（不然 stale 那一态永远看不见）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '往返超时',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (this.timeoutEvery > 0 && this.rounds % this.timeoutEvery === 0) {',
+        '    if (this.timeoutEvery > 0 && this.rounds % this.timeoutEvery === 1) {',
+      ),
+  },
+  {
+    name: 'M68 假设备：meminfo 坏了就是坏了（不能偷偷把 MemAvailable 补上）',
+    file: 'src/main/hal/fake/connection.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: 'meminfo 坏掉',
+    apply: (s) =>
+      replace(
+        s,
+        '    const broken = this.breakMeminfoEvery > 0 && this.rounds % this.breakMeminfoEvery === 0;',
+        '    const broken = this.breakMeminfoEvery > 0 && this.rounds % this.breakMeminfoEvery === 1;',
+      ),
+  },
+  {
+    name: 'M69 假设备：计数器必须往前走（否则占用率永远是 pending）',
+    file: 'src/main/hal/fake/device.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
+    expect: '第二次采样 cpu.usage 是 ok',
+    apply: (s) =>
+      replace(
+        s,
+        '    const dt = Math.max(0, (at - this.lastAt) / 1000);',
+        '    const dt = 0; // 变异：计数器不推进',
+      ),
+  },
+
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

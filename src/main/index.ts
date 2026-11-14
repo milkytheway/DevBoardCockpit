@@ -12,6 +12,7 @@ import type { LayoutState } from '../shared/layout';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
+import { FAKE_PROFILE_ID, fakeMode, fakeProfile, type FakeMode } from './hal/fake/profile';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
@@ -35,12 +36,49 @@ import type { ConnectionProfile } from './profiles/schema';
  * renderer 只画界面；卡片 iframe 只经 preload 的白名单 API 触达这里。
  */
 
-/** 连接 profile 的来源：内置目录 + 用户目录，用户优先 */
+/**
+ * ⚠️ **假设备**（调试用）：`COCKPIT_FAKE=1`（假设备优先）或 `COCKPIT_FAKE=only`（只有它）。
+ *
+ * **它只在调试构建里存在**——生产构建把这个分支整个剪掉，
+ * `scripts/check-build.ts` 会验产物里没有它（ADR-D30）。
+ */
+declare const __COCKPIT_FAKE_BUILD__: boolean;
+
+const FAKE_MODE: FakeMode = __COCKPIT_FAKE_BUILD__ ? fakeMode() : 'off';
+
+/**
+ * The fake device's module — **loaded on demand**.
+ *
+ * → In a production build `FAKE_MODE` is compiled to `'off'`, so this
+ * dynamic import is unreachable, rollup drops it, and **the fake device's
+ * code is not in the production bundle at all** (the build self-check
+ * verifies this).
+ */
+type FakeModule = typeof import('./hal/fake/connection.js');
+let fakeModule: FakeModule | null = null;
+
+async function loadFakeDevice(): Promise<void> {
+  // **编译期常量**：生产构建里 `__COCKPIT_FAKE_BUILD__` 是 `false`，
+  // 于是这一行之后全是死代码 → rollup 整块剪掉，
+  // **动态 import 那个 chunk 根本不会产出**。
+  // （`scripts/check-build.ts` 会验这件事——见 ADR-D30。）
+  if (!__COCKPIT_FAKE_BUILD__) return;
+  if (FAKE_MODE === 'off') return;
+  fakeModule = await import('./hal/fake/connection.js');
+}
+
+/**
+ * 连接 profile 的来源：内置目录 + 用户目录，用户优先。
+ *
+ * 假设备（开着的时候）**排第一个**——调试时看到的一定是它。
+ */
 function listProfiles(): ConnectionProfile[] {
-  return loadProfiles({
+  const profiles = loadProfiles({
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
+  if (FAKE_MODE === 'off') return profiles;
+  return FAKE_MODE === 'only' ? [fakeProfile()] : [fakeProfile(), ...profiles];
 }
 
 /** 宿主设置。机器专属的 adb 路径在这里读，不进代码（事实清单 §2） */
@@ -49,6 +87,11 @@ const adbPath = resolveAdbPath(settings);
 
 /** 连接用 manager 给的日志——**一个会话一份**，输入输出在同一处 */
 function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
+  if (FAKE_MODE !== 'off' && profile.id === FAKE_PROFILE_ID && fakeModule !== null) {
+    // ⚠️ 假设备：产出的全是**合成数据**（见 `hal/fake/`）
+    console.warn(`[FAKE] 合成数据已启用（COCKPIT_FAKE=${FAKE_MODE}）`);
+    return new fakeModule.FakeConnection({ now: () => Date.now(), log });
+  }
   return createConnection(profile, log, { adbPath });
 }
 
@@ -361,9 +404,16 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // `cockpit://` 的处理器（卡片 + 外壳）
   protocol.handle('cockpit', (request) => cards.protocol(request));
+
+  // ⚠️ 假设备（调试构建里才有）
+  // **载入失败不许挡住应用起来**——假设备是调试用的脚手架，
+  // 它坏了也只该让调试的人少一块板子，不该让整个应用开不了。
+  await loadFakeDevice().catch((err: unknown) => {
+    console.error(`[FAKE] 假设备载入失败：${err instanceof Error ? err.message : String(err)}`);
+  });
 
   createWindow();
 

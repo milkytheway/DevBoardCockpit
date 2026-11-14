@@ -135,6 +135,29 @@ npm 的 `optionalDependencies` 是**按平台安装**的（`@esbuild/win32-x64` 
 > 漏了的话 `npm ci`（CI / 干净机器）会装不全（这个工程已经栽过一次：
 > `react-grid-layout` 与 `@playwright/test` 都在 package.json 里却不在 lock 里）。
 
+### 6.2 调 UI 用的**假设备**（没有板子也能调外壳）
+
+```bash
+COCKPIT_FAKE=1 npm run dev      # 假板子排第一（真板子还在列表里）
+COCKPIT_FAKE=only npm run dev   # 只有假板子
+```
+
+**它是什么**：一块**只吐原始文本**的假板子（`src/main/hal/fake/`），
+跑在 **HAL 边界**上——真包 + 真 kind + 真 store + 真采样器都在跑，
+只有「跟板子说话」那一层被换掉了。
+
+**三条规矩**：
+
+| 规矩 | 为什么 |
+|---|---|
+| **假设备只吐原始文本**（jiffies / kB / `@Hz` / 毫度），**不造百分比、不造五态** | 五态是**契约**（`docs/spec/01` §2.1）。假设备自己造 = **把契约抄了第二份**，迟早漂移 |
+| **假设备的 profile 不落盘** | `profiles/targets/` 要保持干净 |
+| **生产包不许有它** | `scripts/check-build.ts` 会扫 `out/main/**`，标记串出现就判红（已实测两个方向） |
+
+**为什么值得做**：板子不插电、adb 没起、串口被占的时候，外壳**只能对着空气调**——
+而一个从没见过 `unavailable` 与 `error` 的界面，等板子真掉线时**第一次见到它们**。
+（详见 `docs/05` ADR-D30。）
+
 ## 7. 常用命令（实现阶段才有意义）
 
 ```powershell
@@ -147,8 +170,11 @@ npm test                   # vitest
 # 对着真板跑 reader，核对输出 —— **计划 2（M3/M4）起才有**
 npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
 npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
-npm run mutation:check     # 变异测试：证明回归测试真的在守着（63 项）
+npm run mutation:check     # 变异测试：证明回归测试真的在守着（69 项）
 npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**
+# 调 UI 用的假设备（不需要真板子）—— 见 §6.2
+COCKPIT_FAKE=1 npm run dev # 假板子排第一（合成数据）
+COCKPIT_FAKE=only npm run dev  # 只有假板子
 ```
 
 
