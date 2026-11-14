@@ -171,13 +171,13 @@ const MUTATIONS = [
   },
   {
     name: 'M10 上传要传绝对路径',
-    file: 'src/renderer/shell/Shell.tsx',
+    file: 'src/renderer/shell/files.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-error.test.tsx'],
     expect: '绝对路径',
     apply: (s) =>
       replace(
         s,
-        'const localPath = window.cockpit.getPathForFile(file);',
+        'const localPath = host.getPathForFile(file);',
         'const localPath = file.name;',
       ),
   },

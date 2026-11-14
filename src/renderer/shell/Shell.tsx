@@ -21,6 +21,7 @@ import {
   useRuntime,
 } from './data';
 import { describeError } from './format';
+import { downloadFile, uploadFile, type FileTransferHost } from './files';
 import { slotKey } from './layout-utils';
 import { secondaryGroupsFor } from './nav';
 import { applyTheme, readStoredTheme, readXtermTheme, type XtermTheme } from './theme';
@@ -47,6 +48,13 @@ import { useTerminal } from './useTerminal';
  * The shell used to hold 22 `useState`s and one large wiring effect. Now
  * it holds the navigation and hands the rest to `data.ts` / `useTerminal.ts`.
  */
+/** The host's file-transfer surface (the preload's white list). */
+const FILE_HOST: FileTransferHost = {
+  getPathForFile: (file) => window.cockpit.getPathForFile(file),
+  push: (sessionId, localPath, remotePath) => window.cockpit.filesPush(sessionId, localPath, remotePath),
+  pull: (connectionId, remotePath) => window.cockpit.filesPull(connectionId, remotePath, ''),
+};
+
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
   const [page, setPage] = useState<PageId>('workbench');
@@ -269,10 +277,8 @@ export function Shell(): JSX.Element {
                 onPush={(file, remotePath) => {
                   const session = terminal.activeSession;
                   if (session === null) return;
-                  const localPath = window.cockpit.getPathForFile(file);
                   setTransferNote(`正在上传 ${file.name} …`);
-                  void window.cockpit
-                    .filesPush(session.sessionId, localPath, remotePath)
+                  void uploadFile(FILE_HOST, session.sessionId, file, remotePath)
                     .then(() => {
                       setTransferNote(`已推送 ${file.name} → ${remotePath}`);
                       log('info', `已推送 ${file.name} → ${remotePath}`);
@@ -284,11 +290,10 @@ export function Shell(): JSX.Element {
                 }}
                 onPull={(connectionId, remotePath) => {
                   setTransferNote(`正在下载 ${remotePath} …`);
-                  void window.cockpit
-                    .filesPull(connectionId, remotePath, '')
-                    .then((result) => {
-                      setTransferNote(`已拉取 ${remotePath} → ${result.localPath}`);
-                      log('info', `已拉取 ${remotePath} → ${result.localPath}`);
+                  void downloadFile(FILE_HOST, connectionId, remotePath)
+                    .then((localPath) => {
+                      setTransferNote(`已拉取 ${remotePath} → ${localPath}`);
+                      log('info', `已拉取 ${remotePath} → ${localPath}`);
                     })
                     .catch((cause: unknown) => {
                       setTransferNote(null);

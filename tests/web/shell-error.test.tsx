@@ -36,6 +36,7 @@ vi.mock('@xterm/addon-fit', () => ({
 
 import { ErrorBar } from '../../src/renderer/shell/ErrorBar';
 import { FilesPage } from '../../src/renderer/shell/pages/FilesPage';
+import { uploadFile, type FileTransferHost } from '../../src/renderer/shell/files';
 import { makeError } from '../../src/shared/errors';
 
 /** The capabilities of a connection that can carry files. */
@@ -80,14 +81,18 @@ describe('文件页', () => {
       }),
     );
     installHost({ filesPush });
+    const host: FileTransferHost = {
+      getPathForFile: (file) => window.cockpit.getPathForFile(file),
+      push: filesPush,
+      pull: async () => ({ localPath: '' }),
+    };
 
     render(
       <FilesPage
         sessionId="s1"
         capabilities={CAPS}
         onPush={(file, remotePath) => {
-          const localPath = window.cockpit.getPathForFile(file);
-          void filesPush('s1', localPath, remotePath);
+          void uploadFile(host, 's1', file, remotePath);
         }}
         onPull={() => undefined}
       />,
