@@ -170,7 +170,7 @@ npm test                   # vitest
 # 对着真板跑 reader，核对输出 —— **计划 2（M3/M4）起才有**
 npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
 npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
-npm run mutation:check     # 变异测试：证明回归测试真的在守着（69 项）
+npm run mutation:check     # 变异测试：证明回归测试真的在守着（76 项）
 npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**
 # 调 UI 用的假设备（不需要真板子）—— 见 §6.2
 COCKPIT_FAKE=1 npm run dev # 假板子排第一（合成数据）
