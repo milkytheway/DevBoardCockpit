@@ -844,6 +844,11 @@ select {
   color: var(--cockpit-text-faint);
 }
 .page--terminal {
+  /* **定位祖先**：下面的 `.terminal__pane` 是绝对定位的（inset: 0）——
+     没有定位祖先，它的包含块会回落成**视口** → 终端面板铺满整个窗口，
+     把状态栏、rail 与二级侧边栏全盖住（实测 1200×773 @ (0,0)，
+     而它应该在页面区 866×705 @ (314,48)）。 */
+  position: relative;
   padding: 0;
 }
 
