@@ -60,19 +60,22 @@ describe('卡片目录内的路径解析', () => {
 });
 
 /**
- * **能不能建软链**（Windows 上要开发者模式或管理员；没有就 EPERM）。
+ * 建一个**目录链接**：Windows 用 junction（普通用户就能建，不要开发者模式），
+ * 其它平台用普通目录软链。
  *
- * → 建不出来就**跳过**那几条，而不是**红**——
- * 「这台机器没权限」不是产品坏了。
- *
- * （软链穿越防护是「AI 写的卡片不能读宿主文件系统」的唯一防线，
- * 它在 Linux 上是真验过的；Windows 上没权限就跳过，**别把跳过当通过**。）
+ * 为什么不用文件软链：Windows 上文件软链要管理员/开发者模式，拿不到就是 EPERM；
+ * 而 junction 是 NTFS 的目录重解析点，普通用户可建。用 junction 验同一条代码路径。
  */
-function canSymlink(): boolean {
-  const base = mkdtempSync(join(tmpdir(), 'card-symlink-probe-'));
+function linkDir(target: string, linkPath: string): void {
+  symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
+/** 这台机器能不能建目录链接（不能就跳过，而不是红） */
+function canLinkDir(): boolean {
+  const base = mkdtempSync(join(tmpdir(), 'card-link-probe-'));
   try {
-    writeFileSync(join(base, 'target.txt'), 'x', 'utf8');
-    symlinkSync(join(base, 'target.txt'), join(base, 'link.txt'));
+    mkdirSync(join(base, 'target'), { recursive: true });
+    linkDir(join(base, 'target'), join(base, 'link'));
     return true;
   } catch {
     return false;
@@ -81,11 +84,11 @@ function canSymlink(): boolean {
   }
 }
 
-const SYMLINK_OK = canSymlink();
+const LINK_OK = canLinkDir();
 
 describe('符号链接（软链是最常见的绕过）', () => {
   function scene(): { root: string; cleanup: () => void } {
-    const base = mkdtempSync(join(tmpdir(), 'card-symlink-'));
+    const base = mkdtempSync(join(tmpdir(), 'card-link-'));
     const root = join(base, 'card');
     mkdirSync(root, { recursive: true });
     // **宿主的文件**：卡片目录之外
@@ -93,35 +96,36 @@ describe('符号链接（软链是最常见的绕过）', () => {
     return { root, cleanup: () => rmSync(base, { recursive: true, force: true }) };
   }
 
-  it.skipIf(!SYMLINK_OK)('软链指向卡片目录**之外** → null（词法上在目录里，realpath 后在外面）', () => {
+  it.skipIf(!LINK_OK)('软链指向卡片目录**之外** → null（词法上在目录里，realpath 后在外面）', () => {
     const { root, cleanup } = scene();
     try {
-      symlinkSync(join(root, '..', 'secret.txt'), join(root, 'link.txt'));
-      expect(resolveInsideCard(root, 'link.txt')).toBeNull();
+      linkDir(join(root, '..'), join(root, 'link'));
+      expect(resolveInsideCard(root, 'link/secret.txt')).toBeNull();
     } finally {
       cleanup();
     }
   });
 
-  it.skipIf(!SYMLINK_OK)('软链指向**目录之外的一个目录** → null', () => {
+  it.skipIf(!LINK_OK)('软链指向**目录之外的一个目录** → null', () => {
     const { root, cleanup } = scene();
     try {
       const outsideDir = join(root, '..', 'outside');
       mkdirSync(outsideDir, { recursive: true });
       writeFileSync(join(outsideDir, 'x.txt'), 'X', 'utf8');
-      symlinkSync(outsideDir, join(root, 'outdir'));
+      linkDir(outsideDir, join(root, 'outdir'));
       expect(resolveInsideCard(root, 'outdir/x.txt')).toBeNull();
     } finally {
       cleanup();
     }
   });
 
-  it.skipIf(!SYMLINK_OK)('软链指向**卡片目录之内** → 允许（同一份代码的别名不算越界）', () => {
+  it.skipIf(!LINK_OK)('软链指向**卡片目录之内** → 允许（同一份代码的别名不算越界）', () => {
     const { root, cleanup } = scene();
     try {
-      writeFileSync(join(root, 'real.txt'), 'ok', 'utf8');
-      symlinkSync(join(root, 'real.txt'), join(root, 'alias.txt'));
-      expect(resolveInsideCard(root, 'alias.txt')).not.toBeNull();
+      mkdirSync(join(root, 'sub'), { recursive: true });
+      writeFileSync(join(root, 'sub', 'real.txt'), 'ok', 'utf8');
+      linkDir(join(root, 'sub'), join(root, 'alias'));
+      expect(resolveInsideCard(root, 'alias/real.txt')).not.toBeNull();
     } finally {
       cleanup();
     }
