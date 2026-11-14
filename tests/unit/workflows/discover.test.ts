@@ -53,6 +53,20 @@ describe('产物发现 · 找与排除', () => {
     expect(found).toEqual(['build/hello.ko']);
   });
 
+  it('**模式匹配上了、但被排除表剔掉**的也不算数', async () => {
+    // 模式放宽到 `hello.*` → `.o` / `.cmd` 也会匹配上 →
+    // **这时排除表才真的起作用** ✓
+    const found = await discoverArtifacts({ list: async () => list() }, {
+      dir: 'build',
+      pattern: 'hello.*',
+      exclude: ['*.o', '*.cmd'],
+    });
+    expect(found).not.toContain('build/hello.o');
+    expect(found).not.toContain('build/hello.cmd');
+    // 没被排除的还在
+    expect(found).toContain('build/hello.ko');
+  });
+
   it('**目录不算产物**', async () => {
     const found = await discoverArtifacts({ list: async () => list() }, { dir: 'build', pattern: '*' });
     expect(found).not.toContain('build/sub');

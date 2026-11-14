@@ -1149,7 +1149,7 @@ const MUTATIONS = [
     name: 'M94 流程包：未知字段必须报错（静默忽略 = 流程照跑，只是少做了一件事）',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: '未知字段一律报错',
+    expect: '之外的字段一律不认',
     apply: (s) =>
       replace(
         s,
