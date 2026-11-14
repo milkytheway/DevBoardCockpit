@@ -1,0 +1,91 @@
+# 黄金样本 · 内核模块：客机编译 → **直传板子** → 落位 → modprobe
+#
+# ── 这份样本在证明什么 ──
+#
+# ① **产物不写死文件名**：`discover` 按 `*.ko` 发现（不是 `hello.ko`）；
+# ② **落位按板子的规矩**：`placement: kernel-module` → 宿主解析成
+#    `/usr/lib/modules/<版本>/extra/`（**不**写死在包里 → 换板子不改这一行）；
+# ③ **直传**：传输命令在**源目标（客机）**上跑（ADR-D31 R7）；
+# ④ **跨目标的判据**：传输步的 `readback` **指名 role: target**
+#    → 「板子上真的有那个文件了吗」（这是板型包的回读**验不了**的东西，
+#    ADR-D32 D32-1/D32-2 → 流程层自己出这套词汇）；
+# ⑤ **按名字加载，不按路径**：`modprobe <名字>`，
+#    **绝不 `insmod /path/x.ko`**（板子放置规范 §4 硬规矩 2）。
+
+formatVersion: 1
+kind: Workflow
+
+id: hello-kernel.build-run
+name: 编译内核模块 → 直传板子 → 装 → 跑
+version: 1.0.0
+description: 在客机上编译内核模块，客机直传到板子的规范位置，depmod -a 后按名字加载。
+
+inputs:
+  project:
+    type: string
+    required: true
+    maxLength: 200
+    description: 项目目录名（相对 build 角色的工作根）
+
+roles:
+  build:
+    purpose: 编译所在（客机）
+    profile: ubuntu-ssh
+  target:
+    purpose: 板子
+    profile: board-adb
+
+steps:
+  # ① 编译（长时：分钟级 → 必须给足超时）
+  - id: compile
+    kind: exec
+    role: build
+    cmd: "make -C work/{input:project} modules"
+    timeout_ms: 1800000
+
+  # ② 产物发现（**按规则，不写死文件名**）
+  - id: artifacts
+    kind: discover
+    role: build
+    pattern: "*.ko"
+    exclude: ["*.o", "*.mod", "*.mod.c", "*.cmd", "*.order", "*.tmp", ".tmp_*"]
+    out: artifacts
+
+  # ③ **直传**：传输命令在**源目标（客机）**上跑；目的地由宿主按 placement 解析
+  - id: deliver
+    kind: file.transfer
+    from:
+      role: build
+      path: "{output:artifacts}"
+    to:
+      role: target
+      placement: kernel-module
+    cmd: "scp -o StrictHostKeyChecking=no {from.path} {role:target.user}@{role:target.host}:{to.path}"
+    timeout_ms: 1800000
+    # **目的地路径进这个槽**（后续步骤要用它：`modprobe` 不用它，但用户态程序要）
+    out: dest
+    # **判据指名 role** → 在**板子**上读：「那个文件真的到了吗」
+    readback:
+      kind: verify
+      role: target
+      command: "test -f {to.path}"
+      timeout_ms: 30000
+
+  # ④ 装 + 按名字加载（**不是 insmod**；depmod -a 先跑）
+  - id: load
+    kind: exec
+    role: target
+    cmd: "depmod -a && modprobe {output:artifacts.name}"
+    timeout_ms: 120000
+    readback:
+      kind: command_ok
+
+  # ⑤ 确认它真的加载了（**在板子上问板子**：`lsmod` 里有没有它）
+  - id: assert-loaded
+    kind: assert
+    readback:
+      kind: verify
+      role: target
+      command: "lsmod | grep -q {output:artifacts.name}"
+      timeout_ms: 30000
+    on_mismatch: fail

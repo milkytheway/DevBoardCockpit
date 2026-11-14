@@ -1,0 +1,82 @@
+# 黄金样本 · 用户态程序：客机编译 → **直传板子** → 落位 → 运行 → 看输出
+#
+# ── 与内核模块那份的差别 ──
+#
+# ① 落位不同（`user-program` → `/usr/local/bin/`）；
+# ② **可执行文件要 chmod +x**（放置规范 §4 硬规矩 4）；
+# ③ **最后一步是「运行并看输出」**——不是量测，是**命令的输出**
+#    → 判据用 `verify`（跑一次并看退出码）。
+
+formatVersion: 1
+kind: Workflow
+
+id: meminfo-user.build-run
+name: 编译用户态程序 → 直传板子 → 运行 → 看输出
+version: 1.0.0
+description: 在客机上编译用户态程序，直传到板子的 /usr/local/bin/，运行并确认它跑起来了。
+
+inputs:
+  project:
+    type: string
+    required: true
+    maxLength: 200
+    description: 项目目录名（相对 build 角色的工作根）
+
+roles:
+  build:
+    purpose: 编译所在（客机）
+    profile: ubuntu-ssh
+  target:
+    purpose: 板子
+    profile: board-adb
+
+steps:
+  - id: compile
+    kind: exec
+    role: build
+    cmd: "make -C work/{input:project}"
+    timeout_ms: 600000
+
+  - id: artifacts
+    kind: discover
+    role: build
+    pattern: "meminfo"
+    exclude: ["*.o", "*.d"]
+    out: artifacts
+
+  - id: deliver
+    kind: file.transfer
+    from:
+      role: build
+      path: "{output:artifacts}"
+    to:
+      role: target
+      placement: user-program
+    cmd: "scp -o StrictHostKeyChecking=no {from.path} {role:target.user}@{role:target.host}:{to.path}"
+    timeout_ms: 600000
+    # **目的地路径进这个槽**（后面两步要用它）
+    out: dest
+    readback:
+      kind: verify
+      role: target
+      command: "test -f {to.path}"
+      timeout_ms: 30000
+
+  # **可执行文件要 chmod +x**（放置规范 §4 硬规矩 4）
+  - id: make-executable
+    kind: exec
+    role: target
+    cmd: "chmod +x {output:dest}"
+    readback:
+      kind: verify
+      role: target
+      command: "test -x {output:dest}"
+      timeout_ms: 10000
+
+  - id: run
+    kind: exec
+    role: target
+    cmd: "{output:dest}"
+    timeout_ms: 60000
+    readback:
+      kind: command_ok
