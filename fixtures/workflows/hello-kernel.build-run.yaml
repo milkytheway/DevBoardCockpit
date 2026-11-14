@@ -21,11 +21,16 @@ version: 1.0.0
 description: 在客机上编译内核模块，客机直传到板子的规范位置，depmod -a 后按名字加载。
 
 inputs:
+  build_dir:
+    type: path
+    required: true
+    maxLength: 200
+    description: 构建机上的工程根目录（**机器专属的值走这里，不进包** ✓）
   project:
     type: string
     required: true
     maxLength: 200
-    description: 项目目录名（相对 build 角色的工作根）
+    description: 项目目录名（相对 build_dir）
 
 roles:
   build:
@@ -40,13 +45,17 @@ steps:
   - id: compile
     kind: exec
     role: build
-    cmd: "make -C work/{input:project} modules"
+    cmd: "make -C {input:build_dir}/{input:project} modules"
     timeout_ms: 1800000
+    # **编译成功的判据 = 命令返回 0**（编译不是板上的量测 ✓）
+    readback:
+      kind: command_ok
 
   # ② 产物发现（**按规则，不写死文件名**）
   - id: artifacts
     kind: discover
     role: build
+    dir: "{input:build_dir}/{input:project}"
     pattern: "*.ko"
     exclude: ["*.o", "*.mod", "*.mod.c", "*.cmd", "*.order", "*.tmp", ".tmp_*"]
     out: artifacts

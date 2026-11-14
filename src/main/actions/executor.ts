@@ -62,6 +62,13 @@ export interface ActionExecutorDeps {
   audit: (row: AuditRow) => string;
   /** 谁触发的（卡片 id / agent / 用户） */
   actor?: string;
+  /**
+   * 执行超时（毫秒）。
+   *
+   * → 流程层的长步骤（编译是分钟级）用它 ✓；
+   * → **不设就没有超时**（M6 的动作通常很快 ✓）。
+   */
+  execTimeoutMs?: number;
   /** 现在（毫秒） */
   now?: () => number;
 }
@@ -208,7 +215,10 @@ export async function invokeAction(
 
   // ⑤⑥ 执行 + 回读（**同一个独占事务**）
   const { result: readback } = await deps.runTransaction(async (connection) => {
-    const execResult = await connection.exec(command);
+    const execResult = await connection.exec(
+      command,
+      deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs },
+    );
     const result = await runReadback(
       action.readback ?? { kind: 'none', consequence: '这个动作没有声明回读' },
       { raw: params, encoded },

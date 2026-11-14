@@ -285,11 +285,16 @@ async function runExec(
         ? { kind: 'none', consequence: '判据在另一个角色上读（由流程层执行）' }
         : toReadbackDef(step.readback, substitution),
   };
-  const outcome = await invokeAction(action, {}, executorDeps(ctx, profileId, action.id), {
-    ...(ctx.opts.confirmIds?.[step.id] === undefined
-      ? {}
-      : { confirmId: ctx.opts.confirmIds[step.id] as string }),
-  });
+  const outcome = await invokeAction(
+    action,
+    {},
+    executorDeps(ctx, profileId, action.id, step.timeout_ms),
+    {
+      ...(ctx.opts.confirmIds?.[step.id] === undefined
+        ? {}
+        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
+    },
+  );
   const cross = await crossRoleReadback(step, ctx, substitution, role, started);
   return {
     stepId: step.id,
@@ -396,7 +401,11 @@ async function runAction(
   for (const [key, raw] of Object.entries(step.params ?? {})) {
     values[key] = substituteValue(raw, substitution);
   }
-  const outcome = await invokeAction(def, values, executorDeps(ctx, profileId, def.id));
+  const outcome = await invokeAction(
+    def,
+    values,
+    executorDeps(ctx, profileId, def.id, step.timeout_ms),
+  );
   return {
     stepId: step.id,
     kind: step.kind,
@@ -425,16 +434,20 @@ async function runDiscover(
   }
   const profileId = ctx.pack.roles[role]?.profile;
   if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
-  const dir = substituteCommand(step.dir ?? '.', substitution);
+  // **目录用值模式**（路径不该被引号包住——`list()` 拿的是路径，不是 shell 片段 ✓）
+  const dir = substituteValue(step.dir ?? '.', substitution);
+  // **规则也是值模式**（文件名与排除表都是名字，不是 shell 片段 ✓）
+  const pattern = substituteValue(step.pattern as string, substitution);
+  const exclude = (step.exclude ?? []).map((rule) => substituteValue(rule, substitution));
   const found = await ctx.deps.targets.runOn(profileId, async (conn) =>
     discoverArtifacts({ list: (d) => conn.list(d) }, {
       dir,
-      pattern: step.pattern as string,
-      ...(step.exclude === undefined ? {} : { exclude: step.exclude }),
+      pattern,
+      ...(exclude.length === 0 ? {} : { exclude }),
     }),
   );
   if (found.length === 0) {
-    const detail = `在 ${dir} 里没找到 ${step.pattern}`;
+    const detail = `在 ${dir} 里没找到 ${pattern}`;
     const auditId = ctx.deps.audit({
       at: started,
       actor: `workflow:${ctx.pack.id}`,
@@ -462,7 +475,7 @@ async function runDiscover(
     at: started,
     actor: `workflow:${ctx.pack.id}`,
     actionId: `workflow:${ctx.pack.id}:${step.id}`,
-    params: { dir, pattern: step.pattern },
+    params: { dir, pattern },
     ok: true,
     verified: true,
     value: found.join(','),
@@ -508,11 +521,16 @@ async function runTransfer(
       ? { kind: 'none', consequence: '判据在另一个角色上读（由流程层执行）' }
       : toReadbackDef(step.readback, substitution),
   };
-  const outcome = await invokeAction(action, {}, executorDeps(ctx, profileId, action.id), {
-    ...(ctx.opts.confirmIds?.[step.id] === undefined
-      ? {}
-      : { confirmId: ctx.opts.confirmIds[step.id] as string }),
-  });
+  const outcome = await invokeAction(
+    action,
+    {},
+    executorDeps(ctx, profileId, action.id, step.timeout_ms),
+    {
+      ...(ctx.opts.confirmIds?.[step.id] === undefined
+        ? {}
+        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
+    },
+  );
   const cross = await crossRoleReadback(step, ctx, substitution, fromRole, started);
   // 目的地路径进槽（后续步骤要用）
   if (outcome.ok && cross?.ok !== false && step.out !== undefined) ctx.outputs[step.out] = endpoints.to;
@@ -731,7 +749,7 @@ function toReadbackDef(
 }
 
 /** 执行器需要的依赖（**接到指名目标上** ✓ —— 计划 5 的 A17） */
-function executorDeps(ctx: StepContext, profileId: string, actionId: string) {
+function executorDeps(ctx: StepContext, profileId: string, actionId: string, timeoutMs?: number) {
   const profile = ctx.deps.profileFor(profileId);
   return {
     packId: ctx.pack.id,
@@ -758,6 +776,8 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string) {
       ctx.deps.audit({ ...row, actor: row.actor === 'unknown' ? `workflow:${ctx.pack.id}` : row.actor }),
     actor: `workflow:${ctx.pack.id}`,
     now: ctx.now,
+    // **长步骤要有超时**（编译是分钟级；尖兵实测传输波动 20 倍，A14 ✓）
+    ...(timeoutMs === undefined ? {} : { execTimeoutMs: timeoutMs }),
   };
 }
 

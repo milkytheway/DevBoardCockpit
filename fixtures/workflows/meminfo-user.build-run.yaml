@@ -16,11 +16,21 @@ version: 1.0.0
 description: 在客机上编译用户态程序，直传到板子的 /usr/local/bin/，运行并确认它跑起来了。
 
 inputs:
+  build_dir:
+    type: path
+    required: true
+    maxLength: 200
+    description: 构建机上的工程根目录（**机器专属的值走这里，不进包** ✓）
   project:
     type: string
     required: true
     maxLength: 200
-    description: 项目目录名（相对 build 角色的工作根）
+    description: 项目目录名（相对 build_dir）
+  artifact:
+    type: string
+    required: true
+    maxLength: 100
+    description: 要送板子的那个可执行文件（**工程自己叫什么，是工程的事** ✓）
 
 roles:
   build:
@@ -34,13 +44,16 @@ steps:
   - id: compile
     kind: exec
     role: build
-    cmd: "make -C work/{input:project}"
+    cmd: "make -C {input:build_dir}/{input:project}"
     timeout_ms: 600000
+    readback:
+      kind: command_ok
 
   - id: artifacts
     kind: discover
     role: build
-    pattern: "meminfo"
+    dir: "{input:build_dir}/{input:project}"
+    pattern: "{input:artifact}"
     exclude: ["*.o", "*.d"]
     out: artifacts
 

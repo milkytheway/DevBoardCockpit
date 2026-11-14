@@ -1146,6 +1146,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M94 流程包：未知字段必须报错（静默忽略 = 流程照跑，只是少做了一件事）',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: '未知字段一律报错',
+    apply: (s) =>
+      replace(
+        s,
+        "      fail(`未知字段 '${key}'`, ctx.source, { path: `${ctx.path}${path}${path ? '.' : ''}${key}` });",
+        '      void key; // 变异：静默忽略未知字段',
+      ),
+  },
+  {
+    name: 'M95 流程层：发现的**排除表**必须真的排除（漏一个 = 把中间文件当产物送上去）',
+    file: 'src/main/workflows/discover.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/discover.test.ts'],
+    expect: '排除表里的不要',
+    apply: (s) =>
+      replace(
+        s,
+        '.filter((entry) => !excluded.some((rule) => matchesPattern(entry.name, rule)))',
+        '.filter(() => true) // 变异：不管排除表',
+      ),
+  },
+  {
+    name: 'M96 目标登记处：profile 不存在必须**报错**（不许悄悄连到别的目标）',
+    file: 'src/main/workflows/targets.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/targets.test.ts'],
+    expect: 'profile 不存在',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (profile === undefined) {',
+        '    if (false) { // 变异：连到别的目标去',
+      ),
+  },
+  {
+    name: 'M97 流程层：跨目标的判据必须**在指名的角色上读**（在客机上读 = 假阳性）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '判据在指名的角色上读',
+    apply: (s) =>
+      replace(
+        s,
+        '  const result = await runReadbackOnRole(ctx, readRole, step.readback, substitution);',
+        '  const result = await runReadbackOnRole(ctx, stepRole ?? readRole, step.readback, substitution); // 变异：在本步的角色上读',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

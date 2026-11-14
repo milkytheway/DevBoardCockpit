@@ -7,6 +7,7 @@ import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { Session, TIMEOUT_EXIT_CODE } from './session';
 import { capabilitiesFor, transportDefaults } from './capabilities';
+import { readFileSync } from 'node:fs';
 import type { ConnectionCapabilities, Connection, ExecResult } from './connection';
 
 /**
@@ -23,11 +24,27 @@ export function sshCapabilities(): ConnectionCapabilities {
   return transportDefaults('ssh');
 }
 
+/**
+ * 读私钥文件（**读成内容**）。
+ *
+ * 读不到 → **报错**（不是「不带私钥去连」→ 然后莫名其妙地认证失败 ✗）。
+ */
+function readPrivateKey(path: string): Buffer {
+  try {
+    return readFileSync(path);
+  } catch (err) {
+    throw makeError('CONN_OPEN_FAILED', `读不了私钥文件 ${path}`, {
+      detail: { path, cause: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
 export interface SshConnectOptions {
   host: string;
   port: number;
   username?: string;
-  privateKey?: string;
+  /** 私钥（**内容**，不是路径——ssh2 认的是钥匙本身 ✓） */
+  privateKey?: Buffer | string;
   password?: string;
 }
 
@@ -49,7 +66,10 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
     port,
     ...(typeof username === 'string' ? { username } : {}),
     ...(typeof password === 'string' ? { password } : {}),
-    ...(typeof keyFilename === 'string' ? { privateKey: keyFilename } : {}),
+    // **私钥要读成内容（Buffer），不能只给路径**——
+    // ssh2 的 `privateKey` 收的是**钥匙本身**；给路径它会当成钥匙内容去解析
+    // → 「Unsupported key format」（2026-11-15 真机实测撞到的）。
+    ...(typeof keyFilename === 'string' ? { privateKey: readPrivateKey(keyFilename) } : {}),
   };
 }
 
