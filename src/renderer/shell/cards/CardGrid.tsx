@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import type { LayoutUnit, ViewDensity } from '../../../shared/layout';
+import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { CardShell } from './CardShell';
 import { resolveLayout, slotKey, splitKey } from '../layout-utils';
@@ -27,7 +28,7 @@ const COLUMNS = 12;
 const MIN_W = 2;
 const MIN_H = 2;
 /** Row height per density. */
-const ROW_HEIGHT: Record<ViewDensity, number> = { comfortable: 72, compact: 48 };
+const ROW_HEIGHT: Record<ViewDensity, number> = { comfortable: 64, compact: 44 };
 /** How long the grid waits before it persists a drag. */
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -37,6 +38,7 @@ export function CardGrid({
   cards,
   units,
   broker,
+  theme,
   density,
   selectedInstanceId,
   onSelect,
@@ -49,6 +51,7 @@ export function CardGrid({
   units: LayoutUnit[];
   /** Null while the host API is still loading (then there is nothing to show). */
   broker: CardBroker | null;
+  theme: ThemeName;
   density: ViewDensity;
   selectedInstanceId: string | null;
   onSelect: (info: CardInstanceInfo) => void;
@@ -118,13 +121,13 @@ export function CardGrid({
   }
 
   return (
-    <div className="card-grid" data-testid="user-grid">
+    <div className={`card-grid${density === 'compact' ? ' card-grid--compact' : ''}`} data-testid="user-grid">
       <Grid
         className="card-grid__grid"
         layout={layout}
         cols={COLUMNS}
         rowHeight={ROW_HEIGHT[density]}
-        margin={[12, 12]}
+        margin={[14, 14]}
         containerPadding={[0, 0]}
         // **用 data 属性，不用 class 名** ——
         // e2e 找的就是它（`data-cockpit-drag-handle`）；
@@ -142,6 +145,7 @@ export function CardGrid({
               <CardShell
                 info={info}
                 broker={broker}
+                theme={theme}
                 selected={selectedInstanceId === info.instanceId}
                 onSelect={onSelect}
                 onOpenDetail={onOpenDetail}

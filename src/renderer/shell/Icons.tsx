@@ -145,6 +145,85 @@ export function ChevronIcon(p: IconProps): JSX.Element {
   );
 }
 
+export function PanelIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <rect x="2" y="3" width="12" height="10" rx="1.6" />
+      <path d="M6 3v10" />
+    </svg>
+  );
+}
+
+export function GaugeIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M2.5 12a5.5 5.5 0 0 1 11 0" />
+      <path d="m8 11.5 2.4-3.2" />
+      <circle cx="8" cy="11.7" r=".9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function MemoryIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <rect x="2.5" y="5" width="11" height="6" rx="1.2" />
+      <path d="M5 5V3.5M8 5V3.5M11 5V3.5M5 11v1.5M8 11v1.5M11 11v1.5" />
+      <path d="M5.5 8h5" />
+    </svg>
+  );
+}
+
+export function ThermometerIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M7 3.5a1.3 1.3 0 0 1 2.6 0v5.1a2.7 2.7 0 1 1-2.6 0V3.5Z" />
+      <path d="M8.3 6v5" />
+      <circle cx="8.3" cy="12.1" r=".8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function BoardIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
+      <circle cx="5.8" cy="6.4" r=".8" />
+      <circle cx="10.2" cy="6.4" r=".8" />
+      <circle cx="5.8" cy="9.6" r=".8" />
+      <circle cx="10.2" cy="9.6" r=".8" />
+      <path d="M8 3.5v9" />
+    </svg>
+  );
+}
+
+export function ActivityIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M2 9h2.4l1.6-4 2 7 1.8-5 1.4 2H14" />
+    </svg>
+  );
+}
+
+export function LinkIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M6.5 9.5 9.5 6.5" />
+      <path d="M7.3 4.6 8.6 3.3a2.4 2.4 0 0 1 3.4 3.4l-1.3 1.3" />
+      <path d="M8.7 11.4 7.4 12.7a2.4 2.4 0 0 1-3.4-3.4l1.3-1.3" />
+    </svg>
+  );
+}
+
+export function CopyIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.4" />
+      <path d="M10.5 5.5v-1A1.5 1.5 0 0 0 9 3H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 12h1.5" />
+    </svg>
+  );
+}
+
 export function PaletteIcon(p: IconProps): JSX.Element {
   return (
     <svg {...base(p)}>

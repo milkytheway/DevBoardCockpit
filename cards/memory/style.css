@@ -1,0 +1,210 @@
+/* Memory card — theme variables only. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 10px 12px 8px;
+  font-family: var(--cockpit-font-ui);
+  color: var(--cockpit-text);
+  background: transparent;
+  overflow: hidden;
+}
+
+.mem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.mem-top {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.mem-big {
+  flex: 0 0 46%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+
+.mem-big__value {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 34px;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.mem-big__value.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.mem-big__value.is-danger {
+  color: var(--cockpit-danger);
+}
+
+.mem-big__value.is-error {
+  font-size: 18px;
+  letter-spacing: 0;
+  color: var(--cockpit-danger);
+}
+
+.mem-big__value.is-unavailable {
+  color: var(--cockpit-unavailable);
+  font-size: 26px;
+}
+
+.mem-big__value.is-pending {
+  color: var(--cockpit-text-faint);
+}
+
+.mem-big__unit {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cockpit-text-faint);
+}
+
+.mem-big__foot {
+  margin-top: 3px;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  color: var(--cockpit-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mem-trend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px 5px;
+  border-radius: 8px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-bg) 34%, transparent);
+}
+
+.mem-trend__label {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-faint);
+}
+
+.mem-trend svg {
+  flex: 1;
+  min-height: 26px;
+  width: 100%;
+}
+
+.mem-trend polyline {
+  fill: none;
+  stroke: var(--cockpit-accent-2);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.seg__cell {
+  height: 10px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--cockpit-surface-active) 70%, transparent);
+  border: 1px solid color-mix(in oklab, var(--cockpit-border) 55%, transparent);
+}
+
+.seg__cell.is-on.is-ok {
+  background: var(--cockpit-ok);
+  border-color: color-mix(in oklab, var(--cockpit-ok) 70%, transparent);
+}
+
+.seg__cell.is-on.is-warn {
+  background: var(--cockpit-warn);
+  border-color: color-mix(in oklab, var(--cockpit-warn) 70%, transparent);
+}
+
+.seg__cell.is-on.is-danger {
+  background: var(--cockpit-danger);
+  border-color: color-mix(in oklab, var(--cockpit-danger) 70%, transparent);
+}
+
+.mem-stats {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+
+.mem-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-surface-active) 24%, transparent);
+}
+
+.mem-stat span {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-faint);
+}
+
+.mem-stat b {
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--cockpit-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mem-note {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mem-note.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.mem-note.is-unavailable {
+  color: var(--cockpit-unavailable);
+}
+
+.mem-note.is-error {
+  color: var(--cockpit-danger);
+}

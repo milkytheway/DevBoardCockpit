@@ -123,6 +123,30 @@ export function useCards(reportError: ReportError): {
   return { cards, refresh };
 }
 
+/** The grid the main area uses (mirrors `CardGrid`'s COLUMNS). */
+const GRID_COLUMNS = 12;
+
+/**
+ * The first free spot for a card of `w×h`.
+ *
+ * Cards are placed one after another from left to right, top to bottom, so
+ * clicking three cards in the library does not stack them all on (0, 0).
+ */
+function firstFreeSpot(
+  units: readonly LayoutUnit[],
+  w: number,
+  h: number,
+): { x: number; y: number } {
+  const overlaps = (x: number, y: number): boolean =>
+    units.some((u) => x < u.x + u.w && x + w > u.x && y < u.y + u.h && y + h > u.y);
+  for (let y = 0; y < 200; y += 1) {
+    for (let x = 0; x <= GRID_COLUMNS - w; x += 1) {
+      if (!overlaps(x, y)) return { x, y };
+    }
+  }
+  return { x: 0, y: 0 };
+}
+
 /**
  * The layout: what is placed in the main area.
  *
@@ -202,14 +226,11 @@ export function useLayout(reportError: ReportError): {
       if (current === null) return;
       const key = keyOf(card);
       if (current.units.some((u) => `${u.cardId}::${u.connectionId ?? ''}` === key)) return;
-      persist(
-        withUnits(current, [
-          ...current.units,
-          // **默认格子只有一处**（shared/layout.ts 的 defaultUnit）：
-          // 尺寸取卡片自报的 layout.w/h——作者的心愿。
-          defaultUnit(card.cardId, card.connectionId, card.layout),
-        ]),
-      );
+      // **默认格子只有一处**（shared/layout.ts 的 defaultUnit）：尺寸取卡片
+      // 自报的 layout.w/h——作者的心愿；位置则找第一个空位，别让三张卡叠在
+      // (0, 0)。
+      const unit = defaultUnit(card.cardId, card.connectionId, card.layout);
+      persist(withUnits(current, [...current.units, { ...unit, ...firstFreeSpot(current.units, unit.w, unit.h) }]));
     },
     [persist],
   );

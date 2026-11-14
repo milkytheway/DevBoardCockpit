@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './theme/tokens.generated.css';
 import './theme/app.css';
 import './shell/shell.css';
+import './shell/visual.css';
 import { Shell } from './shell/Shell';
 
 const container = document.getElementById('root');

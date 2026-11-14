@@ -1,21 +1,27 @@
+import {
+  FolderIcon,
+  GearIcon,
+  GridIcon,
+  LayersIcon,
+  ListIcon,
+  TerminalIcon,
+} from './Icons';
 import type { PageId } from './types';
 
 /**
- * The rail: the places you can be.
+ * The rail: the app's primary navigation.
  *
- * ── one entry = one page ──
- *
- * The terminal, the files and the log used to live in a bottom dock, so
- * clicking them in the rail opened a panel underneath. Now each one is a
- * page in the main area and the rail is the only way to reach it.
+ * Six destinations, one icon each. The glyphs are real inline SVG (not font
+ * characters) so they render identically on every Windows box and inherit
+ * the current text colour.
  */
-const ENTRIES: { id: PageId; label: string; glyph: string }[] = [
-  { id: 'workbench', label: '工作台', glyph: '▦' },
-  { id: 'terminal', label: '终端', glyph: '▤' },
-  { id: 'files', label: '文件', glyph: '▥' },
-  { id: 'logs', label: '日志', glyph: '▨' },
-  { id: 'library', label: '卡片库', glyph: '▩' },
-  { id: 'settings', label: '设置', glyph: '⚙' },
+const ENTRIES: { id: PageId; label: string; icon: (props: { size?: number }) => JSX.Element }[] = [
+  { id: 'workbench', label: '工作台', icon: GridIcon },
+  { id: 'terminal', label: '终端', icon: TerminalIcon },
+  { id: 'files', label: '文件', icon: FolderIcon },
+  { id: 'logs', label: '日志', icon: ListIcon },
+  { id: 'library', label: '卡片库', icon: LayersIcon },
+  { id: 'settings', label: '设置', icon: GearIcon },
 ];
 
 export function Rail({
@@ -27,21 +33,32 @@ export function Rail({
 }): JSX.Element {
   return (
     <nav className="rail" aria-label="主导航">
-      {ENTRIES.map((entry) => (
-        <button
-          key={entry.id}
-          type="button"
-          className={`rail__item${page === entry.id ? ' is-active' : ''}`}
-          aria-current={page === entry.id ? 'page' : undefined}
-          title={entry.label}
-          onClick={() => onPage(entry.id)}
-        >
-          <span className="rail__glyph" aria-hidden>
-            {entry.glyph}
-          </span>
-          <span className="rail__label">{entry.label}</span>
-        </button>
-      ))}
+      <div className="rail__stack">
+        {ENTRIES.map((entry) => {
+          const Icon = entry.icon;
+          const active = page === entry.id;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              className={`rail__item${active ? ' is-active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+              title={entry.label}
+              onClick={() => onPage(entry.id)}
+            >
+              <span className="rail__glyph" aria-hidden>
+                <Icon size={19} />
+              </span>
+              <span className="rail__label">{entry.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="rail__foot">
+        <span className="rail__status" title="本地外壳">
+          <span className="live-dot live-dot--ok" aria-hidden />
+        </span>
+      </div>
     </nav>
   );
 }

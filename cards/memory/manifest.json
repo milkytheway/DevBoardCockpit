@@ -1,0 +1,30 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "memory",
+  "name": "内存水位",
+  "version": "1.0.0",
+  "description": "内存占用分段条、已用/可用/总量与 60s 趋势；读 mem.usage / mem.used_bytes / mem.total_bytes / mem.available_bytes",
+  "entry": "index.html",
+  "requires": {
+    "tags": [
+      "mem.usage"
+    ]
+  },
+  "layout": {
+    "w": 4,
+    "h": 4,
+    "min_w": 3,
+    "min_h": 3
+  },
+  "permissions": {
+    "read": [
+      "mem.usage",
+      "mem.used_bytes",
+      "mem.total_bytes",
+      "mem.available_bytes"
+    ],
+    "write": []
+  },
+  "actions": []
+}

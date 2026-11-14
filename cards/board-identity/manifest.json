@@ -1,0 +1,31 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "board-identity",
+  "name": "板卡身份",
+  "version": "1.0.0",
+  "description": "板型、调频 governor、GPU 频率与两路背光；读 board.model / cpu.governor / gpu.freq_hz / 背光 custom tag",
+  "entry": "index.html",
+  "requires": {
+    "tags": [
+      "board.model"
+    ]
+  },
+  "layout": {
+    "w": 4,
+    "h": 4,
+    "min_w": 3,
+    "min_h": 3
+  },
+  "permissions": {
+    "read": [
+      "board.model",
+      "cpu.governor",
+      "gpu.freq_hz",
+      "custom.rk3588-atk.backlight.brightness",
+      "custom.rk3588-atk.backlight1.brightness"
+    ],
+    "write": []
+  },
+  "actions": []
+}

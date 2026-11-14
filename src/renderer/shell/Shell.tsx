@@ -9,6 +9,7 @@ import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TerminalPage } from './pages/TerminalPage';
 import { WorkbenchPage } from './pages/WorkbenchPage';
+import { ChevronIcon } from './Icons';
 import { Rail } from './Rail';
 import { Secondary } from './Secondary';
 import { StatusBar } from './StatusBar';
@@ -55,6 +56,33 @@ const FILE_HOST: FileTransferHost = {
   pull: (connectionId, remotePath) => window.cockpit.filesPull(connectionId, remotePath, ''),
 };
 
+const PAGE_TITLE: Record<PageId, string> = {
+  workbench: '工作台',
+  terminal: '终端',
+  files: '文件传输',
+  logs: '运行日志',
+  library: '卡片库',
+  settings: '设置',
+};
+
+function readStoredSecondary(): boolean {
+  try {
+    return window.localStorage.getItem('devboard.secondary') !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function readStoredDetailWidth(): number {
+  try {
+    const raw = Number(window.localStorage.getItem('devboard.detailWidth'));
+    if (Number.isFinite(raw) && raw >= 320 && raw <= 640) return raw;
+  } catch {
+    // ignore — a broken storage must not stop the shell
+  }
+  return 380;
+}
+
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
   const [page, setPage] = useState<PageId>('workbench');
@@ -64,6 +92,8 @@ export function Shell(): JSX.Element {
   const [activityFilter, setActivityFilter] = useState<'all' | ActivityLevel>('all');
   const [transferNote, setTransferNote] = useState<string | null>(null);
   const [xtermTheme, setXtermTheme] = useState<XtermTheme>(readXtermTheme);
+  const [secondaryOpen, setSecondaryOpen] = useState(readStoredSecondary);
+  const [detailWidth, setDetailWidth] = useState(readStoredDetailWidth);
 
   const reportError = useCallback((message: string) => setError(message), []);
   const { activity, log } = useActivity();
@@ -76,14 +106,33 @@ export function Shell(): JSX.Element {
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
   // is re-read from the CSS variables after the styles have been applied.
+  // Dark is the only shipped shell theme for now: light needs the main process
+  // to push theme tokens into the card frames (tracked for M6).
   useEffect(() => {
     applyTheme(theme);
     const timer = window.setTimeout(() => setXtermTheme(readXtermTheme()), 30);
     return () => window.clearTimeout(timer);
   }, [theme]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('devboard.secondary', secondaryOpen ? '1' : '0');
+    } catch {
+      // memory-only shell still works
+    }
+  }, [secondaryOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('devboard.detailWidth', String(detailWidth));
+    } catch {
+      // memory-only shell still works
+    }
+  }, [detailWidth]);
+
+  const goPage = useCallback((target: PageId) => {
+    setPage(target);
+    setDetail(null);
   }, []);
 
   // The cards that are **placed** in the main area right now.
@@ -132,7 +181,7 @@ export function Shell(): JSX.Element {
       }
       if (modifier && event.key === '`') {
         event.preventDefault();
-        setPage((current) => (current === 'terminal' ? 'workbench' : 'terminal'));
+        goPage(page === 'terminal' ? 'workbench' : 'terminal');
         return;
       }
       if (event.key === 'Escape') {
@@ -142,12 +191,20 @@ export function Shell(): JSX.Element {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [goPage, page]);
+
+  // The grid measures its own container. Opening/closing the detail column or
+  // collapsing the secondary sidebar changes that width without a window
+  // resize, so nudge react-grid-layout's WidthProvider explicitly.
+  useEffect(() => {
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+    return () => window.clearTimeout(timer);
+  }, [detail, secondaryOpen, detailWidth]);
 
   const commands = useMemo<Command[]>(() => {
     const close = (): void => setPaletteOpen(false);
     const go = (target: PageId): (() => void) => () => {
-      setPage(target);
+      goPage(target);
       close();
     };
     const list: Command[] = [
@@ -157,14 +214,6 @@ export function Shell(): JSX.Element {
       { id: 'page-logs', label: '打开日志', run: go('logs') },
       { id: 'page-library', label: '打开卡片库', run: go('library') },
       { id: 'page-settings', label: '打开设置', run: go('settings') },
-      {
-        id: 'toggle-theme',
-        label: theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
-        run: () => {
-          toggleTheme();
-          close();
-        },
-      },
       {
         id: 'refresh-cards',
         label: '重新扫描卡片目录',
@@ -186,7 +235,7 @@ export function Shell(): JSX.Element {
       });
     }
     return list;
-  }, [detail, log, refresh, theme, toggleTheme]);
+  }, [detail, goPage, log, refresh]);
 
   const secondary = useMemo(
     () =>
@@ -227,18 +276,34 @@ export function Shell(): JSX.Element {
   return (
     <div className="app-shell">
       <StatusBar
-        theme={theme}
-        onToggleTheme={toggleTheme}
         runtime={runtime}
         connections={connections}
         cardCount={cards.length}
         placedCount={placedCards.length}
+        secondaryOpen={secondaryOpen}
+        onToggleSecondary={() => setSecondaryOpen((open) => !open)}
         onOpenPalette={() => setPaletteOpen(true)}
       />
 
       <div className="app-body">
-        <Rail page={page} onPage={setPage} />
-        <Secondary groups={secondary} />
+        <Rail page={page} onPage={goPage} />
+        {secondaryOpen ? (
+          <Secondary
+            title={PAGE_TITLE[page]}
+            groups={secondary}
+            onCollapse={() => setSecondaryOpen(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            className="secondary-reopen"
+            onClick={() => setSecondaryOpen(true)}
+            title="展开二级栏"
+            aria-label="展开二级栏"
+          >
+            <ChevronIcon size={14} />
+          </button>
+        )}
 
         <main className={`app-main${density === 'compact' ? ' is-compact' : ''}`}>
           <ErrorBar message={error} onDismiss={() => setError(null)} />
@@ -249,12 +314,16 @@ export function Shell(): JSX.Element {
                 cards={placedCards}
                 units={units}
                 broker={broker}
+                theme={theme}
                 density={density}
                 selectedInstanceId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}
                 onOpenDetail={openDetail}
                 onRemove={handleRemove}
                 onLayoutChange={setUnits}
+                onOpenLibrary={() => goPage('library')}
+                onDensity={setDensity}
+                onRefreshCards={refresh}
               />
             ) : null}
 
@@ -337,8 +406,11 @@ export function Shell(): JSX.Element {
 
         <DetailPanel
           target={detail}
+          width={detailWidth}
           activity={activity}
+          onWidthChange={setDetailWidth}
           onClose={() => setDetail(null)}
+          onRemoveCard={handleRemove}
           onCopyDiagnostics={() => {
             const payload = {
               generatedAt: new Date().toISOString(),

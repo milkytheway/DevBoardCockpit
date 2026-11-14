@@ -1,0 +1,161 @@
+/* Core-load card — theme variables only. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 10px 12px 8px;
+  font-family: var(--cockpit-font-ui);
+  color: var(--cockpit-text);
+  background: transparent;
+  overflow: hidden;
+}
+
+.cl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.cl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex: 0 0 auto;
+}
+
+.cl-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.cl-summary b {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.cl-summary span {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-faint);
+}
+
+.cl-total {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cl-total span {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-faint);
+}
+
+.cl-total b {
+  font-family: var(--cockpit-font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cockpit-text-dim);
+}
+
+.cl-bars {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.cl-core {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.cl-core__track {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 30px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-border) 70%, transparent);
+  background: color-mix(in oklab, var(--cockpit-surface-active) 55%, transparent);
+}
+
+.cl-core__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0%;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--cockpit-accent), color-mix(in oklab, var(--cockpit-accent) 55%, transparent));
+  transition: height 220ms ease-out;
+}
+
+.cl-core__fill[data-tone='warn'] {
+  background: linear-gradient(180deg, var(--cockpit-warn), color-mix(in oklab, var(--cockpit-warn) 55%, transparent));
+}
+
+.cl-core__fill[data-tone='danger'] {
+  background: linear-gradient(180deg, var(--cockpit-danger), color-mix(in oklab, var(--cockpit-danger) 55%, transparent));
+}
+
+.cl-core__value {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--cockpit-text-dim);
+  white-space: nowrap;
+}
+
+.cl-core__value[data-tone='warn'] {
+  color: var(--cockpit-warn);
+}
+
+.cl-core__value[data-tone='danger'] {
+  color: var(--cockpit-danger);
+}
+
+.cl-core.is-empty .cl-core__value {
+  color: var(--cockpit-text-faint);
+}
+
+.cl-core__label {
+  font-size: 8.5px;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cl-note {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./card.js"></script>
+  </head>
+  <body>
+    <div class="cl">
+      <div class="cl-head">
+        <div class="cl-summary">
+          <b id="avg">—</b>
+          <span>平均</span>
+        </div>
+        <div class="cl-summary">
+          <b id="peak">—</b>
+          <span>峰值</span>
+        </div>
+        <div class="cl-total">
+          <span>总占用</span>
+          <b id="total">—</b>
+        </div>
+      </div>
+      <div class="cl-bars" id="bars" aria-label="每核负载"></div>
+      <div class="cl-note" id="note">等待第一次采样</div>
+    </div>
+  </body>
+</html>

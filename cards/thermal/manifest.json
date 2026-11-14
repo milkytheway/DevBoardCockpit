@@ -1,0 +1,29 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "thermal",
+  "name": "温度",
+  "version": "1.0.0",
+  "description": "SoC / GPU / NPU 三路温度与阈值；读 temp.soc / temp.gpu / temp.npu",
+  "entry": "index.html",
+  "requires": {
+    "tags": [
+      "temp.soc"
+    ]
+  },
+  "layout": {
+    "w": 3,
+    "h": 4,
+    "min_w": 2,
+    "min_h": 3
+  },
+  "permissions": {
+    "read": [
+      "temp.soc",
+      "temp.gpu",
+      "temp.npu"
+    ],
+    "write": []
+  },
+  "actions": []
+}

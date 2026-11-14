@@ -1,25 +1,374 @@
-/* 第一张卡的样式。
- *
- * **只用 var(--cockpit-*)** —— 卡片不硬编码颜色（契约 §六），
- * 换皮肤时这张卡不用改一行。
- */
+/* CPU card — only --cockpit-* colours, so both skins work unchanged. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  padding: 9px 12px 8px;
   font-family: var(--cockpit-font-ui);
   color: var(--cockpit-text);
+  background: transparent;
+  overflow: hidden;
 }
 
-.label {
-  font-size: var(--cockpit-type-caption);
+.cpu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.cpu-top {
+  display: flex;
+  gap: 12px;
+  flex: 0 0 auto;
+  height: 178px;
+}
+
+/* ── gauge ─────────────────────────────────────────────────── */
+
+.gauge {
+  position: relative;
+  flex: 0 0 50%;
+  min-width: 0;
+}
+
+.gauge__svg {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  overflow: visible;
+}
+
+.gauge__track {
+  fill: none;
+  stroke: var(--cockpit-surface-active);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.gauge__zone {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: butt;
+  opacity: 0.5;
+}
+
+.gauge__zone--warn {
+  stroke: var(--cockpit-warn);
+  stroke-dasharray: 25 100;
+  stroke-dashoffset: -60;
+}
+
+.gauge__zone--danger {
+  stroke: var(--cockpit-danger);
+  stroke-dasharray: 15 100;
+  stroke-dashoffset: -85;
+}
+
+.gauge__arc {
+  fill: none;
+  stroke: var(--cockpit-accent);
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--cockpit-accent) 45%, transparent));
+  transition: stroke-dasharray 260ms cubic-bezier(0.22, 1, 0.36, 1), stroke 160ms ease;
+}
+
+.gauge__arc[data-state='warn'] {
+  stroke: var(--cockpit-warn);
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--cockpit-warn) 40%, transparent));
+}
+
+.gauge__arc[data-state='danger'] {
+  stroke: var(--cockpit-danger);
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--cockpit-danger) 40%, transparent));
+}
+
+.gauge__arc[data-state='none'] {
+  stroke: transparent;
+  filter: none;
+}
+
+.gauge__needle {
+  stroke: var(--cockpit-text-dim);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.gauge__needle[data-state='none'] {
+  opacity: 0;
+}
+
+.gauge__hub {
+  fill: var(--cockpit-surface);
+  stroke: var(--cockpit-border-strong);
+  stroke-width: 1.4;
+}
+
+.gauge__ticks text {
+  fill: var(--cockpit-text-faint);
+  font-family: var(--cockpit-font-mono);
+  font-size: 8.5px;
+}
+
+.gauge__center {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  pointer-events: none;
+}
+
+.gauge__value {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 34px;
+  line-height: 1;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--cockpit-text-dim);
+  letter-spacing: -0.03em;
 }
 
-.foot {
+.gauge__value.cockpit-value--stale {
+  color: var(--cockpit-warn);
+}
+
+.gauge__value.cockpit-value--error {
+  color: var(--cockpit-danger);
+}
+
+.gauge__value.cockpit-unavailable {
+  color: var(--cockpit-unavailable);
+  font-size: 26px;
+}
+
+.gauge__unit {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--cockpit-text-dim);
+  text-transform: uppercase;
+}
+
+.gauge__foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  gap: 11px;
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  color: var(--cockpit-text-faint);
+}
+
+.gauge__foot b {
+  color: var(--cockpit-text-dim);
+  font-weight: 500;
+}
+
+/* ── right column ──────────────────────────────────────────── */
+
+.cpu-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.meta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-surface-active) 34%, transparent);
+  min-width: 0;
+}
+
+.meta-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cockpit-text-faint);
+}
+
+.meta-value {
+  font-family: var(--cockpit-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cockpit-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spark {
+  flex: 1;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-bg) 34%, transparent);
+}
+
+.spark__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--cockpit-text-faint);
+}
+
+.spark__now {
+  font-family: var(--cockpit-font-mono);
+  color: var(--cockpit-accent);
+}
+
+.spark__svg {
+  flex: 1;
+  min-height: 22px;
+  width: 100%;
+}
+
+.spark__svg polyline {
+  fill: none;
+  stroke: var(--cockpit-accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.cpu-note {
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+  min-height: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cpu-note.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.cpu-note.is-error {
+  color: var(--cockpit-danger);
+}
+
+.cpu-note.is-unavailable {
+  color: var(--cockpit-unavailable);
+}
+
+/* ── core bars ─────────────────────────────────────────────── */
+
+.cores {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 4px 2px 0;
+}
+
+.core-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  flex: 1;
+  height: 100%;
+}
+
+.core-group__label {
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  color: var(--cockpit-text-faint);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  align-self: center;
+}
+
+.core-bars {
+  flex: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  align-items: stretch;
+}
+
+.core {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 0;
+}
+
+.core__track {
+  position: relative;
+  flex: 1;
+  min-height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-bg) 40%, transparent);
+  overflow: hidden;
+}
+
+.core__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--cockpit-accent), color-mix(in oklab, var(--cockpit-accent) 55%, transparent));
+  transition: height 320ms cubic-bezier(0.22, 1, 0.36, 1), background 160ms ease;
+}
+
+.core__fill[data-state='warn'] {
+  background: linear-gradient(180deg, var(--cockpit-warn), color-mix(in oklab, var(--cockpit-warn) 50%, transparent));
+}
+
+.core__fill[data-state='danger'] {
+  background: linear-gradient(180deg, var(--cockpit-danger), color-mix(in oklab, var(--cockpit-danger) 50%, transparent));
+}
+
+.core__label {
+  font-family: var(--cockpit-font-mono);
+  font-size: 8.5px;
+  text-align: center;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
 }

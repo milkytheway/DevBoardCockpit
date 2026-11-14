@@ -1,0 +1,190 @@
+/* Thermal card — theme variables only. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 10px 12px 8px;
+  font-family: var(--cockpit-font-ui);
+  color: var(--cockpit-text);
+  background: transparent;
+  overflow: hidden;
+}
+
+.th {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.th-hero {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--cockpit-border);
+  background:
+    radial-gradient(100% 120% at 0% 0%, color-mix(in oklab, var(--cockpit-warn) 10%, transparent), transparent 62%),
+    color-mix(in oklab, var(--cockpit-surface-active) 30%, transparent);
+}
+
+.th-hero__value {
+  grid-row: 1 / span 2;
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.th-hero__value[data-tone='ok'] {
+  color: var(--cockpit-text);
+}
+
+.th-hero__value[data-tone='warn'] {
+  color: var(--cockpit-warn);
+}
+
+.th-hero__value[data-tone='danger'] {
+  color: var(--cockpit-danger);
+}
+
+.th-hero__value.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.th-hero__value.is-unavailable {
+  color: var(--cockpit-unavailable);
+  font-size: 26px;
+}
+
+.th-hero__value.is-pending {
+  color: var(--cockpit-text-faint);
+}
+
+.th-hero__unit {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.th-hero__at {
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.th-rows {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.th-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.th-row__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.th-row__label {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--cockpit-text-faint);
+}
+
+.th-row__value {
+  font-family: var(--cockpit-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cockpit-text-dim);
+}
+
+.th-row__value[data-tone='warn'] {
+  color: var(--cockpit-warn);
+}
+
+.th-row__value[data-tone='danger'] {
+  color: var(--cockpit-danger);
+}
+
+.th-row__value.is-unavailable {
+  color: var(--cockpit-unavailable);
+}
+
+.th-track {
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-bg) 40%, transparent);
+  overflow: hidden;
+}
+
+.th-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--cockpit-ok) 70%, transparent), var(--cockpit-ok));
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1), background 160ms ease;
+}
+
+.th-fill[data-tone='warn'] {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--cockpit-warn) 60%, transparent), var(--cockpit-warn));
+}
+
+.th-fill[data-tone='danger'] {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--cockpit-danger) 60%, transparent), var(--cockpit-danger));
+}
+
+.th-note {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.th-note.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.th-note.is-unavailable {
+  color: var(--cockpit-unavailable);
+}
+
+.th-note.is-error {
+  color: var(--cockpit-danger);
+}

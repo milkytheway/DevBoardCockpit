@@ -1,0 +1,29 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "core-load",
+  "name": "每核负载",
+  "version": "1.0.0",
+  "description": "8 个核心的实时负载柱状图，按 A55 / A76 分组；读 cpu.core.*.usage / cpu.core.*.cluster",
+  "entry": "index.html",
+  "requires": {
+    "tags": [
+      "cpu.usage"
+    ]
+  },
+  "layout": {
+    "w": 5,
+    "h": 4,
+    "min_w": 3,
+    "min_h": 3
+  },
+  "permissions": {
+    "read": [
+      "cpu.core.*.usage",
+      "cpu.core.*.cluster",
+      "cpu.usage"
+    ],
+    "write": []
+  },
+  "actions": []
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./card.js"></script>
+  </head>
+  <body>
+    <div class="mem">
+      <div class="mem-top">
+        <div class="mem-big">
+          <div class="mem-big__value" id="value">—</div>
+          <div class="mem-big__unit">已用 / 总量</div>
+          <div class="mem-big__foot" id="fraction">— / —</div>
+        </div>
+        <div class="mem-trend">
+          <span class="mem-trend__label">近 60s</span>
+          <svg viewBox="0 0 100 38" preserveAspectRatio="none" aria-hidden="true">
+            <polyline id="spark" points="" />
+          </svg>
+        </div>
+      </div>
+      <div class="seg" id="seg" aria-hidden="true"></div>
+      <div class="mem-stats">
+        <div class="mem-stat">
+          <span>已用</span>
+          <b id="used">—</b>
+        </div>
+        <div class="mem-stat">
+          <span>可用</span>
+          <b id="available">—</b>
+        </div>
+        <div class="mem-stat">
+          <span>总量</span>
+          <b id="total">—</b>
+        </div>
+      </div>
+      <div class="mem-note" id="note">等待第一次采样</div>
+    </div>
+  </body>
+</html>

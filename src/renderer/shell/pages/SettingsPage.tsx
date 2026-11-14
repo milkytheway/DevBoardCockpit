@@ -1,5 +1,6 @@
 import type { ThemeMode } from '../theme';
 import type { ViewDensity } from '../../../shared/layout';
+import { PaletteIcon } from '../Icons';
 
 const SHORTCUTS: readonly { keys: string; action: string }[] = [
   { keys: 'Ctrl + K', action: '命令面板' },
@@ -26,96 +27,115 @@ export function SettingsPage({
   onRefreshCards: () => void;
 }): JSX.Element {
   return (
-    <div className="settings">
-      <header className="settings__head">
-        <h1>设置</h1>
-        <p className="dim">外壳只管呈现；连接、卡片与权限都在 main。</p>
+    <div className="page page--settings">
+      <header className="page-head">
+        <div className="page-head__text">
+          <span className="page-head__eyebrow">SETTINGS</span>
+          <h1 className="page-head__title">设置</h1>
+          <p className="page-head__sub">外壳只管呈现；连接、卡片与权限都在 main</p>
+        </div>
       </header>
 
-      <section className="settings__card">
-        <h2>外观</h2>
-        <p className="dim">主题走 token 三层：改种子，不重写组件。默认深色。</p>
-        <div className="segmented" role="group" aria-label="主题">
-          {(['dark', 'light'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={theme === mode ? 'is-active' : ''}
-              aria-pressed={theme === mode}
-              onClick={() => onTheme(mode)}
-            >
-              {mode === 'dark' ? '深色' : '浅色'}
-            </button>
-          ))}
-        </div>
-        <p className="dim settings__probe">
-          换主题后，终端**原地换色**（不重建，屏幕不会丢）；卡片通过宿主注入的 theme.css 跟随。
-        </p>
-
-        <h2>密度</h2>
-        <p className="dim">一屏能看几张卡片。</p>
-        <div className="segmented" role="group" aria-label="密度">
-          {(['comfortable', 'compact'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={density === mode ? 'is-active' : ''}
-              aria-pressed={density === mode}
-              onClick={() => onDensity(mode)}
-            >
-              {mode === 'comfortable' ? '舒适' : '紧凑'}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="settings__card">
-        <h2>键盘</h2>
-        <table className="readings-table">
-          <thead>
-            <tr>
-              <th>快捷键</th>
-              <th>动作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SHORTCUTS.map((row) => (
-              <tr key={row.keys}>
-                <td className="mono">{row.keys}</td>
-                <td>{row.action}</td>
-              </tr>
+      <div className="settings-grid">
+        <section className="settings-card">
+          <header className="settings-card__head">
+            <span className="settings-card__icon" aria-hidden>
+              <PaletteIcon size={16} />
+            </span>
+            <div>
+              <h2>外观</h2>
+              <p>主题走 token 三层：改种子，不重写组件</p>
+            </div>
+          </header>
+          <div className="segmented" role="group" aria-label="主题">
+            {(['dark', 'light'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={theme === mode ? 'is-active' : ''}
+                aria-pressed={theme === mode}
+                disabled={mode === 'light'}
+                title={mode === 'light' ? '浅色外壳待卡片主题通道接入（M6）' : '当前主题'}
+                onClick={() => onTheme(mode)}
+              >
+                {mode === 'dark' ? '深色' : '浅色（待接入）'}
+              </button>
             ))}
-          </tbody>
-        </table>
-      </section>
+          </div>
+          <p className="settings-note">
+            外壳深色已就绪；浅色外壳的卡片颜色需要主进程把主题推给卡片（M6）。主题仍走 token 三层：改种子，不重写组件。
+          </p>
 
-      <section className="settings__card">
-        <h2>运行面</h2>
-        <dl className="kv">
-          <dt>连接</dt>
-          <dd>{connectionsCount} 个 profile</dd>
-          <dt>卡片</dt>
-          <dd>{cardsCount} 张（内置 + 用户目录）</dd>
-          <dt>卡片通道</dt>
-          <dd>cardsList / cardsHello / cardsRequest / layoutGet / layoutSet</dd>
-          <dt>数据通道</dt>
-          <dd>tagsReadings / tagsChanged / tagsStatus（只读，renderer 不碰设备）</dd>
-        </dl>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onRefreshCards}>
-          重新扫描卡片
-        </button>
-      </section>
+          <h3 className="settings-card__sub">卡片密度</h3>
+          <div className="segmented" role="group" aria-label="密度">
+            {(['comfortable', 'compact'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={density === mode ? 'is-active' : ''}
+                aria-pressed={density === mode}
+                onClick={() => onDensity(mode)}
+              >
+                {mode === 'comfortable' ? '舒适' : '紧凑'}
+              </button>
+            ))}
+          </div>
+        </section>
 
-      <section className="settings__card settings__about">
-        <h2>关于</h2>
-        <p>
-          DevBoard Cockpit · 外壳 v0.5（M5b）。卡片宿主、沙箱与 CSP 是 main 的职责；这个外壳只画，不判权限，
-          不碰设备。
-        </p>
-        <p className="dim">
-          设计依据：docs/UI设计/01-UI设计总纲.md；机制基线：docs/21；边界：docs/UI设计/05-外壳施工图.md。
-        </p>
-      </section>
+        <section className="settings-card">
+          <header className="settings-card__head">
+            <div>
+              <h2>键盘</h2>
+              <p>全部操作都有命令行入口</p>
+            </div>
+          </header>
+          <ul className="shortcut-list">
+            {SHORTCUTS.map((row) => (
+              <li key={row.keys}>
+                <kbd>{row.keys}</kbd>
+                <span>{row.action}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="settings-card">
+          <header className="settings-card__head">
+            <div>
+              <h2>运行面</h2>
+              <p>宿主能力与通道</p>
+            </div>
+          </header>
+          <dl className="kv kv--compact">
+            <dt>连接</dt>
+            <dd>{connectionsCount} 个 profile</dd>
+            <dt>卡片</dt>
+            <dd>{cardsCount} 张（内置 + 用户目录）</dd>
+            <dt>卡片通道</dt>
+            <dd className="mono">cardsList · cardsHello · layoutGet</dd>
+            <dt>数据通道</dt>
+            <dd className="mono">tagsReadings · tagsChanged</dd>
+          </dl>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={onRefreshCards}>
+            重新扫描卡片目录
+          </button>
+        </section>
+
+        <section className="settings-card settings-card--about">
+          <header className="settings-card__head">
+            <div>
+              <h2>关于</h2>
+              <p>DevBoard Cockpit · 外壳 v0.5（M5b）</p>
+            </div>
+          </header>
+          <p className="settings-note">
+            卡片宿主、沙箱与 CSP 是 main 的职责；这个外壳只画，不判权限，不碰设备。
+          </p>
+          <p className="settings-note dim">
+            设计依据 docs/UI设计/01-UI设计总纲.md · 机制基线 docs/21 · 边界 docs/UI设计/05-外壳施工图.md
+          </p>
+        </section>
+      </div>
     </div>
   );
 }
