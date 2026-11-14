@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchApp, writeCard, cardDir, simpleCard } from './harness';
+import { launchApp, writeCard, cardDir, simpleCard, cardFrameFor } from './harness';
 
 /**
  * 卡片沙箱的**隔离判据**（M5 的验收主体）。
@@ -28,7 +28,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      const frame = await cardFrame(launched.window);
+      const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
         try {
           // @ts-expect-error 运行时才知道有没有
@@ -49,7 +49,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      const frame = await cardFrame(launched.window);
+      const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(async () => {
         try {
           await fetch('https://example.com/');
@@ -68,7 +68,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      const frame = await cardFrame(launched.window);
+      const frame = await cardFrameFor(launched.window, 'e2e-card');
       const reading = await frame.evaluate(async () => {
         const value = await (window as unknown as { cockpit: { tags: { get(name: string): Promise<unknown> } } })
           .cockpit.tags.get('mem.usage');
@@ -99,7 +99,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      const frame = await cardFrame(launched.window);
+      const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
         try {
           window.localStorage.setItem('x', '1');
@@ -115,6 +115,29 @@ test.describe('卡片沙箱', () => {
     }
   });
 
+  test('**内置的第一张卡自动出现**（不用手动复制——它就在内置根下）', async () => {
+    const launched = await launchApp();
+    try {
+      // **不装任何卡**——内置的 `cards/cpu-usage/` 就该自己出现
+      await expect
+        .poll(
+          async () => {
+            const list = await cardsListOf(launched.window);
+            return list.filter((c) => c.cardId === 'cpu-usage').length;
+          },
+          { timeout: 20_000 },
+        )
+        .toBeGreaterThan(0);
+      const frame = await cardFrameFor(launched.window, 'cpu-usage');
+      // 它得真的跑起来（不是只出现在清单里）
+      expect(await frame.evaluate(() => typeof (window as unknown as { cockpit?: unknown }).cockpit)).toBe(
+        'object',
+      );
+    } finally {
+      await launched.close();
+    }
+  });
+
   test('卡片碰不到别的卡', async () => {
     const launched = await launchApp();
     try {
@@ -123,8 +146,7 @@ test.describe('卡片沙箱', () => {
       await expect
         .poll(async () => cardFrames(launched.window).length, { timeout: 20_000 })
         .toBeGreaterThanOrEqual(2);
-      const frame = cardFrames(launched.window)[0];
-      if (frame === undefined) throw new Error('卡片 iframe 没出现');
+      const frame = await cardFrameFor(launched.window, 'card-a');
       const result = await frame.evaluate(() => {
         const out: Record<string, string> = { own: 'no-throw', other: 'no-throw' };
         try {
@@ -156,7 +178,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard('e2e-card', 'v1'));
-      const frame = await cardFrame(launched.window);
+      const frame = await cardFrameFor(launched.window, 'e2e-card');
       expect(await frame.evaluate(() => document.body.dataset.marker)).toBe('v1');
 
       // 改卡片里的一个字 —— **不重启**
@@ -166,10 +188,18 @@ test.describe('卡片沙箱', () => {
       await expect
         .poll(
           async () => {
-            const frames = cardFrames(launched.window);
-            const first = frames[0];
-            if (first === undefined) return 'no-frame';
-            return await first.evaluate(() => document.body.dataset.marker ?? 'none').catch(() => 'gone');
+            const frames = cardFrames(launched.window).filter((f) =>
+              f.url().startsWith('cockpit://card/'),
+            );
+            // **按实例找那张 e2e-card**（内置卡也在列表里，不能靠顺序）
+            const list = await cardsListOf(launched.window);
+            const info = list.find((c) => c.cardId === 'e2e-card');
+            if (info === undefined) return 'no-card';
+            const target = frames.find((f) => f.url().startsWith(`cockpit://card/${info.instanceId}/`));
+            if (target === undefined) return 'no-frame';
+            return await target
+              .evaluate(() => document.body.dataset.marker ?? 'none')
+              .catch(() => 'gone');
           },
           { timeout: 20_000 },
         )
@@ -179,6 +209,19 @@ test.describe('卡片沙箱', () => {
     }
   });
 });
+
+/** 问宿主要装着的卡片清单 */
+async function cardsListOf(
+  page: import('@playwright/test').Page,
+): Promise<{ cardId: string; instanceId: string }[]> {
+  return page.evaluate(() =>
+    (
+      window as unknown as {
+        cockpit: { cardsList(): Promise<{ cardId: string; instanceId: string }[]> };
+      }
+    ).cockpit.cardsList(),
+  );
+}
 
 /** 所有卡片 iframe */
 function cardFrames(page: import('@playwright/test').Page): import('@playwright/test').Frame[] {

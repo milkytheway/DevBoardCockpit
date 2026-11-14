@@ -66,9 +66,9 @@ export default [
     },
   },
   {
-    // **卡片自己的代码**（`fixtures/cards/**`）跑在**浏览器的沙箱 iframe** 里：
+    // **卡片自己的代码**（`cards/**`，产品的内置卡）跑在**浏览器的沙箱 iframe** 里：
     // 有 document / window / 定时器；`cockpit` 是**宿主注入的**（契约 §七）。
-    files: ['fixtures/cards/**/*.js'],
+    files: ['cards/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

@@ -1,4 +1,4 @@
-import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
+import { _electron as electron, type ElectronApplication, type Frame, type Page } from 'playwright';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -129,8 +129,13 @@ export async function launchApp(
   // （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
   const executablePath = opts.executablePath ?? process.env['ELECTRON_BIN'];
   const app = await electron.launch({
-    // `--user-data-dir` 让 Electron 的 userData 与 `userDataDir()` 落在同一处
-    args: [mainEntry, `--user-data-dir=${userDataDir}`],
+    // **用「应用根」启动**（`electron .`），不是 `electron out/main/index.js`
+    //
+    // 两者的 `app.getAppPath()` 不同：前者 = 应用根，**内置卡的根就在那儿**
+    // （`join(app.getAppPath(), 'cards')`）；后者 = 脚本所在目录 → **内置卡找不到**。
+    // → e2e 测的就不是用户看到的东西了。
+    args: ['.', `--user-data-dir=${userDataDir}`],
+    cwd: REPO_ROOT,
     ...(executablePath !== undefined ? { executablePath } : {}),
     env,
   });
@@ -147,6 +152,52 @@ export async function launchApp(
       rmSync(root, { recursive: true, force: true });
     },
   };
+}
+
+/**
+ * 找到**某张卡**的 iframe。
+ *
+ * ── 为什么不能靠「第一个 card frame」──
+ *
+ * **内置卡（`cards/cpu-usage/`）自动就在列表里**（它就在内置根下）
+ * → 卡片区不止一个 iframe。
+ * 而 frame 的 URL 里只有**实例 id**（`cockpit://card/<实例 id>/…`），看不出是哪张卡。
+ *
+ * → 先问宿主要清单（`cardsList`），用 cardId 换 instanceId，再按 URL **精确匹配** ✓
+ *
+ * @param cardId 卡片 id（目录名与 manifest 的 id 相同）
+ */
+export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
+  // ── 为什么是「重试」而不是「等一次」──
+  //
+  // 卡片的内容指纹进了**实例 id** → **卡片文件一变，实例 id 就变**
+  // （这是「改文件即热更新」的实现方式：URL 变 → iframe 重建）。
+  // 而 e2e 写卡时是**连续写几个文件** → 实例 id 会抖几下。
+  //
+  // → 每轮都重新读清单、重新找帧；帧要是已经被换掉（detached）就再来一轮。
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const list = await cardsList(page);
+    const info = list.find((c) => c.cardId === cardId);
+    if (info !== undefined) {
+      const frame = page
+        .frames()
+        .find((f) => f.url().startsWith(`cockpit://card/${info.instanceId}/`));
+      if (frame !== undefined && !frame.isDetached()) return frame;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`卡片 ${cardId} 的 iframe 没出现`);
+}
+
+/** 问宿主要装着的卡片清单 */
+async function cardsList(page: Page): Promise<{ cardId: string; instanceId: string }[]> {
+  return page.evaluate(() =>
+    (
+      window as unknown as {
+        cockpit: { cardsList(): Promise<{ cardId: string; instanceId: string }[]> };
+      }
+    ).cockpit.cardsList(),
+  );
 }
 
 /** 卡片目录在 userData 下的位置 */
