@@ -995,6 +995,30 @@ const MUTATIONS = [
     apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
   },
   {
+    name: 'M83 控制面：回读形式 5 必须标 verified:false（标成 true = 把没验证当验证了）',
+    file: 'src/main/actions/readback.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
+    expect: 'verified: false',
+    apply: (s) =>
+      replace(
+        s,
+        "        ok: true,\n        verified: false,\n        detail: spec.consequence ?? '这个动作没有可回读的状态',",
+        "        ok: true,\n        verified: true, // 变异：把「没验证」说成验证了\n        detail: spec.consequence ?? '这个动作没有可回读的状态',",
+      ),
+  },
+  {
+    name: 'M84 控制面：串口上没有退出码 → 必须报 unsupported_transport（不是「不符」）',
+    file: 'src/main/actions/readback.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
+    expect: 'unsupported_transport',
+    apply: (s) =>
+      replace(
+        s,
+        "      reason: 'unsupported_transport',\n      detail: '这条连接没有退出码（串口），command_ok 用不了',",
+        "      reason: 'failed', // 变异：当成「不符」\n      detail: '这条连接没有退出码（串口），command_ok 用不了',",
+      ),
+  },
+  {
     name: 'M81 队列：四级优先级（动作必须插到采样前面）',
     file: 'src/main/hal/round-trip-queue.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
