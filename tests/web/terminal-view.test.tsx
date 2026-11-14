@@ -22,6 +22,9 @@ vi.mock('@xterm/xterm', () => ({
     write(data: string) { writes.push(data); }
     focus() { /* no-op */ }
     dispose() { /* no-op */ }
+    // **换肤是原地改 options**（不重建实例）→ 假实现要能接住
+    options: Record<string, unknown> = {};
+    refresh() { /* no-op */ }
   },
 }));
 

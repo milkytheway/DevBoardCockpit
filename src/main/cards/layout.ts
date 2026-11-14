@@ -15,11 +15,11 @@ import { dirname } from 'node:path';
  * 契约 §7.8：一张卡可以在多条连接上各有一个实例 → 每个实例**各占一格**。
  * 所以只按 `cardId` 记会撞车（两张卡挤进同一格）。
  *
- * ── 视图各存一份 ──
+ * ── 一个布局（不再有视图）──
  *
- * v2 起布局按视图分（总览/监控/调试/演示）。旧 v1 文件（`{units, updatedAt}`）
- * 由 `normalizeLayout` 落到「总览」，**读得出来**。
- *
+ * v3 起布局就是一份（主区摆了哪些卡）。旧文件照样读得出来：
+ * v1（`{units, updatedAt}`）直接用，v2（多视图）取**当前视图**那份。
+ * 
  * ── 为什么落盘要「坏了也不抛」 ──
  *
  * 布局文件在用户目录里，可能被写了一半、被人手改坏。
@@ -32,26 +32,23 @@ import { dirname } from 'node:path';
 export type { LayoutUnit, LayoutState } from '../../shared/layout';
 
 import { normalizeLayout } from '../../shared/layout';
-import type { LayoutState, LayoutStateInput, LayoutUnit } from '../../shared/layout';
-
-/** 默认格：3×2（契约 §2.4 的默认） */
-const DEFAULT_W = 3;
-const DEFAULT_H = 2;
+import type { LayoutState, LayoutStateInput } from '../../shared/layout';
 
 export class LayoutStore {
   constructor(private readonly deps: { file: string; now: () => number }) {}
 
-  /** 读布局。**读不出来就是空布局**（不抛；v1 文件自动落到总览） */
+  /** 读布局。**读不出来就是空布局**（不抛；v1/v2 旧文件都读得出来） */
   get(): LayoutState {
-    if (!existsSync(this.deps.file)) return normalizeLayout(undefined, 0);
+    const now = this.deps.now();
+    if (!existsSync(this.deps.file)) return normalizeLayout(undefined, now);
     let parsed: unknown;
     try {
       parsed = JSON.parse(readFileSync(this.deps.file, 'utf8'));
     } catch {
       // **文件坏了 → 当空的**（不是崩溃的理由）
-      return normalizeLayout(undefined, 0);
+      return normalizeLayout(undefined, now);
     }
-    return normalizeLayout(parsed, 0);
+    return normalizeLayout(parsed, now);
   }
 
   /** 存布局（**原子写**：先写临时文件再改名——免得写一半断电） */
@@ -63,25 +60,5 @@ export class LayoutStore {
     writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
     // **改名是原子的**（同一个文件系统内）
     renameSync(tmp, file);
-  }
-
-  /**
-   * 一张卡的默认格子。
-   *
-   * @param layout manifest 里声明的尺寸（缺省 3×2）
-   */
-  defaultFor(
-    cardId: string,
-    connectionId: string | null,
-    layout?: { w?: number; h?: number },
-  ): LayoutUnit {
-    return {
-      cardId,
-      connectionId,
-      x: 0,
-      y: 0,
-      w: layout?.w ?? DEFAULT_W,
-      h: layout?.h ?? DEFAULT_H,
-    };
   }
 }

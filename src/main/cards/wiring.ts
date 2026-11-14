@@ -177,6 +177,22 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
           url,
           connectionId,
           degraded: card.issues.some((i) => i.severity === 'error'),
+          // **卡片自报的默认尺寸**（manifest 的 layout.w/h）——
+          // 页面把卡摆进主区时用它（作者的心愿，宿主读得到 manifest）
+          ...(card.manifest.layout === undefined
+            ? {}
+            : {
+                layout: {
+                  w: card.manifest.layout.w ?? 3,
+                  h: card.manifest.layout.h ?? 2,
+                  ...(card.manifest.layout.min_w === undefined
+                    ? {}
+                    : { min_w: card.manifest.layout.min_w }),
+                  ...(card.manifest.layout.min_h === undefined
+                    ? {}
+                    : { min_h: card.manifest.layout.min_h }),
+                },
+              }),
         });
       }
       // 卡片没了（被删了）→ 它的会话也要关
@@ -190,34 +206,15 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       return out;
     },
     handleRequest: (req) => sessions.handle(req),
-    // ── 布局的**有效值**由宿主算 ──
+    // ── 布局 = **主区摆了哪些卡** ──
     //
-    // 存着的布局只记了「谁被挪过」；没挪过的卡要用 **manifest 声明的尺寸**
-    // （那是产品的默认值，**只有宿主知道**——它读的是 manifest）。
-    // → 页面拿到的是**已经算好的格子**，不用自己懂 manifest。
+    // v3：一个布局，没有视图。**主区默认是空的**——用户从左二级的卡片目录
+    // 里点哪张才摆进来（`units` 里只有摆过的卡）。
     //
-    // 每个视图各算一份：某个视图没摆过卡时，按 manifest 给每个已装卡一个默认格。
-    layoutGet: () => {
-      const stored = layout.get();
-      const connectionId = deps.currentConnectionId();
-      const views = stored.views.map((view) => {
-        const byKey = new Map(view.units.map((u) => [layoutKey(u.cardId, u.connectionId), u]));
-        const units = registry.cards().map((card) => {
-          const k = layoutKey(card.cardId, connectionId);
-          return (
-            byKey.get(k) ?? layout.defaultFor(card.cardId, connectionId, card.manifest.layout)
-          );
-        });
-        // Keep the view's own display config (hidden cards / density / filter).
-        return { ...view, units };
-      });
-      const active = views.find((view) => view.id === stored.activeViewId) ?? views[0];
-      return { ...stored, views, units: active.units };
-    },
-    // 存的时候**别把没装的卡的格子丢了**（卡片卸载了再装回来，位置还在）
-    //
-    // 每个视图分别合并：本次只动 `activeViewId` 指向的那个视图的格子，
-    // 其它视图原样保留（切视图再摆一次不会互相覆盖）。
+    // → 宿主的活只剩两件：
+    //   ① 读出来（v1/v2 旧文件也读得出来 ✓ 在 `normalizeLayout` 里）
+    //   ② 存的时候**别把没装的卡的格子丢了**（卡片卸载了再装回来，位置还在）
+    layoutGet: () => layout.get(),
     layoutSet: (input) => {
       const connectionId = deps.currentConnectionId();
       const installed = new Set(
@@ -225,22 +222,12 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       );
       const previous = layout.get();
       const state = normalizeLayout(input, now());
-      const views = previous.views.map((view) => {
-        const kept = view.units.filter((u) => !installed.has(layoutKey(u.cardId, u.connectionId)));
-        const incoming = state.views.find((candidate) => candidate.id === view.id);
-        const next = incoming?.units ?? view.units;
-        // Display config travels with the view; an explicit empty config clears it
-        // (that is how "restore hidden cards" reaches the file).
-        return { ...view, units: [...kept, ...next], config: incoming?.config ?? view.config };
-      });
-      const active = views.find((view) => view.id === state.activeViewId) ?? views[0];
-      layout.set({
-        version: 2,
-        activeViewId: active.id,
-        views,
-        units: active.units,
-        updatedAt: now(),
-      });
+      const incoming = new Set(state.units.map((u) => layoutKey(u.cardId, u.connectionId)));
+      // **没装着的卡**（已卸载但用户摆过）→ 保留它的格子，装回来位置还在
+      const kept = previous.units.filter(
+        (u) => !installed.has(layoutKey(u.cardId, u.connectionId)) && !incoming.has(layoutKey(u.cardId, u.connectionId)),
+      );
+      layout.set({ ...state, units: [...kept, ...state.units], updatedAt: now() });
     },
     refresh: () => {
       registry.refresh();

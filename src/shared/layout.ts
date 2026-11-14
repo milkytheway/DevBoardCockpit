@@ -1,38 +1,33 @@
 /**
  * 布局的**纯数据形状**（跨进程的那一份）。
  *
- * ── 为什么在 `shared/` 而不在 `main/cards/layout.ts` ──
+ * ── v3：一个布局，不再有「视图」 ──
  *
- * 布局要**过 IPC**（页面读、页面写）→ 形状属于「跨进程约定」→
- * 唯一的住处就是 `shared/`（`src/main/` 的东西页面不许 import）。
+ * v2 是「每个视图各存一份」（总览/监控/调试/演示）。
+ * 现在**视图这个概念整个退场**了：主区就是一张卡片网格，
+ * 左二级是**卡片目录**，你点哪张才把它摆进来。
+ * → 一份布局就够了（`units` = 主区摆了哪些）。
  *
- * ── 键是 `(cardId, connectionId)` ──
+ * | 形状 | 字段 | 去向 |
+ * |---|---|---|
+ * | **v3**（现在） | `version` `units` `density` `updatedAt` | — |
+ * | v2 | `views[]` `activeViewId` | **取「当前视图」那份** → 不丢用户的位置 |
+ * | v1 | `units` `updatedAt` | 直接用 ✓ |
  *
- * 契约 §7.8：一张卡可以在多条连接上各有一个实例 → 每个实例**各占一格**。
- * 只按 `cardId` 记会撞车（两张卡挤进同一格）。
+ * ── 退场的字段与它们去哪了 ──
  *
- * ── 为什么是「每个视图一份布局」 ──
+ * | 退场 | 去向 |
+ * |---|---|
+ * | `views` / `activeViewId` | 视图没了 → 一个布局 |
+ * | `config.hidden`（本视图隐藏的卡） | **「已摆放」= 在 `units` 里** → 不在 `units` 里的就是没摆进主区 |
+ * | `config.tagFilter`（读数过滤） | **读数彻底交给卡片** → 宿主不再画读数 → 这个过滤没有消费者了 |
+ * | `config.density` | 提为**全局** `density`（放设置页） |
  *
- * UI 总纲 §五：视图是**保存的配置**——切视图只改可见槽位/滤镜/密度，
- * 不重载卡片、不重订数据。布局归视图所有：总览摆好的卡片，
- * 切到调试视图再摆一次，两边互不覆盖。
+ * ── 旧文件读得出来 ──
  *
- * 旧格式（v1，只有 `{units, updatedAt}`）仍能读：落到「总览」视图，
- * 其余视图为空。**不迁移用户数据也读得出来**（读不出才是坏）。
+ * 布局文件在用户目录里。**读不出来 = 用户白摆了一遍** → 所以
+ * v1 与 v2 都要读得出来（v2 取当前视图那份）✓。
  */
-
-/** 内置视图顺序（与 UI 视图栏一致） */
-export const LAYOUT_VIEW_IDS = ['overview', 'monitor', 'debug', 'demo'] as const;
-
-export type LayoutViewId = (typeof LAYOUT_VIEW_IDS)[number];
-
-/** 视图显示名（落盘也用得上：将来允许改名时可迁移） */
-export const LAYOUT_VIEW_NAMES: Record<LayoutViewId, string> = {
-  overview: '总览',
-  monitor: '监控',
-  debug: '调试',
-  demo: '演示',
-};
 
 /** 布局里的一格 */
 export interface LayoutUnit {
@@ -47,58 +42,43 @@ export interface LayoutUnit {
   h: number;
 }
 
-/** 视图内容密度（显示层；不改变布局坐标） */
+/**
+ * 显示密度（**全局**，不是按视图的）。
+ *
+ * - `comfortable`：卡片有呼吸空间，行高 72
+ * - `compact`：一屏多看几张，行高 48
+ */
 export type ViewDensity = 'comfortable' | 'compact';
 
-/**
- * 一个视图自己的内容配置（「视图=保存的配置」里的配置部分）。
- *
- * 都是**视图层面**的显示/过滤，不改变卡片权限、不改变 main 的账：
- * - `hidden`：本视图隐藏的卡片实例（key 是 `slotKey(cardId, connectionId)`）
- * - `density`：本视图的显示密度（舒适 / 紧凑）
- * - `tagFilter`：本视图的读数过滤 pattern（`*` 通配；空=全部）
- */
-export interface LayoutViewConfig {
-  hidden?: string[];
-  density?: ViewDensity;
-  tagFilter?: string[];
-}
-
-/** 一个视图的布局 */
-export interface LayoutView {
-  id: LayoutViewId;
-  units: LayoutUnit[];
-  /** 内容配置；normalize 之后总是存在（可能是空对象） */
-  config: LayoutViewConfig;
-}
-
-/** 整个布局文件（v2） */
+/** 整个布局文件（v3） */
 export interface LayoutState {
-  /** 格式版本；v1 是 `{units, updatedAt}`，没有这个字段 */
-  version: 2;
-  /** 当前视图（重启后回到这里） */
-  activeViewId: LayoutViewId;
-  /** 每个视图各一份布局（顺序固定为 LAYOUT_VIEW_IDS） */
-  views: LayoutView[];
-  /**
-   * **当前视图**的格子（兼容字段）。
-   *
-   * IPC 与旧测试读 `state.units`；写的时候以 `views[activeViewId]` 为准。
-   * 两边永远同步（`normalizeLayout` 负责）。
-   */
+  /** 格式版本；v1 没有这个字段，v2 是 `2` */
+  version: 3;
+  /** **主区摆了哪些卡**（没摆进来的卡不在这里） */
   units: LayoutUnit[];
+  /** 显示密度（全局） */
+  density: ViewDensity;
   /** 最后一次保存的时刻（诊断用） */
   updatedAt: number;
 }
 
-/** v1 的落盘形状（读旧文件用；写出去一律 v2） */
+/** v1 的形状（`{units, updatedAt}`） */
 export interface LegacyLayoutState {
-  units: LayoutUnit[];
-  updatedAt: number;
+  units?: unknown;
+  updatedAt?: unknown;
+}
+
+/** v2 的形状（多视图） */
+export interface LegacyLayoutStateV2 {
+  version?: 2;
+  units?: unknown;
+  updatedAt?: unknown;
+  activeViewId?: unknown;
+  views?: unknown;
 }
 
 /** 布局写入的输入形状：新格式或旧格式都收 */
-export type LayoutStateInput = LayoutState | LegacyLayoutState;
+export type LayoutStateInput = LayoutState | LegacyLayoutState | LegacyLayoutStateV2;
 
 /** 一格是不是**形状对**的单元（布局文件是用户能碰的 → 进来之前要收形状） */
 export function isLayoutUnit(raw: unknown): raw is LayoutUnit {
@@ -111,128 +91,97 @@ export function isLayoutUnit(raw: unknown): raw is LayoutUnit {
   return isNumber('x') && isNumber('y') && isNumber('w') && isNumber('h');
 }
 
-/** 空布局（四个视图都空） */
+/** 空布局（主区空的 —— 你自己摆） */
 export function emptyLayout(now = 0): LayoutState {
-  return normalizeLayout(undefined, now);
+  return { version: 3, units: [], density: 'comfortable', updatedAt: now };
 }
 
 /**
- * 把任意输入收成 v2 形状（**不抛**：读坏文件、读旧文件都走这里）。
+ * 把任意输入收成 v3 形状（**不抛**：读坏文件、读旧文件都走这里）。
  *
- * - 有 `views`：按视图收格子（未知视图丢掉，缺的视图补空）
- * - 没有 `views`（v1）：`units` 落到「总览」，其余视图空
- * - 任何字段坏掉：该字段回默认，不影响其它视图
+ * - **v3**：直接收
+ * - **v2**（多视图）：取**当前视图**那份格子与密度，其余视图的布局**不丢**（它们只是被合并了）
+ * - **v1**：`units` 直接用
  */
 export function normalizeLayout(raw: unknown, now = 0): LayoutState {
-  const record =
-    raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
-  const rawViews = record !== null && Array.isArray(record['views']) ? record['views'] : null;
+  if (raw === null || typeof raw !== 'object') return emptyLayout(now);
+  const record = raw as Record<string, unknown>;
 
-  const views: LayoutView[] = LAYOUT_VIEW_IDS.map((id) => {
-    if (rawViews === null) {
-      // v1：所有格子在「总览」；其余视图从空开始
-      return {
-        id,
-        units: id === 'overview' ? normalizeUnits(record?.['units']) : [],
-        config: {},
-      };
-    }
-    const match = rawViews.find(
-      (view) => view !== null && typeof view === 'object' && (view as Record<string, unknown>)['id'] === id,
-    ) as Record<string, unknown> | undefined;
-    return {
-      id,
-      units: match === undefined ? [] : normalizeUnits(match['units']),
-      config: match === undefined ? {} : normalizeViewConfig(match['config']),
-    };
-  });
+  // v2：多视图 → 取「当前视图」那份
+  if (Array.isArray(record['views'])) {
+    const views = record['views'] as {
+      id?: unknown;
+      units?: unknown;
+      config?: { density?: unknown } | null;
+    }[];
+    const activeId = typeof record['activeViewId'] === 'string' ? record['activeViewId'] : null;
+    const active =
+      views.find((v) => v !== null && typeof v === 'object' && v.id === activeId) ??
+      views.find((v) => v !== null && typeof v === 'object') ??
+      null;
+    const density = readDensity(active?.config?.density);
+    const units = active === null ? normalizeUnits(record['units']) : normalizeUnits(active.units);
+    return { version: 3, units, density, updatedAt: readUpdatedAt(record['updatedAt'], now) };
+  }
 
-  const activeViewId = isLayoutViewId(record?.['activeViewId'])
-    ? record['activeViewId']
-    : 'overview';
-  const updatedAtRaw = record?.['updatedAt'];
-  const updatedAt =
-    typeof updatedAtRaw === 'number' && Number.isFinite(updatedAtRaw) ? updatedAtRaw : now;
-
-  const active = views.find((view) => view.id === activeViewId) ?? views[0];
-  return { version: 2, activeViewId: active.id, views, units: active.units, updatedAt };
+  // v1 / v3：直接收
+  return {
+    version: 3,
+    units: normalizeUnits(record['units']),
+    density: readDensity(record['density']),
+    updatedAt: readUpdatedAt(record['updatedAt'], now),
+  };
 }
 
-/** 某个视图的格子（未知视图 → 空） */
-export function unitsForView(state: LayoutState, viewId: LayoutViewId): LayoutUnit[] {
-  return state.views.find((view) => view.id === viewId)?.units ?? [];
+/** 换掉主区的格子（拖拽落盘走这里） */
+export function withUnits(state: LayoutState, units: LayoutUnit[]): LayoutState {
+  return { ...state, units: units.map((u) => ({ ...u })) };
 }
 
-/** 某个视图的内容配置（未知视图 → 空配置） */
-export function viewConfigFor(state: LayoutState, viewId: LayoutViewId): LayoutViewConfig {
-  return state.views.find((view) => view.id === viewId)?.config ?? {};
+/** 换密度（设置页改的走这里） */
+export function withDensity(state: LayoutState, density: ViewDensity): LayoutState {
+  return { ...state, density };
 }
 
 /**
- * 更新某个视图的格子，并把 `units` 镜像同步过去。
+ * 一张卡的**默认格子**（摆进主区时用）。
  *
- * 不负责改 `updatedAt`（那是落盘方的时钟），也不动该视图的内容配置。
+ * 尺寸来自 manifest 自报的 `layout.w/h`（作者的心愿）；
+ * 没报就用 3×2。
+ *
+ * ── 为什么住在 `shared/` ──
+ *
+ * 「摆进来时多大」是**两边都要知道**的事：宿主算默认、页面摆格子。
+ * 放在一处 → 不会各写一个 3×2 然后慢慢漂移。
  */
-export function withViewUnits(
-  state: LayoutState,
-  viewId: LayoutViewId,
-  units: LayoutUnit[],
-): LayoutState {
-  const views = state.views.map((view) =>
-    view.id === viewId ? { ...view, units } : view,
-  );
-  return { ...state, activeViewId: viewId, views, units };
+export function defaultUnit(
+  cardId: string,
+  connectionId: string | null,
+  layout?: { w?: number; h?: number },
+): LayoutUnit {
+  return {
+    cardId,
+    connectionId,
+    x: 0,
+    y: 0,
+    w: layout?.w ?? DEFAULT_W,
+    h: layout?.h ?? DEFAULT_H,
+  };
 }
 
-/**
- * 更新某个视图的内容配置（隐藏卡 / 密度 / 读数过滤）。
- *
- * 传的是**完整配置**（调用方自己合并旧值）；这里只负责收形状。
- */
-export function withViewConfig(
-  state: LayoutState,
-  viewId: LayoutViewId,
-  config: LayoutViewConfig,
-): LayoutState {
-  const normalized = normalizeViewConfig(config);
-  const views = state.views.map((view) =>
-    view.id === viewId ? { ...view, config: normalized } : view,
-  );
-  return { ...state, views };
-}
-
-function isLayoutViewId(raw: unknown): raw is LayoutViewId {
-  return typeof raw === 'string' && (LAYOUT_VIEW_IDS as readonly string[]).includes(raw);
-}
+/** 默认格：3×2 */
+const DEFAULT_W = 3;
+const DEFAULT_H = 2;
 
 function normalizeUnits(raw: unknown): LayoutUnit[] {
-  return Array.isArray(raw) ? raw.filter(isLayoutUnit) : [];
-}
-
-/** 配置里的字符串数组：去空、去重、封顶（用户能碰的文件 → 收形状） */
-function normalizeStrings(raw: unknown, max: number): string[] {
   if (!Array.isArray(raw)) return [];
-  const out: string[] = [];
-  for (const item of raw) {
-    if (typeof item !== 'string') continue;
-    const value = item.trim();
-    if (value.length === 0 || out.includes(value)) continue;
-    out.push(value);
-    if (out.length >= max) break;
-  }
-  return out;
+  return raw.filter(isLayoutUnit).map((u) => ({ ...u }));
 }
 
-function normalizeViewConfig(raw: unknown): LayoutViewConfig {
-  if (raw === null || typeof raw !== 'object') return {};
-  const record = raw as Record<string, unknown>;
-  const config: LayoutViewConfig = {};
-  const hidden = normalizeStrings(record['hidden'], 500);
-  if (hidden.length > 0) config.hidden = hidden;
-  if (record['density'] === 'compact' || record['density'] === 'comfortable') {
-    config.density = record['density'];
-  }
-  const tagFilter = normalizeStrings(record['tagFilter'], 64);
-  if (tagFilter.length > 0) config.tagFilter = tagFilter;
-  return config;
+function readDensity(raw: unknown): ViewDensity {
+  return raw === 'compact' ? 'compact' : 'comfortable';
+}
+
+function readUpdatedAt(raw: unknown, fallback: number): number {
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
 }

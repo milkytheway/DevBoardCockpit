@@ -1,74 +1,47 @@
-import {
-  FolderIcon,
-  GearIcon,
-  GridIcon,
-  LayersIcon,
-  ListIcon,
-  TerminalIcon,
-} from './Icons';
-import type { DockTab, PageId } from './types';
+import type { PageId } from './types';
+
+/**
+ * The rail: the places you can be.
+ *
+ * ── one entry = one page ──
+ *
+ * The terminal, the files and the log used to live in a bottom dock, so
+ * clicking them in the rail opened a panel underneath. Now each one is a
+ * page in the main area and the rail is the only way to reach it.
+ */
+const ENTRIES: { id: PageId; label: string; glyph: string }[] = [
+  { id: 'workbench', label: '工作台', glyph: '▦' },
+  { id: 'terminal', label: '终端', glyph: '▤' },
+  { id: 'files', label: '文件', glyph: '▥' },
+  { id: 'logs', label: '日志', glyph: '▨' },
+  { id: 'library', label: '卡片库', glyph: '▩' },
+  { id: 'settings', label: '设置', glyph: '⚙' },
+];
 
 export function Rail({
   page,
-  dockTab,
-  dockOpen,
   onPage,
-  onOpenDock,
 }: {
   page: PageId;
-  dockTab: DockTab;
-  dockOpen: boolean;
   onPage: (page: PageId) => void;
-  onOpenDock: (tab: DockTab) => void;
 }): JSX.Element {
-  const item = (
-    key: string,
-    label: string,
-    icon: JSX.Element,
-    active: boolean,
-    action: () => void,
-  ): JSX.Element => (
-    <button
-      key={key}
-      type="button"
-      className={`rail__item ${active ? 'is-active' : ''}`}
-      onClick={action}
-      title={label}
-      aria-label={label}
-      aria-current={active ? 'page' : undefined}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-
   return (
     <nav className="rail" aria-label="主导航">
-      {item('workbench', '工作台', <GridIcon size={18} />, page === 'workbench' && !dockOpen, () => onPage('workbench'))}
-      {item('library', '卡片库', <LayersIcon size={18} />, page === 'library', () => onPage('library'))}
-      {item(
-        'terminal',
-        '终端',
-        <TerminalIcon size={18} />,
-        page === 'workbench' && dockOpen && dockTab === 'terminal',
-        () => onOpenDock('terminal'),
-      )}
-      {item(
-        'files',
-        '文件',
-        <FolderIcon size={18} />,
-        page === 'workbench' && dockOpen && dockTab === 'files',
-        () => onOpenDock('files'),
-      )}
-      {item(
-        'logs',
-        '日志',
-        <ListIcon size={18} />,
-        page === 'workbench' && dockOpen && dockTab === 'logs',
-        () => onOpenDock('logs'),
-      )}
-      <span className="rail__spacer" />
-      {item('settings', '设置', <GearIcon size={18} />, page === 'settings', () => onPage('settings'))}
+      {ENTRIES.map((entry) => (
+        <button
+          key={entry.id}
+          type="button"
+          className={`rail__item${page === entry.id ? ' is-active' : ''}`}
+          aria-current={page === entry.id ? 'page' : undefined}
+          title={entry.label}
+          onClick={() => onPage(entry.id)}
+        >
+          <span className="rail__glyph" aria-hidden>
+            {entry.glyph}
+          </span>
+          <span className="rail__label">{entry.label}</span>
+        </button>
+      ))}
     </nav>
   );
 }

@@ -1,4 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Frame, type Page } from 'playwright';
+import { expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -136,7 +137,11 @@ export async function launchApp(
     // 两者的 `app.getAppPath()` 不同：前者 = 应用根，**内置卡的根就在那儿**
     // （`join(app.getAppPath(), 'cards')`）；后者 = 脚本所在目录 → **内置卡找不到**。
     // → e2e 测的就不是用户看到的东西了。
-    args: ['.', `--user-data-dir=${userDataDir}`],
+    //
+    // `--disable-gpu`：无 GPU 的环境（CI 容器、Xvfb）里 GPU 进程起不来，
+    // Electron 会以 `The platform failed to initialize` + SIGSEGV 挂掉——
+    // **跟被测的东西无关**（卡片隔离靠 iframe 的 sandbox 与 CSP，不靠 GPU）。
+    args: ['.', `--user-data-dir=${userDataDir}`, '--disable-gpu'],
     cwd: REPO_ROOT,
     ...(executablePath !== undefined ? { executablePath } : {}),
     env,
@@ -215,6 +220,26 @@ async function cardsList(page: Page): Promise<{ cardId: string; instanceId: stri
       }
     ).cockpit.cardsList(),
   );
+}
+
+/**
+ * Put a card into the main area.
+ *
+ * The workbench starts **empty** — the cards live in the secondary sidebar's
+ * catalogue until you pick them. So a test that wants to look at a card
+ * has to place it first, exactly like a user would.
+ */
+export async function placeCard(page: Page, cardId: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const list = await cardsList(page);
+        return list.filter((c) => c.cardId === cardId).length;
+      },
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
+  await page.locator(`.secondary__item:has(.secondary__label:text-is("${cardId}"))`).first().click();
 }
 
 /** 卡片目录在 userData 下的位置 */

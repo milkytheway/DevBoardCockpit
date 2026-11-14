@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import type { XtermTheme } from '../shell/theme';
 
 /**
  * 一个终端面板。
@@ -27,6 +28,27 @@ export interface TerminalViewProps {
    * 的全部内容再写一遍——屏幕上是重复的文本，不是板子说的话。
    */
   subscribe?: (cb: (chunk: string) => void) => () => void;
+  /**
+   * The xterm palette (already resolved to concrete colours).
+   *
+   * **xterm is drawn on a canvas — it cannot resolve `var(--x)`.** So the
+   * colours have to be read out of the CSS variables and handed over as
+   * plain values.
+   *
+   * Passing them in (instead of reading them here) means every terminal
+   * reads the same snapshot, taken at the same moment — and that a theme
+   * change reaches all of them at once.
+   */
+  theme?: XtermTheme;
+  /**
+   * Is this the terminal the user is looking at?
+   *
+   * A hidden terminal must not report its size (the container is 0×0, and
+   * FitAddon would measure a fake 2×1). When it becomes visible again it
+   * has to re-measure and report, otherwise the remote keeps the old
+   * window size.
+   */
+  active?: boolean;
 }
 
 /**
@@ -42,15 +64,24 @@ function readToken(name: string, fallback: string): string {
   return value.length > 0 ? value : fallback;
 }
 
-export function TerminalView({ sessionId, onWrite, onResize, subscribe }: TerminalViewProps): JSX.Element {
+export function TerminalView({
+  sessionId,
+  onWrite,
+  onResize,
+  subscribe,
+  theme,
+  active = true,
+}: TerminalViewProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const onWriteRef = useRef(onWrite);
   const onResizeRef = useRef(onResize);
+  const activeRef = useRef(active);
 
   onWriteRef.current = onWrite;
   onResizeRef.current = onResize;
+  activeRef.current = active;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -65,7 +96,7 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
       scrollback: 2000,
       // **必须读出解析后的值**：xterm 用 canvas 的 fillStyle 画字，
       // canvas **不解析 CSS 变量**——直接传 'var(--cockpit-bg)' 会静默失效。
-      theme: {
+      theme: theme ?? {
         background: readToken('--cockpit-bg', '#14171c'),
         foreground: readToken('--cockpit-text', '#dfe4ec'),
         cursor: readToken('--cockpit-accent', '#58a6ff'),
@@ -96,6 +127,8 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
     };
 
     const observer = new ResizeObserver(() => {
+      // **隐藏时不要 fit**：容器 0×0，FitAddon 会量出一个假尺寸
+      if (!activeRef.current) return;
       fit.fit();
       report();
     });
@@ -115,12 +148,39 @@ export function TerminalView({ sessionId, onWrite, onResize, subscribe }: Termin
   }, [sessionId]);
 
   // 订阅远端输出：每个 chunk 写一次，不重放历史
+  //
+  // **依赖是 `subscribe` 本身**——宿主给每个会话缓存了一个稳定的函数，
+  // 所以这个 effect 不会每次渲染都重跑（重跑 = 退订 + 重订 = 中间到的输出丢了）。
   useEffect(() => {
     if (!subscribe) return;
     return subscribe((chunk: string) => {
       termRef.current?.write(chunk);
     });
   }, [subscribe]);
+
+  // 换主题：**原地改 options.theme**，不重建终端
+  //
+  // 重建（换 `key`）会把 scrollback 一起丢掉 —— 换主题不该丢屏幕。
+  // xterm 的 options 是可写的（`term.options.theme = {...}`），换完刷新一下即可。
+  useEffect(() => {
+    if (!theme) return;
+    const term = termRef.current;
+    if (term === null) return;
+    term.options.theme = { ...theme };
+    term.refresh(0, term.rows - 1);
+  }, [theme]);
+
+  // 变得可见：重新量尺寸并报给远端（隐藏期间远端停在旧尺寸上）
+  useEffect(() => {
+    if (!active) return;
+    const term = termRef.current;
+    const fit = fitRef.current;
+    if (term === null || fit === null) return;
+    fit.fit();
+    if (term.cols > 2 && term.rows > 1) onResizeRef.current?.(term.cols, term.rows);
+    term.refresh(0, term.rows - 1);
+    term.focus();
+  }, [active]);
 
   return <div className="cockpit-terminal" data-testid={`terminal-${sessionId}`} ref={hostRef} />;
 }

@@ -126,18 +126,16 @@ const MUTATIONS = [
   },
   {
     name: 'C6 renderer 呈现错误',
-    file: 'src/renderer/App.tsx',
-    check: ['npx', 'vitest', 'run', 'tests/web/app-error.test.tsx'],
-    expect: '把原因显示出来',
+    file: 'src/renderer/shell/ErrorBar.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/shell-error.test.tsx'],
+    expect: '把失败的原因显示出来',
     apply: (s) =>
       replace(
         s,
-        `      {error ? (
-        <p className="cockpit-error" role="alert">
-          {error}
-        </p>
-      ) : null}`,
-        '      {null}',
+        `    <div className="shell-error" role="alert">
+      <span>{message}</span>`,
+        `    <div className="shell-error" role="alert">
+      <span>{'坏了'}</span>`,
       ),
   },
   {
@@ -173,10 +171,15 @@ const MUTATIONS = [
   },
   {
     name: 'M10 上传要传绝对路径',
-    file: 'src/renderer/App.tsx',
-    check: ['npx', 'vitest', 'run', 'tests/web/app-error.test.tsx'],
+    file: 'src/renderer/shell/Shell.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/shell-error.test.tsx'],
     expect: '绝对路径',
-    apply: (s) => replace(s, 'const localPath = api.getPathForFile(file);', 'const localPath = file.name;'),
+    apply: (s) =>
+      replace(
+        s,
+        'const localPath = window.cockpit.getPathForFile(file);',
+        'const localPath = file.name;',
+      ),
   },
   {
     name: 'M11 串口的回包缓冲不许被裁剪',

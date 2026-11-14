@@ -1,34 +1,44 @@
 import { useState } from 'react';
-import type { CardInstanceInfo } from '../../shared/ipc-contract';
-import type { CardBroker } from '../cards/broker';
-import { UserCard } from '../cards/user-card';
-import { shortId } from './format';
+import type { CardInstanceInfo } from '../../../shared/ipc-contract';
+import type { CardBroker } from '../../cards/broker';
+import { UserCard } from '../../cards/user-card';
 
 /**
- * Host-drawn chrome around one user card. The iframe is the card; this component
- * owns the title bar, the footer and the drag handle — cards can never draw these.
+ * The host-drawn chrome around one card.
+ *
+ * ── the host draws it, the card never can ──
+ *
+ * A card is an opaque origin: it cannot reach the host's DOM at all
+ * (contract §6). So the title bar, the drag handle, the state chip and the
+ * menu are **ours** — the card only draws inside its iframe.
+ *
+ * ── the drag handle is also the e2e hook ──
+ *
+ * `data-cockpit-drag-handle` / `data-card-id` are what the Playwright
+ * layout test looks for. They live on the handle element on purpose: the
+ * handle is the one thing that must not move, because it is also the
+ * thing you drag.
  */
 export function CardShell({
   info,
   broker,
   selected,
   onSelect,
-  onOpenInspector,
-  onHide,
+  onOpenDetail,
+  onRemove,
 }: {
   info: CardInstanceInfo;
   broker: CardBroker;
   selected: boolean;
   onSelect: (info: CardInstanceInfo) => void;
-  onOpenInspector: (info: CardInstanceInfo) => void;
-  /** Hide this card in the *current view* only (layout, not permissions). */
-  onHide: (info: CardInstanceInfo) => void;
+  onOpenDetail: (info: CardInstanceInfo) => void;
+  onRemove: (info: CardInstanceInfo) => void;
 }): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <section
-      className={`cockpit-card ${selected ? 'is-selected' : ''}`}
+      className={`cockpit-card${selected ? ' is-selected' : ''}`}
       data-card-id={info.cardId}
       data-instance-id={info.instanceId}
     >
@@ -37,8 +47,11 @@ export function CardShell({
           className="cockpit-card__handle"
           data-cockpit-drag-handle="true"
           data-card-id={info.cardId}
-          onClick={() => onSelect(info)}
-          title="拖动改变位置"
+          onClick={() => {
+            onSelect(info);
+            onOpenDetail(info);
+          }}
+          title="拖动改变位置，单击看详情"
         >
           <span className="cockpit-card__grip" aria-hidden>
             ⠿
@@ -46,7 +59,7 @@ export function CardShell({
           <span className="cockpit-card__titles">
             <span className="cockpit-card__title">{info.cardId}</span>
             <span className="cockpit-card__sub">
-              {info.connectionId ? shortId(info.connectionId) : '未连接'} · sandbox
+              {info.connectionId ? `${info.connectionId.slice(0, 8)} · ` : '未连接 · '}sandbox
             </span>
           </span>
         </div>
@@ -71,20 +84,20 @@ export function CardShell({
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
-                  onOpenInspector(info);
+                  onOpenDetail(info);
                 }}
               >
-                打开检查器
+                查看详情
               </button>
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
-                  onHide(info);
+                  onRemove(info);
                 }}
               >
-                从本视图隐藏
+                从主区拿走
               </button>
             </div>
           ) : null}
@@ -100,7 +113,7 @@ export function CardShell({
         <span>iframe · opaque origin</span>
         <span className="spacer" />
         <span className="mono" title={info.instanceId}>
-          {shortId(info.instanceId)}
+          {info.instanceId.slice(0, 8)}
         </span>
       </footer>
     </section>

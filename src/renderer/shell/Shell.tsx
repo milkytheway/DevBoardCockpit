@@ -1,209 +1,119 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
-import type { LayoutState, LayoutUnit, LayoutViewConfig, ViewDensity } from '../../shared/layout';
-import {
-  unitsForView,
-  viewConfigFor,
-  withViewConfig,
-  withViewUnits,
-} from '../../shared/layout';
-import type { RuntimeStatus } from '../../shared/runtime-status';
-import type { TagReading } from '../../shared/tag-reading';
-import { CardBroker } from '../cards/broker';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import { CommandPalette, type Command } from './CommandPalette';
-import { Dock, type DockFilesProps } from './Dock';
-import { describeError, pushHistory } from './format';
-import { Inspector } from './Inspector';
-import {
-  filterCardsByHidden,
-  filterUnitsByHidden,
-  matchesTagFilters,
-  slotKey,
-} from './layout-utils';
-import { LibraryPage } from './LibraryPage';
+import { DetailPanel } from './detail/DetailPanel';
+import { ErrorBar } from './ErrorBar';
+import { FilesPage } from './pages/FilesPage';
+import { LibraryPage } from './pages/LibraryPage';
+import { LogsPage } from './pages/LogsPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { TerminalPage } from './pages/TerminalPage';
+import { WorkbenchPage } from './pages/WorkbenchPage';
 import { Rail } from './Rail';
-import { SettingsPage } from './SettingsPage';
+import { Secondary } from './Secondary';
 import { StatusBar } from './StatusBar';
-import { Toolbar } from './Toolbar';
-import { ViewTabs } from './ViewTabs';
-import { Workbench } from './Workbench';
-import { applyTheme, readStoredTheme, readXtermTheme } from './theme';
-import type { ActivityEntry, ActivityLevel, DockTab, PageId, TerminalTab, ViewId } from './types';
-
-const MAX_ACTIVITY = 200;
+import {
+  useActivity,
+  useBroker,
+  useCards,
+  useConnections,
+  useLayout,
+  useRuntime,
+} from './data';
+import { describeError } from './format';
+import { slotKey } from './layout-utils';
+import { secondaryGroupsFor } from './nav';
+import { applyTheme, readStoredTheme, readXtermTheme, type XtermTheme } from './theme';
+import type { ActivityLevel, DetailTarget, PageId } from './types';
+import { useTerminal } from './useTerminal';
 
 /**
- * The shell owns presentation state and the renderer-side lifecycle. It never
- * judges permissions or talks to the board: everything device-shaped goes
- * through window.cockpit (main owns the real logic).
+ * The shell: the frame around every page.
+ *
+ * ── one rail entry = one page ──
+ *
+ * The terminal, the files and the log used to live in a bottom dock, so
+ * clicking them in the rail opened a panel underneath the workbench. Now
+ * each one is a page in the main area, and the rail is the only way in.
+ *
+ * ── the workbench's main area is the cards, and only the cards ──
+ *
+ * The "overview" strip above the grid (target + a live reading table) is
+ * gone. The link state lives in the secondary sidebar's status block; the
+ * readings belong to the cards.
+ *
+ * ── state lives in hooks, not in here ──
+ *
+ * The shell used to hold 22 `useState`s and one large wiring effect. Now
+ * it holds the navigation and hands the rest to `data.ts` / `useTerminal.ts`.
  */
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
   const [page, setPage] = useState<PageId>('workbench');
-  const [view, setView] = useState<ViewId>('overview');
-  const [dockOpen, setDockOpen] = useState(false);
-  const [dockTab, setDockTab] = useState<DockTab>('terminal');
-  const [connections, setConnections] = useState<ConnectionInfo[]>([]);
-  const [runtime, setRuntime] = useState<RuntimeStatus>({ state: 'idle' });
-  const [readings, setReadings] = useState<TagReading[]>([]);
-  const [lastReadingAt, setLastReadingAt] = useState<number | null>(null);
-  const [cards, setCards] = useState<CardInstanceInfo[]>([]);
-  const [layout, setLayout] = useState<LayoutState | null>(null);
-  const [broker, setBroker] = useState<CardBroker | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  const [sessions, setSessions] = useState<TerminalTab[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [inspectorCard, setInspectorCard] = useState<CardInstanceInfo | null>(null);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DetailTarget>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [xtermTheme, setXtermTheme] = useState(readXtermTheme);
-  const [, setHistoryVersion] = useState(0);
+  const [activityFilter, setActivityFilter] = useState<'all' | ActivityLevel>('all');
+  const [transferNote, setTransferNote] = useState<string | null>(null);
+  const [xtermTheme, setXtermTheme] = useState<XtermTheme>(readXtermTheme);
 
-  const historyRef = useRef(new Map<string, number[]>());
-  const writersRef = useRef(new Map<string, (chunk: string) => void>());
-  const pendingRef = useRef(new Map<string, string[]>());
-  const activityIdRef = useRef(0);
-  const layoutRef = useRef<LayoutState | null>(null);
-  const layoutLoadedRef = useRef(false);
+  const reportError = useCallback((message: string) => setError(message), []);
+  const { activity, log } = useActivity();
+  const connections = useConnections(reportError);
+  const runtime = useRuntime();
+  const { cards, refresh } = useCards(reportError);
+  const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
+  const broker = useBroker();
+  const terminal = useTerminal(connections, reportError, log);
 
-  const logActivity = useCallback((level: ActivityLevel, message: string) => {
-    activityIdRef.current += 1;
-    const entry: ActivityEntry = { id: activityIdRef.current, at: Date.now(), level, message };
-    setActivity((previous) => [entry, ...previous].slice(0, MAX_ACTIVITY));
-  }, []);
-
-  // Theme is a document-level attribute; xterm needs concrete colors, so it is
-  // re-read from CSS variables after the styles have been applied.
+  // Theme is a document-level attribute; xterm needs concrete colours, so it
+  // is re-read from the CSS variables after the styles have been applied.
   useEffect(() => {
     applyTheme(theme);
     const timer = window.setTimeout(() => setXtermTheme(readXtermTheme()), 30);
     return () => window.clearTimeout(timer);
   }, [theme]);
 
-  const refreshCards = useCallback(() => {
-    const api = window.cockpit;
-    void Promise.all([api.cardsList(), api.layoutGet()])
-      .then(([list, loaded]) => {
-        setCards(list);
-        layoutRef.current = loaded;
-        setLayout(loaded);
-        // First load only: come back to the view the user left last time.
-        if (!layoutLoadedRef.current) {
-          layoutLoadedRef.current = true;
-          setView(loaded.activeViewId);
-        }
-      })
-      .catch((cause: unknown) => setError(describeError(cause)));
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
   }, []);
 
-  // One wiring effect: all subscriptions are registered and cleaned up here so
-  // the rest of the component can stay declarative.
-  useEffect(() => {
-    const api = window.cockpit;
-    if (!api) {
-      setError('宿主 API 未注入：检查 preload 是否是最新构建。');
-      return;
-    }
-    let disposed = false;
-    const offs: (() => void)[] = [];
-    const cardBroker = new CardBroker(api);
-    setBroker(cardBroker);
+  // The cards that are **placed** in the main area right now.
+  const placedKeys = useMemo(() => new Set(units.map((u) => slotKey(u.cardId, u.connectionId))), [
+    units,
+  ]);
+  const placedCards = useMemo(
+    () => cards.filter((card) => placedKeys.has(slotKey(card.cardId, card.connectionId))),
+    [cards, placedKeys],
+  );
 
-    const mergeReading = (reading: TagReading): void => {
-      setReadings((previous) => {
-        const index = previous.findIndex((item) => item.tag === reading.tag);
-        if (index === -1) return [...previous, reading].sort((left, right) => left.tag.localeCompare(right.tag));
-        const next = previous.slice();
-        next[index] = reading;
-        return next;
-      });
-      setLastReadingAt(reading.at);
-      if (typeof reading.value === 'number') {
-        pushHistory(historyRef.current, reading.tag, reading.value);
-        setHistoryVersion((value) => value + 1);
-      }
-    };
+  const openDetail = useCallback((card: CardInstanceInfo) => {
+    setDetail({ kind: 'card', card });
+  }, []);
 
-    void api
-      .connectionsList()
-      .then((list) => {
-        if (disposed) return;
-        setConnections(list);
-        logActivity('info', `发现 ${list.length} 个连接 profile`);
-      })
-      .catch((cause: unknown) => setError(describeError(cause)));
+  const selectCard = useCallback((card: CardInstanceInfo) => {
+    setDetail((current) => (current?.kind === 'card' ? { kind: 'card', card } : current));
+  }, []);
 
-    void api
-      .tagsReadings()
-      .then((list) => {
-        if (disposed) return;
-        list.forEach(mergeReading);
-      })
-      .catch((cause: unknown) => setError(describeError(cause)));
+  const handleRemove = useCallback(
+    (card: CardInstanceInfo) => {
+      removeCard(card);
+      setDetail((current) =>
+        current?.kind === 'card' && current.card.instanceId === card.instanceId ? null : current,
+      );
+    },
+    [removeCard],
+  );
 
-    void api
-      .tagsStatus()
-      .then((status) => {
-        if (!disposed) setRuntime(status);
-      })
-      .catch((cause: unknown) => setError(describeError(cause)));
+  const handlePlace = useCallback(
+    (card: CardInstanceInfo) => {
+      placeCard(card);
+      log('info', `把卡片摆进主区：${card.cardId}`);
+    },
+    [placeCard, log],
+  );
 
-    refreshCards();
-
-    offs.push(api.onTagChanged(mergeReading));
-    offs.push(
-      api.onCardsChanged(() => {
-        logActivity('info', '卡片目录变化，重新扫描');
-        refreshCards();
-      }),
-    );
-
-    const onMessage = (event: MessageEvent): void => cardBroker.handleMessage(event);
-    window.addEventListener('message', onMessage);
-    offs.push(() => window.removeEventListener('message', onMessage));
-
-    const statusTimer = window.setInterval(() => {
-      void api
-        .tagsStatus()
-        .then((status) => {
-          if (!disposed) setRuntime(status);
-        })
-        .catch(() => undefined);
-    }, 3000);
-
-    offs.push(
-      api.onTerminalData((sessionId, chunk) => {
-        const writer = writersRef.current.get(sessionId);
-        if (writer) {
-          writer(chunk);
-          return;
-        }
-        const pending = pendingRef.current.get(sessionId) ?? [];
-        pending.push(chunk);
-        pendingRef.current.set(sessionId, pending.slice(-200));
-      }),
-      api.onTerminalExit((sessionId, exitCode) => {
-        logActivity(
-          exitCode === 0 ? 'info' : 'warn',
-          `终端会话结束（退出码 ${exitCode === null ? '无' : exitCode}）：${sessionId.slice(0, 8)}`,
-        );
-        setSessions((previous) => previous.filter((session) => session.sessionId !== sessionId));
-        setActiveSessionId((previous) => (previous === sessionId ? null : previous));
-      }),
-    );
-
-    return () => {
-      disposed = true;
-      window.clearInterval(statusTimer);
-      for (const off of offs) off();
-      cardBroker.dispose();
-      setBroker(null);
-    };
-  }, [logActivity, refreshCards]);
-
-  // Keyboard shortcuts are part of the shell contract (see the settings page).
+  // ── keyboard ──
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const modifier = event.ctrlKey || event.metaKey;
@@ -214,274 +124,36 @@ export function Shell(): JSX.Element {
       }
       if (modifier && event.key === '`') {
         event.preventDefault();
-        setDockOpen((open) => !open);
+        setPage((current) => (current === 'terminal' ? 'workbench' : 'terminal'));
         return;
       }
       if (event.key === 'Escape') {
         setPaletteOpen(false);
-        setInspectorCard(null);
+        setDetail(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  /** Grid units of the current view (each view owns its own layout). */
-  const units = layout === null ? [] : unitsForView(layout, view);
-
-  const persistLayout = useCallback((next: LayoutState) => {
-    layoutRef.current = next;
-    setLayout(next);
-    void window.cockpit.layoutSet(next).catch((cause: unknown) => {
-      setError(describeError(cause));
-    });
-  }, []);
-
-  /** Display settings owned by the active view (per-view, not global). */
-  const viewConfig = layout === null ? {} : viewConfigFor(layout, view);
-  const density: ViewDensity = viewConfig.density ?? 'comfortable';
-  const tagFilter = viewConfig.tagFilter ?? [];
-  const hidden = viewConfig.hidden ?? [];
-  const visibleCards = filterCardsByHidden(cards, hidden);
-  const visibleUnits = filterUnitsByHidden(units, hidden);
-  const shownReadings =
-    tagFilter.length === 0 ? readings : readings.filter((reading) => matchesTagFilters(reading.tag, tagFilter));
-
-  const patchViewConfig = useCallback(
-    (patch: LayoutViewConfig) => {
-      const current = layoutRef.current;
-      if (current === null) return;
-      // The helper takes the whole config; merging here keeps call sites small.
-      persistLayout(withViewConfig(current, view, { ...viewConfigFor(current, view), ...patch }));
-    },
-    [persistLayout, view],
-  );
-
-  const setDensity = useCallback(
-    (next: ViewDensity) => patchViewConfig({ density: next }),
-    [patchViewConfig],
-  );
-
-  const setTagFilter = useCallback(
-    (patterns: string[]) => patchViewConfig({ tagFilter: patterns }),
-    [patchViewConfig],
-  );
-
-  const hideCard = useCallback(
-    (info: CardInstanceInfo) => {
-      const current = layoutRef.current;
-      if (current === null) return;
-      const key = slotKey(info.cardId, info.connectionId);
-      const config = viewConfigFor(current, view);
-      const currentHidden = config.hidden ?? [];
-      if (currentHidden.includes(key)) return;
-      persistLayout(withViewConfig(current, view, { ...config, hidden: [...currentHidden, key] }));
-      setSelectedCardId((selected) => (selected === info.instanceId ? null : selected));
-    },
-    [persistLayout, view],
-  );
-
-  const unhideAll = useCallback(() => {
-    const current = layoutRef.current;
-    if (current === null) return;
-    persistLayout(withViewConfig(current, view, { ...viewConfigFor(current, view), hidden: [] }));
-  }, [persistLayout, view]);
-
-  const changeView = useCallback(
-    (nextView: ViewId) => {
-      setView(nextView);
-      const current = layoutRef.current;
-      if (current === null) return;
-      // Switching views persists "which view was last open" only. The other
-      // views' units stay untouched.
-      persistLayout({
-        ...current,
-        activeViewId: nextView,
-        units: unitsForView(current, nextView),
-      });
-    },
-    [persistLayout],
-  );
-
-  const handleLayoutChange = useCallback(
-    (next: LayoutUnit[]) => {
-      const current = layoutRef.current;
-      if (current === null) return;
-      persistLayout(withViewUnits(current, view, next));
-    },
-    [persistLayout, view],
-  );
-
-  const openTerminal = useCallback(
-    (profileId: string) => {
-      const existing = sessions.find((session) => session.profileId === profileId);
-      if (existing) {
-        setActiveSessionId(existing.sessionId);
-        setDockTab('terminal');
-        setDockOpen(true);
-        return;
-      }
-      const label = connections.find((connection) => connection.id === profileId)?.label ?? profileId;
-      void window.cockpit
-        .terminalOpen(profileId)
-        .then(({ sessionId }) => {
-          setSessions((previous) => [...previous, { sessionId, profileId, label }]);
-          setActiveSessionId(sessionId);
-          setDockTab('terminal');
-          setDockOpen(true);
-          logActivity('info', `打开终端：${label}`);
-        })
-        .catch((cause: unknown) => setError(describeError(cause)));
-    },
-    [connections, logActivity, sessions],
-  );
-
-  const closeSession = useCallback((sessionId: string) => {
-    void window.cockpit.terminalClose(sessionId).catch(() => undefined);
-    setSessions((previous) => previous.filter((session) => session.sessionId !== sessionId));
-    setActiveSessionId((previous) => (previous === sessionId ? null : previous));
-  }, []);
-
-  const terminalSubscribe = useCallback((sessionId: string) => {
-    return (callback: (chunk: string) => void): (() => void) => {
-      writersRef.current.set(sessionId, callback);
-      const backlog = pendingRef.current.get(sessionId);
-      if (backlog && backlog.length > 0) {
-        pendingRef.current.delete(sessionId);
-        callback(backlog.join(''));
-      }
-      return () => {
-        if (writersRef.current.get(sessionId) === callback) writersRef.current.delete(sessionId);
-      };
-    };
-  }, []);
-
-  const onTerminalWrite = useCallback((sessionId: string, data: string) => {
-    window.cockpit.terminalWrite(sessionId, data);
-  }, []);
-
-  const onTerminalResize = useCallback((sessionId: string, cols: number, rows: number) => {
-    window.cockpit.terminalResize(sessionId, cols, rows);
-  }, []);
-
-  const activeSession = sessions.find((session) => session.sessionId === activeSessionId) ?? null;
-  const activeConnection = activeSession
-    ? connections.find((connection) => connection.id === activeSession.profileId) ?? null
-    : null;
-
-  const files: DockFilesProps | null =
-    activeSession && activeConnection
-      ? {
-          sessionId: activeSession.sessionId,
-          capabilities: activeConnection.capabilities,
-          listRemote: (connectionId, remotePath) => window.cockpit.filesList(connectionId, remotePath),
-          onPush: (file, remotePath) => {
-            const localPath = window.cockpit.getPathForFile(file);
-            void window.cockpit
-              .filesPush(activeSession.sessionId, localPath, remotePath)
-              .then(() => logActivity('info', `已推送 ${file.name} → ${remotePath}`))
-              .catch((cause: unknown) => setError(describeError(cause)));
-          },
-          onPull: (connectionId, remotePath) => {
-            void window.cockpit
-              .filesPull(connectionId, remotePath, '')
-              .then((result) => logActivity('info', `已拉取 ${remotePath} → ${result.localPath}`))
-              .catch((cause: unknown) => setError(describeError(cause)));
-          },
-        }
-      : null;
-
-  const openLogs = useCallback(() => {
-    setDockTab('logs');
-    setDockOpen(true);
-  }, []);
-
-  const copyDiagnostics = useCallback(() => {
-    const payload = {
-      generatedAt: new Date().toISOString(),
-      theme,
-      page,
-      view,
-      runtime,
-      connections: connections.map((connection) => ({
-        id: connection.id,
-        transport: connection.transport,
-        boardPack: connection.boardPack,
-        capabilities: connection.capabilities,
-      })),
-      cards,
-      readings: readings.map((reading) => ({
-        tag: reading.tag,
-        status: reading.status,
-        value: reading.value,
-        reason: reading.reason,
-        at: reading.at,
-      })),
-      activity,
-    };
-    const text = JSON.stringify(payload, null, 2);
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text).then(
-        () => logActivity('info', '已复制诊断 JSON 到剪贴板'),
-        () => setError('复制失败：剪贴板不可用。'),
-      );
-    } else {
-      setError('复制失败：剪贴板不可用。');
-    }
-  }, [activity, cards, connections, page, readings, runtime, theme, view, logActivity]);
-
   const commands = useMemo<Command[]>(() => {
     const close = (): void => setPaletteOpen(false);
-    const goView = (next: ViewId): (() => void) => () => {
-      changeView(next);
-      setPage('workbench');
+    const go = (target: PageId): (() => void) => () => {
+      setPage(target);
       close();
     };
     const list: Command[] = [
-      { id: 'view-overview', label: '切换视图：总览', shortcut: 'G 1', run: goView('overview') },
-      { id: 'view-monitor', label: '切换视图：监控', shortcut: 'G 2', run: goView('monitor') },
-      { id: 'view-debug', label: '切换视图：调试', shortcut: 'G 3', run: goView('debug') },
-      { id: 'view-demo', label: '切换视图：演示', shortcut: 'G 4', run: goView('demo') },
-      {
-        id: 'page-library',
-        label: '打开卡片库',
-        run: () => {
-          setPage('library');
-          close();
-        },
-      },
-      {
-        id: 'page-settings',
-        label: '打开设置',
-        run: () => {
-          setPage('settings');
-          close();
-        },
-      },
-      {
-        id: 'dock-terminal',
-        label: '打开底部终端',
-        shortcut: 'Ctrl `',
-        run: () => {
-          setDockTab('terminal');
-          setDockOpen(true);
-          close();
-        },
-      },
-      {
-        id: 'dock-logs',
-        label: '打开运行日志',
-        run: () => {
-          setDockTab('logs');
-          setDockOpen(true);
-          close();
-        },
-      },
+      { id: 'page-workbench', label: '打开工作台', run: go('workbench') },
+      { id: 'page-terminal', label: '打开终端', shortcut: 'Ctrl `', run: go('terminal') },
+      { id: 'page-files', label: '打开文件', run: go('files') },
+      { id: 'page-logs', label: '打开日志', run: go('logs') },
+      { id: 'page-library', label: '打开卡片库', run: go('library') },
+      { id: 'page-settings', label: '打开设置', run: go('settings') },
       {
         id: 'toggle-theme',
         label: theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
         run: () => {
-          setTheme(theme === 'dark' ? 'light' : 'dark');
+          toggleTheme();
           close();
         },
       },
@@ -489,52 +161,60 @@ export function Shell(): JSX.Element {
         id: 'refresh-cards',
         label: '重新扫描卡片目录',
         run: () => {
-          refreshCards();
+          refresh();
+          log('info', '重新扫描卡片目录');
           close();
         },
       },
     ];
-    if (connections.length > 0) {
+    if (detail !== null) {
       list.push({
-        id: 'terminal-open-first',
-        label: `打开终端：${connections[0].label}`,
+        id: 'close-detail',
+        label: '关闭详情',
         run: () => {
-          openTerminal(connections[0].id);
-          close();
-        },
-      });
-    }
-    if (inspectorCard) {
-      list.push({
-        id: 'close-inspector',
-        label: '关闭检查器',
-        run: () => {
-          setInspectorCard(null);
+          setDetail(null);
           close();
         },
       });
     }
     return list;
-  }, [changeView, connections, inspectorCard, openTerminal, refreshCards, theme]);
+  }, [detail, log, refresh, theme, toggleTheme]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
-  }, []);
+  const secondary = useMemo(
+    () =>
+      secondaryGroupsFor(page, {
+        runtime,
+        connections,
+        cards,
+        placedCardIds: [...placedKeys].map((key) => key.split('::')[0] ?? key),
+        sessions: terminal.sessions,
+        activeSessionId: terminal.activeSessionId,
+        activity,
+        activityFilter,
+        onActivityFilter: setActivityFilter,
+        onPlaceCard: handlePlace,
+        onRemoveCard: handleRemove,
+        onOpenSession: terminal.openSession,
+        onSelectSession: terminal.selectSession,
+        onCloseSession: terminal.closeSession,
+      }),
+    [
+      activity,
+      activityFilter,
+      cards,
+      connections,
+      handlePlace,
+      handleRemove,
+      page,
+      placedKeys,
+      runtime,
+      terminal,
+    ],
+  );
 
-  const openDock = useCallback((tab: DockTab) => {
-    setPage('workbench');
-    setDockTab(tab);
-    setDockOpen(true);
-  }, []);
-
-  const selectCard = useCallback((info: CardInstanceInfo) => {
-    setSelectedCardId(info.instanceId);
-  }, []);
-
-  const openInspector = useCallback((info: CardInstanceInfo) => {
-    setSelectedCardId(info.instanceId);
-    setInspectorCard(info);
-  }, []);
+  const activeConnection = terminal.activeSession
+    ? (connections.find((connection) => connection.id === terminal.activeSession?.profileId) ?? null)
+    : null;
 
   return (
     <div className="app-shell">
@@ -543,125 +223,141 @@ export function Shell(): JSX.Element {
         onToggleTheme={toggleTheme}
         runtime={runtime}
         connections={connections}
-        readingCount={readings.length}
         cardCount={cards.length}
-        lastReadingAt={lastReadingAt}
+        placedCount={placedCards.length}
         onOpenPalette={() => setPaletteOpen(true)}
       />
 
       <div className="app-body">
-        <Rail page={page} dockTab={dockTab} dockOpen={dockOpen} onPage={setPage} onOpenDock={openDock} />
+        <Rail page={page} onPage={setPage} />
+        <Secondary groups={secondary} />
 
-        <main className={`app-main ${density === 'compact' ? 'is-compact' : ''}`}>
-          {page === 'workbench' ? (
-            <ViewTabs
-              view={view}
-              onView={changeView}
-              onAddView={() => logActivity('info', '视图保存（M6 起可编辑）')}
-            />
-          ) : null}
-          {page === 'workbench' ? (
-            <Toolbar
-              view={view}
-              cardsCount={cards.length}
-              tagCount={readings.length}
-              density={density}
-              tagFilter={tagFilter}
-              hiddenCount={hidden.length}
-              onRefresh={refreshCards}
-              onOpenLibrary={() => setPage('library')}
-              onOpenDock={() => openDock('terminal')}
-              onDensity={setDensity}
-              onTagFilter={setTagFilter}
-              onUnhideAll={unhideAll}
-            />
-          ) : null}
-
-          {error ? (
-            <div className="shell-error" role="alert">
-              <span>{error}</span>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setError(null)}>
-                知道了
-              </button>
-            </div>
-          ) : null}
+        <main className={`app-main${density === 'compact' ? ' is-compact' : ''}`}>
+          <ErrorBar message={error} onDismiss={() => setError(null)} />
 
           <div className="app-scroll">
             {page === 'workbench' ? (
-              <Workbench
-                view={view}
-                connections={connections}
-                runtime={runtime}
-                readings={shownReadings}
-                history={(tag) => historyRef.current.get(tag) ?? []}
-                cards={visibleCards}
-                units={visibleUnits}
+              <WorkbenchPage
+                cards={placedCards}
+                units={units}
                 broker={broker}
-                selectedCardId={selectedCardId}
-                activeTag={activeTag}
-                hiddenCount={hidden.length}
-                onSelectTag={setActiveTag}
-                onSelectCard={selectCard}
-                onOpenInspector={openInspector}
-                onHideCard={hideCard}
-                onUnhideAll={unhideAll}
-                onLayoutChange={handleLayoutChange}
-                onOpenTerminal={openTerminal}
-                onOpenLibrary={() => setPage('library')}
+                density={density}
+                selectedInstanceId={detail?.kind === 'card' ? detail.card.instanceId : null}
+                onSelect={selectCard}
+                onOpenDetail={openDetail}
+                onRemove={handleRemove}
+                onLayoutChange={setUnits}
               />
-            ) : page === 'library' ? (
+            ) : null}
+
+            {page === 'terminal' ? (
+              <TerminalPage
+                sessions={terminal.sessions}
+                activeSessionId={terminal.activeSessionId}
+                xtermTheme={xtermTheme}
+                terminalSubscribe={terminal.terminalSubscribe}
+                onTerminalWrite={terminal.onTerminalWrite}
+                onTerminalResize={terminal.onTerminalResize}
+              />
+            ) : null}
+
+            {page === 'files' ? (
+              <FilesPage
+                sessionId={terminal.activeSession?.sessionId ?? null}
+                capabilities={activeConnection?.capabilities ?? null}
+                note={transferNote}
+                onPush={(file, remotePath) => {
+                  const session = terminal.activeSession;
+                  if (session === null) return;
+                  const localPath = window.cockpit.getPathForFile(file);
+                  setTransferNote(`正在上传 ${file.name} …`);
+                  void window.cockpit
+                    .filesPush(session.sessionId, localPath, remotePath)
+                    .then(() => {
+                      setTransferNote(`已推送 ${file.name} → ${remotePath}`);
+                      log('info', `已推送 ${file.name} → ${remotePath}`);
+                    })
+                    .catch((cause: unknown) => {
+                      setTransferNote(null);
+                      setError(describeError(cause));
+                    });
+                }}
+                onPull={(connectionId, remotePath) => {
+                  setTransferNote(`正在下载 ${remotePath} …`);
+                  void window.cockpit
+                    .filesPull(connectionId, remotePath, '')
+                    .then((result) => {
+                      setTransferNote(`已拉取 ${remotePath} → ${result.localPath}`);
+                      log('info', `已拉取 ${remotePath} → ${result.localPath}`);
+                    })
+                    .catch((cause: unknown) => {
+                      setTransferNote(null);
+                      setError(describeError(cause));
+                    });
+                }}
+              />
+            ) : null}
+
+            {page === 'logs' ? (
+              <LogsPage activity={activity} filter={activityFilter} />
+            ) : null}
+
+            {page === 'library' ? (
               <LibraryPage
                 cards={cards}
-                selectedCardId={selectedCardId}
+                selectedCardId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}
-                onOpenInspector={openInspector}
-                onRefresh={refreshCards}
+                onOpenDetail={openDetail}
+                onRefresh={refresh}
                 onOpenWorkbench={() => setPage('workbench')}
               />
-            ) : (
+            ) : null}
+
+            {page === 'settings' ? (
               <SettingsPage
                 theme={theme}
                 onTheme={setTheme}
+                density={density}
+                onDensity={setDensity}
                 cardsCount={cards.length}
                 connectionsCount={connections.length}
-                onRefreshCards={refreshCards}
+                onRefreshCards={refresh}
               />
-            )}
+            ) : null}
           </div>
         </main>
 
-        {inspectorCard ? (
-          <Inspector
-            card={inspectorCard}
-            readings={readings}
-            activity={activity}
-            activeTag={activeTag}
-            onClose={() => setInspectorCard(null)}
-            onOpenLogs={openLogs}
-            onCopyDiagnostics={copyDiagnostics}
-          />
-        ) : null}
+        <DetailPanel
+          target={detail}
+          activity={activity}
+          onClose={() => setDetail(null)}
+          onCopyDiagnostics={() => {
+            const payload = {
+              generatedAt: new Date().toISOString(),
+              theme,
+              page,
+              runtime,
+              connections: connections.map((connection) => ({
+                id: connection.id,
+                transport: connection.transport,
+                boardPack: connection.boardPack,
+                capabilities: connection.capabilities,
+              })),
+              cards,
+              activity,
+            };
+            const text = JSON.stringify(payload, null, 2);
+            if (navigator.clipboard?.writeText) {
+              void navigator.clipboard.writeText(text).then(
+                () => log('info', '已复制诊断 JSON 到剪贴板'),
+                () => setError('复制失败：剪贴板不可用。'),
+              );
+            } else {
+              setError('复制失败：剪贴板不可用。');
+            }
+          }}
+        />
       </div>
-
-      <Dock
-        open={dockOpen}
-        tab={dockTab}
-        onTab={setDockTab}
-        onToggle={() => setDockOpen((open) => !open)}
-        connections={connections}
-        runtime={runtime}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onOpenSession={openTerminal}
-        onSelectSession={setActiveSessionId}
-        onCloseSession={closeSession}
-        terminalSubscribe={terminalSubscribe}
-        onTerminalWrite={onTerminalWrite}
-        onTerminalResize={onTerminalResize}
-        files={files}
-        activity={activity}
-        xtermTheme={xtermTheme}
-      />
 
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>

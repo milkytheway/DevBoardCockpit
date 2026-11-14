@@ -1,6 +1,6 @@
 import type { ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
-import { ageText, runtimeText } from './format';
+import { runtimeText } from './format';
 import { PaletteIcon, SearchIcon } from './Icons';
 import type { ThemeMode } from './theme';
 
@@ -9,18 +9,18 @@ export function StatusBar({
   onToggleTheme,
   runtime,
   connections,
-  readingCount,
   cardCount,
-  lastReadingAt,
+  placedCount,
   onOpenPalette,
 }: {
   theme: ThemeMode;
   onToggleTheme: () => void;
   runtime: RuntimeStatus;
   connections: ConnectionInfo[];
-  readingCount: number;
+  /** How many cards are installed. */
   cardCount: number;
-  lastReadingAt: number | null;
+  /** How many of them are placed in the main area. */
+  placedCount: number;
   onOpenPalette: () => void;
 }): JSX.Element {
   const rt = runtimeText(runtime, connections);
@@ -39,16 +39,12 @@ export function StatusBar({
         {rt.label}
         <span className="chip__detail">{rt.detail}</span>
       </span>
-      <span className="chip chip--ghost chip--sm">
-        <span className="mono">{readingCount}</span> tags
-      </span>
-      <span className="chip chip--ghost chip--sm">
-        <span className="mono">{cardCount}</span> cards
+      <span className="chip chip--ghost chip--sm" title="已装卡片 / 已摆进主区">
+        <span className="mono">{placedCount}</span>
+        <span className="dim">/</span>
+        <span className="mono">{cardCount}</span> 张卡片
       </span>
       <span className="spacer" />
-      <span className="statusbar__meta">
-        {lastReadingAt === null ? '暂无采样' : '最后更新 ' + ageText(lastReadingAt)}
-      </span>
       <button type="button" className="statusbar__palette" onClick={onOpenPalette}>
         <SearchIcon size={13} />
         <span>搜索 / 命令</span>

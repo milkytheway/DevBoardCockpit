@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { launchApp, writeCard, simpleCard, cardFrameFor } from './harness';
+import { launchApp, writeCard, simpleCard, cardFrameFor, placeCard } from './harness';
 
 /**
  * 布局：**拖完 → 位置还在**（M5b 的验收判据）。
@@ -23,6 +23,7 @@ test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
     let moved: { x: number; y: number } | null = null;
     try {
       await writeCard(first.userDataDir, 'e2e-card', simpleCard('e2e-card'));
+      await placeCard(first.window, 'e2e-card');
       await cardFrameFor(first.window, 'e2e-card');
 
       // **按稳定钩子选手柄**（`data-cockpit-drag-handle`）——

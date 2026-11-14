@@ -73,6 +73,13 @@ export interface CardInstanceInfo {
   connectionId: string | null;
   /** 这张卡是不是有缺失的能力（降级） */
   degraded: boolean;
+  /**
+   * 卡片**自报的默认尺寸**（manifest 的 `layout.w/h`）。
+   *
+   * 为什么要它：页面把卡「摆进主区」时得知道它该多大——
+   * manifest 是作者的意愿，**只有宿主读得到它** → 宿主在这里带出来。
+   */
+  layout?: { w: number; h: number; min_w?: number; min_h?: number };
 }
 
 /** 卡片的一个请求 */

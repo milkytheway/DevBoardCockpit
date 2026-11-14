@@ -1,21 +1,26 @@
-import type { ThemeMode } from './theme';
+import type { ThemeMode } from '../theme';
+import type { ViewDensity } from '../../../shared/layout';
 
 const SHORTCUTS: readonly { keys: string; action: string }[] = [
   { keys: 'Ctrl + K', action: '命令面板' },
-  { keys: 'Ctrl + `', action: '展开 / 收起底部工具' },
-  { keys: 'Esc', action: '关闭检查器 / 命令面板' },
-  { keys: 'Ctrl + 1..4', action: '切换视图（预留）' },
+  { keys: 'Ctrl + `', action: '去 / 回终端页' },
+  { keys: 'Esc', action: '关闭详情 / 命令面板' },
 ];
 
 export function SettingsPage({
   theme,
   onTheme,
+  density,
+  onDensity,
   cardsCount,
   connectionsCount,
   onRefreshCards,
 }: {
   theme: ThemeMode;
   onTheme: (mode: ThemeMode) => void;
+  /** Grid density — how much of the screen one card takes. */
+  density: ViewDensity;
+  onDensity: (density: ViewDensity) => void;
   cardsCount: number;
   connectionsCount: number;
   onRefreshCards: () => void;
@@ -44,8 +49,24 @@ export function SettingsPage({
           ))}
         </div>
         <p className="dim settings__probe">
-          换主题后，终端会重挂一次以读取新 token；卡片通过宿主注入的 theme.css 跟随。
+          换主题后，终端**原地换色**（不重建，屏幕不会丢）；卡片通过宿主注入的 theme.css 跟随。
         </p>
+
+        <h2>密度</h2>
+        <p className="dim">一屏能看几张卡片。</p>
+        <div className="segmented" role="group" aria-label="密度">
+          {(['comfortable', 'compact'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={density === mode ? 'is-active' : ''}
+              aria-pressed={density === mode}
+              onClick={() => onDensity(mode)}
+            >
+              {mode === 'comfortable' ? '舒适' : '紧凑'}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="settings__card">

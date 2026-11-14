@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchApp, writeCard, cardDir, simpleCard, cardFrameFor } from './harness';
+import { launchApp, writeCard, cardDir, simpleCard, cardFrameFor, placeCard } from './harness';
 
 /**
  * 卡片沙箱的**隔离判据**（M5 的验收主体）。
@@ -28,6 +28,8 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
+      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
         try {
@@ -49,6 +51,8 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
+      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(async () => {
         try {
@@ -68,6 +72,8 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
+      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const reading = await frame.evaluate(async () => {
         const value = await (window as unknown as { cockpit: { tags: { get(name: string): Promise<unknown> } } })
@@ -86,6 +92,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
+      await placeCard(launched.window, 'e2e-card');
       await cardFrame(launched.window);
       // 宿主还活着吗？
       const title = await launched.window.title();
@@ -99,6 +106,8 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
+      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
         try {
@@ -115,10 +124,10 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('**内置的第一张卡自动出现**（不用手动复制——它就在内置根下）', async () => {
+  test('**内置的第一张卡自己出现**（不用手动复制——它就在内置根下）', async () => {
     const launched = await launchApp();
     try {
-      // **不装任何卡**——内置的 `cards/cpu-usage/` 就该自己出现
+      // **不装任何卡**——内置的 `cards/cpu-usage/` 就该自己被发现
       await expect
         .poll(
           async () => {
@@ -128,8 +137,9 @@ test.describe('卡片沙箱', () => {
           { timeout: 20_000 },
         )
         .toBeGreaterThan(0);
+      // 摆进主区 → 它得真的跑起来（不是只出现在清单里）
+      await placeCard(launched.window, 'cpu-usage');
       const frame = await cardFrameFor(launched.window, 'cpu-usage');
-      // 它得真的跑起来（不是只出现在清单里）
       expect(await frame.evaluate(() => typeof (window as unknown as { cockpit?: unknown }).cockpit)).toBe(
         'object',
       );
@@ -143,6 +153,8 @@ test.describe('卡片沙箱', () => {
     try {
       await writeCard(launched.userDataDir, 'card-a', simpleCard('card-a'));
       await writeCard(launched.userDataDir, 'card-b', simpleCard('card-b'));
+      await placeCard(launched.window, 'card-a');
+      await placeCard(launched.window, 'card-b');
       await expect
         .poll(async () => cardFrames(launched.window).length, { timeout: 20_000 })
         .toBeGreaterThanOrEqual(2);
@@ -178,6 +190,7 @@ test.describe('卡片沙箱', () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard('e2e-card', 'v1'));
+      await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       expect(await frame.evaluate(() => document.body.dataset.marker)).toBe('v1');
 

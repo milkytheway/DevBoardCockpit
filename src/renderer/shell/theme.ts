@@ -52,7 +52,9 @@ export interface XtermTheme {
  * testable.
  */
 export function xtermThemeFromVars(vars: Record<string, string>): XtermTheme {
-  const v = (name: string, fallback: string): string => vars[name] ?? fallback;
+  // **`||`, not `??`** — a missing variable arrives as an empty string,
+  // and `'' ?? fallback` is still `''` (an empty colour silently paints nothing).
+  const v = (name: string, fallback: string): string => vars[name] || fallback;
   return {
     background: v('--cockpit-bg', '#0A0C0F'),
     foreground: v('--cockpit-text', '#E6EAF2'),
@@ -64,7 +66,9 @@ export function xtermThemeFromVars(vars: Record<string, string>): XtermTheme {
     yellow: v('--cockpit-warn', '#D29922'),
     red: v('--cockpit-danger', '#F85149'),
     blue: v('--cockpit-accent', '#58A6FF'),
-    cyan: v('--cockpit-series-3', '#39C5CF'),
+    // **cyan is the teal series colour** — `--cockpit-series-3` is amber
+    // (#D29922), so binding cyan to it painted amber text in the terminal.
+    cyan: v('--cockpit-series-5', '#39C5BB'),
     magenta: v('--cockpit-accent-2', '#A371F7'),
     white: v('--cockpit-text', '#E6EAF2'),
     brightWhite: v('--cockpit-text', '#E6EAF2'),
@@ -81,7 +85,7 @@ export function readXtermTheme(): XtermTheme {
     '--cockpit-ok',
     '--cockpit-warn',
     '--cockpit-danger',
-    '--cockpit-series-3',
+    '--cockpit-series-5',
     '--cockpit-accent-2',
   ];
   const vars: Record<string, string> = {};

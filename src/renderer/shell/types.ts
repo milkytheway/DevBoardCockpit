@@ -1,38 +1,30 @@
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
-import type { LayoutUnit, LayoutViewId } from '../../shared/layout';
 
 /**
- * A saved workspace view. The ids are shared with the layout file (each view
- * owns one grid layout), so the union lives in `shared/layout.ts`.
+ * The shell's navigation model.
+ *
+ * ── one rail entry = one page ──
+ *
+ * The rail lists the places you can be; every one of them is a full page in
+ * the main area. There is no second level of navigation hidden behind a
+ * bottom panel any more — clicking "Terminal" takes you to the terminal.
  */
-export type ViewId = LayoutViewId;
+export type PageId = 'workbench' | 'terminal' | 'files' | 'logs' | 'library' | 'settings';
 
-export interface ViewDef {
-  id: ViewId;
-  name: string;
-  hint: string;
-}
-
-export const VIEWS: readonly ViewDef[] = [
-  { id: 'overview', name: '总览', hint: '板子的全貌：目标、读数、卡片' },
-  { id: 'monitor', name: '监控', hint: '关键指标的连续曲线' },
-  { id: 'debug', name: '调试', hint: '运行时、连接与卡片诊断' },
-  { id: 'demo', name: '演示', hint: '只留目标与卡片，适合展示' },
+/** The pages, in rail order. */
+export const PAGE_IDS: readonly PageId[] = [
+  'workbench',
+  'terminal',
+  'files',
+  'logs',
+  'library',
+  'settings',
 ];
 
-/** Pages owned by the left rail. Terminal/files/logs open the bottom dock instead. */
-export type PageId = 'workbench' | 'library' | 'settings';
-
-export type DockTab = 'terminal' | 'files' | 'logs';
-
-export interface TerminalTab {
-  sessionId: string;
-  profileId: string;
-  label: string;
-}
-
+/** Severity of an activity line. */
 export type ActivityLevel = 'info' | 'warn' | 'error';
 
+/** One line in the activity stream (what the host did, in order). */
 export interface ActivityEntry {
   id: number;
   at: number;
@@ -40,12 +32,19 @@ export interface ActivityEntry {
   message: string;
 }
 
-/** A card paired with its grid unit. */
-export interface CardSlot {
-  card: CardInstanceInfo;
-  unit: LayoutUnit;
+/** A live terminal session. One session = one connection to one profile. */
+export interface TerminalTab {
+  sessionId: string;
+  profileId: string;
+  label: string;
 }
 
-export interface SelectedTag {
-  tag: string;
-}
+/**
+ * What the right-hand detail panel is showing.
+ *
+ * `null` means the panel is closed — we do not keep an empty shell around.
+ */
+export type DetailTarget =
+  | { kind: 'card'; card: CardInstanceInfo }
+  | { kind: 'session'; session: TerminalTab }
+  | null;

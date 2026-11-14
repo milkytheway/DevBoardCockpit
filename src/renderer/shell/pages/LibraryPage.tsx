@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CardInstanceInfo } from '../../shared/ipc-contract';
-import { shortId } from './format';
-import { LayersIcon, RefreshIcon, SearchIcon } from './Icons';
+import type { CardInstanceInfo } from '../../../shared/ipc-contract';
+import { shortId } from '../format';
+import { LayersIcon, RefreshIcon, SearchIcon } from '../Icons';
 
 export function LibraryPage({
   cards,
   selectedCardId,
   onSelect,
-  onOpenInspector,
+  onOpenDetail,
   onRefresh,
   onOpenWorkbench,
 }: {
   cards: CardInstanceInfo[];
   selectedCardId: string | null;
   onSelect: (info: CardInstanceInfo) => void;
-  onOpenInspector: (info: CardInstanceInfo) => void;
+  onOpenDetail: (info: CardInstanceInfo) => void;
   onRefresh: () => void;
   onOpenWorkbench: () => void;
 }): JSX.Element {
@@ -146,7 +146,7 @@ export function LibraryPage({
               <button type="button" className="btn btn--primary btn--sm" onClick={onOpenWorkbench}>
                 放到工作台
               </button>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onOpenInspector(selected)}>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onOpenDetail(selected)}>
                 打开检查器
               </button>
               <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh}>

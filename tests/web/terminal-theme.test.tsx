@@ -19,6 +19,8 @@ describe('终端主题', () => {
     join(process.cwd(), 'src/renderer/terminal/TerminalView.tsx'),
     'utf8',
   );
+  // **主题值由外壳算好传进来**（`shell/theme.ts` 读 CSS 变量 → 解析后的具体色）
+  const theme = readFileSync(join(process.cwd(), 'src/renderer/shell/theme.ts'), 'utf8');
 
   it('tokens.css 定义了契约要求的 token', () => {
     for (const token of [
@@ -37,12 +39,20 @@ describe('终端主题', () => {
   });
 
   it('xterm 的 theme 没有直接用 var(--...)（canvas 不解析 CSS 变量）', () => {
-    const themeBlock = view.slice(view.indexOf('theme: {'), view.indexOf('theme: {') + 400);
-    expect(themeBlock).not.toMatch(/'var\(/);
-    expect(themeBlock).toContain('readToken(');
+    // **主题值的产出方**（外壳的 theme.ts）里不许出现 var(--…)
+    expect(theme).not.toMatch(/var\(--/);
+    // 终端组件只**接收**算好的颜色
+    expect(view).toContain('theme');
+    expect(view).toContain('options.theme');
   });
 
-  it('readToken 走 getComputedStyle 取解析后的值', () => {
+  it('主题值走 getComputedStyle 取解析后的值（**不是** token 名）', () => {
+    expect(theme).toContain('getComputedStyle');
+    // 终端组件自己也留了一份兜底（没传 theme 时）
     expect(view).toContain('getComputedStyle');
+  });
+
+  it('**换色是原地改 options.theme**，不重建终端（否则 scrollback 会丢）', () => {
+    expect(view).toContain('options.theme');
   });
 });
