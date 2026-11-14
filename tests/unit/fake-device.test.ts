@@ -202,10 +202,12 @@ describe('假设备 · 终端会话', () => {
     h.close();
   });
 
-  it('假设备不传文件（报告成功却不传 = 骗人）', async () => {
+  it('假设备现在**有盘了**，但**没有的东西照样报错**（报告成功却不传 = 骗人）', async () => {
     const h = makeHarness();
-    await expect(h.connection.pull('/tmp/x', '/tmp/y')).rejects.toThrow(/假设备/);
-    await expect(h.connection.push('/tmp/y', '/tmp/x')).rejects.toThrow(/假设备/);
+    // 盘上没有这个文件 → **报错**，不是「报告成功却什么都没传」
+    await expect(h.connection.pull('/tmp/nothing-here', join(dir, 'y'))).rejects.toThrow(/假设备/);
+    // 本机没有这个文件 → **报错**
+    await expect(h.connection.push(join(dir, 'not-there'), '/tmp/')).rejects.toThrow(/本机没有/);
     h.close();
   });
 });

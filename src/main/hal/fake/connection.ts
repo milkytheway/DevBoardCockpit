@@ -6,7 +6,11 @@ import { capabilitiesFor } from '../capabilities';
 import { Session } from '../session';
 import { FAKE_DEVICE_MARKER, FakeDevice } from './device';
 import { fakeExecOutput } from './exec';
+import { fakeFileCommand } from './file-ops';
+import { fakeFilesystem, VirtualFs } from './fs';
 import { FAKE_PROFILE_ID, fakeProfile } from './profile';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 
 /**
  * ⚠️ **假设备** —— 一条假的连接，跑在 HAL 边界上。
@@ -43,6 +47,16 @@ export interface FakeConnectionOptions {
   timeoutEvery?: number;
   /** Every Nth **meminfo** round comes back broken (0 = never). Default 5. */
   breakMeminfoEvery?: number;
+  /**
+   * The **virtual disk** this connection sees.
+   *
+   * Default: the disk **shared by the same profile** (`fakeFilesystem(profileId)`)
+   * —— one fake board, one disk: what the runtime writes, the terminal's file
+   * browser sees ✓.
+   *
+   * Injectable: the tests want a fresh disk each time.
+   */
+  fs?: VirtualFs;
 }
 
 /** The profile shape we need (the real one, structurally). */
@@ -59,6 +73,8 @@ export class FakeConnection implements Connection {
   private readonly device: FakeDevice;
   private readonly log: SessionLog;
   private readonly profile: ConnectionProfileLike;
+  /** The fake board's **disk** (shared by every connection to the same profile). */
+  private readonly fs: VirtualFs;
   /** How many **fast-group** commands have been run (the timeout counts on this). */
   private fastRounds = 0;
   /** How many **meminfo** commands have been run (the breakage counts on this). */
@@ -70,6 +86,7 @@ export class FakeConnection implements Connection {
     this.device = new FakeDevice({ now: opts.now });
     this.log = opts.log;
     this.profile = opts.profile ?? fakeProfile();
+    this.fs = opts.fs ?? fakeFilesystem(this.profile.id);
     this.timeoutEvery = opts.timeoutEvery ?? DEFAULT_TIMEOUT_EVERY;
     this.breakMeminfoEvery = opts.breakMeminfoEvery ?? DEFAULT_BREAK_MEMINFO_EVERY;
   }
@@ -95,6 +112,20 @@ export class FakeConnection implements Connection {
   }
 
   async exec(command: string, _opts?: { timeoutMs?: number }): Promise<ExecResult> {
+    // ── 文件命令先认 ──
+    //
+    // **动作的命令是单语句的**（`echo 128 > /p`、`cat -- '/p'`、
+    // `test -s /p`、`grep -qF 'x' /p`）——它们要的是**退出码**与**副作用**。
+    // 而采样器的取数命令是**多语句**的（`echo '<marker>'; cat -- '<p>'; …`）
+    // → 那归小 shell（`fake/exec.ts`）管，**一个字都不能多**。
+    //
+    // 认不出来就返回 `null` → 往下走原来的路（**不猜**）。
+    const fileResult = fakeFileCommand(command, {
+      fs: this.fs,
+      deviceRead: (path) => this.device.read(path),
+    });
+    if (fileResult !== null) return fileResult;
+
     // ── Failure injection ──
     //
     // The five states have to be *reachable* while you are designing the UI:
@@ -143,39 +174,53 @@ export class FakeConnection implements Connection {
   }
 
   /**
-   * The fake board has no files worth pulling.
+   * The fake board **has a disk now** —— pulling really writes the file.
    *
-   * **报告成功却不传文件 = 骗人**：
-   * 调文件浏览器的人会以为下载成功了，而本地根本没有那个文件。
-   * → 明确报「假设备不传文件」。
+   * ── 为什么不能继续「直接抛错」──
+   *
+   * 写侧（M6）的回读有三种形式落在文件上（`file_equals` / `command_ok` / `verify`）。
+   * 假设备若连文件都没有，**「动作 → 回读 → 界面按回读值渲染」这条判据
+   * 在假设备上根本跑不了**（只能靠真板 → 不可自动化）。
+   *
+   * ── 仍然诚实的地方 ──
+   *
+   * **拉一个不存在的文件 → 报错**，不是「报告成功」——
+   * 「报告成功却不传文件 = 骗人」（这条规矩没变，只是现在它有文件可传了）。
    */
-  async pull(_remotePath: string, _localPath: string): Promise<void> {
-    throw makeError('CONN_OPEN_FAILED', '假设备不传文件（没有可拉的远端文件）');
+  async pull(remotePath: string, localPath: string): Promise<void> {
+    const content = this.fs.read(remotePath);
+    if (content === null) {
+      throw makeError('CONN_OPEN_FAILED', `假设备上没有 ${remotePath}（没有可拉的远端文件）`);
+    }
+    mkdirSync(dirname(localPath), { recursive: true });
+    writeFileSync(localPath, content);
   }
 
-  /** Nor worth pushing. —— 同上：不报告成功。 */
-  async push(_localPath: string, _remotePath: string): Promise<void> {
-    throw makeError('CONN_OPEN_FAILED', '假设备不传文件（没有可写的远端）');
+  /**
+   * Push: the file really lands on the fake board's disk.
+   *
+   * **远端是目录**（HAL 的统一约定）→ 补上 basename ✓。
+   * **字节保真**：读的是 Buffer（`.ko` 是二进制，转码即损坏）。
+   */
+  async push(localPath: string, remotePath: string): Promise<void> {
+    if (!existsSync(localPath)) {
+      throw makeError('CONN_OPEN_FAILED', `本机没有 ${localPath}（推不上去）`);
+    }
+    const target = remotePath.endsWith('/')
+      ? `${remotePath}${basename(localPath)}`
+      : remotePath;
+    this.fs.write(target, readFileSync(localPath));
   }
 
   async list(remotePath: string): Promise<FileEntry[]> {
     const base = remotePath.replace(/\/$/, '');
-    return [
-      {
-        name: 'README.txt',
-        path: `${base}/README.txt`,
-        isDirectory: false,
-        sizeBytes: 42,
-        modifiedAt: null,
-      },
-      {
-        name: 'etc',
-        path: `${base}/etc`,
-        isDirectory: true,
-        sizeBytes: null,
-        modifiedAt: null,
-      },
-    ];
+    return this.fs.list(base).map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      isDirectory: entry.isDirectory,
+      sizeBytes: entry.sizeBytes,
+      modifiedAt: null,
+    }));
   }
 
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
