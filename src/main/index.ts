@@ -12,7 +12,8 @@ import type { LayoutState } from '../shared/layout';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
-import { FAKE_PROFILE_ID, fakeMode, fakeProfile, type FakeMode } from './hal/fake/profile';
+import { fakeMode, type FakeMode } from './hal/fake/profile';
+import { fakeRouteFor, profilesWithFake } from './hal/fake/wiring';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
@@ -77,8 +78,9 @@ function listProfiles(): ConnectionProfile[] {
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
-  if (FAKE_MODE === 'off') return profiles;
-  return FAKE_MODE === 'only' ? [fakeProfile()] : [fakeProfile(), ...profiles];
+  // **假设备没载入成功 → 就不列它**：
+  // 列了却拿真本机连接顶替，比不列更坏（标着「合成数据」，其实是自己的机器）。
+  return profilesWithFake(profiles, FAKE_MODE, fakeModule !== null);
 }
 
 /** 宿主设置。机器专属的 adb 路径在这里读，不进代码（事实清单 §2） */
@@ -87,10 +89,18 @@ const adbPath = resolveAdbPath(settings);
 
 /** 连接用 manager 给的日志——**一个会话一份**，输入输出在同一处 */
 function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
-  if (FAKE_MODE !== 'off' && profile.id === FAKE_PROFILE_ID && fakeModule !== null) {
+  const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
+  if (route === 'fake' && fakeModule !== null) {
     // ⚠️ 假设备：产出的全是**合成数据**（见 `hal/fake/`）
     console.warn(`[FAKE] 合成数据已启用（COCKPIT_FAKE=${FAKE_MODE}）`);
-    return new fakeModule.FakeConnection({ now: () => Date.now(), log });
+    return new fakeModule.FakeConnection({ now: () => Date.now(), log, profile });
+  }
+  if (route === 'refuse') {
+    // **明确拒绝**（绝不回落成真连接）：
+    // 「假板子」这个 profile 的传输是 `local` —— 回落下去就是开发者自己的 shell。
+    throw makeError('CONN_OPEN_FAILED', '假设备没载入成功（不拿真的本机连接顶替）', {
+      detail: { profileId: profile.id },
+    });
   }
   return createConnection(profile, log, { adbPath });
 }

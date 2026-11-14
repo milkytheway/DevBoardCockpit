@@ -10,6 +10,7 @@ import { FakeConnection } from '../../src/main/hal/fake/connection';
 import { FakeDevice } from '../../src/main/hal/fake/device';
 import { fakeExecOutput } from '../../src/main/hal/fake/exec';
 import { fakeMode, fakeProfile, FAKE_PROFILE_ID } from '../../src/main/hal/fake/profile';
+import { capabilitiesFor } from '../../src/main/hal/capabilities';
 
 /**
  * 假设备（调试用的一块**假板子**）。
@@ -52,6 +53,8 @@ function makeClock(start = 1_700_000_000_000): { now: () => number; advance: (ms
 interface Harness {
   store: TagStore;
   sampler: TagSampler;
+  /** The fake connection itself (for the session-level judgments). */
+  connection: FakeConnection;
   advance: (ms: number) => void;
   close: () => void;
 }
@@ -67,7 +70,7 @@ function makeHarness(
   const store = new TagStore();
   const connection = new FakeConnection({ now: clock.now, log, ...opts });
   const sampler = new TagSampler(PACK, connection, store, clock.now);
-  return { store, sampler, advance: clock.advance, close: () => log.close() };
+  return { store, sampler, connection, advance: clock.advance, close: () => log.close() };
 }
 
 describe('假设备 · 开关与 profile', () => {
@@ -157,6 +160,76 @@ describe('假设备 · 那个小 shell', () => {
     expect(out).toContain('npu-thermal=');
     // 三行
     expect(out.trim().split('\n')).toHaveLength(3);
+  });
+});
+
+describe('假设备 · 终端会话', () => {
+  it('横幅要真的发出去（构造那一刻还没有监听者 → 那一刻发等于没发）', async () => {
+    const h = makeHarness();
+    const session = await h.connection.openSession();
+    const chunks: string[] = [];
+    session.onData((chunk: string) => chunks.push(chunk));
+    const text = chunks.join('');
+    // **终端上必须明说这是合成数据**（不然有人会把假数当真数看）
+    expect(text).toContain('合成数据');
+    expect(text).toContain('cockpit-fake-device/1');
+    h.close();
+  });
+
+  it('敲 exit 会话要真的结束（不然界面留着一个死标签）', async () => {
+    const h = makeHarness();
+    const session = await h.connection.openSession();
+    let exited: number | null | undefined;
+    session.onExit((code: number | null) => {
+      exited = code;
+    });
+    session.write('exit\r');
+    expect(exited).toBe(0);
+    h.close();
+  });
+
+  it('假 profile 声明 pipe 模式（pty=true 的话宿主只转发裸键，命令永远匹配不上）', () => {
+    // **pty=true 的后果**：xterm 一个键一个字节地送，
+    // `uname` 到会话里是 'u','n','a','m','e' 五个字符 —— 永远匹配不上，
+    // 而且没有提示符、没有回显（那些是 pipe 模式宿主做的事）。
+    expect(fakeProfile().options['pty']).toBe(false);
+  });
+
+  it('能力位由 profile 决定（连接不许自己抄一份）', async () => {
+    const h = makeHarness();
+    // `capabilitiesFor` 是能力位的**唯一实现**（hal/capabilities.ts）
+    expect(h.connection.capabilities()).toEqual(capabilitiesFor(fakeProfile()));
+    h.close();
+  });
+
+  it('假设备不传文件（报告成功却不传 = 骗人）', async () => {
+    const h = makeHarness();
+    await expect(h.connection.pull('/tmp/x', '/tmp/y')).rejects.toThrow(/假设备/);
+    await expect(h.connection.push('/tmp/y', '/tmp/x')).rejects.toThrow(/假设备/);
+    h.close();
+  });
+});
+
+describe('假设备 · 故障注入的落点', () => {
+  it('meminfo 的坏只在真的读 meminfo 时注入（快组不该把内存弄坏）', async () => {
+    const h = makeHarness({ breakMeminfoEvery: 1 });
+    await h.sampler.sampleGroup('fast');
+    // 快组的命令里没有 meminfo → 内存不该被弄坏
+    expect(h.store.get('mem.usage')).toBeUndefined();
+    await h.sampler.sampleGroup('slow');
+    expect(h.store.get('mem.usage')?.status).toBe('error');
+    h.close();
+  });
+
+  it('超时只落在快组上（慢组的读数不该被快组的超时带走）', async () => {
+    const h = makeHarness({ timeoutEvery: 1 });
+    await h.sampler.sampleGroup('fast');
+    await h.sampler.sampleGroup('slow');
+    // 快组超时：cpu.usage 从没成功过 → error（不是 stale）
+    expect(h.store.get('cpu.usage')?.status).toBe('error');
+    // 慢组不受影响
+    expect(h.store.get('mem.usage')?.status).toBe('ok');
+    h.close();
   });
 });
 

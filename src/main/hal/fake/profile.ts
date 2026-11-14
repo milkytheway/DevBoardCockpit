@@ -32,7 +32,15 @@ export function fakeProfile(): ConnectionProfile {
     transport: 'local',
     board_pack: 'rk3588-atk',
     options: {
-      pty: true,
+      /**
+       * **pipe 模式**（不是 pty）。
+       *
+       * pty 模式下宿主**只转发裸键**（xterm 一个键一个字节），
+       * 于是 `uname` 到会话里是 'u','n','a','m','e' 五个字符——
+       * 命令永远匹配不上，而且没有提示符、没有回显
+       * （那些是 pipe 模式宿主做的事：`terminal/line-editor.ts`）。
+       */
+      pty: false,
       prompt: 'fake@rk3588',
     },
   };

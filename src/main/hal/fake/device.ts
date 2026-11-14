@@ -69,14 +69,14 @@ export interface FakeDeviceOptions {
  */
 export class FakeDevice {
   private readonly now: () => number;
-  /** Per core: [busy jiffies, total jiffies]; index 0 is the aggregate. */
+  /** Per core: [busy jiffies, total jiffies]. The aggregate is **computed** from these. */
   private readonly jiffies: { busy: number; total: number }[] = [];
   /** When the counters were last advanced. */
   private lastAt: number | null = null;
 
   constructor(opts: FakeDeviceOptions) {
     this.now = opts.now;
-    this.jiffies = Array.from({ length: CORE_COUNT + 1 }, () => ({ busy: 0, total: 0 }));
+    this.jiffies = Array.from({ length: CORE_COUNT }, () => ({ busy: 0, total: 0 }));
   }
 
   /** Set before a read: the memory file comes back truncated. */
@@ -85,11 +85,6 @@ export class FakeDevice {
   /** The board's "uptime" in seconds (derived from the clock). */
   private uptime(): number {
     return this.now() / 1000;
-  }
-
-  /** The CPU utilization at time t (percent). */
-  private utilAt(t: number): number {
-    return clamp(35 + 22 * Math.sin((2 * Math.PI * t) / 17) + 6 * noise(1, t), 2, 96);
   }
 
   /** Per core utilization: the A55 cores run lower than the A76 ones. */
@@ -111,8 +106,8 @@ export class FakeDevice {
     const dt = Math.max(0, (at - this.lastAt) / 1000);
     this.lastAt = at;
     const t = this.uptime();
-    for (let index = 0; index <= CORE_COUNT; index += 1) {
-      const util = index === 0 ? this.utilAt(t) : this.coreUtilAt(index - 1, t);
+    for (let index = 0; index < CORE_COUNT; index += 1) {
+      const util = this.coreUtilAt(index, t);
       const total = dt * HZ;
       this.jiffies[index]!.total += total;
       this.jiffies[index]!.busy += total * (util / 100);
@@ -123,12 +118,21 @@ export class FakeDevice {
   private procStat(): string {
     this.advance();
     const lines: string[] = [];
-    for (let index = 0; index <= CORE_COUNT; index += 1) {
+    // **汇总行是各核之和**（真板上的 `/proc/stat` 就是这样）：
+    // 汇总与各核**对不上**的话，卡片上「总占用率」与八个核的数会互相矛盾。
+    let sumBusy = 0;
+    let sumTotal = 0;
+    for (let index = 0; index < CORE_COUNT; index += 1) {
       const { busy, total } = this.jiffies[index]!;
+      sumBusy += busy;
+      sumTotal += total;
       const idle = total - busy;
       // The kind sums user+nice+system as "busy" and all fields as "total"
-      const tag = index === 0 ? 'cpu' : `cpu${index - 1}`;
-      lines.push(`${tag} ${Math.round(busy)} 0 0 ${Math.round(idle)} 0 0 0 0 0 0`);
+      lines.push(`cpu${index} ${Math.round(busy)} 0 0 ${Math.round(idle)} 0 0 0 0 0 0`);
+    }
+    {
+      const idle = sumTotal - sumBusy;
+      lines.unshift(`cpu ${Math.round(sumBusy)} 0 0 ${Math.round(idle)} 0 0 0 0 0 0`);
     }
     lines.push('intr 0');
     lines.push('ctxt 0');
@@ -136,7 +140,9 @@ export class FakeDevice {
     lines.push('processes 1');
     lines.push('procs_running 1');
     lines.push('procs_blocked 0');
-    return lines.join('\n');
+    // **真文件的最后一行带换行**（`/proc/stat` 就是这样）——
+    // 不带的话，下一段的分隔行会粘在最后一行上。
+    return `${lines.join('\n')}\n`;
   }
 
   /** `/proc/cpuinfo` — the core numbers and their clusters. */
@@ -199,7 +205,8 @@ export class FakeDevice {
       'DirectMap4k:      65536 kB',
       'DirectMap2M:       8192 kB',
       'DirectMap1G:          0 kB',
-    ].join('\n');
+      // **真文件的最后一行带换行**
+    ].join('\n') + '\n';
   }
 
   /** The thermal zones: `type` and `temp` (millidegrees). */
