@@ -3,6 +3,7 @@ import { CardBroker } from './broker';
 import { Board } from './board';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import type { LayoutUnit } from '../../shared/layout';
+import { normalizeLayout } from '../../shared/layout';
 
 /**
  * 用户卡区。
@@ -74,7 +75,7 @@ export function CardPanel(): JSX.Element {
     setUnits(next);
     const api = window.cockpit;
     if (api === undefined || typeof api.layoutSet !== 'function') return;
-    void api.layoutSet({ units: next, updatedAt: Date.now() });
+    void api.layoutSet(normalizeLayout({ units: next, updatedAt: Date.now() }, Date.now()));
   }, []);
 
   return (

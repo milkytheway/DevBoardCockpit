@@ -14,6 +14,7 @@ import { aliasVars, themeCss } from '../../shared/theme/map';
 import { baseStyleBlock } from '../../shared/theme/base-css';
 import type { CardPermissions } from './permissions';
 import type { CardInstanceInfo, CardRequest, CardResponse } from '../../shared/ipc-contract';
+import { normalizeLayout } from '../../shared/layout';
 import type { LayoutState } from '../../shared/layout';
 import type { ThemeName } from '../../shared/theme/seed';
 import { IPC } from '../../shared/ipc-contract';
@@ -194,29 +195,48 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     // 存着的布局只记了「谁被挪过」；没挪过的卡要用 **manifest 声明的尺寸**
     // （那是产品的默认值，**只有宿主知道**——它读的是 manifest）。
     // → 页面拿到的是**已经算好的格子**，不用自己懂 manifest。
+    //
+    // 每个视图各算一份：某个视图没摆过卡时，按 manifest 给每个已装卡一个默认格。
     layoutGet: () => {
       const stored = layout.get();
       const connectionId = deps.currentConnectionId();
-      const byKey = new Map(stored.units.map((u) => [layoutKey(u.cardId, u.connectionId), u]));
-      const units = registry.cards().map((card) => {
-        const k = layoutKey(card.cardId, connectionId);
-        return (
-          byKey.get(k) ??
-          layout.defaultFor(card.cardId, connectionId, card.manifest.layout)
-        );
+      const views = stored.views.map((view) => {
+        const byKey = new Map(view.units.map((u) => [layoutKey(u.cardId, u.connectionId), u]));
+        const units = registry.cards().map((card) => {
+          const k = layoutKey(card.cardId, connectionId);
+          return (
+            byKey.get(k) ?? layout.defaultFor(card.cardId, connectionId, card.manifest.layout)
+          );
+        });
+        return { id: view.id, units };
       });
-      return { units, updatedAt: stored.updatedAt };
+      const active = views.find((view) => view.id === stored.activeViewId) ?? views[0];
+      return { ...stored, views, units: active.units };
     },
     // 存的时候**别把没装的卡的格子丢了**（卡片卸载了再装回来，位置还在）
-    layoutSet: (state) => {
+    //
+    // 每个视图分别合并：本次只动 `activeViewId` 指向的那个视图的格子，
+    // 其它视图原样保留（切视图再摆一次不会互相覆盖）。
+    layoutSet: (input) => {
       const connectionId = deps.currentConnectionId();
       const installed = new Set(
         registry.cards().map((c) => layoutKey(c.cardId, connectionId)),
       );
-      const kept = layout
-        .get()
-        .units.filter((u) => !installed.has(layoutKey(u.cardId, u.connectionId)));
-      layout.set({ units: [...kept, ...state.units], updatedAt: now() });
+      const previous = layout.get();
+      const state = normalizeLayout(input, now());
+      const views = previous.views.map((view) => {
+        const kept = view.units.filter((u) => !installed.has(layoutKey(u.cardId, u.connectionId)));
+        const next = state.views.find((candidate) => candidate.id === view.id)?.units ?? view.units;
+        return { id: view.id, units: [...kept, ...next] };
+      });
+      const active = views.find((view) => view.id === state.activeViewId) ?? views[0];
+      layout.set({
+        version: 2,
+        activeViewId: active.id,
+        views,
+        units: active.units,
+        updatedAt: now(),
+      });
     },
     refresh: () => {
       registry.refresh();

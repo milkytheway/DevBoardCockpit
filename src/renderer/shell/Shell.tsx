@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
-import type { LayoutUnit } from '../../shared/layout';
+import type { LayoutState, LayoutUnit } from '../../shared/layout';
+import { unitsForView, withViewUnits } from '../../shared/layout';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import type { TagReading } from '../../shared/tag-reading';
 import { CardBroker } from '../cards/broker';
@@ -36,7 +37,7 @@ export function Shell(): JSX.Element {
   const [readings, setReadings] = useState<TagReading[]>([]);
   const [lastReadingAt, setLastReadingAt] = useState<number | null>(null);
   const [cards, setCards] = useState<CardInstanceInfo[]>([]);
-  const [units, setUnits] = useState<LayoutUnit[]>([]);
+  const [layout, setLayout] = useState<LayoutState | null>(null);
   const [broker, setBroker] = useState<CardBroker | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -53,6 +54,8 @@ export function Shell(): JSX.Element {
   const writersRef = useRef(new Map<string, (chunk: string) => void>());
   const pendingRef = useRef(new Map<string, string[]>());
   const activityIdRef = useRef(0);
+  const layoutRef = useRef<LayoutState | null>(null);
+  const layoutLoadedRef = useRef(false);
 
   const logActivity = useCallback((level: ActivityLevel, message: string) => {
     activityIdRef.current += 1;
@@ -71,9 +74,15 @@ export function Shell(): JSX.Element {
   const refreshCards = useCallback(() => {
     const api = window.cockpit;
     void Promise.all([api.cardsList(), api.layoutGet()])
-      .then(([list, layout]) => {
+      .then(([list, loaded]) => {
         setCards(list);
-        setUnits(layout.units);
+        layoutRef.current = loaded;
+        setLayout(loaded);
+        // First load only: come back to the view the user left last time.
+        if (!layoutLoadedRef.current) {
+          layoutLoadedRef.current = true;
+          setView(loaded.activeViewId);
+        }
       })
       .catch((cause: unknown) => setError(describeError(cause)));
   }, []);
@@ -206,12 +215,41 @@ export function Shell(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleLayoutChange = useCallback((next: LayoutUnit[]) => {
-    setUnits(next);
-    void window.cockpit.layoutSet({ units: next, updatedAt: Date.now() }).catch((cause: unknown) => {
+  /** Grid units of the current view (each view owns its own layout). */
+  const units = layout === null ? [] : unitsForView(layout, view);
+
+  const persistLayout = useCallback((next: LayoutState) => {
+    layoutRef.current = next;
+    setLayout(next);
+    void window.cockpit.layoutSet(next).catch((cause: unknown) => {
       setError(describeError(cause));
     });
   }, []);
+
+  const changeView = useCallback(
+    (nextView: ViewId) => {
+      setView(nextView);
+      const current = layoutRef.current;
+      if (current === null) return;
+      // Switching views persists "which view was last open" only. The other
+      // views' units stay untouched.
+      persistLayout({
+        ...current,
+        activeViewId: nextView,
+        units: unitsForView(current, nextView),
+      });
+    },
+    [persistLayout],
+  );
+
+  const handleLayoutChange = useCallback(
+    (next: LayoutUnit[]) => {
+      const current = layoutRef.current;
+      if (current === null) return;
+      persistLayout(withViewUnits(current, view, next));
+    },
+    [persistLayout, view],
+  );
 
   const openTerminal = useCallback(
     (profileId: string) => {
@@ -334,7 +372,7 @@ export function Shell(): JSX.Element {
   const commands = useMemo<Command[]>(() => {
     const close = (): void => setPaletteOpen(false);
     const goView = (next: ViewId): (() => void) => () => {
-      setView(next);
+      changeView(next);
       setPage('workbench');
       close();
     };
@@ -416,7 +454,7 @@ export function Shell(): JSX.Element {
       });
     }
     return list;
-  }, [connections, inspectorCard, openTerminal, refreshCards, theme]);
+  }, [changeView, connections, inspectorCard, openTerminal, refreshCards, theme]);
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
@@ -457,7 +495,7 @@ export function Shell(): JSX.Element {
           {page === 'workbench' ? (
             <ViewTabs
               view={view}
-              onView={setView}
+              onView={changeView}
               onAddView={() => logActivity('info', '视图保存（M6 起可编辑）')}
             />
           ) : null}

@@ -15,6 +15,11 @@ import { dirname } from 'node:path';
  * 契约 §7.8：一张卡可以在多条连接上各有一个实例 → 每个实例**各占一格**。
  * 所以只按 `cardId` 记会撞车（两张卡挤进同一格）。
  *
+ * ── 视图各存一份 ──
+ *
+ * v2 起布局按视图分（总览/监控/调试/演示）。旧 v1 文件（`{units, updatedAt}`）
+ * 由 `normalizeLayout` 落到「总览」，**读得出来**。
+ *
  * ── 为什么落盘要「坏了也不抛」 ──
  *
  * 布局文件在用户目录里，可能被写了一半、被人手改坏。
@@ -26,7 +31,8 @@ import { dirname } from 'node:path';
 // **形状住在 `shared/`**（它要过 IPC）——这里再导出一次，调用方不用改 import
 export type { LayoutUnit, LayoutState } from '../../shared/layout';
 
-import type { LayoutState, LayoutUnit } from '../../shared/layout';
+import { normalizeLayout } from '../../shared/layout';
+import type { LayoutState, LayoutStateInput, LayoutUnit } from '../../shared/layout';
 
 /** 默认格：3×2（契约 §2.4 的默认） */
 const DEFAULT_W = 3;
@@ -35,29 +41,22 @@ const DEFAULT_H = 2;
 export class LayoutStore {
   constructor(private readonly deps: { file: string; now: () => number }) {}
 
-  /** 读布局。**读不出来就是空布局**（不抛） */
+  /** 读布局。**读不出来就是空布局**（不抛；v1 文件自动落到总览） */
   get(): LayoutState {
-    if (!existsSync(this.deps.file)) return { units: [], updatedAt: 0 };
+    if (!existsSync(this.deps.file)) return normalizeLayout(undefined, 0);
     let parsed: unknown;
     try {
       parsed = JSON.parse(readFileSync(this.deps.file, 'utf8'));
     } catch {
       // **文件坏了 → 当空的**（不是崩溃的理由）
-      return { units: [], updatedAt: 0 };
+      return normalizeLayout(undefined, 0);
     }
-    if (parsed === null || typeof parsed !== 'object') return { units: [], updatedAt: 0 };
-    const raw = (parsed as { units?: unknown }).units;
-    if (!Array.isArray(raw)) return { units: [], updatedAt: 0 };
-    const units = raw.filter(isLayoutUnit);
-    const updatedAt = (parsed as { updatedAt?: unknown }).updatedAt;
-    return {
-      units,
-      updatedAt: typeof updatedAt === 'number' ? updatedAt : 0,
-    };
+    return normalizeLayout(parsed, 0);
   }
 
   /** 存布局（**原子写**：先写临时文件再改名——免得写一半断电） */
-  set(state: LayoutState): void {
+  set(state: LayoutStateInput): void {
+    state = normalizeLayout(state, this.deps.now());
     const file = this.deps.file;
     mkdirSync(dirname(file), { recursive: true });
     const tmp = `${file}.tmp`;
@@ -85,13 +84,4 @@ export class LayoutStore {
       h: layout?.h ?? DEFAULT_H,
     };
   }
-}
-
-/** 一格是不是**形状对**的单元（布局文件是用户能碰的 → 进来之前要收形状） */
-function isLayoutUnit(raw: unknown): raw is LayoutUnit {
-  if (raw === null || typeof raw !== 'object') return false;
-  const u = raw as Record<string, unknown>;
-  if (typeof u['cardId'] !== 'string') return false;
-  const num = (key: string): boolean => typeof u[key] === 'number' && Number.isFinite(u[key]);
-  return num('x') && num('y') && num('w') && num('h');
 }

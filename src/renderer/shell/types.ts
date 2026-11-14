@@ -1,8 +1,11 @@
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
-import type { LayoutUnit } from '../../shared/layout';
+import type { LayoutUnit, LayoutViewId } from '../../shared/layout';
 
-/** A saved workspace view (content composition lives in the shell, not in main). */
-export type ViewId = 'overview' | 'monitor' | 'debug' | 'demo';
+/**
+ * A saved workspace view. The ids are shared with the layout file (each view
+ * owns one grid layout), so the union lives in `shared/layout.ts`.
+ */
+export type ViewId = LayoutViewId;
 
 export interface ViewDef {
   id: ViewId;

@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LayoutStore, type LayoutUnit } from '../../../src/main/cards/layout';
+import { unitsForView, withViewUnits } from '../../../src/shared/layout';
 
 /**
  * 布局的**落盘**（core 轨的部分）。
@@ -115,6 +116,70 @@ describe('布局存储', () => {
       const store = new LayoutStore({ file, now: () => 1000 });
       store.set({ units: [{ ...UNIT, x: 5, y: 7 }], updatedAt: 1000 });
       expect(store.get().units[0]).toMatchObject({ x: 5, y: 7 });
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+/**
+ * v2：布局按视图各存一份。
+ *
+ * 旧 v1 文件只有 `{units, updatedAt}` → 落到「总览」，其余视图空。
+ * 写出去一律 v2；`units` 是「当前视图」的镜像（旧调用方与 e2e 读它）。
+ */
+describe('多视图布局', () => {
+  it('**v1 旧文件读得出来**（落到总览，不丢格子）', () => {
+    const { file, cleanup } = scene();
+    try {
+      writeFileSync(file, JSON.stringify({ units: [UNIT], updatedAt: 1000 }), 'utf8');
+      const state = new LayoutStore({ file, now: () => 2000 }).get();
+      expect(state.version).toBe(2);
+      expect(state.activeViewId).toBe('overview');
+      expect(unitsForView(state, 'overview')).toEqual([UNIT]);
+      expect(unitsForView(state, 'debug')).toEqual([]);
+      expect(state.units).toEqual([UNIT]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**每个视图各存一份**（切视图不互相覆盖）', () => {
+    const { file, cleanup } = scene();
+    try {
+      const store = new LayoutStore({ file, now: () => 1000 });
+      const empty = store.get();
+      // 总览摆一格、调试摆另一格
+      const overview = withViewUnits(empty, 'overview', [UNIT]);
+      const both = withViewUnits(overview, 'debug', [
+        { cardId: 'cpu-usage', connectionId: null, x: 6, y: 3, w: 4, h: 2 },
+      ]);
+      store.set(both);
+
+      const again = new LayoutStore({ file, now: () => 2000 }).get();
+      expect(unitsForView(again, 'overview')).toEqual([UNIT]);
+      expect(unitsForView(again, 'debug')[0]).toMatchObject({ x: 6, y: 3 });
+      // 当前视图（最后摆的是 debug）→ units 镜像它
+      expect(again.activeViewId).toBe('debug');
+      expect(again.units).toEqual(unitsForView(again, 'debug'));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**坏字段回默认、不抛**（坏 views 回退旧 units；坏 activeViewId 回总览）', () => {
+    const { file, cleanup } = scene();
+    try {
+      writeFileSync(
+        file,
+        JSON.stringify({ views: 'nope', activeViewId: 42, units: [UNIT] }),
+        'utf8',
+      );
+      const state = new LayoutStore({ file, now: () => 1000 }).get();
+      expect(state.version).toBe(2);
+      expect(state.activeViewId).toBe('overview');
+      // views 坏了，但旧 units 还在 → 按 v1 迁移落到总览，而不是丢掉。
+      expect(unitsForView(state, 'overview')).toEqual([UNIT]);
     } finally {
       cleanup();
     }
