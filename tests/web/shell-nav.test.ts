@@ -30,7 +30,7 @@ function card(cardId: string, connectionId: string | null): CardInstanceInfo {
   };
 }
 
-const RUNTIME: RuntimeStatus = { state: 'idle', profileId: null, detail: null };
+const RUNTIME: RuntimeStatus = { state: 'idle' };
 
 function context(overrides: Partial<SecondaryContext> = {}): SecondaryContext {
   return {
