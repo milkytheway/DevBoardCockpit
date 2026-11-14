@@ -952,6 +952,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M77 控制面：string 参数必须加引号（不加 = 注入面敞开）',
+    file: 'src/main/actions/encoder.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/encoder.test.ts'],
+    expect: 'string 单引号包裹',
+    apply: (s) =>
+      replace(
+        s,
+        "      return quoteShellValue(raw, '参数值');",
+        '      return raw; // 变异：不加引号',
+      ),
+  },
+  {
+    name: 'M78 控制面：enum 的取值必须真的查（不查 = 随便什么值都放行）',
+    file: 'src/main/actions/encoder.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/encoder.test.ts'],
+    expect: 'enum 的值不在 values 里',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (!values.includes(raw)) {',
+        '      if (values.length === 0) { // 变异：查错了东西',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

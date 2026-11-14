@@ -8,6 +8,7 @@ import {
   matchTagPattern,
 } from './vocabulary';
 import { DANGER_FLOOR_VERSION, matchDangerFloor } from './floor';
+import { collectPlaceholders } from '../util/shell-quote';
 
 /**
  * 板型包的校验器——契约 `docs/spec/02-board-pack.md` §七 的 **27 条规则**。
@@ -45,15 +46,10 @@ const READBACK_KINDS = new Set(['file_equals', 'command_ok', 'verify', 'none']);
 /** 动作参数的封闭类型（规则 20） */
 const PARAM_TYPES = new Set(['integer', 'number', 'string', 'boolean', 'enum']);
 
-/** 命令模板里的占位：`{name}` */
-const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
-
-/** 取出文本里所有的 `{param}` 占位名（去重） */
+/** 取出文本里所有的 `{param}` 占位名（去重）。**占位正则只有一份**（`util/shell-quote.ts`） */
 function placeholders(text: string | undefined): string[] {
   if (typeof text !== 'string') return [];
-  const out = new Set<string>();
-  for (const m of text.matchAll(PLACEHOLDER)) out.add(m[1] as string);
-  return [...out];
+  return collectPlaceholders(text);
 }
 
 /** tag 是不是 `*.usage` 这一类 */
