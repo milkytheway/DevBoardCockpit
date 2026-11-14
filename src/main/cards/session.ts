@@ -51,6 +51,13 @@ export interface CardSessionManagerDeps {
   storageFor?: (cardId: string) => CardServices['storage'];
   /** 每张卡的日志 */
   logFor?: (cardId: string) => (level: 'error' | 'warn' | 'info', message: string) => void;
+  /**
+   * 每张卡的写侧（动作执行器）。
+   *
+   * 做成**工厂**而不是一个实例：执行器要拿着**这张卡的授权**，
+   * 而授权是每卡一份的。
+   */
+  actionsFor?: (cardId: string) => CardServices['actions'];
   /** 当前连接的身份（给 `capabilities()` 用） */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
@@ -132,6 +139,7 @@ export class CardSessionManager {
         },
         degradation: () => tags.degradation(),
       },
+      actions: this.deps.actionsFor?.(cardId) ?? emptyActions(),
       storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
         this.deps.logFor?.(cardId)(level, message);
@@ -241,6 +249,13 @@ function isMethodFailure(value: unknown): value is { ok: false; reason: string }
   if (value === null || typeof value !== 'object') return false;
   const v = value as { ok?: unknown; reason?: unknown };
   return v.ok === false && typeof v.reason === 'string';
+}
+
+/** 还没接上写侧时的占位（**调用一律被拒**，不是「假装成功」） */
+function emptyActions(): CardServices['actions'] {
+  return {
+    invoke: (id: string) => ({ ok: false, reason: 'unknown_action', actionId: id }),
+  };
 }
 
 /** 还没接上存储时的占位（Task 10 会换成真的） */

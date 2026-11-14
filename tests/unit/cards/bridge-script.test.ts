@@ -27,15 +27,16 @@ describe('卡片 API 注册表', () => {
     expect(names).toContain('log');
   });
 
-  it('**`notify` 不在已实现清单里**（宿主通道 M6 才有；列了 = 卡片以为通知发出去了）', () => {
+  it('**`notify` 不在已实现清单里**（宿主通道还没接上；列了 = 卡片以为通知发出去了）', () => {
     const names = [...apiByName().keys()];
     expect(names).not.toContain('notify');
-    // 契约 §7.7：「本宿主没有实现的方法，调用返回 unknown_method」
-    expect(apiByName().has('actions.invoke')).toBe(false);
   });
 
-  it('**M5 没有写侧**（actions.invoke 属 M6）', () => {
-    expect(apiByName().has('actions.invoke')).toBe(false);
+  it('**写侧自 M6 起有了**（actions.invoke 在清单里）', () => {
+    expect(apiByName().has('actions.invoke')).toBe(true);
+    // 写权限按**动作 id** 判（契约 §2.3：读权限用模式，写权限不用）
+    expect(apiByName().get('actions.invoke')?.permission).toBe('write');
+    expect(apiByName().get('actions.invoke')?.scopeArg).toBe('id');
   });
 
   it('读方法的权限是 read，存储与日志是 none', () => {

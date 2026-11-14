@@ -22,6 +22,11 @@ import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { createCardWiring } from './cards/wiring';
+import { ActionAudit } from './actions/audit';
+import { invokeAction } from './actions/executor';
+import { ConfirmationStore } from './actions/authorization';
+import { GrantStore } from './cards/grants';
+import { effectiveWrite } from './cards/permissions';
 import { cspViolationMessage } from './cards/csp-violation';
 import { SHELL_CSP } from './shell-csp';
 import type { CardRoot } from './cards/roots';
@@ -204,6 +209,28 @@ const cardRoots: CardRoot[] = [
  * 开发时走 Vite（`http://localhost:5173`），那里有真源，用另一份宽松的
  * （`script-src 'self' 'unsafe-inline'` 是给 Vite 的 inline preamble 留的口子）。
  */
+/**
+ * 控制面（M6 · 契约 §五）。
+ *
+ * - **授权账**（`cards/grants.ts`）：**人授过**的动作。
+ *   有效写权限 = manifest 声明的 ∩ 人授过的（契约 §2.4）——
+ *   只看一边就会漏（只看声明 → 用户没点头的动作也能写）。
+ * - **确认凭据**（`actions/authorization.ts`）：一次性、5 分钟有效。
+ * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
+ */
+const grants = new GrantStore(join(userDataDir(), 'grants.json'));
+const confirmations = new ConfirmationStore();
+const actionAudit = new ActionAudit(join(userDataDir(), 'logs', 'actions.log'));
+
+/** 这张卡**人授过**的动作（按参数域） */
+function grantedFor(cardId: string): { actions: Record<string, Record<string, { min?: number; max?: number }> | undefined> } {
+  const actions: Record<string, Record<string, { min?: number; max?: number }> | undefined> = {};
+  for (const grant of grants.forCard(cardId)) {
+    actions[grant.actionId] = grant.domains ?? {};
+  }
+  return { actions };
+}
+
 const cards = createCardWiring({
   roots: cardRoots,
   runtime: {
@@ -219,11 +246,36 @@ const cards = createCardWiring({
   },
   permsFor: (cardId) => {
     const card = cards.registry.cards().find((c) => c.cardId === cardId);
-    return {
+    const declared = {
       read: card?.manifest.permissions.read ?? [],
       write: card?.manifest.permissions.write ?? [],
     };
+    // **有效写权限 = 声明 ∩ 人授过的**（契约 §2.4）
+    return {
+      read: declared.read,
+      write: effectiveWrite(declared, grants.actionIds(cardId)),
+    };
   },
+  actionsFor: (cardId) => ({
+    invoke: async (actionId: string, params: Record<string, unknown>) => {
+      const action = runtime.actionDef(actionId);
+      if (action === undefined) {
+        return { ok: false, reason: 'not_found', actionId };
+      }
+      return invokeAction(action, params, {
+        packId: runtime.packId ?? '',
+        contractVersion: 'devboard/v1',
+        hasExitCode: runtime.hasExitCode,
+        // **执行与回读在同一个独占事务里**（SPEC-D22）
+        runTransaction: (fn) => runtime.runTransaction(fn),
+        readTag: (tag) => runtime.sampleTag(tag),
+        granted: () => grantedFor(cardId),
+        confirmations,
+        audit: (row) => actionAudit.append(row),
+        actor: `card:${cardId}`,
+      });
+    },
+  }),
   // **存储不在卡片根目录里**——它被 fs.watch 盯着，写一次就触发一次热刷新（回路）
   storageDir: cardStorageDir(),
   // **布局是宿主记的账**（哪张卡在哪个格子里）→ 落在用户数据目录

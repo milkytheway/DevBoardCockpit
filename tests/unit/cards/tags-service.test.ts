@@ -154,8 +154,8 @@ describe('卡片会话 · 分发与鉴权', () => {
     expect(res.reason).toBe('unknown_method');
   });
 
-  it('**M5 没有写侧** → actions.invoke 是 unknown_method（不是 denied）', async () => {
-    const m = manager({ read: ['cpu.usage'], write: ['cpu.governor.set'] });
+  it('**写侧自 M6 起有了**：动作不在 permissions.write 里 → denied', async () => {
+    const m = manager({ read: ['cpu.usage'], write: [] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
       instanceId: 'inst-1',
@@ -164,8 +164,22 @@ describe('卡片会话 · 分发与鉴权', () => {
       args: { id: 'cpu.governor.set' },
     });
     expect(res.ok).toBe(false);
-    expect(res.reason).toBe('unknown_method');
-    expect(apiByName().has('actions.invoke')).toBe(false);
+    // **denied（没权限）**，不是 unknown_method（没这个方法）
+    expect(res.reason).toBe('denied');
+  });
+
+  it('动作在 permissions.write 里 → **放行到执行器**（这里没有执行器 → unknown_action）', async () => {
+    const m = manager({ read: ['cpu.usage'], write: ['cpu.governor.set'] });
+    m.open('inst-1', 'cpu-usage', 'board-adb');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'actions.invoke',
+      args: { id: 'cpu.governor.set' },
+    });
+    // 过了**权限**那道门（不是 denied），死在「没有执行器」上
+    expect(res.reason).toBe('unknown_action');
+    expect(apiByName().has('actions.invoke')).toBe(true);
   });
 
   it('没权限的 tag → not_found（不泄露存在性）', async () => {

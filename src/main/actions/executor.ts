@@ -2,6 +2,7 @@ import type { Connection, ExecResult } from '../hal/connection';
 import type { ActionDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import { buildCommand } from './encoder';
+import { quoteShellValue } from '../util/shell-quote';
 import { checkFloor } from './floor-check';
 import { authorize, type GrantedActions } from './authorization';
 import { runReadback } from './readback';
@@ -53,10 +54,6 @@ export interface ActionExecutorDeps {
   runTransaction: <T>(fn: (connection: Connection) => Promise<T>) => Promise<T>;
   /** 读一个 tag（新鲜的） */
   readTag: (tag: string) => Promise<TagReading | undefined>;
-  /** 读一个文件（远端） */
-  readFile: (path: string) => Promise<string | null>;
-  /** 跑一条命令（回读的 `verify` 用） */
-  exec: (command: string) => Promise<ExecResult>;
   /** 已授权的动作（装卡时用户批准的） */
   granted: () => GrantedActions;
   /** 确认凭据的存取 */
@@ -184,8 +181,15 @@ export async function invokeAction(
       { raw: params, encoded },
       {
         readTag: deps.readTag,
-        readFile: deps.readFile,
-        exec: deps.exec,
+        // **读文件 = 在同一条连接上 `cat`** —— HAL 没有「读远端文件内容」这个能力
+        // （只有 list / pull / push）。而它必须在**同一个事务**里：
+        // 另开一次往返就会插到动作与回读之间（SPEC-D22）。
+        readFile: async (path: string): Promise<string | null> => {
+          const cat = await connection.exec(`cat -- ${quoteShellValue(path)}`);
+          return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
+        },
+        // 回读的 `verify` 也在**同一条连接**上跑
+        exec: (cmd: string): Promise<ExecResult> => connection.exec(cmd),
         hasExitCode: deps.hasExitCode,
       },
       execResult,

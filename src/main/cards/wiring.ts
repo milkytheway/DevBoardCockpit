@@ -1,6 +1,7 @@
 import { CardRegistry } from './registry';
 import type { CardRoot } from './roots';
 import { CardSessionManager, type RuntimeReader } from './session';
+import type { CardServices } from './api-registry';
 import { CardStorage } from './storage';
 import { CardRuntimeLog } from './runtime-log';
 import { createCardProtocol } from './protocol';
@@ -50,6 +51,12 @@ export interface CardWiringDeps {
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
   /** 这张卡的权限集（manifest + 已授权） */
   permsFor: (cardId: string) => CardPermissions;
+  /**
+   * 每张卡的写侧（动作执行器，M6）。
+   *
+   * 做成**工厂**：执行器要拿着**这张卡的授权**，而授权是每卡一份的。
+   */
+  actionsFor?: (cardId: string) => CardServices['actions'];
   /** 存储的根目录 */
   storageDir: string;
   /** 布局文件（**宿主记的账**：哪张卡在哪个格子里） */
@@ -122,6 +129,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     logFor: (cardId) => (level, message) => {
       log.append(cardId, { source: 'card', level, message });
     },
+    ...(deps.actionsFor === undefined ? {} : { actionsFor: deps.actionsFor }),
     connectionInfo: deps.connectionInfo,
   });
 

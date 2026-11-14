@@ -49,6 +49,10 @@ function harness(
   const fakeConn = {
     exec: async (command: string): Promise<ExecResult> => {
       executed.push(command);
+      // 回读的形式 2（file_equals）在**同一条连接**上 `cat` → 要答得出内容
+      if (command.startsWith('cat -- ')) {
+        return { exitCode: 0, stdout: over.fileContent ?? '128', stderr: '', durationMs: 1, timedOut: false };
+      }
       return (
         over.execResult ?? {
           exitCode: 0,
@@ -67,18 +71,6 @@ function harness(
     runTransaction: async <T>(fn: (conn: Connection) => Promise<T>): Promise<T> =>
       fn(fakeConn as unknown as Connection),
     readTag: async (): Promise<TagReading | undefined> => undefined,
-    readFile: async (): Promise<string | null> =>
-      over.fileContent === undefined ? '128' : over.fileContent,
-    exec: async (command: string): Promise<ExecResult> => {
-      executed.push(command);
-      return {
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        durationMs: 1,
-        timedOut: false,
-      };
-    },
     granted: () => ({
       actions: {
         [action.id]: action.guard ?? undefined,
@@ -111,7 +103,10 @@ describe('执行器 · 正常路径', () => {
     const result = await invokeAction(ACTION, { value: 128 }, h.deps);
     expect(result.ok).toBe(true);
     expect(result.verified).toBe(true);
-    expect(h.executed).toHaveLength(1);
+    // 执行 + 回读读文件（cat）—— **都在同一条连接上**
+    expect(h.executed[0]).toContain('echo 128 >');
+    // 回读读文件 = 在**同一条连接**上 `cat`（路径按 shell 规则加了引号）
+    expect(h.executed[1]).toBe("cat -- '/sys/class/backlight/backlight/brightness'");
     expect(h.audits).toHaveLength(1);
     expect(h.audits[0]?.actionId).toBe('backlight.set');
   });
@@ -204,7 +199,8 @@ describe('执行器 · 授权与确认', () => {
       { confirmId: 'confirm-0' },
     );
     expect(result.ok).toBe(true);
-    expect(h.executed).toHaveLength(1);
+    // 执行 + 回读读文件（cat）—— 都在同一条连接上
+    expect(h.executed.length).toBeGreaterThan(0);
   });
 
   it('带**对不上**的 confirm_id → 还是要确认', async () => {

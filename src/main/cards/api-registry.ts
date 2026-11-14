@@ -55,6 +55,16 @@ export interface CardServices {
     clear(): { ok: boolean; reason?: string };
   };
   log(level: 'error' | 'warn' | 'info', message: string): void;
+  /**
+   * 写侧（M6 · 契约 §7.7 的写侧行）。
+   *
+   * **权限按动作 id 判**（写权限不用模式，契约 §2.3）——
+   * 会话层已经有一道检查（`permissions.write` 里有没有这个 id），
+   * 这里的 `invoke` 再走执行器那条链（编码 → 地板 → 授权 → 确认 → 执行 → 回读 → 审计）。
+   */
+  actions: {
+    invoke(id: string, params: Record<string, unknown>): Promise<unknown> | unknown;
+  };
 }
 
 export type CardApiHandler = (ctx: CardApiContext, args: Record<string, unknown>) => Promise<unknown> | unknown;
@@ -74,12 +84,11 @@ export interface CardApiDef {
 }
 
 /**
- * M5 的卡片 API 全集。
+ * 卡片 API 的全集（**本 build 实际有的**）。
  *
- * **没有 `actions.invoke`** —— 写侧属 M6（契约 §7.7 的写侧行）。
- * 卡片调它会得到 `unknown_method`（bridge 只暴露这里有的方法）。
+ * **写侧 `actions.invoke` 自 M6 起有**（契约 §7.7 的写侧行）。
  *
- * **也没有 `notify`** —— 宿主的通知通道（M6）还没接上。
+ * **仍然没有 `notify`** —— 宿主的通知通道还没接上。
  * 契约 §7.7 明写「**本宿主没有实现的方法**，调用返回
  * `{ ok: false, reason: 'unknown_method' }`」，
  * 而 `capabilities().methods` 列的是「**本 build 实际有的方法**」——
@@ -137,6 +146,16 @@ export function cardApis(): CardApiDef[] {
       permission: 'none',
       params: [],
       make: (services) => () => services.tags.degradation(),
+    },
+    {
+      name: 'actions.invoke',
+      permission: 'write',
+      // **写权限按动作 id 判**（契约 §2.3：读权限用模式，写权限不用——
+      // 模式让授权范围变大，对读来说方便，对写来说**危险**）
+      scopeArg: 'id',
+      params: ['id', 'params'],
+      make: (services) => (_ctx, args) =>
+        services.actions.invoke(String(args['id']), (args['params'] ?? {}) as Record<string, unknown>),
     },
     {
       name: 'storage.get',

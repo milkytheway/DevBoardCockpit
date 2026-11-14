@@ -4,6 +4,8 @@ import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import { AppError, type ErrorCode } from '../../shared/errors';
+import type { ActionDef, BoardPack } from './schema';
+import { matchTagPattern } from './vocabulary';
 import { TagStore } from './store';
 import type { RuntimeState, RuntimeStatus } from '../../shared/runtime-status';
 import { TagSampler } from './sampler';
@@ -64,12 +66,16 @@ export class TagRuntime {
   private readonly queue = new RoundTripQueue();
   private readonly listeners: ((reading: TagReading) => void)[] = [];
   private scheduler: PollScheduler | undefined;
+  /** 采样器（**定向读**要用它） */
+  private sampler: TagSampler | undefined;
   private connection: Connection | undefined;
   private state: RuntimeState = 'idle';
   private detail: string | undefined;
   private profileId: string | undefined;
   /** 上次失败的错误码（`RuntimeStatus.detailCode` 的来源） */
   private detailCode: ErrorCode | undefined;
+  /** 当前绑定的板型包（**执行器要查动作的定义**——`spec/02` §4） */
+  private pack: BoardPack | undefined;
 
   constructor(private readonly opts: TagRuntimeOptions) {}
 
@@ -122,6 +128,8 @@ export class TagRuntime {
       return this.status;
     }
 
+    this.pack = binding.pack;
+
     // 3) 校验（过不了自己校验器的包不采）
     const errs = errorsOf(validatePack(binding.pack));
     if (errs.length > 0) {
@@ -135,6 +143,7 @@ export class TagRuntime {
 
     // 4) 起调度器（一切往返都经队列，契约 §1.2.1）
     const sampler = new TagSampler(binding.pack, connection, this.store);
+    this.sampler = sampler;
     this.scheduler = new PollScheduler(binding.pack, sampler, this.queue);
     this.scheduler.start();
 
@@ -167,6 +176,52 @@ export class TagRuntime {
       throw new AppError('CONN_CLOSED', '运行时还没连上任何连接');
     }
     return this.queue.run('action-verify', () => fn(connection));
+  }
+
+  /** 当前板型包的 id（**确认凭据要绑它**） */
+  get packId(): string | undefined {
+    return this.pack?.id;
+  }
+
+  /**
+   * 这条连接**有退出码吗**（串口没有，事实 S5）。
+   *
+   * 回读的形式 3 / 4 都看退出码 → 没有的话必须被拒绝
+   * （契约 §4.4 末尾）。
+   */
+  get hasExitCode(): boolean {
+    return this.connection?.capabilities().exitCode === true;
+  }
+
+  /**
+   * 板型包里声明的动作（按 id）——**执行器要用**（`spec/02` §4）。
+   *
+   * 动作的定义**只在板型包里**（卡片不能自己声明命令，
+   * 那是契约 §五的红线），所以执行器得从这里拿。
+   */
+  actionDef(actionId: string): ActionDef | undefined {
+    return this.pack?.actions.find((action) => action.id === actionId);
+  }
+
+  /**
+   * **定向**读一次某个 tag（**新鲜的**——不是等下一个周期的那份）。
+   *
+   * 回读的形式 1 要的就是这个（契约 §4.4）：
+   * 「板子说起来了」的标准是一次**当下**的读数，
+   * 等下一个采样周期的话，回读可能读到**动作之前**的值。
+   */
+  async sampleTag(tag: string): Promise<TagReading | undefined> {
+    const pack = this.pack;
+    if (pack === undefined) return undefined;
+    const group = pack.poll_groups.find((g) =>
+      [...g.readers].some((readerId) => {
+        const reader = [...pack.readers, ...pack.custom].find((r) => r.id === readerId);
+        return reader?.provides.some((p) => p.tag === tag || matchTagPattern(p.tag, tag)) === true;
+      }),
+    );
+    if (group === undefined) return undefined;
+    await this.sampler?.sampleGroup(group.id);
+    return this.store.get(tag);
   }
 
   /** 停下：停调度器、关连接 */
