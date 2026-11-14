@@ -920,7 +920,7 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    this.emit(`⚠ 合成数据（${FAKE_DEVICE_MARKER}）—— 不是真板子；输入 help 看能做什么\r\n`);",
+        "    this.emit(`⚠ 合成数据（${FAKE_DEVICE_MARKER}）—— 不是真板子；输入 help 看能做什么\\r\\n`);",
         '    /* 变异：不发横幅 */',
       ),
   },
