@@ -884,8 +884,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    if (this.timeoutEvery > 0 && this.rounds % this.timeoutEvery === 0) {',
-        '    if (this.timeoutEvery > 0 && this.rounds % this.timeoutEvery === 1) {',
+        '      if (this.timeoutEvery > 0 && this.fastRounds % this.timeoutEvery === 0) {',
+        '      if (this.timeoutEvery > 0 && this.fastRounds % this.timeoutEvery === 1) {',
       ),
   },
   {
@@ -896,8 +896,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    const broken = this.breakMeminfoEvery > 0 && this.rounds % this.breakMeminfoEvery === 0;',
-        '    const broken = this.breakMeminfoEvery > 0 && this.rounds % this.breakMeminfoEvery === 1;',
+        '      broken = this.breakMeminfoEvery > 0 && this.meminfoRounds % this.breakMeminfoEvery === 0;',
+        '      broken = this.breakMeminfoEvery > 0 && this.meminfoRounds % this.breakMeminfoEvery === 1;',
       ),
   },
   {
