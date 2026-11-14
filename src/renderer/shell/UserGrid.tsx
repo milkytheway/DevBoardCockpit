@@ -22,6 +22,7 @@ export function UserGrid({
   selectedCardId,
   onSelect,
   onOpenInspector,
+  onHide,
   onLayoutChange,
 }: {
   cards: CardInstanceInfo[];
@@ -30,6 +31,7 @@ export function UserGrid({
   selectedCardId: string | null;
   onSelect: (info: CardInstanceInfo) => void;
   onOpenInspector: (info: CardInstanceInfo) => void;
+  onHide: (info: CardInstanceInfo) => void;
   onLayoutChange: (units: LayoutUnit[]) => void;
 }): JSX.Element {
   const resolved = useMemo(() => resolveLayout(cards, units), [cards, units]);
@@ -86,6 +88,7 @@ export function UserGrid({
                 selected={selectedCardId === info.instanceId}
                 onSelect={onSelect}
                 onOpenInspector={onOpenInspector}
+                onHide={onHide}
               />
             </div>
           );

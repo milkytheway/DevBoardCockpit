@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import type { CardBroker } from '../cards/broker';
 import { UserCard } from '../cards/user-card';
@@ -13,13 +14,18 @@ export function CardShell({
   selected,
   onSelect,
   onOpenInspector,
+  onHide,
 }: {
   info: CardInstanceInfo;
   broker: CardBroker;
   selected: boolean;
   onSelect: (info: CardInstanceInfo) => void;
   onOpenInspector: (info: CardInstanceInfo) => void;
+  /** Hide this card in the *current view* only (layout, not permissions). */
+  onHide: (info: CardInstanceInfo) => void;
 }): JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <section
       className={`cockpit-card ${selected ? 'is-selected' : ''}`}
@@ -47,15 +53,42 @@ export function CardShell({
         <span className={`chip chip--${info.degraded ? 'warn' : 'ok'} chip--sm`}>
           {info.degraded ? '降级' : '就绪'}
         </span>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="打开卡片检查器"
-          title="卡片检查器"
-          onClick={() => onOpenInspector(info)}
-        >
-          ⋯
-        </button>
+        <div className="card-menu">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="卡片菜单"
+            aria-expanded={menuOpen}
+            title="卡片菜单"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            ⋯
+          </button>
+          {menuOpen ? (
+            <div className="card-menu__pop" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenInspector(info);
+                }}
+              >
+                打开检查器
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onHide(info);
+                }}
+              >
+                从本视图隐藏
+              </button>
+            </div>
+          ) : null}
+        </div>
       </header>
       <div className="cockpit-card__body">
         <UserCard info={info} broker={broker} />

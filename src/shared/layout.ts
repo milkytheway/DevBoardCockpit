@@ -47,10 +47,29 @@ export interface LayoutUnit {
   h: number;
 }
 
+/** 视图内容密度（显示层；不改变布局坐标） */
+export type ViewDensity = 'comfortable' | 'compact';
+
+/**
+ * 一个视图自己的内容配置（「视图=保存的配置」里的配置部分）。
+ *
+ * 都是**视图层面**的显示/过滤，不改变卡片权限、不改变 main 的账：
+ * - `hidden`：本视图隐藏的卡片实例（key 是 `slotKey(cardId, connectionId)`）
+ * - `density`：本视图的显示密度（舒适 / 紧凑）
+ * - `tagFilter`：本视图的读数过滤 pattern（`*` 通配；空=全部）
+ */
+export interface LayoutViewConfig {
+  hidden?: string[];
+  density?: ViewDensity;
+  tagFilter?: string[];
+}
+
 /** 一个视图的布局 */
 export interface LayoutView {
   id: LayoutViewId;
   units: LayoutUnit[];
+  /** 内容配置；normalize 之后总是存在（可能是空对象） */
+  config: LayoutViewConfig;
 }
 
 /** 整个布局文件（v2） */
@@ -112,12 +131,20 @@ export function normalizeLayout(raw: unknown, now = 0): LayoutState {
   const views: LayoutView[] = LAYOUT_VIEW_IDS.map((id) => {
     if (rawViews === null) {
       // v1：所有格子在「总览」；其余视图从空开始
-      return { id, units: id === 'overview' ? normalizeUnits(record?.['units']) : [] };
+      return {
+        id,
+        units: id === 'overview' ? normalizeUnits(record?.['units']) : [],
+        config: {},
+      };
     }
     const match = rawViews.find(
       (view) => view !== null && typeof view === 'object' && (view as Record<string, unknown>)['id'] === id,
     ) as Record<string, unknown> | undefined;
-    return { id, units: match === undefined ? [] : normalizeUnits(match['units']) };
+    return {
+      id,
+      units: match === undefined ? [] : normalizeUnits(match['units']),
+      config: match === undefined ? {} : normalizeViewConfig(match['config']),
+    };
   });
 
   const activeViewId = isLayoutViewId(record?.['activeViewId'])
@@ -136,10 +163,15 @@ export function unitsForView(state: LayoutState, viewId: LayoutViewId): LayoutUn
   return state.views.find((view) => view.id === viewId)?.units ?? [];
 }
 
+/** 某个视图的内容配置（未知视图 → 空配置） */
+export function viewConfigFor(state: LayoutState, viewId: LayoutViewId): LayoutViewConfig {
+  return state.views.find((view) => view.id === viewId)?.config ?? {};
+}
+
 /**
  * 更新某个视图的格子，并把 `units` 镜像同步过去。
  *
- * 不负责改 `updatedAt`（那是落盘方的时钟）。
+ * 不负责改 `updatedAt`（那是落盘方的时钟），也不动该视图的内容配置。
  */
 export function withViewUnits(
   state: LayoutState,
@@ -147,9 +179,26 @@ export function withViewUnits(
   units: LayoutUnit[],
 ): LayoutState {
   const views = state.views.map((view) =>
-    view.id === viewId ? { id: view.id, units } : view,
+    view.id === viewId ? { ...view, units } : view,
   );
   return { ...state, activeViewId: viewId, views, units };
+}
+
+/**
+ * 更新某个视图的内容配置（隐藏卡 / 密度 / 读数过滤）。
+ *
+ * 传的是**完整配置**（调用方自己合并旧值）；这里只负责收形状。
+ */
+export function withViewConfig(
+  state: LayoutState,
+  viewId: LayoutViewId,
+  config: LayoutViewConfig,
+): LayoutState {
+  const normalized = normalizeViewConfig(config);
+  const views = state.views.map((view) =>
+    view.id === viewId ? { ...view, config: normalized } : view,
+  );
+  return { ...state, views };
 }
 
 function isLayoutViewId(raw: unknown): raw is LayoutViewId {
@@ -158,4 +207,32 @@ function isLayoutViewId(raw: unknown): raw is LayoutViewId {
 
 function normalizeUnits(raw: unknown): LayoutUnit[] {
   return Array.isArray(raw) ? raw.filter(isLayoutUnit) : [];
+}
+
+/** 配置里的字符串数组：去空、去重、封顶（用户能碰的文件 → 收形状） */
+function normalizeStrings(raw: unknown, max: number): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const value = item.trim();
+    if (value.length === 0 || out.includes(value)) continue;
+    out.push(value);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeViewConfig(raw: unknown): LayoutViewConfig {
+  if (raw === null || typeof raw !== 'object') return {};
+  const record = raw as Record<string, unknown>;
+  const config: LayoutViewConfig = {};
+  const hidden = normalizeStrings(record['hidden'], 500);
+  if (hidden.length > 0) config.hidden = hidden;
+  if (record['density'] === 'compact' || record['density'] === 'comfortable') {
+    config.density = record['density'];
+  }
+  const tagFilter = normalizeStrings(record['tagFilter'], 64);
+  if (tagFilter.length > 0) config.tagFilter = tagFilter;
+  return config;
 }

@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LayoutStore, type LayoutUnit } from '../../../src/main/cards/layout';
-import { unitsForView, withViewUnits } from '../../../src/shared/layout';
+import { unitsForView, viewConfigFor, withViewConfig, withViewUnits } from '../../../src/shared/layout';
 
 /**
  * 布局的**落盘**（core 轨的部分）。
@@ -180,6 +180,65 @@ describe('多视图布局', () => {
       expect(state.activeViewId).toBe('overview');
       // views 坏了，但旧 units 还在 → 按 v1 迁移落到总览，而不是丢掉。
       expect(unitsForView(state, 'overview')).toEqual([UNIT]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**视图配置存得住**（隐藏卡 / 密度 / 读数过滤各视图独立）', () => {
+    const { file, cleanup } = scene();
+    try {
+      const store = new LayoutStore({ file, now: () => 1000 });
+      const base = store.get();
+      const withHidden = withViewConfig(base, 'overview', {
+        hidden: ['cpu-curve::conn-1'],
+        density: 'compact',
+        tagFilter: ['cpu.*', 'gpu.*'],
+      });
+      store.set(withHidden);
+
+      const again = new LayoutStore({ file, now: () => 2000 }).get();
+      expect(viewConfigFor(again, 'overview')).toEqual({
+        hidden: ['cpu-curve::conn-1'],
+        density: 'compact',
+        tagFilter: ['cpu.*', 'gpu.*'],
+      });
+      // 别的视图没被带上
+      expect(viewConfigFor(again, 'debug')).toEqual({});
+      // 配置不动布局（units 镜像也不变）
+      expect(unitsForView(again, 'overview')).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**坏配置回默认、不抛**（密度不认/字符串数组混坏值）', () => {
+    const { file, cleanup } = scene();
+    try {
+      writeFileSync(
+        file,
+        JSON.stringify({
+          version: 2,
+          activeViewId: 'overview',
+          views: [
+            {
+              id: 'overview',
+              units: [UNIT],
+              config: {
+                hidden: ['cpu-curve::conn-1', 42, '', 'cpu-curve::conn-1'],
+                density: 'tiny',
+                tagFilter: [' cpu.* ', 'cpu.*', null],
+              },
+            },
+          ],
+          updatedAt: 1000,
+        }),
+        'utf8',
+      );
+      const config = viewConfigFor(new LayoutStore({ file, now: () => 1000 }).get(), 'overview');
+      expect(config.hidden).toEqual(['cpu-curve::conn-1']);
+      expect(config.density).toBeUndefined();
+      expect(config.tagFilter).toEqual(['cpu.*']);
     } finally {
       cleanup();
     }

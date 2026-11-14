@@ -208,7 +208,8 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
             byKey.get(k) ?? layout.defaultFor(card.cardId, connectionId, card.manifest.layout)
           );
         });
-        return { id: view.id, units };
+        // Keep the view's own display config (hidden cards / density / filter).
+        return { ...view, units };
       });
       const active = views.find((view) => view.id === stored.activeViewId) ?? views[0];
       return { ...stored, views, units: active.units };
@@ -226,8 +227,11 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       const state = normalizeLayout(input, now());
       const views = previous.views.map((view) => {
         const kept = view.units.filter((u) => !installed.has(layoutKey(u.cardId, u.connectionId)));
-        const next = state.views.find((candidate) => candidate.id === view.id)?.units ?? view.units;
-        return { id: view.id, units: [...kept, ...next] };
+        const incoming = state.views.find((candidate) => candidate.id === view.id);
+        const next = incoming?.units ?? view.units;
+        // Display config travels with the view; an explicit empty config clears it
+        // (that is how "restore hidden cards" reaches the file).
+        return { ...view, units: [...kept, ...next], config: incoming?.config ?? view.config };
       });
       const active = views.find((view) => view.id === state.activeViewId) ?? views[0];
       layout.set({

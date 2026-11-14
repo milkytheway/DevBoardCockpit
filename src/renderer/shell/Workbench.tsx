@@ -22,9 +22,12 @@ export interface WorkbenchProps {
   broker: CardBroker | null;
   selectedCardId: string | null;
   activeTag: string | null;
+  hiddenCount: number;
   onSelectTag: (tag: string) => void;
   onSelectCard: (info: CardInstanceInfo) => void;
   onOpenInspector: (info: CardInstanceInfo) => void;
+  onHideCard: (info: CardInstanceInfo) => void;
+  onUnhideAll: () => void;
   onLayoutChange: (units: LayoutUnit[]) => void;
   onOpenTerminal: (profileId: string) => void;
   onOpenLibrary: () => void;
@@ -37,8 +40,11 @@ function CardGrid({
   selectedCardId,
   onSelectCard,
   onOpenInspector,
+  onHideCard,
   onLayoutChange,
   onOpenLibrary,
+  hiddenCount,
+  onUnhideAll,
 }: Pick<
   WorkbenchProps,
   | 'cards'
@@ -47,8 +53,11 @@ function CardGrid({
   | 'selectedCardId'
   | 'onSelectCard'
   | 'onOpenInspector'
+  | 'onHideCard'
   | 'onLayoutChange'
   | 'onOpenLibrary'
+  | 'hiddenCount'
+  | 'onUnhideAll'
 >): JSX.Element {
   if (broker === null) {
     return (
@@ -62,10 +71,18 @@ function CardGrid({
     return (
       <article className="host-card host-card--empty">
         <span className="eyebrow">卡片区</span>
-        <h2>还没有卡片</h2>
-        <p>卡片就是文件夹：把它放进用户卡片目录就会自己出现；改一行文件就会热更新。</p>
-        <button type="button" className="btn btn--primary btn--sm" onClick={onOpenLibrary}>
-          去卡片库看看
+        <h2>{hiddenCount > 0 ? '本视图的卡片都收起来了' : '还没有卡片'}</h2>
+        <p>
+          {hiddenCount > 0
+            ? `这个视图隐藏了 ${hiddenCount} 张卡；其它视图不受影响。`
+            : '卡片就是文件夹：把它放进用户卡片目录就会自己出现；改一行文件就会热更新。'}
+        </p>
+        <button
+          type="button"
+          className="btn btn--primary btn--sm"
+          onClick={hiddenCount > 0 ? onUnhideAll : onOpenLibrary}
+        >
+          {hiddenCount > 0 ? '全部恢复' : '去卡片库看看'}
         </button>
       </article>
     );
@@ -78,6 +95,7 @@ function CardGrid({
       selectedCardId={selectedCardId}
       onSelect={onSelectCard}
       onOpenInspector={onOpenInspector}
+      onHide={onHideCard}
       onLayoutChange={onLayoutChange}
     />
   );
@@ -272,6 +290,11 @@ export function Workbench(props: WorkbenchProps): JSX.Element {
           <span className="eyebrow">卡片</span>
           <span className="dim">拖标题栏移动 · 拖右下角缩放 · 点标题看检查器</span>
           <span className="spacer" />
+          {props.hiddenCount > 0 ? (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={props.onUnhideAll}>
+              已隐藏 {props.hiddenCount} 张 · 恢复
+            </button>
+          ) : null}
           <span className="chip chip--ghost chip--sm">{cards.length} 张</span>
         </header>
         <CardGrid
@@ -281,8 +304,11 @@ export function Workbench(props: WorkbenchProps): JSX.Element {
           selectedCardId={props.selectedCardId}
           onSelectCard={props.onSelectCard}
           onOpenInspector={props.onOpenInspector}
+          onHideCard={props.onHideCard}
           onLayoutChange={props.onLayoutChange}
           onOpenLibrary={props.onOpenLibrary}
+          hiddenCount={props.hiddenCount}
+          onUnhideAll={props.onUnhideAll}
         />
       </section>
     </div>

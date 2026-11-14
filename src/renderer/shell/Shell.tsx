@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
-import type { LayoutState, LayoutUnit } from '../../shared/layout';
-import { unitsForView, withViewUnits } from '../../shared/layout';
+import type { LayoutState, LayoutUnit, LayoutViewConfig, ViewDensity } from '../../shared/layout';
+import {
+  unitsForView,
+  viewConfigFor,
+  withViewConfig,
+  withViewUnits,
+} from '../../shared/layout';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import type { TagReading } from '../../shared/tag-reading';
 import { CardBroker } from '../cards/broker';
@@ -9,6 +14,12 @@ import { CommandPalette, type Command } from './CommandPalette';
 import { Dock, type DockFilesProps } from './Dock';
 import { describeError, pushHistory } from './format';
 import { Inspector } from './Inspector';
+import {
+  filterCardsByHidden,
+  filterUnitsByHidden,
+  matchesTagFilters,
+  slotKey,
+} from './layout-utils';
 import { LibraryPage } from './LibraryPage';
 import { Rail } from './Rail';
 import { SettingsPage } from './SettingsPage';
@@ -225,6 +236,56 @@ export function Shell(): JSX.Element {
       setError(describeError(cause));
     });
   }, []);
+
+  /** Display settings owned by the active view (per-view, not global). */
+  const viewConfig = layout === null ? {} : viewConfigFor(layout, view);
+  const density: ViewDensity = viewConfig.density ?? 'comfortable';
+  const tagFilter = viewConfig.tagFilter ?? [];
+  const hidden = viewConfig.hidden ?? [];
+  const visibleCards = filterCardsByHidden(cards, hidden);
+  const visibleUnits = filterUnitsByHidden(units, hidden);
+  const shownReadings =
+    tagFilter.length === 0 ? readings : readings.filter((reading) => matchesTagFilters(reading.tag, tagFilter));
+
+  const patchViewConfig = useCallback(
+    (patch: LayoutViewConfig) => {
+      const current = layoutRef.current;
+      if (current === null) return;
+      // The helper takes the whole config; merging here keeps call sites small.
+      persistLayout(withViewConfig(current, view, { ...viewConfigFor(current, view), ...patch }));
+    },
+    [persistLayout, view],
+  );
+
+  const setDensity = useCallback(
+    (next: ViewDensity) => patchViewConfig({ density: next }),
+    [patchViewConfig],
+  );
+
+  const setTagFilter = useCallback(
+    (patterns: string[]) => patchViewConfig({ tagFilter: patterns }),
+    [patchViewConfig],
+  );
+
+  const hideCard = useCallback(
+    (info: CardInstanceInfo) => {
+      const current = layoutRef.current;
+      if (current === null) return;
+      const key = slotKey(info.cardId, info.connectionId);
+      const config = viewConfigFor(current, view);
+      const currentHidden = config.hidden ?? [];
+      if (currentHidden.includes(key)) return;
+      persistLayout(withViewConfig(current, view, { ...config, hidden: [...currentHidden, key] }));
+      setSelectedCardId((selected) => (selected === info.instanceId ? null : selected));
+    },
+    [persistLayout, view],
+  );
+
+  const unhideAll = useCallback(() => {
+    const current = layoutRef.current;
+    if (current === null) return;
+    persistLayout(withViewConfig(current, view, { ...viewConfigFor(current, view), hidden: [] }));
+  }, [persistLayout, view]);
 
   const changeView = useCallback(
     (nextView: ViewId) => {
@@ -491,7 +552,7 @@ export function Shell(): JSX.Element {
       <div className="app-body">
         <Rail page={page} dockTab={dockTab} dockOpen={dockOpen} onPage={setPage} onOpenDock={openDock} />
 
-        <main className="app-main">
+        <main className={`app-main ${density === 'compact' ? 'is-compact' : ''}`}>
           {page === 'workbench' ? (
             <ViewTabs
               view={view}
@@ -504,9 +565,15 @@ export function Shell(): JSX.Element {
               view={view}
               cardsCount={cards.length}
               tagCount={readings.length}
+              density={density}
+              tagFilter={tagFilter}
+              hiddenCount={hidden.length}
               onRefresh={refreshCards}
               onOpenLibrary={() => setPage('library')}
               onOpenDock={() => openDock('terminal')}
+              onDensity={setDensity}
+              onTagFilter={setTagFilter}
+              onUnhideAll={unhideAll}
             />
           ) : null}
 
@@ -525,16 +592,19 @@ export function Shell(): JSX.Element {
                 view={view}
                 connections={connections}
                 runtime={runtime}
-                readings={readings}
+                readings={shownReadings}
                 history={(tag) => historyRef.current.get(tag) ?? []}
-                cards={cards}
-                units={units}
+                cards={visibleCards}
+                units={visibleUnits}
                 broker={broker}
                 selectedCardId={selectedCardId}
                 activeTag={activeTag}
+                hiddenCount={hidden.length}
                 onSelectTag={setActiveTag}
                 onSelectCard={selectCard}
                 onOpenInspector={openInspector}
+                onHideCard={hideCard}
+                onUnhideAll={unhideAll}
                 onLayoutChange={handleLayoutChange}
                 onOpenTerminal={openTerminal}
                 onOpenLibrary={() => setPage('library')}

@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import type { CardInstanceInfo } from '../../src/shared/ipc-contract';
 import type { LayoutUnit } from '../../src/shared/layout';
-import { resolveLayout, slotKey, splitKey } from '../../src/renderer/shell/layout-utils';
+import {
+  filterCardsByHidden,
+  filterUnitsByHidden,
+  matchTagPattern,
+  matchesTagFilters,
+  resolveLayout,
+  slotKey,
+  splitKey,
+} from '../../src/renderer/shell/layout-utils';
 
 function card(cardId: string, connectionId: string | null = null): CardInstanceInfo {
   return {
@@ -65,5 +73,48 @@ describe('外壳 · 布局兜底（main 给每张卡都返回一个格子）', (
     const cards = [card('b'), card('a')];
     const placed = resolveLayout(cards, []);
     expect(placed.map((unit) => unit.cardId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('外壳 · 视图过滤（隐藏卡片 / 读数 pattern）', () => {
+  it('隐藏键按 (cardId, connectionId) 精确匹配', () => {
+    const cards = [card('cpu-curve'), card('cpu-curve', 'conn-1'), card('mem-gauge')];
+    const hidden = [slotKey('cpu-curve', 'conn-1')];
+    expect(filterCardsByHidden(cards, hidden).map((item) => item.instanceId)).toEqual([
+      'cpu-curve-none',
+      'mem-gauge-none',
+    ]);
+  });
+
+  it('隐藏的格子也一起过滤（不会留空槽）', () => {
+    const units: LayoutUnit[] = [
+      { cardId: 'cpu-curve', connectionId: 'conn-1', x: 0, y: 0, w: 4, h: 2 },
+      { cardId: 'mem-gauge', connectionId: null, x: 4, y: 0, w: 4, h: 2 },
+    ];
+    const left = filterUnitsByHidden(units, [slotKey('cpu-curve', 'conn-1')]);
+    expect(left.map((unit) => unit.cardId)).toEqual(['mem-gauge']);
+  });
+
+  it('空隐藏列表 = 全显示（不是全隐藏）', () => {
+    const cards = [card('a')];
+    expect(filterCardsByHidden(cards, [])).toEqual(cards);
+  });
+
+  it('tag pattern 支持 * 通配、忽略大小写', () => {
+    expect(matchTagPattern('cpu.usage', 'cpu.*')).toBe(true);
+    expect(matchTagPattern('cpu.core.0.usage', 'cpu.*')).toBe(true);
+    expect(matchTagPattern('gpu.usage', 'CPU.*')).toBe(false);
+    expect(matchTagPattern('temp.soc', '*.soc')).toBe(true);
+  });
+
+  it('pattern 里的正则元字符按字面量处理（不会变成正则）', () => {
+    expect(matchTagPattern('cpu.usage', 'cpu.usage')).toBe(true);
+    expect(matchTagPattern('cpuXusage', 'cpu.usage')).toBe(false);
+  });
+
+  it('空过滤器显示全部；多个 pattern 命中任意一个', () => {
+    expect(matchesTagFilters('cpu.usage', [])).toBe(true);
+    expect(matchesTagFilters('gpu.usage', ['cpu.*', 'gpu.*'])).toBe(true);
+    expect(matchesTagFilters('temp.soc', ['cpu.*', 'gpu.*'])).toBe(false);
   });
 });
