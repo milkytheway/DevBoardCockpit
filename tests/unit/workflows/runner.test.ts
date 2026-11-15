@@ -822,6 +822,40 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
   });
 });
 
+describe('流程 · inputs.default（契约 §二）', () => {
+  it('**值模式也要拿到默认值**（回读的 expect 走值模式 ✓ —— 独立评审 40 的 I-3 ✓）', async () => {
+    const h = harness();
+    h.target('board').catAnswers['/tmp/x'] = '5';
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        // **调用方不给 count** ✓ → 用默认值 ✓
+        inputs: { count: { type: 'integer', default: 5 } },
+        roles: ROLES,
+        steps: [
+          {
+            id: 'write',
+            kind: 'exec',
+            role: 'build',
+            cmd: 'echo {input:count}',
+            // ⚠️ **值模式** ✓ —— 比的是**值** ✓，不是 shell 片段 ✓
+            readback: { kind: 'file_equals', role: 'target', path: '/tmp/x', expect: '{input:count}' },
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    // **回读对上了** ✓（默认值真的进了值模式 ✓）
+    expect(result.ok).toBe(true);
+    expect(result.stages[0]?.verified).toBe(true);
+  });
+});
+
 describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓）', () => {
   it('**目标连不上 → 时间线上有一行**（不是整个运行抛出去 ✓）', async () => {
     // **板子没插** ✓ → 问它内核版本时炸了 ✓

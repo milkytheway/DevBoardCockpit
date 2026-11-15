@@ -1800,6 +1800,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M147 流程层：**值模式也要拿到 default**（两种替换模式都得有它 ✓ —— 独立评审 40 的 I-3 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '值模式也要拿到默认值',
+    apply: (s) =>
+      replace(
+        s,
+        '  const mergedInputs: Record<string, unknown> = { ...defaults, ...inputs };',
+        '  const mergedInputs: Record<string, unknown> = inputs; // 变异：值模式拿不到默认值',
+      ),
+  },
+  {
+    name: 'M148 卡片侧：输入声明要带 **default**（卡片才能自己预填 ✓ —— 独立评审 40 的 I-3 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '带 default',
+    apply: (s) =>
+      replace(
+        s,
+        '              ...(def.default === undefined ? {} : { default: def.default }),',
+        '              // 变异：不给卡片 default',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

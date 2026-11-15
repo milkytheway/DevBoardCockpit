@@ -167,10 +167,22 @@ export async function runWorkflow(
   const stages: WorkflowStage[] = [];
   let needsConfirmation: WorkflowRunResult['needsConfirmation'];
 
+  // ── 输入：**默认值先填上**（调用方给的值优先 ✓）──
+  // → 契约 §二：`default` = 「调用方没给时用它」✓
+  // → ⚠️ **两种替换模式都要拿到它** ✓（独立评审 40 的 I-3 ✓）：
+  //   命令模式（`{input:x}` → 编码后的片段 ✓）与**值模式**（回读的 `expect` ✓、
+  //   `action` 步的 `params` ✓、`discover` 的 `dir` ✓）**读的是两份不同的东西** ✓
+  //   → 只填一份 ✓ → **值模式拿到的是字面量 `{input:x}`** ✗
+  const defaults: Record<string, unknown> = {};
+  for (const [name, def] of Object.entries(pack.inputs)) {
+    if (def.default !== undefined) defaults[name] = def.default;
+  }
+  const mergedInputs: Record<string, unknown> = { ...defaults, ...inputs };
+
   // ── 输入：按包声明的类型校验（缺必填 / 类型不对 → **执行前**就拒）──
   let encodedInputs: Record<string, string>;
   try {
-    encodedInputs = encodeParams(inputSchema(pack), inputs);
+    encodedInputs = encodeParams(inputSchema(pack), mergedInputs);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     return {
@@ -209,7 +221,7 @@ export async function runWorkflow(
     const stage = await runStep(step, {
       pack,
       runId,
-      inputs,
+      inputs: mergedInputs,
       encodedInputs,
       roleFacts,
       outputs,

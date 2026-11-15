@@ -29,7 +29,7 @@ interface TestPack {
   id: string;
   name: string;
   version: string;
-  inputs: Record<string, { type: string; required?: boolean; maxLength?: number }>;
+  inputs: Record<string, { type: string; required?: boolean; maxLength?: number; default?: unknown }>;
   roles: Record<string, { purpose: string; profile: string }>;
   steps: { id: string; kind: string; role: string; cmd: string; danger?: string }[];
 }
@@ -89,6 +89,10 @@ function yamlOf(pack: TestPack): string {
     `version: ${pack.version}`,
     'inputs:',
     '  project: { type: string, required: true, maxLength: 50 }',
+    // **有 default 的输入也要写进去** ✓（契约 §二 ✓）
+    ...Object.entries(pack.inputs)
+      .filter(([, def]) => def.default !== undefined)
+      .map(([name, def]) => `  ${name}: { type: ${def.type}, default: ${def.default} }`),
     'roles:',
     '  build: { purpose: 客机, profile: guest }',
     'steps:',
@@ -224,6 +228,16 @@ describe('流程服务 · 只认 id，不认路径', () => {
     reg.approve('demo.run');
     expect(svc.list().map((w) => w.id)).toEqual(['demo.run']);
     expect(() => svc.start('demo.run', { project: 'x' })).not.toThrow();
+  });
+
+  it('列表里的输入声明**带 default**（卡片要能自己预填 ✓ —— 独立评审 40 的 I-3 ✓）', () => {
+    const h = service({
+      ...PACK,
+      inputs: { project: { type: 'string', required: true, maxLength: 50 }, count: { type: 'integer', default: 5 } },
+    });
+    h.reg.approve('demo.run');
+    const first = h.svc.list()[0];
+    expect(first?.inputs['count']).toEqual({ type: 'integer', default: 5 });
   });
 
   it('列表里带**输入声明**（卡片要按它渲染表单 ✓）', () => {

@@ -27,8 +27,13 @@ export interface WorkflowSummary {
   version: string;
   /** 用户批过吗（**没批过的卡片/agent 看不见** ✓） */
   approved: boolean;
-  /** 输入声明（卡片要按它渲染表单 ✓） */
-  inputs: Record<string, { type: string; required?: boolean; description?: string }>;
+  /** 输入声明（卡片要按它渲染表单 ✓ —— **`default` 也要给** ✓，卡片才能自己预填 ✓） */
+  inputs: Record<string, {
+    type: string;
+    required?: boolean;
+    description?: string;
+    default?: unknown;
+  }>;
 }
 
 /**
@@ -149,6 +154,8 @@ export class WorkflowService {
               type: def.type,
               ...(def.required === undefined ? {} : { required: def.required }),
               ...(def.description === undefined ? {} : { description: def.description }),
+              // **默认值也给卡片** ✓（契约 §二：`default` = 宿主预填常用输入 ✓ —— 卡片点一下就能跑 ✓）
+              ...(def.default === undefined ? {} : { default: def.default }),
             },
           ]),
         ),
