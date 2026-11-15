@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConsentQueue } from '../../../src/main/cards/consent';
@@ -102,6 +102,8 @@ describe('MCP · install_card', () => {
     );
     expect(result.installed).toBe(false);
     expect(result.reason).toBe('invalid');
+    // **目录里一个文件都没多** ✓（**不是「装了个空卡」** ✓）
+    expect(readdirSync(cardsDir)).toEqual([]);
   });
 
   it('**要新授权 → `needs_consent` + consent_id + 待批清单** ✓（**不装** ✓）', () => {
@@ -165,6 +167,36 @@ describe('MCP · install_card', () => {
     // **旧的批准不算数** ✓ → **重新征求** ✓
     expect(second.needs_consent).toBe(true);
     expect(second.installed).toBe(false);
+  });
+});
+
+describe('MCP · 同意队列 · 签发 ≠ 批准', () => {
+  it('**签发之后、批准之前 → 消费不掉** ✓（**同确认凭据那套** ✓）', () => {
+    const queue = new ConsentQueue();
+    const req = queue.request('demo', 'snap-1', [
+      { action: 'system.reboot', danger: 'destructive' },
+    ]);
+    // **没批 → 消费不掉** ✓
+    expect(queue.consume(req.id, 'snap-1')).toBe(false);
+    // **批了 → 消费得掉** ✓
+    expect(queue.approve(req.id)).toBe(true);
+    expect(queue.consume(req.id, 'snap-1')).toBe(true);
+  });
+
+  it('**消费之后就没了** ✓（**一次性** ✓）', () => {
+    const queue = new ConsentQueue();
+    const req = queue.request('demo', 'snap-1', []);
+    queue.approve(req.id);
+    expect(queue.consume(req.id, 'snap-1')).toBe(true);
+    expect(queue.consume(req.id, 'snap-1')).toBe(false);
+  });
+
+  it('**快照对不上 → 消费不掉** ✓（**文件在批与装之间变了** ✓）', () => {
+    const queue = new ConsentQueue();
+    const req = queue.request('demo', 'snap-1', []);
+    queue.approve(req.id);
+    // **快照变了** ✓
+    expect(queue.consume(req.id, 'snap-2')).toBe(false);
   });
 });
 
