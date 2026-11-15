@@ -37,14 +37,28 @@ export interface CardGrant {
   at: number;
 }
 
-/** 存盘的形状 */
+/**
+ * 存盘的形状。
+ *
+ * → **`workflows` 是第二个维度**（2026-11-15 加 ✓ —— 评审 37 的 V3-I9 ✓）：
+ * 流程**不是动作**（它不在板型包里 ✓），但它**一样是「能在用户机器上执行命令」** ✗
+ * → 它**必须有自己的一层授权** ✓（与 `permissions.workflows` 配对 ✓）。
+ *
+ * → **分开记，不混在一张表里** ✓：
+ * 动作的授权域是**参数域**（`domains` ✓），流程的授权是**「能不能触发这个流程」**（无域 ✓）
+ * → 两种形状不同，混在一起就会出现「流程也有参数域」的错觉 ✗。
+ */
 interface GrantsFile {
   cards: Record<string, CardGrant[]>;
+  /** 卡片 id → 用户批准过的**流程 id** */
+  workflows: Record<string, string[]>;
 }
 
 /** 授权账（每张卡一份） */
 export class GrantStore {
   private readonly cards = new Map<string, CardGrant[]>();
+  /** 卡片 id → 用户批准过的流程 id（**第二个授权维度** ✓） */
+  private readonly workflowGrants = new Map<string, string[]>();
 
   constructor(private readonly filePath: string) {
     this.load();
@@ -58,6 +72,30 @@ export class GrantStore {
   /** 批准过的动作 id（给 `effectiveWrite` 用） */
   actionIds(cardId: string): string[] {
     return this.forCard(cardId).map((grant) => grant.actionId);
+  }
+
+  /** 批准过的**流程 id**（给 `effectiveWorkflows` 用 ✓） */
+  workflowIds(cardId: string): string[] {
+    return this.workflowGrants.get(cardId) ?? [];
+  }
+
+  /** 批准一个流程（**幂等** ✓ —— 同理动作的授权 ✓） */
+  grantWorkflow(cardId: string, workflowId: string, at = Date.now()): void {
+    void at;
+    const list = this.workflowGrants.get(cardId) ?? [];
+    if (!list.includes(workflowId)) {
+      list.push(workflowId);
+      this.workflowGrants.set(cardId, list);
+      this.save();
+    }
+  }
+
+  /** 收回一个流程的批准 */
+  revokeWorkflow(cardId: string, workflowId: string): void {
+    const list = this.workflowGrants.get(cardId) ?? [];
+    const left = list.filter((id) => id !== workflowId);
+    this.workflowGrants.set(cardId, left);
+    this.save();
   }
 
   /** 记一笔批准（**幂等**：同一个动作再批准一次只是刷新时间） */
@@ -89,6 +127,9 @@ export class GrantStore {
       for (const [cardId, grants] of Object.entries(parsed.cards ?? {})) {
         this.cards.set(cardId, grants);
       }
+      for (const [cardId, ids] of Object.entries(parsed.workflows ?? {})) {
+        this.workflowGrants.set(cardId, ids);
+      }
     } catch {
       // 读不出来就当没有授权（**默认拒绝**比默认放行安全）
       this.cards.clear();
@@ -99,9 +140,11 @@ export class GrantStore {
   private save(): void {
     const cards: Record<string, CardGrant[]> = {};
     for (const [cardId, grants] of this.cards) cards[cardId] = grants;
+    const workflows: Record<string, string[]> = {};
+    for (const [cardId, ids] of this.workflowGrants) workflows[cardId] = ids;
     mkdirSync(dirname(this.filePath), { recursive: true });
     const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ cards }, null, 2), 'utf8');
+    writeFileSync(tmp, JSON.stringify({ cards, workflows }, null, 2), 'utf8');
     // 改名是原子的 → 断电不会留下半个文件
     renameSync(tmp, this.filePath);
   }

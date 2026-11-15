@@ -17,6 +17,8 @@ import { matchTagPattern } from '../tags/vocabulary';
 export interface CardPermissions {
   read: string[];
   write: string[];
+  /** 允许这张卡触发的**流程 id**（第二个授权维度 ✓ —— 评审 37 的 V3-I9 ✓） */
+  workflows?: string[];
 }
 
 /**
@@ -54,4 +56,18 @@ export function requiresSatisfied(requires: string[], perms: CardPermissions): b
  */
 export function effectiveWrite(perms: CardPermissions, granted: string[]): string[] {
   return perms.write.filter((id) => granted.includes(id));
+}
+
+/**
+ * 有效**流程**权限 = **声明 ∩ 已授权** ✓（与 `effectiveWrite` 同形 ✓）。
+ *
+ * → 为什么要有这一维（评审 37 的 V3-I9 ✓）：
+ * 流程**不是动作**（不在板型包里 ✓），但它**一样是「能在用户机器上执行命令」** ✗
+ * → 它**必须**有自己的授权层 ✓，否则一张卡声明了 `permissions.workflows` 就能跑流程 ✗。
+ *
+ * → **与动作的差别** ✓：动作的授权域是**参数域**（`domains` ✓），
+ * 流程的授权**没有域** ✓（要么能触发这个流程，要么不能 ✓）。
+ */
+export function effectiveWorkflows(perms: CardPermissions, granted: string[]): string[] {
+  return (perms.workflows ?? []).filter((id) => granted.includes(id));
 }

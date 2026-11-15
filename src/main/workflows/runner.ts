@@ -89,6 +89,8 @@ export interface WorkflowRunDeps {
     ): string;
     /** **人点了确认** → 凭据才可用 ✓（契约 spec/04 §2.4.1 ✓） */
     approve(token: string, now: number): boolean;
+    /** **请求**一次确认（agent 唯一能做的事 ✓ —— 评审 37 的 V3-C1 ✓） */
+    request(token: string, now: number): boolean;
     consume(
       token: string,
       actionId: string,
@@ -812,7 +814,7 @@ function toReadbackDef(
 function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confirmations']> {
   const store = ctx.deps.confirmations;
   if (store === undefined) {
-    return { issue: () => '', consume: () => false, approve: () => false };
+    return { issue: () => '', consume: () => false, approve: () => false, request: () => false };
   }
   const bind = (params: Record<string, unknown>): Record<string, unknown> => ({
     ...params,
@@ -824,6 +826,8 @@ function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confir
       store.issue(actionId, bind(params), packId, contractVersion, now),
     // **批准不绑参数**（它是「人点了」那一下 ✓ —— 摘要管的是「这一次执行」✓）
     approve: (token, now) => store.approve(token, now),
+    // **请求也不绑**（它不批准任何东西 ✓ —— 只是「有人在等」✓）
+    request: (token: string, now: number) => store.request(token, now),
     consume: (token, actionId, params, packId, contractVersion, now) =>
       store.consume(token, actionId, bind(params), packId, contractVersion, now),
   };

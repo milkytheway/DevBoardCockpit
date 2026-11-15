@@ -84,3 +84,27 @@ describe('授权账 · 存盘与收回', () => {
     expect(grants.forCard('card-a')).toHaveLength(1);
   });
 });
+
+describe('授权账 · 流程是**另一个维度**（评审 37 的 V3-I9）', () => {
+  it('流程的批准**单独记**（与动作的授权域不同 ✓）', () => {
+    const store = new GrantStore(storePath());
+    store.grant('card-1', 'backlight.set');
+    store.grantWorkflow('card-1', 'demo.run');
+    expect(store.actionIds('card-1')).toEqual(['backlight.set']);
+    expect(store.workflowIds('card-1')).toEqual(['demo.run']);
+  });
+
+  it('收回流程的批准 → 流程不在列表里了（动作的不受影响 ✓）', () => {
+    const store = new GrantStore(storePath());
+    store.grant('card-1', 'backlight.set');
+    store.grantWorkflow('card-1', 'demo.run');
+    store.revokeWorkflow('card-1', 'demo.run');
+    expect(store.workflowIds('card-1')).toEqual([]);
+    expect(store.actionIds('card-1')).toEqual(['backlight.set']);
+  });
+
+  it('**没被授过的流程**查不到（默认拒绝 ✓）', () => {
+    const store = new GrantStore(storePath());
+    expect(store.workflowIds('card-1')).toEqual([]);
+  });
+});

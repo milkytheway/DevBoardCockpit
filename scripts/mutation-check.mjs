@@ -1398,6 +1398,58 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M115 流程服务：**agent 只能请求确认，不能自己批准**（V3-C1 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: 'agent 只能「请求」确认',
+    apply: (s) =>
+      replace(
+        s,
+        '    const queued = this.opts.confirmations?.request(confirmId, this.now()) ?? false;',
+        '    const queued = true; // 变异：请求即批准',
+      ),
+  },
+  {
+    name: 'M116 流程服务：**卡级授权**要查（这张卡没被授过 → 跑不了 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '卡级授权',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (!granted.includes(id)) {',
+        '      if (false) { // 变异：不查卡级授权',
+      ),
+  },
+  {
+    name: 'M117 流程服务：**同一个流程同时只允许跑一次**（两个流程抢一条线会串台 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '正在跑',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (existing.workflowId === id && existing.state === 'running') {",
+        "      if (false) { // 变异：不挡并发",
+      ),
+  },
+  {
+    name: 'M118 授权账：流程的批准要**单独记**（与动作的域不同 ✓）',
+    file: 'src/main/cards/grants.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/grants.test.ts'],
+    expect: '流程',
+    apply: (s) =>
+      replace(
+        s,
+        '  workflowIds(cardId: string): string[] {
+    return this.workflowGrants.get(cardId) ?? [];
+  }',
+        '  workflowIds(cardId: string): string[] {
+    return []; // 变异：流程的授权查不到
+  }',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

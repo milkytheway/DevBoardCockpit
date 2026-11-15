@@ -38,6 +38,12 @@ export interface Confirmations {
    * → 契约 `spec/04` §2.4.1：「没有人点，`confirm_id` 永远无效」✓
    */
   approve(token: string, now: number): boolean;
+  /**
+   * **请求**一次确认（agent 唯一能做的事 ✓ —— 评审 37 的 V3-C1 ✓）。
+   *
+   * → **不批准任何东西** ✓：只是把请求递进 GUI 队列 ✓。
+   */
+  request(token: string, now: number): boolean;
   /** 用掉一张（一次性） */
   consume(
     token: string,

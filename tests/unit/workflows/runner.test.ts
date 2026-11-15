@@ -342,6 +342,7 @@ describe('流程 · 确认凭据', () => {
     const issued = new Map<string, { actionId: string; digest: string }>();
     const confirmations = {
       approve: (): boolean => true,
+      request: (): boolean => true,
       issue: (actionId: string, params: Record<string, unknown>): string => {
         const token = `cf-${issued.size}`;
         issued.set(token, {

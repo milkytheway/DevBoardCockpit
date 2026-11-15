@@ -66,6 +66,16 @@ export interface WorkflowServiceOptions {
   /** 跑一条流程要什么（连接、审计……） */
   runDeps: WorkflowRunDeps;
   /**
+   * **这张卡被授过哪些流程**（**卡级授权** ✓ —— 评审 37 的 V3-I9 ✓）。
+   *
+   * → 流程的授权有**两层** ✓（与动作同形 ✓）：
+   * ① **流程包本身已批准**（宿主侧 ✓ —— 「谁批准了这个包」✓）；
+   * ② **这张卡被授过这个流程**（卡级 ✓ —— 「这张卡能不能用它」✓）。
+   *
+   * → **两层都要过** ✓ → 少一层就是「一张卡声明了就能跑」✗。
+   */
+  grantedWorkflows?: (cardId: string) => string[];
+  /**
    * 确认凭据的库（**流程层与 M6 共用一份** ✓ ——
    * 凭据的语义只有一处 ✓：`spec/04` §2.4.1 的那套 ✓）。
    */
@@ -122,9 +132,31 @@ export class WorkflowService {
   start(
     id: string,
     inputs: Record<string, unknown>,
-    opts: { confirmIds?: Record<string, string> } = {},
+    opts: { confirmIds?: Record<string, string>; cardId?: string } = {},
   ): { runId: string } {
     const registered = this.opts.registry.requireApproved(id);
+
+    // ── 卡级授权（第二层 ✓）──
+    // → 卡片触发时：**这张卡被授过这个流程吗** ✓
+    if (opts.cardId !== undefined) {
+      const granted = this.opts.grantedWorkflows?.(opts.cardId) ?? [];
+      if (!granted.includes(id)) {
+        throw makeError('IPC_INVALID_PAYLOAD', `这张卡没有被授权跑流程「${id}」`, {
+          detail: { cardId: opts.cardId, workflowId: id },
+        });
+      }
+    }
+
+    // ── 并发：同一个流程包同时只允许一次运行 ✓ ──
+    // → 两个流程同时抢一条串口会**串台** ✓（事实 S1 ✓）
+    for (const existing of this.runs.values()) {
+      if (existing.workflowId === id && existing.state === 'running') {
+        throw makeError('IPC_INVALID_PAYLOAD', `流程「${id}」正在跑（同一个流程同时只允许一次）`, {
+          detail: { workflowId: id, runId: existing.runId },
+        });
+      }
+    }
+
     // **run_id 不可预测**（评审 35 的 V2-M10 ✓）：
     // 时间戳派生的 id **能被猜到** ✗ → 而它是 `confirm` 的入参之一 ✓。
     const runId = `wf-${randomUUID().slice(0, 8)}`;
@@ -146,14 +178,45 @@ export class WorkflowService {
   }
 
   /**
-   * **人点头之后继续跑**（确认链的落点 ✓ —— 评审 35 的 V2-C1 ✓）。
+   * **请求**一次确认（**agent 唯一能做的事** ✓ —— 评审 37 的 V3-C1 ✓）。
    *
-   * → **人点了**（`confirmations.approve(token)` ✓）→
-   * **从停住的那一步继续** ✓（前面的步**不重跑** ✓）。
+   * → 它**只是把请求递进 GUI 的确认队列** ✓，
+   * **凭据仍然无效** ✓（契约 `spec/04` §2.4.1：「没有人点，confirm_id 永远无效」✓）。
+   * → **agent 没有「自己批准」的通道** ✓ —— 这一条是安全边界 ✓。
    *
    * @throws 没有这次运行 / 不在等确认 → `IPC_INVALID_PAYLOAD` ✓
    */
-  confirm(runId: string, confirmId: string): { runId: string } {
+  requestConfirmation(runId: string): { confirmId: string } {
+    const status = this.runs.get(runId);
+    if (status === undefined) {
+      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
+    }
+    if (status.state !== 'awaiting_confirmation' || status.needsConfirmation === undefined) {
+      throw makeError('IPC_INVALID_PAYLOAD', `这次运行不在等确认：${runId}`, {
+        detail: { runId, state: status.state },
+      });
+    }
+    const confirmId = status.needsConfirmation.confirmId;
+    const queued = this.opts.confirmations?.request(confirmId, this.now()) ?? false;
+    if (!queued) {
+      throw makeError('IPC_INVALID_PAYLOAD', '这张确认凭据已经过期（重新跑一次流程）', {
+        detail: { runId, confirmId },
+      });
+    }
+    return { confirmId };
+  }
+
+  /**
+   * **人点头之后继续跑**（确认链的落点 ✓ —— 评审 35 的 V2-C1 ✓）。
+   *
+   * → **只有人点的路径能调它** ✓：
+   * - GUI 的确认按钮 ✓；
+   * - 命令行 `npm run workflow:confirm -- <runId> <confirmId>` ✓。
+   * → **agent 调不到** ✓（agent 只能 `requestConfirmation` ✓ —— 评审 37 的 V3-C1 ✓）。
+   *
+   * @throws 没有这次运行 / 不在等确认 / 凭据没被批准 → `IPC_INVALID_PAYLOAD` ✓
+   */
+  approveAndResume(runId: string, confirmId: string): { runId: string } {
     const status = this.runs.get(runId);
     if (status === undefined) {
       throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });

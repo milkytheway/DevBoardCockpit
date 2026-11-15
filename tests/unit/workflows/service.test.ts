@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorkflowRegistry } from '../../../src/main/workflows/registry';
 import { WorkflowService } from '../../../src/main/workflows/service';
+import type { WorkflowRunDeps } from '../../../src/main/workflows/runner';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { AuditRow } from '../../../src/main/actions/audit';
@@ -101,7 +102,13 @@ afterEach(() => {
 
 function service(
   pack: TestPack = PACK,
-): { svc: WorkflowService; reg: WorkflowRegistry; audits: AuditRow[]; confirmations: ConfirmationStore } {
+): {
+  svc: WorkflowService;
+  reg: WorkflowRegistry;
+  audits: AuditRow[];
+  confirmations: ConfirmationStore;
+  deps: WorkflowRunDeps;
+} {
   // **换一个包**（测试要能造 destructive 的那一种 ✓）
   writeFileSync(join(userDir, 'demo.yaml'), yamlOf(pack), 'utf8');
   const reg = new WorkflowRegistry({ dirs: [userDir], approvalFile });
@@ -131,27 +138,28 @@ function service(
     },
   } as unknown as Connection;
   const confirmations = new ConfirmationStore();
+  const deps: WorkflowRunDeps = {
+    confirmations,
+    // （连接替身：所有目标都走同一条假连接 ✓ —— 流程层的单测不测传输 ✓）
+    targets: {
+      connectionFor: async () => conn,
+      runOn: async <T>(_id: string, fn: (c: Connection) => Promise<T>): Promise<T> => fn(conn),
+      closeAll: async () => undefined,
+      openCount: 0,
+    } as never,
+    profileFor: (id: string) => profiles.get(id),
+    audit: (row: AuditRow) => {
+      audits.push(row);
+      return `audit-${audits.length}`;
+    },
+    now: () => 1_700_000_000_000,
+  };
   const svc = new WorkflowService({
     registry: reg,
     confirmations,
-    runDeps: {
-      confirmations,
-      targets: {
-        connectionFor: async () => conn,
-        runOn: async <T>(_id: string, fn: (c: Connection) => Promise<T>): Promise<T> => fn(conn),
-        closeAll: async () => undefined,
-        openCount: 0,
-      } as never,
-      profileFor: (id) => profiles.get(id),
-      audit: (row) => {
-        audits.push(row);
-        return `audit-${audits.length}`;
-      },
-      now: () => 1_700_000_000_000,
-    },
-    now: () => 1_700_000_000_000,
+    runDeps: deps,
   });
-  return { svc, reg, audits, confirmations };
+  return { svc, reg, audits, confirmations, deps };
 }
 
 describe('流程服务 · 只认 id，不认路径', () => {
@@ -210,7 +218,7 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(token).toBeTruthy();
 
     // **点头**（就是「人点了」那一下 ✓）
-    h.svc.confirm(runId, token);
+    h.svc.approveAndResume(runId, token);
     for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
       await new Promise((r) => setTimeout(r, 10));
     }
@@ -227,12 +235,61 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
       await new Promise((r) => setTimeout(r, 10));
     }
     // **拿一张没被批准的凭据去续跑** → 拒绝 ✓
-    expect(() => svc.confirm(runId, 'cf-fake')).toThrow(/还没被批准/);
+    expect(() => svc.approveAndResume(runId, 'cf-fake')).toThrow(/还没被批准/);
+  });
+
+  it('**agent 只能「请求」确认，不能自己批准**（V3-C1 ✓）', async () => {
+    const h = service(DANGEROUS_PACK);
+    h.reg.approve('demo.danger');
+    const { runId } = h.svc.start('demo.danger', { project: 'x' });
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // **请求** → 只是递进队列 ✓，**凭据仍然无效** ✓
+    const requested = h.svc.requestConfirmation(runId);
+    expect(requested.confirmId).toBeTruthy();
+    expect(h.confirmations.isApproved(requested.confirmId)).toBe(false);
+    // → 流程**还在等**（没被批准就跑不了 ✓）
+    expect(h.svc.status(runId).state).toBe('awaiting_confirmation');
+  });
+
+  it('**卡级授权**：这张卡没被授过这个流程 → 跑不了（V3-I9 ✓）', () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    // **这张卡只被授过别的流程** ✓ → 跑这个流程要被拒 ✓
+    const svc = new WorkflowService({
+      registry: h.reg,
+      confirmations: h.confirmations,
+      grantedWorkflows: () => ['other.flow'],
+      runDeps: h.deps,
+    });
+    expect(() => svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).toThrow(/没有被授权/);
+    // **授过了就放行** ✓
+    const granted = new WorkflowService({
+      registry: h.reg,
+      confirmations: h.confirmations,
+      grantedWorkflows: () => ['demo.run'],
+      runDeps: h.deps,
+    });
+    expect(() => granted.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).not.toThrow();
+  });
+
+  it('**同一个流程同时只允许跑一次**（两个流程抢一条串口会串台 ✓）', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    // **还在跑** → 第二次要被拒 ✓
+    expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/正在跑/);
+    // 等它跑完 → 就能再跑 ✓
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
   it('不是「等确认」的状态 → 不能 confirm', () => {
     const { svc } = service();
-    expect(() => svc.confirm('wf-nope', 'cf-x')).toThrow(/没有这次运行/);
+    expect(() => svc.approveAndResume('wf-nope', 'cf-x')).toThrow(/没有这次运行/);
   });
 });
 

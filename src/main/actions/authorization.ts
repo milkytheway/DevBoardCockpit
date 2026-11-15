@@ -184,8 +184,18 @@ export class ConfirmationStore {
   /**
    * **人点了确认** → 这张凭据才**可用** ✓。
    *
-   * → 这是「人点头」那一下的**唯一入口** ✓
-   * （宿主侧由 GUI 调用；命令行侧由 `npm run workflow:confirm` 调用 ✓）。
+   * → 这是「人点头」那一下的**唯一入口** ✓。
+   *
+   * ── 谁可以调它 ──
+   *
+   * **只有人点的路径** ✓：
+   * - GUI 的确认按钮 ✓（人在界面上点了 ✓）；
+   * - 命令行 `npm run workflow:confirm -- <runId> <confirmId>` ✓（人自己敲的 ✓）。
+   *
+   * → **agent 调不到它** ✓（评审 37 的 V3-C1 ✓）：
+   * agent 能做的是「**请求**一次确认」（`request()` ✓），
+   * 那只是**把请求递进 GUI 队列** ✓ —— 凭据**仍然无效** ✓
+   * （契约 `spec/04` §2.4.1 的原话：「没有人点，confirm_id 永远无效」✓）。
    *
    * @returns 批不批（凭据不存在 / 已过期 → false ✓）
    */
@@ -203,6 +213,27 @@ export class ConfirmationStore {
   /** 这张凭据**是不是已经被人点过**（诊断用 ✓） */
   isApproved(token: string): boolean {
     return this.issued.get(token)?.state === 'approved';
+  }
+
+  /**
+   * **请求**一次确认（**agent 唯一能做的事** ✓）。
+   *
+   * → 它**不批准任何东西** ✓：只是把请求**递进 GUI 的确认队列** ✓。
+   * → 凭据仍是**待确认** ✓ → 没人点，它就永远无效 ✓。
+   *
+   * → **为什么要有这个方法**（评审 37 的 V3-C1 ✓）：
+   * agent 需要一个「把我的请求递给用户」的通道 ✓，
+   * 但**不能**有「我自己批准」的通道 ✗。
+   */
+  request(token: string, now: number): boolean {
+    const entry = this.issued.get(token);
+    if (entry === undefined) return false;
+    if (now - entry.at > CONFIRM_TTL_MS) {
+      this.issued.delete(token);
+      return false;
+    }
+    // **状态不变**（还是 'pending' ✓）——只是「有人在等」✓
+    return true;
   }
 
   /**
