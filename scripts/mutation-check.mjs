@@ -1740,6 +1740,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M142 确认链：人点头 → **从那一步继续**（前面的步**不重跑** ✓ —— 契约 §7.6 ✓）',
+    file: 'src/main/workflows/interactive.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/interactive.test.ts'],
+    expect: '从那一步继续',
+    apply: (s) =>
+      replace(
+        s,
+        '  const startAt = pack.steps.findIndex((s) => s.id === pending.stepId);',
+        '  const startAt = 0; // 变异：从头再跑一遍（前面的步重跑了 ✗）',
+      ),
+  },
+  {
+    name: 'M143 确认链：**人摇头 → 那一步不许跑**（没人点头就���许做 ✗）',
+    file: 'src/main/workflows/interactive.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/interactive.test.ts'],
+    expect: '人摇头',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (!yes) return first;',
+        '  if (false) return first; // 变异：摇头也照样做',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

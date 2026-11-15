@@ -23,11 +23,13 @@
  * ```
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { parseWorkflow, type WorkflowPack } from '../src/main/workflows/format';
 import { TargetRegistry } from '../src/main/workflows/targets';
-import { runWorkflow } from '../src/main/workflows/runner';
+import { runWorkflow, type WorkflowRunDeps } from '../src/main/workflows/runner';
+import { runWorkflowInteractively } from '../src/main/workflows/interactive';
 import { WorkflowRegistry, workflowApprovalsFile } from '../src/main/workflows/registry';
 import { loadProfiles } from '../src/main/profiles/loader';
 import { createConnection } from '../src/main/hal/registry';
@@ -157,26 +159,25 @@ async function main(): Promise<void> {
   });
 
   try {
-    const result = await runWorkflow(
-      pack,
-      args.input,
-      {
-        targets: registry,
-        profileFor: (id) => profileById.get(id),
-        audit: (row) => audit.append(row),
-        confirmations,
-      },
-      // **人跑它 = 这一次点头**（ADR-D31 R2 的信任模型 ✓）
-      {
-        approved: true,
-        // **带了确认凭据 → 那是「人点了」之后重跑那一步** ✓
-        // **键是步骤 id** ✓（执行器按步骤查凭据 ✓）
-        ...(args.confirm === undefined
-          ? {}
-          : { confirmIds: { [confirmStepId(args.confirm)]: confirmToken(args.confirm) } }),
-        ...(args.from === undefined ? {} : { startAt: args.from }),
-      },
-    );
+    const deps: WorkflowRunDeps = {
+      targets: registry,
+      profileFor: (id: string) => profileById.get(id),
+      audit: (row) => audit.append(row),
+      confirmations,
+    };
+    const result =
+      // **带了确认凭据 → 那是「人已经点了」** ✓ → 直接跑那一步 ✓
+      args.confirm !== undefined
+        ? await runWorkflow(pack, args.input, deps, {
+            // **人跑它 = 这一次点头**（ADR-D31 R2 的信任模型 ✓）
+            approved: true,
+            // **键是步骤 id** ✓（执行器按步骤查凭据 ✓）
+            confirmIds: { [confirmStepId(args.confirm)]: confirmToken(args.confirm) },
+            ...(args.from === undefined ? {} : { startAt: args.from }),
+          })
+        : // **没带凭据 → 遇到要人确认的步就**问人** ✓
+          // （**同进程** ✓ → 同 run_id ✓ · 同时间线 ✓ · 前面的步不重跑 ✓ —— 契约 §7.6 ✓）
+          await runWorkflowInteractively(pack, args.input, deps, { approved: true }, askHuman);
 
     console.log(`\n运行 ${result.runId}：${result.ok ? '成功' : '未成功'}`);
     for (const stage of result.stages) {
@@ -189,10 +190,9 @@ async function main(): Promise<void> {
     }
     if (result.needsConfirmation !== undefined) {
       const nc = result.needsConfirmation;
-      console.log(`\n⚠ 第 ${nc.stepId} 步要人确认：${nc.detail}`);
+      console.log(`\n⚠ 第 ${nc.stepId} 步**要人确认**（没有点头就没跑 ✓）：${nc.detail}`);
       console.log(`  确认凭据：${nc.confirmId}`);
-      console.log('  → 批准它：npm run workflow:confirm -- <运行 id> <凭据>');
-      console.log(`  → 然后重跑同一条流程：--confirm ${nc.stepId}=<凭据>`);
+      console.log('  → 重新跑并带上凭据：--confirm ' + `${nc.stepId}=<凭据>`);
     }
     if (Object.keys(result.outputs).length > 0) {
       console.log(`\n产出：${JSON.stringify(result.outputs)}`);
@@ -200,6 +200,32 @@ async function main(): Promise<void> {
     process.exit(result.ok ? 0 : 1);
   } finally {
     await registry.closeAll();
+  }
+}
+
+/**
+ * **问人**：这一步要不要做 ✓（返回 true = 点头 ✓）。
+ *
+ * → **同进程** ✓ —— 所以契约 §7.6 的「同一个 run_id · 同一份时间线 · 从那一步继续」✓ 天然成立 ✓。
+ * → **EOF（没人答）= 拒绝** ✓（安全的一边 ✓ —— 没人点头就不许做 ✓）。
+ */
+async function askHuman(request: {
+  stepId: string;
+  detail: string;
+  confirmId: string;
+}): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log(`\n⚠ 第 ${request.stepId} 步要人确认：${request.detail}`);
+    console.log(`  确认凭据：${request.confirmId}`);
+    const answer = await new Promise<string | null>((resolve) => {
+      rl.question('  → 点头就按 Enter（不点头直接关掉 = 拒绝）：', (line) => resolve(line));
+      // **没人答（EOF）= 拒绝** ✓
+      rl.on('close', () => resolve(null));
+    });
+    return answer !== null;
+  } finally {
+    rl.close();
   }
 }
 
