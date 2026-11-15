@@ -1992,6 +1992,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M165 MCP HTTP：**恶意 Origin → 403**（DNS rebinding ✓ —— 真 HTTP 上才验得了 ✓）',
+    file: 'src/main/mcp/http.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
+    expect: '恶意 Origin',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (!checkOrigin(typeof origin === 'string' ? origin : undefined)) {",
+        '  if (false) { // 变异：不校验 Origin',
+      ),
+  },
+  {
+    name: 'M166 MCP HTTP：**没带 token → 401**（契约 §7.1 ✓）',
+    file: 'src/main/mcp/http.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
+    expect: '没带 token',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (!checkAuthorization(typeof auth === 'string' ? auth : undefined, opts.token)) {",
+        '  if (false) { // 变异：不验 token',
+      ),
+  },
+  {
+    name: 'M167 MCP HTTP：**只绑 127.0.0.1**（契约 §7.1 ✓ —— 不许绑 0.0.0.0 ✓）',
+    file: 'src/main/mcp/http.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
+    expect: '只绑 127.0.0.1',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (opts.host !== '127.0.0.1' && opts.host !== 'localhost' && opts.host !== '::1') {",
+        '  if (false) { // 变异：什么地址都让绑',
+      ),
+  },
+  {
+    name: 'M168 MCP HTTP：**通知 → 202 空体**（规范 §「Sending Messages」✓）',
+    file: 'src/main/mcp/http.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
+    expect: '202 空体',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (reply === null) {\n    res.writeHead(202);',
+        '  if (false) { // 变异：通知也回 200',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

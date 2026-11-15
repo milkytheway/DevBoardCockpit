@@ -35,6 +35,10 @@ import { invokeAction } from './actions/executor';
 import { ConfirmationStore } from './actions/authorization';
 import { GrantStore } from './cards/grants';
 import { effectiveWrite, effectiveWorkflows } from './cards/permissions';
+import { McpServer } from './mcp/server';
+import { startMcpHttp } from './mcp/http';
+import { generateToken } from './mcp/security';
+import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
 import { projectRunStatus, workflowReasonOf } from './cards/workflow-view';
 import { WorkflowRegistry, workflowApprovalsFile } from './workflows/registry';
 import { WorkflowService } from './workflows/service';
@@ -284,6 +288,51 @@ const workflowService = new WorkflowService({
   /** 卡级授权（**第二层** ✓ —— 第一层是 manifest 声明 ✓，第三层是包已批准 ✓） */
   grantedWorkflows: (cardId) => grants.workflowIds(cardId),
 });
+
+/**
+ * **MCP server**（契约 `spec/04` §7.1 ✓ · ADR-D2：与 GUI **同进程** ✓）。
+ *
+ * → **HTTP 回环** ✓（`127.0.0.1` ✓ —— 契约明写不许绑 `0.0.0.0` ✓）
+ * → **发现文件** ✓（agent 靠它找到端口与 token ✓ —— 它是唯一的耦合点 ✓）
+ * → **退出时删掉它** ✓（不留指向死进程的发现文件 ✓）
+ */
+const mcpToken = generateToken();
+const mcpDiscoveryPath = discoveryFilePath(userDataDir());
+let mcpHttp: { close: () => Promise<void>; port: number } | undefined;
+
+async function startMcpServer(): Promise<void> {
+  try {
+    const mcp = new McpServer({ workflows: workflowService });
+    const started = await startMcpHttp({
+      mcp,
+      token: mcpToken,
+      host: '127.0.0.1',
+      // **0 = 让 OS 分配** ✓（避免多开撞端口 ✓ —— 契约 §7.2 ✓）
+      port: 0,
+    });
+    mcpHttp = started;
+    writeDiscoveryFile(mcpDiscoveryPath, {
+      apiVersion: 'devboard/v1',
+      transport: 'http',
+      host: '127.0.0.1',
+      port: started.port,
+      pid: process.pid,
+      token: mcpToken,
+      cards_dir: cardRootsDir(),
+      started_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    // **起不来不许挡住应用** ✓（MCP 是给 agent 用的 ✓ —— 它坏了，GUI 照常用 ✓）
+    console.error(`[MCP] server 起不来：${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function stopMcpServer(): void {
+  // **发现文件先删** ✓（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）
+  removeDiscoveryFile(mcpDiscoveryPath);
+  void mcpHttp?.close();
+  mcpHttp = undefined;
+}
 
 const cards = createCardWiring({
   roots: cardRoots,
@@ -586,6 +635,9 @@ app.whenReady().then(async () => {
 
   createWindow();
 
+  // **MCP server**（不挡着窗口起来 ✓ —— 它是给 agent 用的 ✓）
+  void startMcpServer();
+
   // 读数的运行时：**不挡着窗口起来**——
   // 连不上是常事（板子没插、端口被占），面板会显示为什么。
   void startTagRuntime();
@@ -597,4 +649,9 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// **退出时删掉发现文件** ✓（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）
+app.on('will-quit', () => {
+  stopMcpServer();
 });
