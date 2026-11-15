@@ -7,6 +7,7 @@ import type { AuditRow } from '../actions/audit';
 import type { ActionDef, PackParam, ReadbackDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import type { ConnectionProfile } from '../profiles/schema';
+import { quotePath } from '../util/shell-quote';
 import type { Connection } from '../hal/connection';
 import { capabilitiesFor } from '../hal/capabilities';
 import type { TargetRegistry } from './targets';
@@ -368,26 +369,16 @@ async function runExec(
   if (step.out !== undefined && outcome.output !== undefined) {
     ctx.outputs[step.out] = outcome.output.trim();
   }
+  // **成败两边都要算** ✓（命令没成，跨目标判据过了**也不能算成功** ✗）
+  const failed = !outcome.ok ? outcome : cross !== undefined && !cross.ok ? cross : undefined;
   return {
     stepId: step.id,
     kind: step.kind,
     role,
-    ok: cross === undefined ? outcome.ok : cross.ok,
+    ok: failed === undefined,
     verified: cross === undefined ? outcome.verified : cross.verified,
-    ...(cross === undefined
-      ? outcome.reason === undefined
-        ? {}
-        : { reason: outcome.reason }
-      : cross.reason === undefined
-        ? {}
-        : { reason: cross.reason }),
-    ...(cross === undefined
-      ? outcome.detail === undefined
-        ? {}
-        : { detail: outcome.detail }
-      : cross.detail === undefined
-        ? {}
-        : { detail: cross.detail }),
+    ...(failed?.reason === undefined ? {} : { reason: failed.reason }),
+    ...(failed?.detail === undefined ? {} : { detail: failed.detail }),
     ...(outcome.audit_id === undefined ? {} : { audit_id: outcome.audit_id }),
     ...(cross?.audit_id === undefined ? {} : { readback_audit_id: cross.audit_id }),
     at: started,
@@ -577,6 +568,91 @@ async function runDiscover(
   };
 }
 
+/**
+ * 目的地在不在（**传输前问一次** ✓ —— 契约 `05` §八·C·R1/R2 ✓）。
+ *
+ * → `unknown` = **不知道** ✓（查不到 ✓）→ **拿不准就不删** ✓（契约 R2 ✓）。
+ */
+async function destinationState(
+  ctx: StepContext,
+  role: string,
+  path: string,
+): Promise<'there' | 'not-there' | 'unknown'> {
+  const profileId = ctx.pack.roles[role]?.profile;
+  if (profileId === undefined) return 'unknown';
+  const slash = path.lastIndexOf('/');
+  const dir = slash <= 0 ? '/' : path.slice(0, slash);
+  const base = path.slice(slash + 1);
+  try {
+    const entries = await ctx.deps.targets.runOn(profileId, (conn) => conn.list(dir));
+    return entries.some((e) => e.name === base) ? 'there' : 'not-there';
+  } catch {
+    // **查不到 → 不知道** ✓（不是「没有」✓ —— 那会把用户的文件当成残留 ✗）
+    return 'unknown';
+  }
+}
+
+/**
+ * 清掉传输留下的半截文件（契约 `05` §八·C ✓）。
+ *
+ * ── 判据（**只有一条能确定「是这一步的东西」** ✓）──
+ *
+ * → **目的地在传输前不存在** ✓ → 它**一定是**这次传出来的 ✓ → 归宿主管 ✓；
+ * → **原本就存在** → **默认不动** ✓（别删用户的东西 ✓）；
+ * → **查不到** → **不动** ✓（拿不准 → 不删 ✓）。
+ *
+ * ── 护栏 ──
+ *
+ * → 路径**按 shell 规则包引号** ✓（换行/空字符**拒掉** ✓ —— 那是第二条命令 ✗）；
+ * → **不递归** ✓（`rm -f` 对目录会失败 ✓ → 只可能删掉一个普通文件 ✓）；
+ * → 路径**只取自这一步解析出来的目的地** ✓（包给不了别的路径 ✓）；
+ * → **单独记一行审计** ✓、**不弹确认** ✓（它是这次运行自己的收尾 ✓）。
+ */
+async function cleanupPartialTransfer(
+  ctx: StepContext,
+  step: WorkflowStep,
+  role: string,
+  path: string,
+  before: 'there' | 'not-there' | 'unknown',
+): Promise<{ cleaned: boolean; note: string }> {
+  if (before !== 'not-there') {
+    return {
+      cleaned: false,
+      note:
+        before === 'there'
+          ? '目的地原本就有那个文件，没动它'
+          : '查不到目的地有没有那个文件，没动它',
+    };
+  }
+  const after = await destinationState(ctx, role, path);
+  if (after !== 'there') {
+    return { cleaned: false, note: '目的地没有留下半截文件' };
+  }
+  const profileId = ctx.pack.roles[role]?.profile as string;
+  const command = `rm -f -- ${quotePath(path)}`;
+  let ok = false;
+  try {
+    const result = await ctx.deps.targets.runOn(profileId, (conn) =>
+      conn.exec(command, ctx.opts.signal === undefined ? {} : { signal: ctx.opts.signal }),
+    );
+    ok = !result.timedOut && result.exitCode === 0;
+  } catch {
+    ok = false;
+  }
+  // **清理也记一行审计** ✓（谁删的、删的哪个路径 ✓ —— 契约 R4 ✓）
+  ctx.deps.audit({
+    at: ctx.now(),
+    actor: `workflow:${ctx.pack.id}`,
+    actionId: `workflow:${ctx.pack.id}:${step.id}:cleanup`,
+    params: { path },
+    inputs: { ...ctx.inputs },
+    ok,
+    verified: ok,
+    detail: ok ? '清掉了传输留下的半截文件' : '没能清掉那个半截文件',
+  });
+  return { cleaned: ok, note: ok ? '清掉了传输留下的半截文件' : '没能清掉那个半截文件' };
+}
+
 /** 一个 `file.transfer` 步：搬运（命令在**源**目标上跑） */
 async function runTransfer(
   step: WorkflowStep,
@@ -605,6 +681,11 @@ async function runTransfer(
         { kind: 'command_ok' }
       : toReadbackDef(step.readback, substitution),
   };
+  // **传输前问一次「目的地在不在」** ✓（契约 §八·C·R1/R2 ✓）
+  // → 「传输前不存在」才是**唯一能确定「这是这一步的东西」**的判据 ✓
+  const toRole = step.to?.role as string;
+  const before = await destinationState(ctx, toRole, endpoints.to);
+
   const outcome = await invokeAction(
     action,
     {},
@@ -615,29 +696,35 @@ async function runTransfer(
         : { confirmId: ctx.opts.confirmIds[step.id] as string }),
     },
   );
+
+  // **传输命令自己没成 → 按判据处理那个半截文件** ✓（契约 §八·C ✓）
+  // → **回读失败 ≠ 传输失败** ✓（「传了，未验成」**不清** ✓ —— 评审 40 的 Q3 ✓）
+  const commandFailed = !outcome.ok;
+  let residueNote: string | undefined;
+  if (commandFailed) {
+    const cleanup = await cleanupPartialTransfer(ctx, step, toRole, endpoints.to, before);
+    residueNote = cleanup.note;
+  }
+
   const cross = await crossRoleReadback(step, ctx, substitution, fromRole, started);
   // 目的地路径进槽（后续步骤要用）
   if (outcome.ok && cross?.ok !== false && step.out !== undefined) ctx.outputs[step.out] = endpoints.to;
+  // **成败两边都要算** ✓（传输命令没成，判据过了**也不能算成功** ✗）
+  const failed = !outcome.ok ? outcome : cross !== undefined && !cross.ok ? cross : undefined;
+  // **「传了，未验成」**（传输命令成功了 ✓，但判据没过 ✓）→ **说清楚** ✓
+  // （尖兵 Q3 的原型 ✓ —— 板子上「文件在、没生效」这件事**要看得见** ✓）
+  const transferredButUnverified = outcome.ok && cross !== undefined && !cross.ok;
+  const detail = transferredButUnverified
+    ? `传了，未验成：${cross.detail ?? '判据没过'}（目的地有一个未确认的文件）`
+    : (failed?.detail ?? residueNote);
   return {
     stepId: step.id,
     kind: step.kind,
     role: fromRole,
-    ok: cross === undefined ? outcome.ok : cross.ok,
+    ok: failed === undefined,
     verified: cross === undefined ? outcome.verified : cross.verified,
-    ...(cross === undefined
-      ? outcome.reason === undefined
-        ? {}
-        : { reason: outcome.reason }
-      : cross.reason === undefined
-        ? {}
-        : { reason: cross.reason }),
-    ...(cross === undefined
-      ? outcome.detail === undefined
-        ? {}
-        : { detail: outcome.detail }
-      : cross.detail === undefined
-        ? {}
-        : { detail: cross.detail }),
+    ...(failed?.reason === undefined ? {} : { reason: failed.reason }),
+    ...(detail === undefined ? {} : { detail }),
     ...(outcome.audit_id === undefined ? {} : { audit_id: outcome.audit_id }),
     ...(cross?.audit_id === undefined ? {} : { readback_audit_id: cross.audit_id }),
     at: started,
@@ -924,7 +1011,4 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
   };
 }
 
-/** 路径的引号（与 HAL 同一份 ✓） */
-function quotePath(path: string): string {
-  return `'${path.replace(/'/g, `'\\''`)}'`;
-}
+

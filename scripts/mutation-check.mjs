@@ -1638,6 +1638,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M134 流程层：传输没成 → **清掉那个半截文件**（不留残留 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '清掉那个半截文件',
+    apply: (s) =>
+      replace(
+        s,
+        '  const command = `rm -f -- ${quotePath(path)}`;',
+        '  const command = `true`; // 变异：不清理',
+      ),
+  },
+  {
+    name: 'M135 流程层：目的地**原本就有** → **不许删**（别删用户的东西 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '不许删',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (before !== 'not-there') {",
+        '  if (false) { // 变异：连用户自己的文件也删',
+      ),
+  },
+  {
+    name: 'M136 流程层：**清理路径必须编码**（`to.path` 是包给的 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '清理路径必须编码',
+    apply: (s) =>
+      replace(
+        s,
+        '  const command = `rm -f -- ${quotePath(path)}`;',
+        '  const command = `rm -f -- ${path}`; // 变异：不编码',
+      ),
+  },
+  {
+    name: 'M137 流程层：**传了但没验成** → **不清**（那不是「没传成」✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '传了，但没验成',
+    apply: (s) =>
+      replace(
+        s,
+        '  const commandFailed = !outcome.ok;',
+        '  const commandFailed = true; // 变异：连「传了但没验成」也清',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

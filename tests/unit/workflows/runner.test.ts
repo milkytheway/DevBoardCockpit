@@ -28,7 +28,16 @@ interface FakeTarget {
   catAnswers: Record<string, string>;
 }
 
-function harness(opts: { files?: Record<string, FileEntry[]>; onExec?: (command: string) => void } = {}) {
+function harness(
+  opts: {
+    files?: Record<string, FileEntry[]>;
+    onExec?: (command: string) => void;
+    /** 命中这些片段的命令**返回非 0** ✓（模拟传输失败 ✓） */
+    failCommands?: string[];
+    /** 传输失败时**在目标上留一个半截文件** ✓（真实的 scp 就是这样 ✓） */
+    leavesResidue?: boolean;
+  } = {},
+) {
   const targets: FakeTarget[] = [
     {
       profile: { id: 'guest', label: '客机', transport: 'ssh', options: { host: '10.0.0.2', username: 'builder' } },
@@ -68,6 +77,30 @@ function harness(opts: { files?: Record<string, FileEntry[]>; onExec?: (command:
           target.commands.push(command);
           // **测试可以在这里叫停** ✓（「在飞的那一步被取消」✓）
           opts.onExec?.(command);
+          // **某些命令要失败** ✓（模拟传输没成 ✓）
+          if (opts.failCommands?.some((frag) => command.includes(frag)) === true) {
+            // **传输失败 → 在目标上留一个半截文件** ✓
+            // （真的 scp 就是这样 ✓：**边传边写** ✓ —— 尖兵 §三·F2 的现象 ✓）
+            if (opts.leavesResidue === true && command.startsWith('scp ')) {
+              // **路径在命令里是带引号的** ✓（命令模式 ✓）→ 取出来要把引号剥掉 ✓
+              // （shell 会剥 ✓ —— 真的 scp 写的是**没引号**的那个路径 ✓）
+              const dest = command.slice(command.lastIndexOf(':') + 1).replace(/^'|'$/g, '');
+              const board = byId('board');
+              if (board !== undefined) {
+                board.files = [
+                  ...board.files,
+                  {
+                    name: dest.slice(dest.lastIndexOf('/') + 1),
+                    path: dest,
+                    isDirectory: false,
+                    sizeBytes: 3,
+                    modifiedAt: null,
+                  },
+                ];
+              }
+            }
+            return { exitCode: 1, stdout: '', stderr: '传输失败', durationMs: 1, timedOut: false };
+          }
           if (command.startsWith('cat -- ')) {
             const path = command.slice('cat -- '.length).replace(/^'|'$/g, '');
             const answer = target.catAnswers[path];
@@ -654,6 +687,136 @@ describe('流程 · file.transfer 步（直传）', () => {
     // **验证命令跑在板子上**（不在客机上 ✓）
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(true);
     expect(h.byId('guest')?.commands.some((c) => c.includes('test -f'))).toBe(false);
+  });
+});
+
+describe('流程 · 传输失败后的清理（不留半截文件）', () => {
+  const TRANSFER_PACK = {
+    apiVersion: 'devboard/v1',
+    kind: 'Workflow',
+    id: 'w',
+    name: 'w',
+    version: '1.0.0',
+    inputs: {},
+    roles: ROLES,
+    steps: [
+      { id: 'find', kind: 'discover', role: 'build', dir: 'build', pattern: '*.ko', out: 'artifacts' },
+      {
+        id: 'deliver',
+        kind: 'file.transfer',
+        from: { role: 'build', path: '{output:artifacts}' },
+        to: { role: 'target', placement: 'kernel-module' },
+        cmd: 'scp {from.path} {role:target.user}@{role:target.host}:{to.path}',
+        out: 'dest',
+        readback: { kind: 'verify', role: 'target', command: 'test -f {to.path}' },
+      },
+    ],
+  };
+
+  it('传输没成 → **清掉那个半截文件**（不留残留 ✓）', async () => {
+    const h = harness({
+      failCommands: ['scp '],
+      leavesResidue: true,
+      files: {
+        guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
+      },
+    });
+    const pack = parseWorkflow(TRANSFER_PACK, 'w.yaml');
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(false);
+
+    // **板子上那条 `rm -f` 跑了** ✓
+    const rm = h.byId('board')?.commands.filter((c) => c.includes('rm -f')) ?? [];
+    expect(rm.length).toBe(1);
+    // **清的是那个路径** ✓
+    expect(rm[0]).toContain('hello.ko');
+    // **清理也记一行审计** ✓（谁删的、删的哪个路径 ✓）
+    const cleanup = h.audits.filter((a) => a.actionId.endsWith(':cleanup'));
+    expect(cleanup).toHaveLength(1);
+  });
+
+  it('**传了，但没验成** → **不清**（那不是「没传成」✓）+ 说清楚 ✓', async () => {
+    const h = harness({
+      // **判据失败** ✓（传输成功 ✓）
+      failCommands: ['test -f'],
+      files: {
+        guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
+      },
+    });
+    const pack = parseWorkflow(
+      {
+        ...TRANSFER_PACK,
+        steps: [
+          TRANSFER_PACK.steps[0],
+          {
+            ...TRANSFER_PACK.steps[1],
+            // **判据的超时调短** ✓（verify 形式默认 5 秒 ✓ → 会把测试拖死 ✓）
+            readback: { kind: 'verify', role: 'target', command: 'test -f {to.path}', timeout_ms: 200 },
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(false);
+
+    // **一条 `rm -f` 都不许有** ✓（文件可能是好的 ✓ —— 删掉它比留半截更坏 ✓）
+    expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
+    // **说清楚「传了，未验成」** ✓（尖兵 Q3 的原型 ✓ —— 板子上现在是什么状态要看得见 ✓）
+    const stage = result.stages.find((s) => s.stepId === 'deliver');
+    expect(stage?.detail).toContain('传了');
+  });
+
+  it('**清理路径必须编码**（`to.path` 是包给的 ✓ —— 不编码就是一条注入面 ✓）', async () => {
+    const h = harness({
+      failCommands: ['scp '],
+      leavesResidue: true,
+      files: {
+        guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
+      },
+    });
+    const pack = parseWorkflow(
+      {
+        ...TRANSFER_PACK,
+        steps: [
+          TRANSFER_PACK.steps[0],
+          {
+            ...TRANSFER_PACK.steps[1],
+            // **目的地路径里带一条命令** ✓（包给的 ✓ → 宿主拼命令时必须编码 ✓）
+            to: { role: 'target', path: '/opt/x; reboot' },
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true });
+    const rm = h.byId('board')?.commands.filter((c) => c.includes('rm -f')) ?? [];
+    expect(rm).toHaveLength(1);
+    // **路径被包在引号里** ✓（`; reboot` 不是第二条命令 ✓）
+    expect(rm[0]).toContain("'/opt/x; reboot'");
+  });
+
+  it('目的地**原本就有**那个文件 → **不许删**（别删用户的东西 ✓）', async () => {
+    const h = harness({
+      failCommands: ['scp '],
+      leavesResidue: true,
+      files: {
+        guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
+        board: [
+          {
+            name: 'hello.ko',
+            path: '/usr/lib/modules/6.1.141/extra/hello.ko',
+            isDirectory: false,
+            sizeBytes: 99,
+            modifiedAt: null,
+          },
+        ],
+      },
+    });
+    const pack = parseWorkflow(TRANSFER_PACK, 'w.yaml');
+    await runWorkflow(pack, {}, h.deps, { approved: true });
+    // **一条 `rm -f` 都不许有** ✓（那是用户自己的文件 ✓）
+    expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
   });
 });
 
