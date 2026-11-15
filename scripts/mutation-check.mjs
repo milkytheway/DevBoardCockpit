@@ -2299,8 +2299,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "  const steps: DryRunStep[] = pack.steps.map((step) => previewStep(step, inputs, encoded));",
-        "  const steps: DryRunStep[] = pack.steps.map((step) => previewStep(step, inputs, encoded));\n  void steps;",
+        "  return { ok: true, steps };",
+        "  return { ok: true, steps, run_id: 'wf-dry-run' }; // 变异：预览也产 run_id",
       ),
   },
   {
@@ -2336,7 +2336,7 @@ const MUTATIONS = [
       replace(
         s,
         "    if (candidates.length > 1) {",
-        "    if (false) {",
+        "    if (candidates.length > 99) {",
       ),
   },
   {
