@@ -1,6 +1,20 @@
 import { MCP_PROTOCOL_VERSION } from './security';
 import { projectRunStatusForAgent } from './view';
 import type { WorkflowService } from '../workflows/service';
+import type { McpHostDeps } from './host';
+import { withVersion, withVersionEach } from './convention';
+import {
+  describeTag,
+  getCardRuntimeLog,
+  getLayout,
+  listCapabilities,
+  listCards,
+  listConnections,
+  listDataSources,
+  listTags,
+  normalizeLayoutCards,
+  sampleTag,
+} from './read-tools';
 
 /**
  * **MCP 的 JSON-RPC 层**（协议照 MCP 官方规范 2025-06-18 ✓）。
@@ -52,18 +66,28 @@ export type McpToolImpl = (args: Record<string, unknown>) => Promise<unknown> | 
 export interface McpServerDeps {
   /** 流程服务（**卡片侧与 agent 侧共用同一个** ✓ —— ADR-D34 ✓） */
   workflows: WorkflowService;
+  /**
+   * **读侧工具的宿主依赖** ✓（`docs/04` §9.2.1 ✓）。
+   *
+   * → **可选** ✓：不传就只有四个流程工具 ✓（**接线之前也能用** ✓ —— 测试与渐进接线 ✓）。
+   */
+  host?: McpHostDeps;
 }
 
 export class McpServer {
   private readonly tools: Map<string, McpToolImpl>;
+  private readonly toolDefs: McpToolDef[];
 
   constructor(deps: McpServerDeps) {
     this.tools = buildTools(deps);
+    // **没接宿主依赖 → 不列读侧工具** ✓（**不列一个调不通的工具** ✓ —— 契约 §七.4 的那条要求 ✓）
+    this.toolDefs =
+      deps.host === undefined ? [...TOOL_DEFS] : [...TOOL_DEFS, ...READ_TOOL_DEFS];
   }
 
   /** 工具清单（**规范 §「Listing Tools」** ✓） */
   listTools(): McpToolDef[] {
-    return [...TOOL_DEFS];
+    return [...this.toolDefs];
   }
 
   /**
@@ -166,9 +190,6 @@ function errorCodeOf(err: unknown): number {
   return JSON_RPC_INTERNAL_ERROR;
 }
 
-/** 契约版本（**每个响应都带上** ✓ —— 契约 §四 ✓） */
-const API_VERSION = 'devboard/v1';
-
 /** 工具失败的**封闭理由码** ✓（契约 §四：失败用 `ok:false + reason` ✓） */
 export type McpReason =
   | 'denied'
@@ -202,20 +223,6 @@ export interface McpFailure {
 
 function failure(reason: McpReason, detail?: string): McpFailure {
   return { ok: false, reason, ...(detail === undefined ? {} : { detail }) };
-}
-
-/**
- * **给一个返回值补上 `apiVersion`** ✓（契约 §四：「每个响应里都带上」✓）。
- *
- * → **列表也要补** ✓（`list_workflows` 返回的是数组 ✓ —— 逐项补 ✓）。
- */
-function withVersion<T>(value: T): T & { apiVersion: string } {
-  return { apiVersion: API_VERSION, ...value };
-}
-
-/** 列表的每一项都补上 ✓ */
-function withVersionEach<T>(items: T[]): (T & { apiVersion: string })[] {
-  return items.map((item) => ({ apiVersion: API_VERSION, ...item }));
 }
 
 /** 四个流程工具的声明（**契约 `spec/04` §2.4** ✓） */
@@ -263,10 +270,128 @@ const TOOL_DEFS: McpToolDef[] = [
   },
 ];
 
+/**
+ * **读侧工具的声明**（契约 `spec/04` §2.1 / §2.2 / §2.3 / §2.5 ✓ · ADR-D40 ✓）。
+ *
+ * → **单独一份** ✓ —— 不与流程工具混在一张表里 ✓（那一张是「流程那一组」✓）。
+ * → **接了宿主依赖才有** ✓（`host` 没传就不列 ✓ —— **不列一个调不通的工具** ✓）。
+ */
+const READ_TOOL_DEFS: McpToolDef[] = [
+  {
+    name: 'list_connections',
+    title: '列出连着的配置',
+    description:
+      '列出连接配置（profile）：id / 标签 / 传输 / 绑的板型包 / **现在有活连接吗** / 连接级能力位。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_data_sources',
+    title: '列出数据源',
+    description:
+      '列出当前板型包的数据源（**reader 粒度**）：每个 reader 提供哪些 tag、属于哪个轮询组、周期多长、现在什么状态。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_capabilities',
+    title: '工作台自己有什么',
+    description: '列出可用的传输与工作台自己的能力位（**cards** / **mcp** / **layout_share** / **record**）。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_tags',
+    title: '列出当前可读的量',
+    description:
+      '列出**当前实际可读**的 tag：名字 / 类型 / 单位 / 取值域 / 现在的值与状态 / 哪个 reader 提供的。**写卡时第一个该调它**。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        board: { type: 'string', description: '只看某块板（**省略就是当前那块**）' },
+      },
+    },
+  },
+  {
+    name: 'describe_tag',
+    title: '看一个量的语义',
+    description:
+      '看一个 tag 的**语义原文**（防误用）、来源 reader 与它的脱敏参数、最近的样本窗口。**命令不会给**。',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'tag 名' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'sample_tag',
+    title: '取最近的样本',
+    description:
+      '**先定向采一次**再取最近 n 个样本（值 / 单位 / 状态 / 时刻）——用来判断「这个量稳不稳、刷新周期多长」。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'tag 名' },
+        n: { type: 'number', description: '要几个样本（**最近 n 个**，不是 n 秒）' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'list_cards',
+    title: '列出装着的卡片',
+    description:
+      '列出装着的卡片：id / manifest id / 版本 / 路径 / 装的状态 / **在当前板上是不是残的**（缺哪些 tag、哪些读不出来）。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'validate_card',
+    title: '校验一张卡',
+    description:
+      '静态校验一个卡片目录（**不安装**）：错误与警告清单，以及它实际会绑到哪些 tag 与动作、哪些会缺失。',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string', description: '卡片目录的绝对路径' } },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'get_card_runtime_log',
+    title: '看卡片的运行时日志',
+    description: '看一张卡运行时的错误（level / 时刻 / 消息 / 来源）。**agent 的自测眼睛**。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card_id: { type: 'string', description: '卡片 id' },
+        since: { type: 'number', description: '只看这个时刻之后的（毫秒 UTC）' },
+      },
+      required: ['card_id'],
+    },
+  },
+  {
+    name: 'get_layout',
+    title: '读当前布局',
+    description: '读主区的布局（每格：卡片 id / 连接 id / 坐标与尺寸）。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'set_layout',
+    title: '保存布局',
+    description: '**整份替换**主区的布局。越界的格子会被丢掉并报在 `dropped` 里。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        layout: {
+          type: 'object',
+          description: '布局（`{ cards: [{ card_id, connection_id, x, y, w, h }] }`）',
+        },
+      },
+      required: ['layout'],
+    },
+  },
+];
+
 /** 四个流程工具的实现（**薄封装** ✓ —— 契约 §9.2 ✓） */
 function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
   const { workflows } = deps;
-  return new Map<string, McpToolImpl>([
+  const tools = new Map<string, McpToolImpl>([
     [
       'list_workflows',
       () =>
@@ -331,6 +456,133 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         } catch {
           return withVersion(failure('no_pending_confirmation', '这次运行没有待确认的步骤'));
         }
+      },
+    ],
+  ]);
+  // **读侧工具** ✓（**接了宿主依赖才有** ✓）
+  if (deps.host !== undefined) {
+    for (const [name, impl] of buildReadTools(deps.host)) tools.set(name, impl);
+  }
+  return tools;
+}
+
+/**
+ * **读侧工具的实现**（契约 `spec/04` §2.1 / §2.2 / §2.3 / §2.5 ✓）。
+ *
+ * → **全部是薄封装** ✓（契约 §六 ✓）—— 转发 + 投影 ✓，**不含业务判断** ✓。
+ * → **没接宿主依赖 → 一个都不注册** ✓（**不列一个调不通的工具** ✓）。
+ */
+function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
+  return new Map<string, McpToolImpl>([
+    [
+      'list_connections',
+      () => withVersionEach(listConnections(host)),
+    ],
+    [
+      'list_data_sources',
+      () => withVersionEach(listDataSources(host)),
+    ],
+    [
+      'list_capabilities',
+      () => withVersion(listCapabilities(host)),
+    ],
+    [
+      'list_tags',
+      (args) => {
+        // **`board` 参数**：v1 只有一块板 ✓ → **省略就是当前那块** ✓
+        // → **给了别的 board → 空数组** ✓（不猜 ✓ —— 契约 §2.1 说「不给就不给」✓）
+        const wanted = args['board'];
+        if (typeof wanted === 'string' && wanted.length > 0) {
+          const current = host.pack()?.id ?? null;
+          if (wanted !== current) return withVersionEach([]);
+        }
+        return withVersionEach(listTags(host));
+      },
+    ],
+    [
+      'describe_tag',
+      (args) => {
+        const name = args['name'];
+        if (typeof name !== 'string' || name.length === 0) {
+          return withVersion(failure('invalid_params', 'describe_tag 缺 name'));
+        }
+        const described = describeTag(host, name);
+        if (described === null) {
+          return withVersion(failure('not_found', `没有这个 tag：${name}`));
+        }
+        return withVersion(described);
+      },
+    ],
+    [
+      'sample_tag',
+      async (args) => {
+        const name = args['name'];
+        if (typeof name !== 'string' || name.length === 0) {
+          return withVersion(failure('invalid_params', 'sample_tag 缺 name'));
+        }
+        const n = args['n'];
+        if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
+          return withVersion(failure('invalid_params', 'sample_tag 的 n 要是正整数'));
+        }
+        // **先定向采一次** ✓（契约 §2.1 ✓ —— 不采的话拿到的是**冻结的旧样本** ✓）
+        await host.refreshTag(name);
+        return withVersionEach(sampleTag(host, name, n));
+      },
+    ],
+    [
+      'list_cards',
+      () => withVersionEach(listCards(host)),
+    ],
+    [
+      'validate_card',
+      (args) => {
+        const path = args['path'];
+        if (typeof path !== 'string' || path.length === 0) {
+          return withVersion(failure('invalid_params', 'validate_card 缺 path'));
+        }
+        return withVersion(host.validateCard(path));
+      },
+    ],
+    [
+      'get_card_runtime_log',
+      (args) => {
+        const cardId = args['card_id'];
+        if (typeof cardId !== 'string' || cardId.length === 0) {
+          return withVersion(failure('invalid_params', 'get_card_runtime_log 缺 card_id'));
+        }
+        const since = args['since'];
+        if (since !== undefined && (typeof since !== 'number' || !Number.isFinite(since))) {
+          return withVersion(failure('invalid_params', 'since 要是毫秒时间戳'));
+        }
+        return withVersionEach(getCardRuntimeLog(host, cardId, since as number | undefined));
+      },
+    ],
+    [
+      'get_layout',
+      () => withVersion(getLayout(host)),
+    ],
+    [
+      'set_layout',
+      (args) => {
+        const layout = args['layout'];
+        if (layout === null || typeof layout !== 'object') {
+          return withVersion(failure('invalid_params', 'set_layout 缺 layout'));
+        }
+        const normalized = normalizeLayoutCards((layout as Record<string, unknown>)['cards']);
+        host.saveLayout({
+          version: 3,
+          units: normalized.cards.map((c) => ({
+            cardId: c.card_id,
+            connectionId: c.connection_id,
+            x: c.x,
+            y: c.y,
+            w: c.w,
+            h: c.h,
+          })),
+          density: host.layout().density,
+          updatedAt: Date.now(),
+        });
+        return withVersion({ ok: true, dropped: normalized.dropped });
       },
     ],
   ]);

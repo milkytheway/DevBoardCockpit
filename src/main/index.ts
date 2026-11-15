@@ -36,6 +36,7 @@ import { ConfirmationStore } from './actions/authorization';
 import { GrantStore } from './cards/grants';
 import { effectiveWrite, effectiveWorkflows } from './cards/permissions';
 import { McpServer } from './mcp/server';
+import { buildMcpHost } from './mcp/wiring';
 import { startMcpHttp } from './mcp/http';
 import { generateToken } from './mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
@@ -302,7 +303,20 @@ let mcpHttp: { close: () => Promise<void>; port: number } | undefined;
 
 async function startMcpServer(): Promise<void> {
   try {
-    const mcp = new McpServer({ workflows: workflowService });
+    const mcp = new McpServer({
+      workflows: workflowService,
+      // **读侧工具的宿主依赖** ✓（`docs/04` §9.2.1 ✓）
+      host: buildMcpHost({
+        listProfiles: () => listProfiles(),
+        runtime,
+        terminal,
+        cards: cards.registry,
+        cardLog: cards.log,
+        // **布局是同一份账** ✓ —— 与卡片侧共用 ✓（不另开一套 ✓）
+        layoutGet: () => cards.layoutGet(),
+        layoutSet: (state) => cards.layoutSet(state),
+      }),
+    });
     const started = await startMcpHttp({
       mcp,
       token: mcpToken,

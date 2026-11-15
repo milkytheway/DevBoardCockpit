@@ -206,6 +206,16 @@ export class TagRuntime {
   }
 
   /**
+   * **样本缓冲**（**不采样** ✓ —— 同步 ✓）。
+   *
+   * → `describe_tag.history` 要它 ✓（**描述一个量不需要惊动板子** ✓）。
+   * → `sample_tag` 要的是**采过之后**的那份 ✓（`sampleTagHistory` ✓）。
+   */
+  sampleHistory(tag: string, n: number): TagSample[] {
+    return this.store.history(tag, n);
+  }
+
+  /**
    * 这条连接**有退出码吗**（串口没有，事实 S5）。
    *
    * 回读的形式 3 / 4 都看退出码 → 没有的话必须被拒绝
