@@ -34,6 +34,8 @@ function harness(
     onExec?: (command: string) => void;
     /** 命中这些片段的命令**返回非 0** ✓（模拟传输失败 ✓） */
     failCommands?: string[];
+    /** 这个 profile 的目标**连不上** ✓（板子没插 ✓） */
+    failProfile?: string;
   } = {},
 ) {
   const targets: FakeTarget[] = [
@@ -72,6 +74,10 @@ function harness(
         open: async () => undefined,
         close: async () => undefined,
         exec: async (command: string): Promise<ExecResult> => {
+          // **这个目标连不上** ✓（板子没插 ✓ / ssh 认证失败 ✓）
+          if (opts.failProfile === profile.id) {
+            throw new Error(`连不上目标 ${profile.id}`);
+          }
           target.commands.push(command);
           // **测试可以在这里叫停** ✓（「在飞的那一步被取消」✓）
           opts.onExec?.(command);
@@ -813,6 +819,41 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     await runWorkflow(pack, {}, h.deps, { approved: true });
     // **一条 `rm -f` 都不许有** ✓（那是用户自己的文件 ✓）
     expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
+  });
+});
+
+describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓）', () => {
+  it('**目标连不上 → 时间线上有一行**（不是整个运行抛出去 ✓）', async () => {
+    // **板子没插** ✓ → 问它内核版本时炸了 ✓
+    const h = harness({ failProfile: 'board' });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          {
+            id: 'deliver',
+            kind: 'file.transfer',
+            from: { role: 'build', path: 'build/hello.ko' },
+            to: { role: 'target', placement: 'kernel-module' },
+            cmd: 'scp {from.path} {role:target.user}@{role:target.host}:{to.path}',
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    // **不该整个抛出去** ✓（抛出去 → 时间线上一行都没有 ✗ → 用户看不出是哪一步 ✗）
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(false);
+    // **时间线上有那一行** ✓
+    expect(result.stages).toHaveLength(1);
+    expect(result.stages[0]?.stepId).toBe('deliver');
+    expect(result.stages[0]?.ok).toBe(false);
   });
 });
 

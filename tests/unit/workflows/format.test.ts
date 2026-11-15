@@ -194,6 +194,27 @@ describe('流程包 · roles', () => {
   });
 });
 
+describe('流程包 · file.transfer 的 from（契约 §4.4）', () => {
+  it('**from 缺 path → 校验就报错**（别留到运行时才炸 ✓ —— 独立评审 40 的 I-2 ✓）', () => {
+    expectInvalid(
+      {
+        ...MINIMAL,
+        steps: [
+          {
+            id: 'deliver',
+            kind: 'file.transfer',
+            // ⚠️ **from 缺 path** ✓ —— 契约 §4.4 说它是必填 ✓
+            from: { role: 'build' },
+            to: { role: 'target', placement: 'kernel-module' },
+            cmd: 'scp {from.path} root@{role:target.host}:{to.path}',
+          },
+        ],
+      },
+      /from/,
+    );
+  });
+});
+
 describe('流程包 · step 的六种 kind', () => {
   const kinds = [
     { id: 'a', kind: 'exec', role: 'build', cmd: 'make' },

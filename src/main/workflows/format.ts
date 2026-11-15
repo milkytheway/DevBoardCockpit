@@ -579,6 +579,11 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
       break;
     case 'file.transfer':
       if (step.from === undefined) fail('file.transfer 步必须有 from', ctx.source);
+      // **from.path 是必填** ✓（契约 §4.4 ✓）——
+      // → 不在这里收住 ✓ → 运行时才炸 ✓（而且炸在**步外** ✓ → 时间线上一行都没有 ✗）
+      if (step.from.path === undefined) {
+        fail('file.transfer 步的 from 必须有 path（源端的路径）', ctx.source);
+      }
       if (step.to === undefined) fail('file.transfer 步必须有 to', ctx.source);
       if (step.cmd === undefined) {
         fail('file.transfer 步必须有 cmd（传输命令模板；它在**源**目标上跑）', ctx.source);

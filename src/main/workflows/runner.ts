@@ -271,18 +271,22 @@ async function runStep(step: WorkflowStep, ctx: StepContext): Promise<WorkflowSt
   // **「这一步开始了」** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
   ctx.deps.timeline?.onStepStart?.({ stepId: step.id, kind: step.kind, at: started });
 
-  // ── 端点（`file.transfer` 的源与目的地）──
-  const endpoints = await resolveEndpoints(step, ctx);
-
-  const substitution: SubstitutionContext = {
-    inputs: ctx.inputs,
-    encoded: ctx.encodedInputs,
-    roleFacts: ctx.roleFacts,
-    outputs: ctx.outputs,
-    ...(endpoints === undefined ? {} : { endpoints }),
-  };
-
   try {
+    // ── 端点（`file.transfer` 的源与目的地）──
+    // ⚠️ **在 try 里面** ✓（独立评审 40 的 I-2 ✓）：
+    // → 目标连不上 / 端点算不出来 ✓ → **这一步要变成时间线上的一行** ✓
+    // → 放在 try 外面 ✗ → 异常穿透 runStep ✓ → 穿透 runWorkflow ✓ →
+    //   **整次运行的时间线上一行都没有** ✗（用户只看到一个 failed + 一句 raw error ✗）
+    const endpoints = await resolveEndpoints(step, ctx);
+
+    const substitution: SubstitutionContext = {
+      inputs: ctx.inputs,
+      encoded: ctx.encodedInputs,
+      roleFacts: ctx.roleFacts,
+      outputs: ctx.outputs,
+      ...(endpoints === undefined ? {} : { endpoints }),
+    };
+
     switch (step.kind) {
       case 'exec':
         return await runExec(step, ctx, substitution, role, started);

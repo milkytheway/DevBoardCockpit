@@ -1776,6 +1776,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M145 流程层：**步出错了也要有那一行**（异常不许穿透整次运行 ✓ —— 独立评审 40 的 I-2 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '目标连不上 → 时间线上有一行',
+    apply: (s) =>
+      replace(
+        s,
+        '    const detail = err instanceof Error ? err.message : String(err);',
+        '    throw err; // 变异：异常穿透整次运行（时间线上一行都没有 ✗）\n    const detail = err instanceof Error ? err.message : String(err);',
+      ),
+  },
+  {
+    name: 'M146 流程包：**file.transfer 的 from.path 必填**（契约 §4.4 ✓）',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: 'from 缺 path → 校验就报错',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (step.from.path === undefined) {\n        fail('file.transfer 步的 from 必须有 path（源端的路径）', ctx.source);\n      }",
+        '      // 变异：不收 from.path（留到运行时才炸 ✗）',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
