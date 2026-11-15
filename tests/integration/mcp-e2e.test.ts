@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { startMcpHttp } from '../../src/main/mcp/http';
 import { McpServer } from '../../src/main/mcp/server';
+import type { McpHostDeps } from '../../src/main/mcp/host';
 import { generateToken } from '../../src/main/mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from '../../src/main/mcp/discovery';
 import { WorkflowRegistry } from '../../src/main/workflows/registry';
@@ -102,7 +103,7 @@ beforeEach(async () => {
 
   token = generateToken();
   server = await startMcpHttp({
-    mcp: new McpServer({ workflows: service }),
+    mcp: new McpServer({ workflows: service, host: hostDeps() }),
     token,
     host: '127.0.0.1',
     port: 0,
@@ -166,6 +167,81 @@ async function agentCall(
   });
 }
 
+/**
+ * **读侧与写侧的宿主依赖**（**假的** ✓ —— 这里验的是「agent 能不能连上并调通」✓，
+ * **不是**板子的真本事 ✓ —— 那由各模块自己的单测负责 ✓）。
+ */
+function hostDeps(): McpHostDeps {
+  const readings = [
+    { tag: 'cpu.usage', value: 42, unit: '%', status: 'ok' as const, at: 1000, seq: 1 },
+  ];
+  return {
+    pack: () => ({
+      id: 'demo-pack',
+      name: '演示包',
+      version: '1.0.0',
+      poll_groups: [{ id: 'fast', interval_ms: 1000, readers: ['cpu'] }],
+      readers: [
+        {
+          id: 'cpu',
+          kind: 'proc_stat',
+          args: { stat_path: '/proc/stat' },
+          provides: ['cpu.usage'],
+          poll_group: 'fast',
+          interval_ms: 1000,
+        },
+      ],
+      actions: [],
+    }),
+    readings: () => readings,
+    history: () => [],
+    refreshTag: async () => undefined,
+    profiles: () => [{ id: 'guest', label: '客机', transport: 'ssh', options: {} }],
+    capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
+    connected: () => true,
+    cards: () => [],
+    cardDir: () => null,
+    validateCard: () => ({
+      ok: true,
+      errors: [],
+      warnings: [],
+      resolved: { tags: ['cpu.usage'], actions: [], layout: null, missing_tags: [], missing_actions: [] },
+    }),
+    cardLog: () => [],
+    layout: () => ({ version: 3, units: [], density: 'comfortable' as const, updatedAt: 0 }),
+    saveLayout: () => undefined,
+    actions: {
+      packId: 'demo-pack',
+      packIdOf: () => 'demo-pack',
+      contractVersion: 'devboard/v1',
+      hasExitCode: true,
+      runTransaction: async (fn: (c: unknown) => Promise<unknown>) =>
+        fn({
+          exec: async () => ({
+            exitCode: 0,
+            stdout: '',
+            stderr: '',
+            durationMs: 1,
+            timedOut: false,
+          }),
+        } as never),
+      readTag: async () => undefined,
+      confirmations: new ConfirmationStore(),
+      audit: () => 'audit-e2e',
+      actions: () => [
+        {
+          id: 'demo.action',
+          label: '演示动作',
+          danger: 'reversible',
+          command: 'echo {value}',
+          params: { value: { type: 'integer', min: 0, max: 100 } },
+          readback: { kind: 'none', consequence: '演示用' },
+        },
+      ],
+    },
+  };
+}
+
 describe('MCP · agent 的用法（端到端）', () => {
   it('**读发现文件 → 连上去 → initialize → tools/list → tools/call** ✓', async () => {
     // ① initialize ✓
@@ -202,6 +278,72 @@ describe('MCP · agent 的用法（端到端）', () => {
     };
     expect(statusPayload.state).toBeTruthy();
     expect(statusPayload.stages.length).toBeGreaterThan(0);
+  });
+
+  it('**tools/list 里有读侧与写侧那些工具** ✓（接了宿主依赖才有 ✓）', async () => {
+    const list = await agentCall('tools/list');
+    const tools = (JSON.parse(list.body) as { result: { tools: { name: string }[] } }).result.tools;
+    const names = tools.map((t) => t.name);
+    for (const expected of [
+      'list_connections',
+      'list_data_sources',
+      'list_capabilities',
+      'list_tags',
+      'describe_tag',
+      'sample_tag',
+      'list_cards',
+      'validate_card',
+      'get_card_runtime_log',
+      'get_layout',
+      'set_layout',
+      'execute_action',
+      'confirm_action',
+    ]) {
+      expect(names, `少了 ${expected}`).toContain(expected);
+    }
+  });
+
+  it('**tools/call → list_tags 真给得出东西** ✓（**真 HTTP** ✓）', async () => {
+    const call = await agentCall('tools/call', {
+      name: 'list_tags',
+      arguments: {},
+    });
+    expect(call.status).toBe(200);
+    const result = (JSON.parse(call.body) as { result: { content: { text: string }[] } }).result;
+    const payload = JSON.parse(result.content[0]?.text ?? '[]') as {
+      name: string;
+      unit: string;
+      apiVersion: string;
+    }[];
+    expect(payload[0]?.name).toBe('cpu.usage');
+    // **每一项都带 apiVersion** ✓（契约 §四 ✓）
+    expect(payload[0]?.apiVersion).toBe('devboard/v1');
+  });
+
+  it('**tools/call → execute_action 真跑得通** ✓（**真 HTTP** ✓）', async () => {
+    const call = await agentCall('tools/call', {
+      name: 'execute_action',
+      arguments: { action_id: 'demo.action', params: { value: 7 } },
+    });
+    expect(call.status).toBe(200);
+    const result = (JSON.parse(call.body) as { result: { content: { text: string }[] } }).result;
+    const payload = JSON.parse(result.content[0]?.text ?? '{}') as {
+      ok: boolean;
+      apiVersion: string;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.apiVersion).toBe('devboard/v1');
+  });
+
+  it('**tools/call → 动作不存在 → `not_found`** ✓（**不是 `denied`** ✓）', async () => {
+    const call = await agentCall('tools/call', {
+      name: 'execute_action',
+      arguments: { action_id: 'nope.nope' },
+    });
+    const result = (JSON.parse(call.body) as { result: { content: { text: string }[] } }).result;
+    const payload = JSON.parse(result.content[0]?.text ?? '{}') as { ok: boolean; reason: string };
+    expect(payload.ok).toBe(false);
+    expect(payload.reason).toBe('not_found');
   });
 
   it('**发现文件里的 token 不对 → 401** ✓（token 真的是凭据 ✓）', async () => {

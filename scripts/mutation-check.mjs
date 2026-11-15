@@ -2040,6 +2040,150 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M169 MCP 读侧：**`exec_regex` 的 command 不给 agent** ✓（契约 §1.3 ✓）',
+    file: 'src/main/tags/pack-view.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags/pack-view.test.ts'],
+    expect: 'command',
+    apply: (s) =>
+      replace(
+        s,
+        "  exec_regex: ['pattern', 'format'],",
+        "  exec_regex: ['pattern', 'format', 'command'],",
+      ),
+  },
+  {
+    name: 'M170 MCP 读侧：**`script` 的宿主路径与解释器不给 agent** ✓',
+    file: 'src/main/tags/pack-view.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags/pack-view.test.ts'],
+    expect: '宿主路径',
+    apply: (s) =>
+      replace(
+        s,
+        "  script: [],",
+        "  script: ['path', 'interpreter', 'format'],",
+      ),
+  },
+  {
+    name: 'M171 MCP 读侧：**`list_tags` 的字段叫 `name` 不是 `tag`** ✓（契约 §2.1 ✓）',
+    file: 'src/main/mcp/read-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
+    expect: 'name',
+    apply: (s) =>
+      replace(
+        s,
+        "      name: reading.tag,",
+        "      tag: reading.tag,",
+      ),
+  },
+  {
+    name: 'M172 MCP 读侧：**`list_tags` 要算 `source_reader`** ✓（**不算就全是 null** ✓）',
+    file: 'src/main/mcp/read-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
+    expect: 'source_reader',
+    apply: (s) =>
+      replace(
+        s,
+        "      source_reader: sourceReaderOf(reading.tag, pack),",
+        "      source_reader: null,",
+      ),
+  },
+  {
+    name: 'M173 MCP 读侧：**reader 的 status 是映射表** ✓（**不是恒 ok** ✓）',
+    file: 'src/main/mcp/read-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
+    expect: 'status',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (mine.some((r) => r.status === 'error')) return 'error';",
+        "  if (false) return 'error';",
+      ),
+  },
+  {
+    name: 'M174 MCP 写侧：**`dry_run` 不执行** ✓（契约 §2.4 ✓）',
+    file: 'src/main/mcp/action-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
+    expect: '不执行',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (opts.dryRun === true) {",
+        "  if (false) {",
+      ),
+  },
+  {
+    name: 'M175 MCP 写侧：**`dry_run` 在确认之前** ✓（**否则拿不到 destructive 的预览** ✓）',
+    file: 'src/main/mcp/action-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
+    expect: 'dry_run',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (opts.dryRun === true) {\n    return {\n      ok: true,\n      dry_run: true,",
+        "  if (opts.dryRun === true) {\n    return {\n      ok: false,\n      reason: 'needs_confirmation',\n      dry_run: false,",
+      ),
+  },
+  {
+    name: 'M176 MCP 写侧：**`confirm_action` 只递请求** ✓（**不批准** ✓ —— 契约 §2.4.1 ✓）',
+    file: 'src/main/mcp/action-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
+    expect: '只递请求',
+    apply: (s) =>
+      replace(
+        s,
+        "  deps.confirmations.request(confirmId, now);",
+        "  deps.confirmations.approve(confirmId, now); // 变异：agent 自己批了",
+      ),
+  },
+  {
+    name: 'M177 MCP 写侧：**动作不存在 → `not_found`** ✓（**不是 `denied`** ✓）',
+    file: 'src/main/mcp/action-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
+    expect: 'not_found',
+    apply: (s) =>
+      replace(
+        s,
+        "    return { ok: false, reason: 'not_found', detail: `没有这个动作：${actionId}` };\n  }\n\n  // **③ 参数校验 + 编码**",
+        "    return { ok: false, reason: 'denied', detail: `没有这个动作：${actionId}` };\n  }\n\n  // **③ 参数校验 + 编码**",
+      ),
+  },
+  {
+    name: 'M178 MCP 卡片：**`missing_tags` 与 `unreadable_tags` 分开** ✓（**混在一起 agent 就被骗** ✓）',
+    file: 'src/main/cards/state.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/state.test.ts'],
+    expect: 'unreadable',
+    apply: (s) =>
+      replace(
+        s,
+        "    unreadable_tags: unreadable,",
+        "    unreadable_tags: [],",
+      ),
+  },
+  {
+    name: 'M179 MCP 卡片：**通配实例在读数里缺席 → 不算缺失** ✓（采样器不猜具体名 ✓）',
+    file: 'src/main/cards/state.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/state.test.ts'],
+    expect: '通配实例',
+    apply: (s) =>
+      replace(
+        s,
+        "  for (const pattern of manifest.permissions.read) {\n    if (!isProvided(pack, pattern)) out.push(pattern);\n  }",
+        "  for (const pattern of manifest.permissions.read) {\n    out.push(pattern);\n  }",
+      ),
+  },
+  {
+    name: 'M180 MCP 读侧：**`connected` 要看运行时是不是 `running`** ✓（**光看 profileId 会误报** ✓）',
+    file: 'src/main/mcp/wiring.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
+    expect: 'connected',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (status.state === 'running' && status.profileId === profileId) return true;",
+        "      if (status.profileId === profileId) return true;",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
