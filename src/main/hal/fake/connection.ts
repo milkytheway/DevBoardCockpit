@@ -69,7 +69,8 @@ const DEFAULT_BREAK_MEMINFO_EVERY = 5;
 export class FakeConnection implements Connection {
   /** 连接的 id **跟着 profile 走**（假设备扮多个角色时每条线各有各的 id ✓） */
   readonly id: string;
-  readonly transport = 'local' as const;
+  /** 传输**跟着 profile 走**（能力位也只有一份算法 ✓——`capabilitiesFor(this.profile)`） */
+  readonly transport: 'local' | 'ssh' | 'adb' | 'serial';
 
   private readonly device: FakeDevice;
   private readonly log: SessionLog;
@@ -88,6 +89,7 @@ export class FakeConnection implements Connection {
     this.log = opts.log;
     this.profile = opts.profile ?? fakeProfile();
     this.id = this.profile.id;
+    this.transport = this.profile.transport;
     this.fs = opts.fs ?? fakeFilesystem(this.profile.id);
     this.timeoutEvery = opts.timeoutEvery ?? DEFAULT_TIMEOUT_EVERY;
     this.breakMeminfoEvery = opts.breakMeminfoEvery ?? DEFAULT_BREAK_MEMINFO_EVERY;

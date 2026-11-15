@@ -65,7 +65,7 @@ steps:
     to:
       role: target
       placement: user-program
-    cmd: "scp -o StrictHostKeyChecking=no {from.path} {role:target.user}@{role:target.host}:{to.path}"
+    cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 600000
     # **目的地路径进这个槽**（后面两步要用它）
     out: dest

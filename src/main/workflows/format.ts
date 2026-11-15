@@ -471,6 +471,11 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
     case 'await':
     case 'assert':
       if (step.readback === undefined) fail(`${step.kind} 步必须有 readback`, ctx.source);
+      // **必须说得出「在哪个角色上读」**（自己的 role 或判据的 role ✓）
+      // ——不然「默认读哪」就是猜的 ✗（两条独立评审都点了这一条 ✓）。
+      if (step.role === undefined && step.readback.role === undefined) {
+        fail(`${step.kind} 步必须说得出在哪个角色上读（step.role 或 readback.role）`, ctx.source);
+      }
       break;
   }
 
@@ -514,16 +519,11 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
 
   // 形式 1：`readback: {tag, expect}`（**不带 kind**——与 spec/02 §4.4 一样）
   if (raw['tag'] !== undefined) {
-    out.tag = nonEmptyString(raw['tag'], 'readback.tag', ctx);
-    if (raw['expect'] !== undefined) {
-      // 形式 1 的期望值**可以是布尔**（契约里就是 `expect: true`）
-      const expect = raw['expect'];
-      if (typeof expect !== 'boolean' && typeof expect !== 'string') {
-        fail('readback.expect 必须是布尔或字符串（形式 1 用布尔）', ctx.source);
-      }
-      out.expect = String(expect);
-    }
-    return out;
+    // **形式 1（tag）在流程层暂不支持**：
+    // tag 是**板型包的核心词表**里的东西（`spec/02` §六 ✓），
+    // 而流程层**没有板型包** → 查不了它是不是真 tag ✗
+    // → 与其「收下再悄悄丢掉 role」，**直接报错** ✓（两条独立评审都点了这一条 ✓）。
+    fail('流程的判据暂不支持形式 1（tag）：tag 属于板型包的核心词表，流程层查不了', ctx.source);
   }
 
   const kind = raw['kind'];

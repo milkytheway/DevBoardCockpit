@@ -284,7 +284,10 @@ async function runExec(
     // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
     readback:
       step.readback?.role !== undefined && step.readback.role !== role
-        ? { kind: 'none', consequence: '判据在另一个角色上读（由流程层执行）' }
+        ? // **跨目标的判据不能塞 `none`**：`spec/02` §4.4.1 禁止 destructive 配 none ✓
+          // → 执行器那边用 `command_ok`（这条命令自己的退出码 ✓），
+          //   跨目标的那部分**由流程层另外验**（两个事实、两行账 ✓）
+          { kind: 'command_ok' }
         : toReadbackDef(step.readback, substitution),
   };
   const outcome = await invokeAction(
@@ -530,7 +533,8 @@ async function runTransfer(
     command,
     // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
     readback: step.readback?.role !== undefined && step.readback.role !== fromRole
-      ? { kind: 'none', consequence: '判据在另一个角色上读（由流程层执行）' }
+      ? // 同上：**不用 `none`**（destructive 步禁止 none ✓）
+        { kind: 'command_ok' }
       : toReadbackDef(step.readback, substitution),
   };
   const outcome = await invokeAction(

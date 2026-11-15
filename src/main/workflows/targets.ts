@@ -125,6 +125,14 @@ export class TargetRegistry {
         detail: { profileId },
       });
     }
+    // **角色不许绑到 `local`**（ADR-D31 R2 ✓）：
+    // `local` 是**宿主自己的 shell**（Windows 上是 cmd.exe）——
+    // 一个流程在它上面跑命令 = 在宿主上跑命令，而宿主是 root 权限那台机器 ✓✗。
+    if (profile.transport === 'local') {
+      throw makeError('CONN_OPEN_FAILED', `角色不许绑到 local 传输（${profileId}）：它是宿主自己的 shell`, {
+        detail: { profileId, transport: profile.transport },
+      });
+    }
     const connection = this.opts.createConnection(profile);
     await connection.open();
     return connection;

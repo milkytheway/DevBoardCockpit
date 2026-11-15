@@ -160,7 +160,7 @@ describe('流程包 · step 的六种 kind', () => {
       cmd: 'scp {from.path} root@{role:target.host}:{to.path}',
     },
     { id: 'd', kind: 'action', role: 'target', action: 'backlight.set', params: { value: '{input:level}' } },
-    { id: 'e', kind: 'await', readback: { kind: 'command_ok' } },
+    { id: 'e', kind: 'await', role: 'target', readback: { kind: 'command_ok' } },
     {
       id: 'f',
       kind: 'assert',
@@ -254,16 +254,26 @@ describe('流程包 · 判据（复用 M6 的五形式 + 「在哪个 role 上�
       {
         ...MINIMAL,
         steps: [
-          { id: 'a', kind: 'await', readback: { tag: 'cpu.usage', expect: true } },
-          { id: 'b', kind: 'await', readback: { kind: 'file_equals', path: '/tmp/x', expect: '1' } },
-          { id: 'c', kind: 'await', readback: { kind: 'command_ok' } },
-          { id: 'd', kind: 'await', readback: { kind: 'verify', command: 'test -e /tmp/x' } },
-          { id: 'e', kind: 'await', readback: { kind: 'none', consequence: '点亮 LED' } },
+          { id: 'a', kind: 'await', role: 'target', readback: { kind: 'file_equals', path: '/tmp/x', expect: '1' } },
+          { id: 'b', kind: 'await', role: 'target', readback: { kind: 'command_ok' } },
+          { id: 'c', kind: 'await', role: 'target', readback: { kind: 'verify', command: 'test -e /tmp/x' } },
+          { id: 'd', kind: 'await', role: 'target', readback: { kind: 'none', consequence: '点亮 LED' } },
         ],
       },
       'demo.yaml',
     );
-    expect(pack.steps).toHaveLength(5);
+    expect(pack.steps).toHaveLength(4);
+  });
+
+  it('**形式 1（tag）在流程层不支持**（tag 属于板型包的核心词表 → 流程层查不了）', () => {
+    expectInvalid(
+      { ...MINIMAL, steps: [{ id: 'a', kind: 'await', role: 'target', readback: { tag: 'cpu.usage' } }] },
+      /暂不支持形式 1/,
+    );
+  });
+
+  it('`await` / `assert` **必须说得出在哪个角色上读**', () => {
+    expectInvalid({ ...MINIMAL, steps: [{ id: 'a', kind: 'await', readback: { kind: 'command_ok' } }] }, /角色/);
   });
 
   it('**判据可以指名 role**（跨目标的验证就靠它）', () => {

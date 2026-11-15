@@ -69,7 +69,7 @@ steps:
     to:
       role: target
       placement: kernel-module
-    cmd: "scp -o StrictHostKeyChecking=no {from.path} {role:target.user}@{role:target.host}:{to.path}"
+    cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 1800000
     # **目的地路径进这个槽**（后续步骤要用它：`modprobe` 不用它，但用户态程序要）
     out: dest
