@@ -1441,12 +1441,12 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '  workflowIds(cardId: string): string[] {
+        `  workflowIds(cardId: string): string[] {
     return this.workflowGrants.get(cardId) ?? [];
-  }',
-        '  workflowIds(cardId: string): string[] {
+  }`,
+        `  workflowIds(cardId: string): string[] {
     return []; // 变异：流程的授权查不到
-  }',
+  }`,
       ),
   },
   {
