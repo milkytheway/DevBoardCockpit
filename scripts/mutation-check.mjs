@@ -2227,8 +2227,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "      if (id === 'cpu-usage') continue;",
-        "      if (id === 'cpu-usage') continue; // 变异：剔掉这张卡",
+        "      const tags = Array.isArray(perms.read) ? perms.read.filter((t): t is string => typeof t === 'string') : [];",
+        "      const tags: string[] = []; // 变异：示例卡不列读权限",
       ),
   },
   {
