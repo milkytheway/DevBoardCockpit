@@ -1465,7 +1465,7 @@ const MUTATIONS = [
     name: 'M121 流程包：`default` 自己也要合法（宿主不能预填一个非法值 ✓）',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: 'default 低于 min',
+    expect: '宿主不能预填一个非法值',
     apply: (s) =>
       replace(
         s,
