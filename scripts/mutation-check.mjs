@@ -1588,8 +1588,17 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）\n    this.opts.runDeps.audit({',
-        '    // 变异：不记审计\n    void (() => {',
+        `    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）
+    this.opts.runDeps.audit({
+      at: this.now(),
+      actor: 'host',
+      actionId: \`workflow:\${status.workflowId}:cancel\`,
+      params: { runId },
+      ok: true,
+      verified: true,
+      detail: '人叫停了这次运行',
+    });`,
+        '    // 变异：不记审计',
       ),
   },
   {
