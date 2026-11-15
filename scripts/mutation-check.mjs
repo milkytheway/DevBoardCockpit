@@ -1956,6 +1956,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M162 MCP：**list_workflows 不给拓扑**（角色/机器名不许露 ✓ —— 契约 §2.4 ✓）',
+    file: 'src/main/mcp/server.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
+    expect: '不给拓扑',
+    apply: (s) =>
+      replace(
+        s,
+        '            inputs: w.inputs,\n          })),',
+        '            inputs: w.inputs,\n            roles: w.inputs,\n          })),',
+      ),
+  },
+  {
+    name: 'M163 MCP：**工具失败用 ok:false + reason**（不抛异常 ✓ —— 契约 §四 ✓）',
+    file: 'src/main/mcp/server.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
+    expect: '失败（不是偷偷跑起来',
+    apply: (s) =>
+      replace(
+        s,
+        '            failure(reasonOf(err), err instanceof Error ? err.message : String(err)),',
+        "            { ok: true, run_id: 'wf-bogus' }, // 变异：失败也说成功",
+      ),
+  },
+  {
+    name: 'M164 MCP：**每个响应都带 apiVersion**（契约 §四 ✓）',
+    file: 'src/main/mcp/server.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
+    expect: '每个响应都带 apiVersion',
+    apply: (s) =>
+      replace(
+        s,
+        '  return { apiVersion: API_VERSION, ...value };',
+        '  return value as T & { apiVersion: string }; // 变异：不带版本',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
