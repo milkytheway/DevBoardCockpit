@@ -356,6 +356,36 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(h.svc.status(runId).state).toBe(before);
   });
 
+  it('**取消会撤销那张待确认的凭据**（人不该去点一个已经取消的运行 ✓）', async () => {
+    const h = service(DANGEROUS_PACK);
+    h.reg.approve('demo.danger');
+    const { runId } = h.svc.start('demo.danger', { project: 'x' });
+    // **等它停在等确认** ✓
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const status = h.svc.status(runId);
+    expect(status.state).toBe('awaiting_confirmation');
+    const confirmId = status.needsConfirmation?.confirmId as string;
+
+    h.svc.cancel(runId);
+
+    // **那张凭据作废了** ✓（不撤销的话 → 它还能被人点成有效 ✗）
+    expect(h.confirmations.approve(confirmId, Date.now())).toBe(false);
+    // **而且不能再用它续跑** ✓
+    expect(() => h.svc.approveAndResume(runId, confirmId)).toThrow(/不在等确认/);
+  });
+
+  it('**取消要记一行审计**（「谁叫停的」查得到 ✓）', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    h.svc.cancel(runId);
+    const cancelRows = h.audits.filter((r) => r.actionId.endsWith(':cancel'));
+    expect(cancelRows).toHaveLength(1);
+    expect(cancelRows[0]?.params['runId']).toBe(runId);
+  });
+
   it('**取消一个不存在的运行 → 报错** ✓', () => {
     const { svc } = service();
     expect(() => svc.cancel('wf-nope')).toThrow(/没有这次运行/);

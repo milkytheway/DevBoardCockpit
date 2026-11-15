@@ -1569,6 +1569,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M129 流程层：**取消**要撤销那张待确认的凭据（人别去点一个已取消的运行 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '撤销那张待确认的凭据',
+    apply: (s) =>
+      replace(
+        s,
+        '      this.opts.confirmations?.revoke(pending);',
+        '      // 变异：不撤销（凭据还能被人点成有效 ✗）',
+      ),
+  },
+  {
+    name: 'M130 流程层：**取消**要记一行审计（「谁叫停的」查得到 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '取消要记一行审计',
+    apply: (s) =>
+      replace(
+        s,
+        '    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）\n    this.opts.runDeps.audit({',
+        '    // 变异：不记审计\n    void (() => {',
+      ),
+  },
+  {
+    name: 'M131 回读：命令被取消 → 理由说「取消」（不是「回读不符」✓）',
+    file: 'src/main/actions/readback.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
+    expect: '理由是 cancelled',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (actionResult.cancelled === true) {',
+        '  if (false) { // 变异：把「取消」说成「不符」',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
