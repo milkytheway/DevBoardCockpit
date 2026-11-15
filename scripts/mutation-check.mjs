@@ -1723,10 +1723,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    if (id.includes('*')) {
-      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);",
-        "    if (false) {
-      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);",
+        "    if (id.includes('*')) {\n      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);\n    } else {",
+        "    if (false) {\n      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);\n    } else {",
       ),
   },
   {
@@ -1737,10 +1735,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    } else if (!ctx.availableWorkflows.includes(id)) {
-      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);",
-        "    } else if (false) {
-      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);",
+        "    } else if (!ctx.availableWorkflows.includes(id)) {\n      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);\n    } else {",
+        "    } else if (false) {\n      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);\n    } else {",
       ),
   },
   {
