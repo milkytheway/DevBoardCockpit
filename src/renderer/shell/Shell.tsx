@@ -12,7 +12,6 @@ import { WorkbenchPage } from './pages/WorkbenchPage';
 import { ChevronIcon } from './Icons';
 import { Rail } from './Rail';
 import { Secondary } from './Secondary';
-import { StatusBar } from './StatusBar';
 import {
   useActivity,
   useBroker,
@@ -339,18 +338,12 @@ export function Shell(): JSX.Element {
 
   return (
     <div className="app-shell">
-      <StatusBar
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        cardCount={cards.length}
-        placedCount={placedCards.length}
-        secondaryOpen={secondaryOpen}
-        onToggleSecondary={() => setSecondaryOpen((open) => !open)}
-        onOpenPalette={() => setPaletteOpen(true)}
-      />
+      {/* The native title bar is hidden; this strip is the window's drag
+          handle and the native min/max/close buttons float over it. */}
+      <div className="window-drag" aria-hidden />
 
       <div className="app-body">
-        <Rail page={page} onPage={goPage} />
+        <Rail page={page} onPage={goPage} onOpenPalette={() => setPaletteOpen(true)} />
         {secondaryOpen ? (
           <Secondary
             title={PAGE_TITLE[page]}

@@ -3283,3 +3283,185 @@ html[data-theme='light'] .cockpit-card {
     display: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════ v0.9 pass ═══
+   The top edge is the window itself: native title text and the menu strip are
+   gone, only the system window buttons float over the canvas. Selection is a
+   quiet outline instead of an accent event, and text selection is limited to
+   the places where copying is the point. */
+
+:root {
+  --ui-titlebar-h: 40px;
+}
+
+.app-shell {
+  grid-template-rows: minmax(0, 1fr);
+  padding-top: var(--ui-titlebar-h);
+}
+
+.window-drag {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--ui-titlebar-h);
+  z-index: 200;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.rail__foot {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.rail__palette {
+  width: 44px;
+  height: auto;
+  padding: 6px 0;
+}
+
+/* Selection is neutral in both themes: it says "this one", not "green/blue". */
+.rail__item.is-active {
+  color: var(--ui-text);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--cockpit-text) 9%, transparent), transparent),
+    color-mix(in oklab, var(--cockpit-surface) 88%, transparent);
+  border-color: color-mix(in oklab, var(--cockpit-text) 28%, var(--ui-hairline));
+}
+
+.secondary__item.is-active {
+  color: var(--ui-text);
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--cockpit-text) 10%, transparent), transparent 72%),
+    color-mix(in oklab, var(--cockpit-surface) 88%, transparent);
+  border-color: color-mix(in oklab, var(--cockpit-text) 30%, var(--ui-hairline));
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--cockpit-text) 52%, var(--cockpit-border-strong));
+}
+
+.secondary__item.is-active .secondary__row-icon {
+  color: var(--cockpit-text);
+  border-color: color-mix(in oklab, var(--cockpit-text) 20%, var(--ui-hairline));
+}
+
+.secondary__pin.is-pinned {
+  color: var(--ui-dim);
+}
+
+.secondary__section-hint {
+  color: var(--ui-faint);
+}
+
+.cockpit-card.is-selected {
+  border-color: color-mix(in oklab, var(--cockpit-text) 40%, var(--cockpit-border));
+  box-shadow:
+    var(--shell-mat-shadow-glass),
+    0 0 0 1px color-mix(in oklab, var(--cockpit-text) 22%, transparent);
+}
+
+.card-grid .react-grid-item:hover .react-resizable-handle {
+  border-color: color-mix(in oklab, var(--cockpit-text) 46%, transparent);
+}
+
+.card-grid .react-grid-item.react-draggable-dragging .cockpit-card {
+  border-color: color-mix(in oklab, var(--cockpit-text) 38%, var(--cockpit-border));
+  box-shadow:
+    var(--shell-mat-shadow-lift),
+    0 0 0 1px color-mix(in oklab, var(--cockpit-text) 22%, transparent);
+}
+
+.card-grid .react-grid-placeholder {
+  background: color-mix(in oklab, var(--cockpit-text) 7%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--cockpit-text) 32%, transparent);
+}
+
+.terminal-grid .terminal__pane.is-active {
+  border-color: color-mix(in oklab, var(--cockpit-text) 30%, var(--ui-hairline));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--cockpit-text) 12%, transparent);
+}
+
+/* Copying text is the point in the terminal and the log; everywhere else a
+   drag is a drag. */
+html,
+body,
+.app-shell {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable='true'],
+.xterm,
+.xterm *,
+.terminal__pane,
+.terminal__pane *,
+.page--logs,
+.activity-list,
+.activity-list * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Light frost: a stronger canvas bloom and thinner glass, so the material
+   reads as frost rather than flat white. */
+html[data-theme='light'] .app-shell {
+  background:
+    radial-gradient(135% 110% at 50% -20%,
+      color-mix(in oklab, var(--cockpit-accent) 28%, transparent),
+      transparent 64%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--cockpit-surface) 42%, transparent),
+      transparent 46%),
+    var(--shell-mat-canvas);
+}
+
+html[data-theme='light'] .statusbar,
+html[data-theme='light'] .rail,
+html[data-theme='light'] .secondary,
+html[data-theme='light'] .detail {
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 34%),
+    color-mix(in oklab, var(--cockpit-surface) 52%, transparent);
+  border-color: color-mix(in oklab, var(--cockpit-text) 12%, transparent);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+
+html[data-theme='light'] .cockpit-card {
+  background:
+    var(--shell-mat-sheen-card),
+    color-mix(in oklab, var(--cockpit-surface) 52%, transparent);
+  border-color: color-mix(in oklab, var(--cockpit-text) 12%, transparent);
+  backdrop-filter: blur(34px) saturate(190%);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  box-shadow:
+    var(--shell-mat-shadow-glass),
+    inset 0 1px 0 var(--ui-highlight);
+}
+
+html[data-theme='light'] .cockpit-card__head {
+  background: color-mix(in oklab, var(--cockpit-surface) 34%, transparent);
+}
+
+/* One more stop of light-mode frost: the canvas carries a taller accent bloom
+   and a neutral vertical wash, so the translucent cards have something to
+   blur instead of sitting on flat white. */
+html[data-theme='light'] .app-shell {
+  background:
+    radial-gradient(128% 104% at 50% -18%,
+      color-mix(in oklab, var(--cockpit-accent) 34%, transparent),
+      transparent 62%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--cockpit-surface) 38%, transparent),
+      color-mix(in oklab, var(--cockpit-bg) 78%, transparent));
+}
+
+html[data-theme='light'] .cockpit-card {
+  background:
+    var(--shell-mat-sheen-card),
+    color-mix(in oklab, var(--cockpit-surface) 46%, transparent);
+  backdrop-filter: blur(36px) saturate(200%);
+  -webkit-backdrop-filter: blur(36px) saturate(200%);
+}

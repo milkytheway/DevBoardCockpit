@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, protocol } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
@@ -51,6 +51,28 @@ import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
+import { SEEDS } from '../shared/theme/seed';
+
+/** Height of the native window-controls overlay (kept in sync with visual.css). */
+const TITLEBAR_HEIGHT = 40;
+
+/**
+ * Colours for the native window controls (min / max / close) drawn over the
+ * page. The canvas colour comes from the same seed the renderer uses, so the
+ * overlay stays invisible against the shell in both themes.
+ */
+function titleBarOverlay(theme: 'dark' | 'light'): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  const seed = SEEDS[theme];
+  return {
+    color: seed['bg-0'],
+    symbolColor: seed['text-0'],
+    height: TITLEBAR_HEIGHT,
+  };
+}
 
 /**
  * Electron main 入口。
@@ -495,6 +517,13 @@ handle(IPC.themeSet, (theme) => {
   // The renderer remounts the card frames after switching, so the next
   // `cockpit://` response carries the new tokens (contract §6.2).
   shellTheme = theme === 'light' ? 'light' : 'dark';
+  // The native window buttons sit on top of the canvas; recolour them too so
+  // the top edge stays one surface in both themes.
+  if (process.platform !== 'darwin') {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.setTitleBarOverlay(titleBarOverlay(shellTheme));
+    }
+  }
   return undefined;
 });
 
@@ -627,6 +656,11 @@ function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    // The shell draws its own top edge and the native title text is gone:
+    // only the system window controls float over the canvas (see visual.css
+    // `.window-drag`). The menu is removed in `whenReady`.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: titleBarOverlay(shellTheme),
     webPreferences: {
       // preload 的文件名不是随手写的：与 electron-vite 的产出同名（`src/shared/build-layout.ts` 是唯一出处），
       // `npm run build` 末尾的自检脚本会验这个文件真的存在。
@@ -661,6 +695,9 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  // No File/Edit/View… strip under the title bar: the shell is the menu.
+  Menu.setApplicationMenu(null);
+
   // `cockpit://` 的处理器（卡片 + 外壳）
   protocol.handle('cockpit', (request) => cards.protocol(request));
 

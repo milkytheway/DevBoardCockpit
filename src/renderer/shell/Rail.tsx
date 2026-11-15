@@ -4,6 +4,7 @@ import {
   GridIcon,
   LayersIcon,
   ListIcon,
+  SearchIcon,
   TerminalIcon,
 } from './Icons';
 import type { PageId } from './types';
@@ -27,9 +28,11 @@ const ENTRIES: { id: PageId; label: string; icon: (props: { size?: number }) => 
 export function Rail({
   page,
   onPage,
+  onOpenPalette,
 }: {
   page: PageId;
   onPage: (page: PageId) => void;
+  onOpenPalette: () => void;
 }): JSX.Element {
   return (
     <nav className="rail" aria-label="主导航">
@@ -55,6 +58,18 @@ export function Rail({
         })}
       </div>
       <div className="rail__foot">
+        <button
+          type="button"
+          className="rail__item rail__palette"
+          title="搜索 / 命令（Ctrl K）"
+          aria-label="搜索和命令"
+          onClick={onOpenPalette}
+        >
+          <span className="rail__glyph" aria-hidden>
+            <SearchIcon size={18} />
+          </span>
+          <span className="rail__label">搜索</span>
+        </button>
         <span className="rail__status" title="本地外壳">
           <span className="live-dot live-dot--ok" aria-hidden />
         </span>

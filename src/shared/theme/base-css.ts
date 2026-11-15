@@ -18,6 +18,14 @@
 export function baseStyleBlock(): string {
   return `/* cockpit 基础样式 —— 宿主注入（__host/theme.css）
    只有 var(--cockpit-*)，没有任何色值：皮肤变了这段自动跟着变。 */
+html, body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input, textarea, select, [contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+}
 .cockpit-value {
   font-family: var(--cockpit-font-mono);
   font-variant-numeric: tabular-nums;
