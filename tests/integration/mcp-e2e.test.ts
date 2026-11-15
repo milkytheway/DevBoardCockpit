@@ -215,7 +215,7 @@ function hostDeps(): McpHostDeps {
       packIdOf: () => 'demo-pack',
       contractVersion: 'devboard/v1',
       hasExitCode: true,
-      runTransaction: async (fn: (c: unknown) => Promise<unknown>) =>
+      runTransaction: async <T>(fn: (connection: Connection) => Promise<T>): Promise<T> =>
         fn({
           exec: async () => ({
             exitCode: 0,
@@ -224,7 +224,7 @@ function hostDeps(): McpHostDeps {
             durationMs: 1,
             timedOut: false,
           }),
-        } as never),
+        } as unknown as Connection),
       readTag: async () => undefined,
       confirmations: new ConfirmationStore(),
       audit: () => 'audit-e2e',
