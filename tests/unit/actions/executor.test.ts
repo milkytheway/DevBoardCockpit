@@ -132,6 +132,13 @@ describe('执行器 · 正常路径', () => {
     expect(h.executed[0]).toBe("echo 'x; reboot' > /tmp/note");
   });
 
+  it('审计行里有**最终命令**（追责的第一环 ✓）', async () => {
+    const h = harness();
+    await invokeAction(ACTION, { value: 128 }, h.deps);
+    // **命令是编码过的** ✓（参数被引号包住 ✓）
+    expect(h.audits[0]?.command).toBe('echo 128 > /sys/class/backlight/backlight/brightness');
+  });
+
   it('审计行里有**参数**与**回读值**', async () => {
     const h = harness();
     await invokeAction(ACTION, { value: 128 }, h.deps);
