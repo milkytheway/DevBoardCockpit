@@ -711,6 +711,10 @@ function inputSchema(pack: WorkflowPack): Record<string, PackParam> {
       ...(def.min === undefined ? {} : { min: def.min }),
       ...(def.max === undefined ? {} : { max: def.max }),
       ...(def.values === undefined ? {} : { values: def.values }),
+      // **default / pattern 也要传给编码器** ✓
+      // （`default` → 调用方没给时的取值 ✓；`pattern` → 形状检查 ✓）
+      ...(def.default === undefined ? {} : { default: def.default }),
+      ...(def.pattern === undefined ? {} : { pattern: def.pattern }),
     } as PackParam;
   }
   return schema;

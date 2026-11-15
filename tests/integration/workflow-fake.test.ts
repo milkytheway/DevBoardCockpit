@@ -69,7 +69,7 @@ function harness(): {
 
   const pack = parseWorkflow(
     {
-      formatVersion: 1,
+      apiVersion: 'devboard/v1',
       kind: 'Workflow',
       id: 'fake-flow.build-run',
       name: '假设备上的编译→直传→落位',

@@ -25,7 +25,7 @@ let userDir: string;
 let approvalFile: string;
 
 const PACK = {
-  formatVersion: 1,
+  apiVersion: 'devboard/v1',
   kind: 'Workflow',
   id: 'demo.run',
   name: '演示流程',
@@ -50,7 +50,7 @@ function yamlOf(pack: unknown): string {
     .map((s) => `  - id: ${s.id}\n    kind: ${s.kind}\n    role: ${s.role}\n    cmd: ${s.cmd}`)
     .join('\n');
   return [
-    'formatVersion: 1',
+    'apiVersion: devboard/v1',
     'kind: Workflow',
     `id: ${p.id}`,
     `name: ${p.name}`,
@@ -97,7 +97,7 @@ describe('流程包注册表 · 扫目录', () => {
 
   it('**坏包不拖垮其余**（跳过 + 一条警告 ✓）', () => {
     write(builtinDir, 'demo.yaml', yamlOf(PACK));
-    write(builtinDir, 'broken.yaml', 'formatVersion: 1\nkind: 不存在的\n');
+    write(builtinDir, 'broken.yaml', 'apiVersion: devboard/v1\nkind: 不存在的\n');
     const warnings: string[] = [];
     const reg = registry((m) => warnings.push(m));
     reg.scan();

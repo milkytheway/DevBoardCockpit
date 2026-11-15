@@ -7,7 +7,7 @@
 # ③ **最后一步是「运行并看输出」**——不是量测，是**命令的输出**
 #    → 判据用 `verify`（跑一次并看退出码）。
 
-formatVersion: 1
+apiVersion: devboard/v1
 kind: Workflow
 
 id: meminfo-user.build-run

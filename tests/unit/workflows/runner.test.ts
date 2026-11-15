@@ -123,7 +123,7 @@ describe('流程 · exec 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -145,7 +145,7 @@ describe('流程 · exec 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -164,7 +164,7 @@ describe('流程 · exec 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -192,7 +192,7 @@ describe('流程 · exec 步', () => {
     await runWorkflow(
       parseWorkflow(
         {
-          formatVersion: 1,
+          apiVersion: 'devboard/v1',
           kind: 'Workflow',
           id: 'w',
           name: 'w',
@@ -215,7 +215,7 @@ describe('流程 · exec 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -235,7 +235,7 @@ describe('流程 · exec 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -263,7 +263,7 @@ describe('流程 · 危险等级与输出', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -293,7 +293,7 @@ describe('流程 · 危险等级与输出', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -318,7 +318,7 @@ describe('流程 · 角色事实', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -362,7 +362,7 @@ describe('流程 · 确认凭据', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -404,7 +404,7 @@ describe('流程 · 续跑', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -427,7 +427,7 @@ describe('流程 · 续跑', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -455,7 +455,7 @@ describe('流程 · 续跑', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -471,6 +471,51 @@ describe('流程 · 续跑', () => {
   });
 });
 
+describe('流程 · 输入的 default', () => {
+  it('**调用方没给 → 用包里的 default** ✓', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: { project: { type: 'string', maxLength: 50, default: '01-hello' } },
+        roles: ROLES,
+        steps: [{ id: 'build', kind: 'exec', role: 'build', cmd: 'make {input:project}' }],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true });
+    // **命令里用的是默认值** ✓
+    expect(h.byId('guest')?.commands[0]).toBe("make '01-hello'");
+  });
+
+  it('**`pattern` 挡形状**（不匹配的输入被拒 ✓）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: { project: { type: 'string', maxLength: 50, pattern: '^[a-z0-9-]+$' } },
+        roles: ROLES,
+        steps: [{ id: 'build', kind: 'exec', role: 'build', cmd: 'make {input:project}' }],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, { project: 'BAD; rm -rf /' }, h.deps, { approved: true });
+    // **不合规的输入 → 不成功** ✓（契约 §7.7：方法不抛异常，返回失败 ✓）
+    expect(result.ok).toBe(false);
+    expect(result.stages[0]?.reason).toBe('invalid_params');
+    // **命令没发出去** ✓
+    expect(h.byId('guest')?.commands).toHaveLength(0);
+  });
+});
+
 describe('流程 · discover 步', () => {
   it('按规则找到产物，**落进槽**', async () => {
     const h = harness({
@@ -483,7 +528,7 @@ describe('流程 · discover 步', () => {
     });
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -513,7 +558,7 @@ describe('流程 · discover 步', () => {
     const h = harness({ files: { guest: [] } });
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -540,7 +585,7 @@ describe('流程 · file.transfer 步（直传）', () => {
     h.target('board').catAnswers['/usr/lib/modules/6.1.141/extra/hello.ko'] = 'ELF';
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -579,7 +624,7 @@ describe('流程 · file.transfer 步（直传）', () => {
     h.target('board').catAnswers['/usr/lib/modules/6.1.141/extra/hello.ko'] = 'ELF';
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -614,7 +659,7 @@ describe('流程 · assert 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',
@@ -640,7 +685,7 @@ describe('流程 · assert 步', () => {
     const h = harness();
     const pack = parseWorkflow(
       {
-        formatVersion: 1,
+        apiVersion: 'devboard/v1',
         kind: 'Workflow',
         id: 'w',
         name: 'w',

@@ -37,6 +37,20 @@ export interface WorkflowInputDef {
   max?: number;
   /** `enum` 才有：允许的取值（封闭） */
   values?: string[];
+  /**
+   * 默认值（**调用方没给时用它** ✓ —— `spec/02` §4.3 ✓）。
+   *
+   * → 宿主**预填**常用输入 ✓（卡片点一下就能跑 ✓）。
+   * → **必须过该类型的取值检查** ✓（它自己也要合法 ✓）。
+   */
+  default?: unknown;
+  /**
+   * `string` 时的形状约束（**正则** ✓ —— 注入防线的第二道 ✓）。
+   *
+   * → `maxLength` 挡长度 ✓、`pattern` 挡形状 ✓。
+   * → **正则本身非法 → 报错** ✓（不是等到运行时才炸 ✗）。
+   */
+  pattern?: string;
   description?: string;
 }
 
@@ -127,8 +141,14 @@ export interface WorkflowStep {
 }
 
 export interface WorkflowPack {
-  /** 宿主层格式版本（**不是契约的 `apiVersion`**——免得混淆） */
-  formatVersion: 1;
+  /**
+   * 契约版本（**与板型包、卡片 manifest 同一套词汇** ✓ —— ADR-D34-1 ✓）。
+   *
+   * → 流程包晋升契约后，**它就是契约格式** ✓ → 版本字段必须与别处一样 ✓。
+   *   （评审 38 的 C1 ✓：契约写 `apiVersion`，实现却还停在 `formatVersion` ——
+   *   **一份完全符合契约的包会被实现拒掉** ✗。）
+   */
+  apiVersion: 'devboard/v1';
   kind: 'Workflow';
   id: string;
   name: string;
@@ -141,8 +161,11 @@ export interface WorkflowPack {
 
 /* ── 校验用的封闭字段表 ────────────────────────────────────────────── */
 
+/** 已知的契约版本（**与板型包、卡片 manifest 同一个** ✓） */
+export const KNOWN_API_VERSION = 'devboard/v1';
+
 const TOP_KEYS = [
-  'formatVersion',
+  'apiVersion',
   'kind',
   'id',
   'name',
@@ -153,7 +176,26 @@ const TOP_KEYS = [
   'steps',
 ] as const;
 
-const INPUT_KEYS = ['type', 'required', 'maxLength', 'min', 'max', 'values', 'description'] as const;
+/**
+ * 输入的封闭字段表。
+ *
+ * → **`default` 与 `pattern`**（2026-11-15 加 ✓ —— 评审 38 的 I1 ✓）：
+ * 契约 `spec/05` §二 说「类型表照 `spec/02` §4.3」✓，
+ * 而 `02` §4.3 明确有这两个字段 ✓ → **是实现漏了** ✓。
+ * → `default`：宿主**预填**常用输入 ✓（卡片点一下就能跑 ✓）；
+ * → `pattern`：**注入防线的第二道** ✓（`maxLength` 挡长度、`pattern` 挡形状 ✓）。
+ */
+const INPUT_KEYS = [
+  'type',
+  'required',
+  'maxLength',
+  'min',
+  'max',
+  'values',
+  'default',
+  'pattern',
+  'description',
+] as const;
 const ROLE_KEYS = ['purpose', 'profile'] as const;
 
 const STEP_KEYS = [
@@ -294,15 +336,15 @@ export function parseWorkflow(raw: unknown, source: string): WorkflowPack {
   if (!isRecord(raw)) fail('流程包必须是一个对象', source);
   checkKeys(ctx, raw, TOP_KEYS, '');
 
-  if (raw['formatVersion'] !== 1) {
-    fail('formatVersion 必须是 1（宿主层格式版本；它不是契约的 apiVersion）', source);
+  if (raw['apiVersion'] !== KNOWN_API_VERSION) {
+    fail(`apiVersion 必须是 ${KNOWN_API_VERSION}（与板型包、卡片 manifest 同一套版本词汇 ✓）`, source);
   }
   if (raw['kind'] !== 'Workflow') {
     fail(`kind 必须是 Workflow（收到的是 ${String(raw['kind'])}）`, source);
   }
 
   const pack: WorkflowPack = {
-    formatVersion: 1,
+    apiVersion: KNOWN_API_VERSION,
     kind: 'Workflow',
     id: nonEmptyString(raw['id'], 'id', ctx),
     name: nonEmptyString(raw['name'], 'name', ctx),
@@ -354,6 +396,22 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
       }
       def.values = value['values'] as string[];
     }
+    if (value['default'] !== undefined) {
+      def.default = value['default'];
+    }
+    if (value['pattern'] !== undefined) {
+      const pattern = nonEmptyString(value['pattern'], `inputs.${name}.pattern`, ctx);
+      // **正则自己得合法** ✓（非法正则 → 现在报错，不是运行时才炸 ✗）
+      try {
+        new RegExp(pattern);
+      } catch (err) {
+        fail(
+          `inputs.${name}.pattern 不是合法的正则：${err instanceof Error ? err.message : String(err)}`,
+          ctx.source,
+        );
+      }
+      def.pattern = pattern;
+    }
     if (value['description'] !== undefined) {
       def.description = nonEmptyString(value['description'], `inputs.${name}.description`, ctx);
     }
@@ -364,9 +422,61 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
     if ((def.type === 'string' || def.type === 'path') && def.maxLength === undefined) {
       fail(`inputs.${name} 是 ${def.type} → 必须给 maxLength（不许开口）`, ctx.source);
     }
+    // **default 自己也要合法** ✓（它会被当成真的值用 ✓）
+    if (def.default !== undefined) checkDefault(def, name, ctx);
     out[name] = def;
   }
   return out;
+}
+
+/**
+ * 默认值**自己也要合法** ✓。
+ *
+ * → 一个 `default: 999` 配 `max: 255` 的 input → **宿主预填一个非法值** ✗
+ * → 到运行时才发现 ✗ → 现在就报错 ✓。
+ */
+function checkDefault(def: WorkflowInputDef, name: string, ctx: Ctx): void {
+  const value = def.default;
+  switch (def.type) {
+    case 'integer':
+    case 'number': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        fail(`inputs.${name}.default 必须是数字（type: ${def.type}）`, ctx.source);
+      }
+      if (def.min !== undefined && value < def.min) {
+        fail(`inputs.${name}.default 低于 min（${def.min}）`, ctx.source);
+      }
+      if (def.max !== undefined && value > def.max) {
+        fail(`inputs.${name}.default 高于 max（${def.max}）`, ctx.source);
+      }
+      return;
+    }
+    case 'boolean': {
+      if (typeof value !== 'boolean') {
+        fail(`inputs.${name}.default 必须是布尔`, ctx.source);
+      }
+      return;
+    }
+    case 'enum': {
+      if (typeof value !== 'string' || !(def.values ?? []).includes(value)) {
+        fail(`inputs.${name}.default 必须是 values 里的某一项`, ctx.source);
+      }
+      return;
+    }
+    case 'string':
+    case 'path': {
+      if (typeof value !== 'string') {
+        fail(`inputs.${name}.default 必须是字符串`, ctx.source);
+      }
+      if (def.maxLength !== undefined && value.length > def.maxLength) {
+        fail(`inputs.${name}.default 超过 maxLength（${def.maxLength}）`, ctx.source);
+      }
+      if (def.pattern !== undefined && !new RegExp(def.pattern).test(value)) {
+        fail(`inputs.${name}.default 不匹配 pattern`, ctx.source);
+      }
+      return;
+    }
+  }
 }
 
 function parseRoles(raw: unknown, ctx: Ctx): Record<string, WorkflowRole> {

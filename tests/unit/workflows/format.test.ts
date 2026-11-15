@@ -23,7 +23,7 @@ import { parseWorkflow, type WorkflowPack } from '../../../src/main/workflows/fo
  * | placement 词表 | 拼错 `kernel-module` → **报错**，不能默默回落到别的语义 |
  */
 const MINIMAL = {
-  formatVersion: 1,
+  apiVersion: 'devboard/v1',
   kind: 'Workflow',
   id: 'demo.run',
   name: '演示流程',
@@ -59,8 +59,17 @@ describe('流程包 · 解析', () => {
     expectInvalid({ ...MINIMAL, extra: 1 }, /未知字段/);
   });
 
-  it('formatVersion 只认 1', () => {
-    expectInvalid({ ...MINIMAL, formatVersion: 2 }, /formatVersion/);
+  it('apiVersion 只认 devboard/v1（**与板型包、卡片 manifest 同一套词汇** ✓）', () => {
+    expectInvalid({ ...MINIMAL, apiVersion: 'devboard/v2' }, /apiVersion/);
+  });
+
+  it('**契约里的示例必须能过校验器**（评审 38 的 C1 ✓ —— 契约的 YAML 原样喂进来不许报错）', () => {
+    // **契约 `docs/spec/05` §一 那段 YAML 原样**（一字不差 ✓）
+    const text = readFileSync(join(__dirname, '../../../docs/spec/05-workflow-pack.md'), 'utf8');
+    const block = text.match(/```yaml\n([\s\S]*?)\n```/);
+    expect(block).not.toBeNull();
+    const example = yaml.load(block?.[1] ?? '') as unknown;
+    expect(() => parseWorkflow(example, 'spec/05-示例.yaml')).not.toThrow();
   });
 
   it('kind 必须是 Workflow', () => {
@@ -120,6 +129,43 @@ describe('流程包 · inputs 的封闭类型表', () => {
   it('**string / path 必须给 maxLength**（不然是开口的）', () => {
     expectInvalid({ ...MINIMAL, inputs: { x: { type: 'string' } } }, /maxLength/);
     expectInvalid({ ...MINIMAL, inputs: { x: { type: 'path' } } }, /maxLength/);
+  });
+
+  it('**`default` 与 `pattern` 是允许的**（照 spec/02 §4.3 ✓ —— 评审 38 的 I1 ✓）', () => {
+    const pack = parseWorkflow(
+      {
+        ...MINIMAL,
+        inputs: {
+          project: { type: 'string', maxLength: 50, default: '01-hello', pattern: '^[a-z0-9-]+$' },
+          count: { type: 'integer', min: 1, max: 9, default: 3 },
+        },
+      },
+      'demo.yaml',
+    );
+    expect(pack.inputs['project']?.default).toBe('01-hello');
+    expect(pack.inputs['project']?.pattern).toBe('^[a-z0-9-]+$');
+    expect(pack.inputs['count']?.default).toBe(3);
+  });
+
+  it('**非法的正则 → 报错**（不是运行时才炸 ✓）', () => {
+    expectInvalid(
+      { ...MINIMAL, inputs: { x: { type: 'string', maxLength: 10, pattern: '[' } } },
+      /不是合法的正则/,
+    );
+  });
+
+  it('**`default` 自己也要合法**（宿主不能预填一个非法值 ✓）', () => {
+    // 数字的 default 落在域外
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', min: 0, max: 10, default: 99 } } }, /高于 max/);
+    // 枚举的 default 不在 values 里
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'enum', values: ['a'], default: 'b' } } }, /values 里的某一项/);
+    // 字符串的 default 超过 maxLength
+    expectInvalid(
+      { ...MINIMAL, inputs: { x: { type: 'string', maxLength: 3, default: 'toolong' } } },
+      /超过 maxLength/,
+    );
+    // 类型不对
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', default: 'abc' } } }, /必须是数字/);
   });
 
   it('unknown 字段在 input 里也不认', () => {

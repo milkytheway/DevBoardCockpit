@@ -1450,6 +1450,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M120 流程包：版本词汇必须与契约一致（`apiVersion`，**不是** formatVersion ✓）',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: 'apiVersion 只认 devboard/v1',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (raw['apiVersion'] !== KNOWN_API_VERSION) {",
+        "  if (raw['apiVersion'] !== 'devboard/v2') { // 变异：版本词汇漂了",
+      ),
+  },
+  {
+    name: 'M121 流程包：`default` 自己也要合法（宿主不能预填一个非法值 ✓）',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: 'default 自己也要合法',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (def.default !== undefined) checkDefault(def, name, ctx);',
+        '    // 变异：不校验 default',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

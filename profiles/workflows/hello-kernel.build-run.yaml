@@ -12,7 +12,7 @@
 # ⑤ **按名字加载，不按路径**：`modprobe <名字>`，
 #    **绝不 `insmod /path/x.ko`**（板子放置规范 §4 硬规矩 2）。
 
-formatVersion: 1
+apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.build-run

@@ -24,7 +24,7 @@ let userDir: string;
 let approvalFile: string;
 
 interface TestPack {
-  formatVersion: number;
+  apiVersion: string;
   kind: string;
   id: string;
   name: string;
@@ -35,7 +35,7 @@ interface TestPack {
 }
 
 const PACK: TestPack = {
-  formatVersion: 1,
+  apiVersion: 'devboard/v1',
   kind: 'Workflow',
   id: 'demo.run',
   name: '演示流程',
@@ -73,7 +73,7 @@ function yamlOf(pack: TestPack): string {
     )
     .join('\n');
   return [
-    'formatVersion: 1',
+    'apiVersion: devboard/v1',
     'kind: Workflow',
     `id: ${pack.id}`,
     `name: ${pack.name}`,
