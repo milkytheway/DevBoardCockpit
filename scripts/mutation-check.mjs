@@ -1872,6 +1872,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M153 MCP：**恶意 Origin → 403**（DNS rebinding 的第一道 ✓ —— 契约 §7.1 ✓）',
+    file: 'src/main/mcp/security.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
+    expect: '恶意 Origin',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (origin === 'null') return false;",
+        '  // 变异：不拦 null 来源',
+      ),
+  },
+  {
+    name: 'M154 MCP：**别的主机名 → 403**（DNS rebinding 的第二道 ✓ —— 契约 §7.1 ✓）',
+    file: 'src/main/mcp/security.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
+    expect: '别的主机名',
+    apply: (s) =>
+      replace(
+        s,
+        "  return name === '127.0.0.1' || name === 'localhost' || name === '::1';",
+        '  return true; // 变异：谁的主机名都放行',
+      ),
+  },
+  {
+    name: 'M155 MCP：**Bearer 认证要对得上**（token 不对 → 401 ✓ —— 契约 §7.1 ✓）',
+    file: 'src/main/mcp/security.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
+    expect: 'token 不对',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (a.length !== b.length) return false;',
+        '  // 变异：长度不等也放行',
+      ),
+  },
+  {
+    name: 'M156 MCP：**没有 Origin → 放行**（不是浏览器的客户端 ✓ —— 契约 §7.1「存在且不合法时」✓）',
+    file: 'src/main/mcp/security.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
+    expect: '没有 Origin',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (origin === undefined || origin === '') return true;',
+        "  if (origin === undefined || origin === '') return false; // 变异：没 Origin 也拒",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
