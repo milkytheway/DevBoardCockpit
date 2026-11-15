@@ -51,6 +51,51 @@ export interface RegisteredWorkflow {
   approvedAt?: number;
 }
 
+/**
+ * 一个流程包**会干什么**的摘要（**给人过目** ✓）。
+ */
+export interface WorkflowPlan {
+  id: string;
+  name: string;
+  /** 角色 → 它连的是哪台机器（**profile id** ✓） */
+  roles: { role: string; purpose: string; profile: string }[];
+  /** 每个写步骤：在哪跑、跑什么、危不危险、判据读在哪 */
+  steps: {
+    id: string;
+    kind: string;
+    /** 执行角色（判据步是「在哪个角色上读」✓） */
+    role?: string;
+    /** 命令**模板**（**还没替换输入** ✓ —— 批准时不知道输入值 ✓） */
+    command?: string;
+    /** 这一步危险吗（destructive → **运行期还要再确认一次** ✓） */
+    dangerous: boolean;
+    /** 判据读在哪个角色上（跨目标读 = 「板子上真的有那个文件吗」✓） */
+    readbackRole?: string;
+  }[];
+}
+
+/** 摘要一个流程包 */
+export function planOf(pack: WorkflowPack, registered?: { digest: string; approved: boolean }): WorkflowPlan {
+  return {
+    id: pack.id,
+    name: pack.name,
+    roles: Object.entries(pack.roles).map(([role, r]) => ({
+      role,
+      purpose: r.purpose,
+      profile: r.profile,
+    })),
+    steps: pack.steps.map((step) => ({
+      id: step.id,
+      kind: step.kind,
+      ...(step.role === undefined ? {} : { role: step.role }),
+      ...(step.cmd === undefined ? {} : { command: step.cmd }),
+      dangerous: step.danger === 'destructive',
+      ...(step.readback?.role === undefined ? {} : { readbackRole: step.readback.role }),
+    })),
+    ...(registered === undefined ? {} : {}),
+  };
+}
+
 /** 批准账的存盘形状 */
 interface ApprovalFile {
   workflows: Record<string, { digest: string; at: number }>;
@@ -128,6 +173,19 @@ export class WorkflowRegistry {
         });
       }
     }
+  }
+
+  /**
+   * 这个包**会干什么**（**给人过目的** ✓）。
+   *
+   * → 「点一下批准」之前，人必须知道**会在哪些机器上跑哪些命令** ✓
+   *   （评审 35 的 32-C1 建议第 2 条 ✓）。
+   * → 没有这一条，批准就只是「批准一个文件名」✓ → **等于没看** ✗。
+   */
+  planOf(id: string): WorkflowPlan | undefined {
+    const found = this.packs.get(id);
+    if (found === undefined) return undefined;
+    return planOf(found.pack, found);
   }
 
   /** 列全部（**含未批准的** ✓ —— 用户要看得见「有个包还没批」） */

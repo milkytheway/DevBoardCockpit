@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { makeError } from '../../shared/errors';
 import { runWorkflow, type WorkflowRunDeps, type WorkflowRunResult, type WorkflowStage } from './runner';
 import type { WorkflowRegistry } from './registry';
@@ -124,7 +125,9 @@ export class WorkflowService {
     opts: { confirmIds?: Record<string, string> } = {},
   ): { runId: string } {
     const registered = this.opts.registry.requireApproved(id);
-    const runId = `wf-${this.now().toString(36)}-${this.runs.size + 1}`;
+    // **run_id 不可预测**（评审 35 的 V2-M10 ✓）：
+    // 时间戳派生的 id **能被猜到** ✗ → 而它是 `confirm` 的入参之一 ✓。
+    const runId = `wf-${randomUUID().slice(0, 8)}`;
     const status: WorkflowRunStatus = {
       runId,
       workflowId: registered.id,

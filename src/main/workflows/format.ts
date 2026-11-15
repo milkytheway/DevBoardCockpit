@@ -189,8 +189,18 @@ const READBACK_KEYS = [
   'role',
 ] as const;
 
-/** `{role:x.fact}` 能取的事实（**封闭**——不许翻 profile 的任意字段） */
-export const ROLE_FACTS = ['host', 'port', 'user', 'key', 'profile_id'] as const;
+/**
+ * `{role:x.fact}` 能取的事实（**封闭**——不许翻 profile 的任意字段）。
+ *
+ * → **没有 `key`**（2026-11-15 加 ✓）：
+ * 凭据的**路径**不该被插进命令 ✓ ——
+ * ① 它会进审计行（**追责链里多一份敏感信息** ✗）；
+ * ② 它会进 `dry_run` 的回显（**未授权方能看到凭据路径** ✗）；
+ * ③ 而且它**多半没用**：命令跑在**源目标**上，源目标用的是**它自己的** ~/.ssh 密钥 ✓，
+ * 目标目标的密钥路径对源目标没有意义 ✗。
+ * → **凭据是宿主的账**（与 ADR-D31 R7「只许引用 profile id」一致 ✓）。
+ */
+export const ROLE_FACTS = ['host', 'port', 'user', 'profile_id'] as const;
 
 /* ── 小工具 ────────────────────────────────────────────────────────── */
 

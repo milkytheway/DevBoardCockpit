@@ -14,6 +14,7 @@
  *
  * → 这一对命令是**人**用的 ✓（卡片与 agent 走 `WorkflowService` ✓，只认 id ✓）。
  */
+import { createInterface } from 'node:readline';
 import { WorkflowRegistry, workflowApprovalsFile } from '../src/main/workflows/registry';
 import { builtinWorkflowsDir, userDataDir, userWorkflowsDir } from '../src/main/util/paths';
 
@@ -28,6 +29,17 @@ function registry(): WorkflowRegistry {
   });
   reg.scan();
   return reg;
+}
+
+/** 问人一句话，等他答（**人在终端上敲** ✓） */
+function ask(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 }
 
 const command = process.argv[2] ?? 'list';
@@ -55,8 +67,39 @@ switch (command) {
       console.error('缺流程 id（npm run workflow:approve -- <id>）');
       process.exit(2);
     }
-    const approved = registry().approve(id);
-    console.log(`已批准：${approved.id}（${approved.name}）`);
+    const reg = registry();
+    // **先把这个包会干什么打出来**（评审 35 的 32-C1 ✓）：
+    // 「点一下批准」之前，人得知道**会在哪些机器上跑哪些命令** ✓
+    // —— 不然批准就只是「批准一个文件名」✓ → **等于没看** ✗。
+    const plan = reg.planOf(id);
+    if (plan === undefined) {
+      console.error(`没有这个流程包：${id}`);
+      process.exit(2);
+    }
+    console.log(`这个流程会做这些事：\n`);
+    console.log(`  流程：${plan.name}（${plan.id}）\n`);
+    console.log('  会在这些目标上跑：');
+    for (const role of plan.roles) {
+      console.log(`    ${role.role} → ${role.profile}（${role.purpose}）`);
+    }
+    console.log('\n  逐步：');
+    for (const step of plan.steps) {
+      const where = step.role === undefined ? '' : `@${step.role}`;
+      const danger = step.dangerous ? '  ⚠ destructive（运行期还要再确认一次）' : '';
+      const read = step.readbackRole === undefined ? '' : `（判据读在 ${step.readbackRole}）`;
+      console.log(`    ${step.id}（${step.kind}）${where}${read}`);
+      if (step.command !== undefined) console.log(`      $ ${step.command}`);
+      if (danger !== '') console.log(`    ${danger.trim()}`);
+    }
+    console.log('\n  确认批准？（上面就是它会做的事）[y/N]');
+    // **读一行**（人在终端上敲 ✓）
+    const answer = (await ask('  ')).toLowerCase().trim();
+    if (answer !== 'y' && answer !== 'yes') {
+      console.log('没批准 ✓');
+      break;
+    }
+    const approved = reg.approve(id);
+    console.log(`\n已批准：${approved.id}（${approved.name}）`);
     console.log(`  摘要 ${approved.digest} —— **改了内容要重新批准** ✓`);
     break;
   }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -102,7 +103,10 @@ export class ActionAudit {
    */
   append(row: AuditRow): string {
     this.seq += 1;
-    const id = row.id ?? `audit-${row.at.toString(36)}-${this.seq}`;
+    // **id 不可预测**（评审 35 的 V2-M10 ✓）：
+    // 时间戳 + 序号**能被猜到** ✗ → 而 audit_id 会被卡片/agent 拿到 ✓
+    // → 猜到一个别人的 audit_id 就能**指着别人的记录说「这是他干的」** ✗。
+    const id = row.id ?? `audit-${randomUUID().slice(0, 8)}`;
     mkdirSync(dirname(this.filePath), { recursive: true });
     appendFileSync(this.filePath, `${formatAuditRow({ ...row, id })}\n`, 'utf8');
     return id;
