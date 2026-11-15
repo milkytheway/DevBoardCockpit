@@ -2174,7 +2174,7 @@ const MUTATIONS = [
   {
     name: 'M180 MCP 读侧：**`connected` 要看运行时是不是 `running`** ✓（**光看 profileId 会误报** ✓）',
     file: 'src/main/mcp/wiring.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/wiring.test.ts'],
     expect: 'connected',
     apply: (s) =>
       replace(
