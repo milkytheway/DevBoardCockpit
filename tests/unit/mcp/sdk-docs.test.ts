@@ -78,6 +78,8 @@ describe('MCP · SDK 活文档', () => {
     expect(docs.content).toContain('cpu-usage');
     // **显示它的读权限** ✓（agent 照着改 manifest 时要知道能读什么 ✓）
     expect(docs.content).toContain('permissions.read');
+    // **读权限是真的** ✓（**不是编的** ✓ —— 真卡读的是 `cpu.usage` ✓）
+    expect(docs.content).toContain('cpu.usage');
   });
 
   it('**不认识的主题 → 空内容** ✓（**不猜** ✓）', () => {
