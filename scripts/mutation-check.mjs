@@ -1860,6 +1860,18 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M152 多卡片：**两张卡同时动同一块板子 → 往返不交错**（同一条队列 ✓ —— 串口上不串台 ✓）',
+    file: 'src/main/tags/runtime.ts',
+    check: ['npx', 'vitest', 'run', 'tests/integration/multi-card-contention.test.ts'],
+    expect: '往返不交错',
+    apply: (s) =>
+      replace(
+        s,
+        "    return this.queue.run('action-verify', () => fn(connection));",
+        '    return fn(connection); // 变异：不经队列（两张卡会交错 ✗）',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
