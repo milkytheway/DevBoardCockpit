@@ -60,9 +60,11 @@ function byRule(
 
 describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
   it('**通配符 → 报错**（流程权限只许精确 id ✓ —— 同 §2.3 ✓）', () => {
+    // **宿主里「有」这个 id** ✓ → 这样**只有通配那一条能报** ✓
+    // （否则「宿主里没有它」那条也会报 ✓ → 判据就分不清是哪条了 ✓）
     const result = validateCard(
       manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.*'] } }),
-      ctx(),
+      ctx({ availableWorkflows: ['demo.*'] }),
     );
     const issues = byRule(result, 14);
     expect(issues.length).toBeGreaterThan(0);
