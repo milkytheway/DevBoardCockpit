@@ -20,9 +20,10 @@ describe('中途叫停', () => {
   it('**进程真的被杀掉了**（不是「不等了」✓）', async () => {
     const controller = new AbortController();
 
-    // 睡 2 秒（**不是 10 分钟** ✓）：
-    // → 「取消没杀进程」时它会自然跑完 ✓ → 判据抓得住 ✓（而不是把测试挂死 ✗）
-    const running = runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 2000)'], {
+    // 睡 4 秒（**比判据的门槛长一倍** ✓）：
+    // → 「取消没杀进程」时它会**跑满 4 秒**才自己结束 ✗ → 判据抓得住 ✓
+    // → 而且不会把测试挂死（不是 10 分钟 ✓ —— 沙箱里全量套件会挂住 ✓）
+    const running = runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 4000)'], {
       signal: controller.signal,
     });
 
@@ -33,6 +34,12 @@ describe('中途叫停', () => {
     expect(result.cancelled).toBe(true);
     // **取消不是超时** ✓（两者不该同码 ✓）
     expect(result.timedOut).toBe(false);
+
+    // **关键判据：取消之后要「立刻」就结束了** ✓
+    // → 「只是不等了」的话 → 它会跑满 4 秒 ✗ → 这里红 ✓
+    // （**不能只看 `cancelled` 那个标志** ✗ —— 那是「我标记过了」，
+    //   不是「进程真的没了」✓ —— 尖兵的现象正是标志对了、进程还在跑 ✗）
+    expect(result.durationMs).toBeLessThan(2000);
 
     // **进程真的没了** ✓ —— 查一下系统里还有没有它 ✓
     // （查的正是 runProcess 起的那个 ✓ —— 它的 pid 在结果里 ✓）
