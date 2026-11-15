@@ -1981,7 +1981,7 @@ const MUTATIONS = [
   },
   {
     name: 'M164 MCP：**每个响应都带 apiVersion**（契约 §四 ✓）',
-    file: 'src/main/mcp/server.ts',
+    file: 'src/main/mcp/convention.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
     expect: '每个响应都带 apiVersion',
     apply: (s) =>
