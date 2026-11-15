@@ -6,6 +6,7 @@ import { withVersion, withVersionEach } from './convention';
 import { confirmAction, executeAction } from './action-tools';
 import { sdkDocs } from './sdk-docs';
 import { installCard, uninstallCard } from './card-tools';
+import { promoteCard } from './promote';
 import {
   describeTag,
   getCardRuntimeLog,
@@ -295,6 +296,24 @@ const TOOL_DEFS: McpToolDef[] = [
     },
   },
   {
+    name: 'promote_card',
+    title: '把一张卡提为全屏',
+    description:
+      '把一张卡提为全屏（**它改的是布局** ✓ —— 全屏是布局的一个状态 ✓）。' +
+      '**宿主记「谁要全屏」✓，铺几行由渲染层按视口算** ✓（行高只有那边知道 ✓）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card_id: { type: 'string', description: '卡片 id' },
+        connection_id: {
+          type: 'string',
+          description: '哪条连接（**缺省 = 该卡唯一的实例** ✓ · 多于一个时报错 ✓）',
+        },
+      },
+      required: ['card_id'],
+    },
+  },
+  {
     name: 'get_card_sdk_docs',
     title: '拿写卡片的语法参考',
     description:
@@ -538,6 +557,34 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
           return withVersion(failure('failed', '宿主没接上装卡能力'));
         }
         return withVersion(uninstallCard(deps.host.cardTools, cardId));
+      },
+    ],
+    [
+      'promote_card',
+      (args) => {
+        const cardId = args['card_id'];
+        if (typeof cardId !== 'string' || cardId.length === 0) {
+          return withVersion(failure('invalid_params', 'promote_card 缺 card_id'));
+        }
+        const conn = args['connection_id'];
+        if (conn !== undefined && typeof conn !== 'string') {
+          return withVersion(failure('invalid_params', 'connection_id 要么不给，要么给字符串'));
+        }
+        if (deps.host === undefined) {
+          return withVersion(failure('failed', '宿主没接上布局能力'));
+        }
+        const result = promoteCard(deps.host.layout(), cardId, conn as string | undefined);
+        if (!result.ok || result.layout === undefined) {
+          return withVersion(
+            failure(
+              result.reason === 'invalid_params' ? 'invalid_params' : 'not_found',
+              result.detail,
+            ),
+          );
+        }
+        // **存下去** ✓（**全屏是布局状态** ✓ —— 不存就不生效 ✓）
+        deps.host.saveLayout(result.layout);
+        return withVersion({ ok: true, mode: 'fullscreen' });
       },
     ],
     [

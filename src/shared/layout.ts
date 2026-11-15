@@ -58,6 +58,17 @@ export interface LayoutState {
   units: LayoutUnit[];
   /** 显示密度（全局） */
   density: ViewDensity;
+  /**
+   * **被提为全屏的那一格**（**没有就是 `null`** ✓）。
+   *
+   * → **为什么是布局的一部分** ✓：契约 §2.5 说「`promote_card` **改的是布局**」✓
+   *   —— **全屏是一个布局状态** ✓，不是一次性的渲染指令 ✓。
+   * → **为什么宿主侧不直接算「铺满几行」** ✓：**它算不出来** ✓ ——
+   *   行高与视口高度**只有 renderer 知道** ✓（`ROW_HEIGHT` 是渲染层的常量 ✓）。
+   *   → **宿主记「谁要全屏」✓，渲染层算「铺几行」✓** —— **两边都不猜** ✓。
+   * → **可空** ✓（老布局文件没有这个字段 ✓ → 读出来是 `null` ✓ → 不是「坏了」✓）。
+   */
+  promoted?: LayoutUnit | null;
   /** 最后一次保存的时刻（诊断用） */
   updatedAt: number;
 }
@@ -93,7 +104,7 @@ export function isLayoutUnit(raw: unknown): raw is LayoutUnit {
 
 /** 空布局（主区空的 —— 你自己摆） */
 export function emptyLayout(now = 0): LayoutState {
-  return { version: 3, units: [], density: 'comfortable', updatedAt: now };
+  return { version: 3, units: [], density: 'comfortable', promoted: null, updatedAt: now };
 }
 
 /**
@@ -125,7 +136,13 @@ export function normalizeLayout(raw: unknown, now = 0): LayoutState {
       null;
     const density = readDensity(active?.config?.density);
     const units = active === null ? normalizeUnits(record['units']) : normalizeUnits(active.units);
-    return { version: 3, units, density, updatedAt: readUpdatedAt(record['updatedAt'], now) };
+    return {
+      version: 3,
+      units,
+      density,
+      promoted: readPromoted(record['promoted']),
+      updatedAt: readUpdatedAt(record['updatedAt'], now),
+    };
   }
 
   // v1 / v3：直接收
@@ -133,6 +150,7 @@ export function normalizeLayout(raw: unknown, now = 0): LayoutState {
     version: 3,
     units: normalizeUnits(record['units']),
     density: readDensity(record['density']),
+    promoted: readPromoted(record['promoted']),
     updatedAt: readUpdatedAt(record['updatedAt'], now),
   };
 }
@@ -184,6 +202,39 @@ function normalizeUnits(raw: unknown): LayoutUnit[] {
 
 function readDensity(raw: unknown): ViewDensity {
   return raw === 'compact' ? 'compact' : 'comfortable';
+}
+
+/**
+ * 读「被提为全屏的那一格」✓。
+ *
+ * → **老布局文件没有这个字段** ✓ → **`null`** ✓（不是「坏了」✓）。
+ * → **形状不对也是 `null`** ✓（不猜 ✓）。
+ */
+function readPromoted(raw: unknown): LayoutUnit | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const unit = raw as Record<string, unknown>;
+  if (typeof unit['cardId'] !== 'string') return null;
+  const conn = unit['connectionId'];
+  const x = unit['x'];
+  const y = unit['y'];
+  const w = unit['w'];
+  const h = unit['h'];
+  if (
+    typeof x !== 'number' ||
+    typeof y !== 'number' ||
+    typeof w !== 'number' ||
+    typeof h !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    cardId: unit['cardId'],
+    connectionId: typeof conn === 'string' ? conn : null,
+    x,
+    y,
+    w,
+    h,
+  };
 }
 
 function readUpdatedAt(raw: unknown, fallback: number): number {
