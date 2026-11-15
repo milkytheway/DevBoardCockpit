@@ -7,6 +7,7 @@ import { confirmAction, executeAction } from './action-tools';
 import { sdkDocs } from './sdk-docs';
 import { installCard, uninstallCard } from './card-tools';
 import { promoteCard } from './promote';
+import { dryRunWorkflow } from './workflow-dry-run';
 import {
   describeTag,
   getCardRuntimeLog,
@@ -247,6 +248,10 @@ const TOOL_DEFS: McpToolDef[] = [
       properties: {
         id: { type: 'string', description: '流程 id（先跑 list_workflows 看有哪些）' },
         inputs: { type: 'object', description: '输入值（按流程的输入声明给）' },
+        dry_run: {
+          type: 'boolean',
+          description: '**只预览**将要跑什么 ✓（**不执行** ✓ · **不写审计** ✓ · **没有 run_id** ✓）',
+        },
       },
       required: ['id'],
     },
@@ -507,6 +512,27 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
           return withVersion(failure('invalid_params', 'run_workflow 缺 id'));
         }
         const inputs = (args['inputs'] ?? {}) as Record<string, unknown>;
+        const dryRun = args['dry_run'];
+        if (dryRun !== undefined && typeof dryRun !== 'boolean') {
+          return withVersion(failure('invalid_params', 'dry_run 要么不给，要么给布尔'));
+        }
+        // **dry_run：预览** ✓（**不跑任何一步** ✓ · **不写审计** ✓ · **没有 run_id** ✓）
+        if (dryRun === true) {
+          try {
+            const pack = workflows.pack(id);
+            const preview = dryRunWorkflow(pack, inputs);
+            return withVersion({
+              ok: preview.ok,
+              ...(preview.steps === undefined ? {} : { steps: preview.steps }),
+              ...(preview.reason === undefined ? {} : { reason: preview.reason }),
+              ...(preview.detail === undefined ? {} : { detail: preview.detail }),
+            });
+          } catch (err) {
+            return withVersion(
+              failure(reasonOf(err), err instanceof Error ? err.message : String(err)),
+            );
+          }
+        }
         try {
           const { runId } = workflows.start(id, inputs);
           return withVersion({ ok: true, run_id: runId });

@@ -136,6 +136,18 @@ export class WorkflowService {
   }
 
   /**
+   * **按 id 取一个已批准的流程包**（**给 dry_run 用** ✓）。
+   *
+   * → **只给已批准的** ✓ —— **没批过的 agent 连预览都不给** ✓
+   *   （预览会泄出「这个包会干什么」✓ —— 那是**没授权方不该知道的** ✗）。
+   * → **查不到就抛** ✓（带机器可读的 reason ✓ —— MCP 那层要回给 agent ✓）。
+   */
+  pack(id: string): WorkflowPack {
+    const found = this.opts.registry.requireApproved(id);
+    return found.pack;
+  }
+
+  /**
    * 列**用户批过的**流程（**没批过的不列** ✓ —— 卡片/agent 看不见没授权的东西 ✓）。
    */
   list(): WorkflowSummary[] {

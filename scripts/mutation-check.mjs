@@ -2292,6 +2292,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M194 MCP 流程 dry_run：**一步都不跑** ✓（**它是预览** ✓）',
+    file: 'src/main/mcp/workflow-dry-run.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/workflow-dry-run.test.ts'],
+    expect: '预览',
+    apply: (s) =>
+      replace(
+        s,
+        "  const steps: DryRunStep[] = pack.steps.map((step) => previewStep(step, inputs, encoded));",
+        "  const steps: DryRunStep[] = pack.steps.map((step) => previewStep(step, inputs, encoded));\n  void steps;",
+      ),
+  },
+  {
+    name: 'M195 MCP 流程 dry_run：**危险等级要给** ✓（**agent 要知道哪一步会毁东西** ✓）',
+    file: 'src/main/mcp/workflow-dry-run.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/workflow-dry-run.test.ts'],
+    expect: '危险等级',
+    apply: (s) =>
+      replace(
+        s,
+        "    danger: step.danger ?? 'reversible',",
+        "    danger: 'reversible', // 变异：不看步骤自己声明的危险等级",
+      ),
+  },
+  {
+    name: 'M196 MCP promote：**宿主只记「谁要全屏」** ✓（**铺几行是渲染层的事** ✓）',
+    file: 'src/main/mcp/promote.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/promote.test.ts'],
+    expect: '全屏',
+    apply: (s) =>
+      replace(
+        s,
+        "    layout: { ...state, promoted: { ...target } },",
+        "    layout: { ...state, promoted: null }, // 变异：不记谁要全屏",
+      ),
+  },
+  {
+    name: 'M197 MCP promote：**多于一个实例就报错** ✓（**不猜** ✓）',
+    file: 'src/main/mcp/promote.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/promote.test.ts'],
+    expect: '实例',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (candidates.length > 1) {",
+        "    if (false) {",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
