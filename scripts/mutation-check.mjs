@@ -2227,7 +2227,7 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "      const tags = Array.isArray(perms.read) ? perms.read.filter((t): t is string => typeof t === 'string') : [];",
+        '      const tags = Array.isArray(perms.read)\n        ? perms.read.filter((t): t is string => typeof t === \'string\')\n        : [];',
         "      const tags: string[] = []; // 变异：示例卡不列读权限",
       ),
   },
