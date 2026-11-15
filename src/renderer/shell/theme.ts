@@ -1,4 +1,4 @@
-import type { ThemeName } from '../../shared/theme/seed';
+import { SEEDS, type ThemeName } from '../../shared/theme/seed';
 
 export type ThemeMode = ThemeName;
 
@@ -47,6 +47,22 @@ export interface XtermTheme {
 }
 
 /**
+ * The fallback palette.
+ *
+ * ── 为什么回落值取自**种子**，而不是另抄一份色值 ──
+ *
+ * 这个文件是终端主题的**产出方**。它里面一旦出现字面色值，
+ * 就等于有**第二份真相**——而终端**真的**有过第二份：
+ * `TerminalView.tsx` 里存着一套计划 1 时代的回落色
+ * （`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`），
+ * 与种子里的 `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129` 并存。
+ * 两套都在，只是没同时生效过——**这正是「迟早会漂」的样子**。
+ *
+ * → 回落值直接取 `SEEDS.dark`，**一个色值都不在这里手写**。
+ */
+const FALLBACK = SEEDS.dark;
+
+/**
  * xterm draws on canvas and does not resolve CSS variables — read the resolved
  * values. Keeping this in one helper makes the "four outputs, one mapping" rule
  * testable.
@@ -56,22 +72,22 @@ export function xtermThemeFromVars(vars: Record<string, string>): XtermTheme {
   // and `'' ?? fallback` is still `''` (an empty colour silently paints nothing).
   const v = (name: string, fallback: string): string => vars[name] || fallback;
   return {
-    background: v('--cockpit-bg', '#0A0C0F'),
-    foreground: v('--cockpit-text', '#E6EAF2'),
-    cursor: v('--cockpit-accent', '#58A6FF'),
-    selectionBackground: v('--cockpit-surface-active', '#1C2129'),
-    black: v('--cockpit-bg', '#0A0C0F'),
-    brightBlack: v('--cockpit-text-faint', '#8B95A5'),
-    green: v('--cockpit-ok', '#3FB950'),
-    yellow: v('--cockpit-warn', '#D29922'),
-    red: v('--cockpit-danger', '#F85149'),
-    blue: v('--cockpit-accent', '#58A6FF'),
+    background: v('--cockpit-bg', FALLBACK['bg-0']),
+    foreground: v('--cockpit-text', FALLBACK['text-0']),
+    cursor: v('--cockpit-accent', FALLBACK['accent']),
+    selectionBackground: v('--cockpit-surface-active', FALLBACK['bg-3']),
+    black: v('--cockpit-bg', FALLBACK['bg-0']),
+    brightBlack: v('--cockpit-text-faint', FALLBACK['text-2']),
+    green: v('--cockpit-ok', FALLBACK['ok']),
+    yellow: v('--cockpit-warn', FALLBACK['warn']),
+    red: v('--cockpit-danger', FALLBACK['danger']),
+    blue: v('--cockpit-accent', FALLBACK['accent']),
     // **cyan is the teal series colour** — `--cockpit-series-3` is amber
     // (#D29922), so binding cyan to it painted amber text in the terminal.
-    cyan: v('--cockpit-series-5', '#39C5BB'),
-    magenta: v('--cockpit-accent-2', '#A371F7'),
-    white: v('--cockpit-text', '#E6EAF2'),
-    brightWhite: v('--cockpit-text', '#E6EAF2'),
+    cyan: v('--cockpit-series-5', FALLBACK['series-5']),
+    magenta: v('--cockpit-accent-2', FALLBACK['accent-2']),
+    white: v('--cockpit-text', FALLBACK['text-0']),
+    brightWhite: v('--cockpit-text', FALLBACK['text-0']),
   };
 }
 

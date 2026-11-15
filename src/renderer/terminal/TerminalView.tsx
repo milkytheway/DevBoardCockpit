@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import type { XtermTheme } from '../shell/theme';
+import { readXtermTheme, type XtermTheme } from '../shell/theme';
 
 /**
  * 一个终端面板。
@@ -114,12 +114,13 @@ export function TerminalView({
       scrollback: 2000,
       // **必须读出解析后的值**：xterm 用 canvas 的 fillStyle 画字，
       // canvas **不解析 CSS 变量**——直接传 'var(--cockpit-bg)' 会静默失效。
-      theme: theme ?? {
-        background: readToken('--cockpit-bg', '#14171c'),
-        foreground: readToken('--cockpit-text', '#dfe4ec'),
-        cursor: readToken('--cockpit-accent', '#58a6ff'),
-        selectionBackground: readToken('--cockpit-bg-elevated', '#1c2027'),
-      },
+      //
+      // 兜底也走**同一条路**（`shell/theme.ts` → 种子）。
+      // 这里过去另存着一套计划 1 时代的回落色
+      // （`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`），
+      // 与种子里的 `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129` 并存。
+      // 两套都在，只是没同时生效过——**这正是「迟早会漂」的样子**。
+      theme: theme ?? readXtermTheme(),
     });
 
     const fit = new FitAddon();

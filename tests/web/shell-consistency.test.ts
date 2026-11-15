@@ -51,17 +51,23 @@ describe('主题 · 终端与别名层同源', () => {
 
 describe('主题 · 外壳视觉判据', () => {
   it('卡片内可聚焦控件的边框对卡面 ≥ 3:1（施工图 §8.2 第 10 条）', () => {
-    // 卡面是外壳的 surface（深色 #1E242C 附近）；浅色卡面是 srf-1 白。
-    const cardSurface = { dark: '#1E242C', light: '#FFFFFF' } as const;
+    // 卡面**从 token 取**，不写死色值。
+    // （曾经写死 `#1E242C` —— 那个值在种子里**根本不存在**，
+    //   是旧总纲留下的；写死的判据测的不是真实卡面。）
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
-      const ratio = contrast(vars['--cockpit-border-strong'] as string, cardSurface[skin]);
+      const cardSurface = vars['--cockpit-surface'] as string;
+      const ratio = contrast(vars['--cockpit-border-strong'] as string, cardSurface);
       expect(ratio, `${skin} 的 border-strong 对卡面只有 ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
     }
   });
 
   it('正文与语义色对面板底 ≥ 4.5:1（施工图 §8.2 第 9 条）', () => {
-    const surface = { dark: '#12151A', light: '#FFFFFF' } as const;
+    // 承载正文的面 = 卡面 = `--cockpit-surface`（从 token 取，不写死）
+    const surface = {
+      dark: aliasVars('dark')['--cockpit-surface'] as string,
+      light: aliasVars('light')['--cockpit-surface'] as string,
+    };
     const names = [
       '--cockpit-text',
       '--cockpit-text-dim',

@@ -1,5 +1,5 @@
 import { aliasVars } from './map';
-import type { ThemeName } from './seed';
+import { SEEDS, type ThemeName } from './seed';
 
 /**
  * ECharts 的主题（**由 token 派生**）。
@@ -18,11 +18,13 @@ export function echartsTheme(theme: ThemeName): Record<string, unknown> {
   const series = [1, 2, 3, 4, 5, 6, 7].map(
     (i) => vars[`--cockpit-series-${i}`] ?? vars['--cockpit-accent'],
   );
-  const text = vars['--cockpit-text'] ?? '#ffffff';
-  const dim = vars['--cockpit-text-dim'] ?? text;
-  const faint = vars['--cockpit-text-faint'] ?? dim;
-  const border = vars['--cockpit-border'] ?? '#333333';
-  const surface = vars['--cockpit-surface'] ?? '#111111';
+  // 回落值取自**种子**——这里不再手写色值（第二份真相的温床）。
+  const seed = SEEDS[theme];
+  const text = vars['--cockpit-text'] ?? seed['text-0'];
+  const dim = vars['--cockpit-text-dim'] ?? seed['text-1'];
+  const faint = vars['--cockpit-text-faint'] ?? seed['text-2'];
+  const border = vars['--cockpit-border'] ?? seed['border'];
+  const surface = vars['--cockpit-surface'] ?? seed['bg-1'];
 
   return {
     color: series,

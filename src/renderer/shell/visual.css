@@ -22,23 +22,20 @@
   --ui-gap: 14px;
   --ui-hairline: color-mix(in oklab, var(--cockpit-border) 88%, transparent);
   --ui-hairline-soft: color-mix(in oklab, var(--cockpit-border) 55%, transparent);
-  --ui-highlight: rgba(255, 255, 255, 0.06);
+  --ui-highlight: var(--shell-mat-edge-highlight);
   --ui-surface-1: color-mix(in oklab, var(--cockpit-surface) 96%, var(--cockpit-bg));
   --ui-surface-2: color-mix(in oklab, var(--cockpit-surface) 82%, var(--cockpit-bg));
   --ui-surface-3: color-mix(in oklab, var(--cockpit-surface) 70%, var(--cockpit-bg));
   --ui-text: var(--cockpit-text);
   --ui-dim: var(--cockpit-text-dim);
   --ui-faint: var(--cockpit-text-faint);
-  --ui-shadow-card: 0 18px 36px -26px rgba(0, 0, 0, 0.9), 0 2px 6px -3px rgba(0, 0, 0, 0.4);
-  --ui-shadow-float: 0 24px 60px -30px rgba(0, 0, 0, 0.95);
+  --ui-shadow-card: var(--shell-mat-shadow-card);
+  --ui-shadow-float: var(--shell-mat-shadow-float);
 }
 
 html[data-theme='light'] {
   --ui-hairline: color-mix(in oklab, var(--cockpit-border) 90%, transparent);
   --ui-hairline-soft: color-mix(in oklab, var(--cockpit-border) 60%, transparent);
-  --ui-highlight: rgba(255, 255, 255, 1);
-  --ui-shadow-card: 0 10px 26px -20px rgba(23, 30, 40, 0.28), 0 1px 2px -1px rgba(23, 30, 40, 0.14);
-  --ui-shadow-float: 0 24px 60px -30px rgba(23, 30, 40, 0.3);
 }
 
 /* ─────────────────────────────────────────────────────────── shell frame */
@@ -304,7 +301,7 @@ body {
     linear-gradient(180deg, color-mix(in oklab, var(--cockpit-accent) 14%, transparent), transparent),
     color-mix(in oklab, var(--cockpit-surface) 92%, transparent);
   border-color: color-mix(in oklab, var(--cockpit-accent) 26%, var(--ui-hairline));
-  box-shadow: inset 0 1px 0 var(--ui-highlight), 0 6px 16px -12px rgba(0, 0, 0, 0.8);
+  box-shadow: inset 0 1px 0 var(--ui-highlight), var(--shell-mat-shadow-active);
 }
 
 .rail__glyph {
@@ -744,7 +741,7 @@ body {
   color: var(--cockpit-bg);
   background: linear-gradient(180deg, color-mix(in oklab, var(--cockpit-accent) 88%, white 12%), var(--cockpit-accent));
   border-color: color-mix(in oklab, var(--cockpit-accent) 70%, black 8%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 16px -10px color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
+  box-shadow: inset 0 1px 0 var(--shell-mat-edge-bright), 0 6px 16px -10px color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
   font-weight: 600;
 }
 
@@ -983,7 +980,7 @@ body {
 
 .card-grid .react-grid-item.react-draggable-dragging .cockpit-card {
   border-color: color-mix(in oklab, var(--cockpit-accent) 44%, var(--ui-hairline));
-  box-shadow: 0 30px 60px -26px rgba(0, 0, 0, 0.9), 0 0 0 1px color-mix(in oklab, var(--cockpit-accent) 30%, transparent);
+  box-shadow: var(--shell-mat-shadow-lift), 0 0 0 1px color-mix(in oklab, var(--cockpit-accent) 30%, transparent);
 }
 
 .card-grid .react-grid-placeholder {
@@ -1039,7 +1036,7 @@ body {
 
 .cockpit-card:hover {
   border-color: color-mix(in oklab, var(--card-tone, var(--cockpit-accent)) 26%, var(--ui-hairline));
-  box-shadow: inset 0 1px 0 var(--ui-highlight), 0 22px 44px -24px rgba(0, 0, 0, 0.95);
+  box-shadow: inset 0 1px 0 var(--ui-highlight), var(--shell-mat-shadow-hover-v1);
 }
 
 .cockpit-card.is-selected {
@@ -1047,7 +1044,7 @@ body {
   box-shadow:
     inset 0 1px 0 var(--ui-highlight),
     0 0 0 1px color-mix(in oklab, var(--cockpit-accent) 24%, transparent),
-    0 24px 48px -26px rgba(0, 0, 0, 0.95);
+    var(--shell-mat-shadow-selected);
 }
 
 .cockpit-card__head {
@@ -1231,7 +1228,7 @@ body {
   background:
     linear-gradient(180deg, var(--ui-highlight), transparent 10%),
     var(--ui-surface-2);
-  box-shadow: -20px 0 40px -32px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--shell-mat-shadow-detail-v1);
 }
 
 .detail__resize {
@@ -2336,7 +2333,7 @@ body {
 
 html[data-theme='light'] .statusbar {
   background:
-    linear-gradient(180deg, #ffffff, transparent 62%),
+    linear-gradient(180deg, var(--shell-mat-pure-white), transparent 62%),
     linear-gradient(180deg, var(--ui-surface-1), var(--ui-surface-2));
 }
 
@@ -2352,7 +2349,7 @@ html[data-theme='light'] .detail {
 html[data-theme='light'] .cockpit-card {
   background:
     radial-gradient(120% 60% at 12% 0%, color-mix(in oklab, var(--card-tone, var(--cockpit-accent)) 9%, transparent), transparent 54%),
-    linear-gradient(180deg, #ffffff, color-mix(in oklab, var(--cockpit-surface) 96%, white));
+    linear-gradient(180deg, var(--shell-mat-pure-white), color-mix(in oklab, var(--cockpit-surface) 96%, var(--shell-mat-pure-white)));
 }
 
 html[data-theme='light'] .cockpit-card::before {
@@ -2361,7 +2358,7 @@ html[data-theme='light'] .cockpit-card::before {
 
 html[data-theme='light'] .palette,
 html[data-theme='light'] .card-menu__pop {
-  background: #ffffff;
+  background: var(--shell-mat-pure-white);
 }
 
 html[data-theme='light'] .app-shell {
@@ -2385,11 +2382,7 @@ html[data-theme='light'] .app-shell {
   right: 0;
   bottom: 0;
   z-index: 60;
-  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.42);
-}
-
-html[data-theme='light'] .detail {
-  box-shadow: -24px 0 48px rgba(30, 40, 55, 0.16);
+  box-shadow: var(--shell-mat-shadow-detail);
 }
 
 /* The files page owns the full work area: the browser is a split view, not a
@@ -2658,7 +2651,7 @@ li.secondary__section:first-child {
   overflow: auto;
   border: 1px solid var(--ui-hairline);
   border-radius: 10px;
-  background: rgba(4, 6, 9, 0.5);
+  background: var(--shell-mat-veil-code);
   color: var(--ui-dim);
   font-family: var(--cockpit-font-mono);
   font-size: 10px;
@@ -2767,7 +2760,7 @@ li.secondary__section:first-child {
   overflow: hidden;
   background:
     linear-gradient(180deg, var(--ui-highlight), transparent 30%),
-    rgba(6, 8, 11, 0.66);
+    var(--shell-mat-veil-terminal);
   box-shadow: var(--ui-shadow-card);
 }
 
@@ -2870,7 +2863,7 @@ li.secondary__section:first-child {
     radial-gradient(52% 46% at 12% -4%, color-mix(in oklab, var(--cockpit-accent) 22%, transparent), transparent 64%),
     radial-gradient(44% 42% at 94% 4%, color-mix(in oklab, var(--cockpit-accent-2) 17%, transparent), transparent 62%),
     radial-gradient(46% 42% at 62% 104%, color-mix(in oklab, var(--cockpit-series-3) 12%, transparent), transparent 66%),
-    radial-gradient(80% 60% at 40% 40%, rgba(255, 255, 255, 0.025), transparent 70%),
+    var(--shell-mat-veil-canvas),
     var(--cockpit-bg);
 }
 
@@ -2887,24 +2880,18 @@ li.secondary__section:first-child {
 
 .cockpit-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%),
+    var(--shell-mat-sheen-card-v1),
     color-mix(in oklab, var(--cockpit-surface) 72%, transparent);
-  border-color: color-mix(in oklab, var(--cockpit-border) 78%, rgba(255, 255, 255, 0.16));
+  border-color: color-mix(in oklab, var(--cockpit-border) 78%, var(--shell-mat-edge-hairline));
   backdrop-filter: blur(20px) saturate(130%);
   -webkit-backdrop-filter: blur(20px) saturate(130%);
-  box-shadow:
-    0 28px 56px -30px rgba(0, 0, 0, 0.95),
-    0 6px 18px -10px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  box-shadow: var(--shell-mat-shadow-glass-v1);
 }
 
 .cockpit-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--cockpit-accent) 30%, var(--ui-hairline));
-  box-shadow:
-    0 34px 64px -30px rgba(0, 0, 0, 0.98),
-    0 10px 24px -12px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shell-mat-shadow-glass-hover-v1);
 }
 
 .cockpit-card.is-selected {
@@ -2941,7 +2928,7 @@ li.secondary__section:first-child {
     radial-gradient(38% 34% at 96% 2%, color-mix(in oklab, var(--cockpit-accent-2) 26%, transparent), transparent 60%),
     radial-gradient(44% 40% at 54% 108%, color-mix(in oklab, var(--cockpit-series-3) 20%, transparent), transparent 64%),
     radial-gradient(30% 32% at 78% 58%, color-mix(in oklab, var(--cockpit-series-5) 12%, transparent), transparent 72%),
-    #07090c;
+    var(--shell-mat-canvas-v1);
 }
 
 .statusbar,
@@ -2957,14 +2944,11 @@ li.secondary__section:first-child {
 
 .cockpit-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 48%),
+    var(--shell-mat-sheen-card-v2),
     color-mix(in oklab, var(--cockpit-surface) 56%, transparent);
   backdrop-filter: blur(26px) saturate(155%);
   -webkit-backdrop-filter: blur(26px) saturate(155%);
-  box-shadow:
-    0 34px 66px -32px rgba(0, 0, 0, 0.98),
-    0 10px 26px -14px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shell-mat-shadow-glass);
 }
 
 .cockpit-card__head,
@@ -2991,12 +2975,12 @@ li.secondary__section:first-child {
     radial-gradient(42% 38% at 98% 0%, color-mix(in oklab, var(--cockpit-accent-2) 34%, transparent), transparent 60%),
     radial-gradient(50% 46% at 52% 112%, color-mix(in oklab, var(--cockpit-series-3) 28%, transparent), transparent 66%),
     radial-gradient(34% 36% at 80% 60%, color-mix(in oklab, var(--cockpit-series-5) 16%, transparent), transparent 72%),
-    #06080b;
+    var(--shell-mat-canvas);
 }
 
 .cockpit-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.025) 46%),
+    var(--shell-mat-sheen-card),
     color-mix(in oklab, var(--cockpit-surface) 46%, transparent);
   backdrop-filter: blur(30px) saturate(165%);
   -webkit-backdrop-filter: blur(30px) saturate(165%);
@@ -3006,10 +2990,7 @@ li.secondary__section:first-child {
 .cockpit-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--cockpit-text) 22%, transparent);
-  box-shadow:
-    0 44px 86px -34px rgba(0, 0, 0, 1),
-    0 14px 34px -16px rgba(0, 0, 0, 0.7),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: var(--shell-mat-shadow-glass-hover);
 }
 
 .cockpit-card.is-selected {

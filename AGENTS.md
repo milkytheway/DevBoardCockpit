@@ -68,6 +68,8 @@ README.md
   └─ docs/17-现状总账.md            当前做到哪了（**先看这个，再决定做什么**）
   └─ docs/21-第三部分设计-卡片框架与控制面.md  卡片与控制面的机制基线
   └─ docs/24-流程包设计.md          第四部分设计提案：流程包（**待评审**）
+  └─ docs/UI设计/10-色彩使用规范.md 色彩纪律：三张色表 + 9 条可判规则（**已落地**）
+  └─ docs/UI设计/11-卡片内部设计规范.md 卡片内部：信息预算 + 形态 ≤ 2（**已成文**）
 ```
 
 ## 3. 硬规矩
@@ -76,6 +78,7 @@ README.md
 |---|---|
 | **契约是权威** | 想改 tag 名、单位、状态语义、板型包字段 → 先改 `docs/spec/`，再同步改实现层。**两处同改**，否则对拍测试会红 |
 | **词表只有一个源头** | 核心词表的机器可读权威是 `docs/spec/data/tag-vocabulary.yaml`；`docs/spec/01` 的表格是它的渲染结果。改词表改 YAML，**不许另写一份** |
+| **颜色只有一个源头** | 语义色在 `src/shared/theme/seed.ts`（换皮改那里）；**材质色**在 `src/shared/theme/material.ts`（`--shell-mat-*`，**外壳专有**）。<br>**非生成产物的 CSS 里不许出现任何颜色字面量**（hex / `rgb()` / 颜色关键字直接上色）—— 由 `tests/web/visual-material.test.ts` 守着。<br>颜色关键字只许出现在 `color-mix()` 里当**明暗调节**。详见 `docs/UI设计/10-色彩使用规范.md` |
 | **编号分几套** | `ADR-D*`（`docs/05` 实现层决策）/ `SPEC-D*`（`docs/spec/00` 契约层决策）/ `C*`（`docs/06` 核对条目）/ `O*`（跨文档待决）/ `Q*`（`docs/04` 设计层待决）。**引用时写全前缀**——历史上两套都叫「D7」，导致「见 D7」有二义 |
 | **对拍是硬判据** | TS 实现必须跑通与契约同源的黄金样本断言（样本在 `fixtures/`，同样本同结果） |
 | **设计未确认不写实现** | `docs/04-架构设计.md` 逐节被用户确认之前，只允许写文档、契约、测试向量 |
@@ -178,13 +181,23 @@ npm test                   # vitest
 npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
 npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
 npm run mutation:check     # 变异测试：证明回归测试真的在守着（83 项）
-npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**
+npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**（生产构建）
+npm run test:cards:fake    # 同上，但用**假设备**构建 —— action/workflow 的 e2e **必须**用它
 # 调 UI 用的假设备（不需要真板子）—— 见 §6.2
 COCKPIT_FAKE=1 npm run dev # 假板子排第一（合成数据）
 COCKPIT_FAKE=only npm run dev  # 只有假板子
 ```
 
 
+> ⚠️ **e2e 要跑带假设备的那条**：`npm run test:cards` 走**生产构建**，
+> 而 action / workflow 的 e2e 需要假设备 → **那 6 条会红**。
+> **用 `npm run test:cards:fake`** ✓（`COCKPIT_FAKE` 走构建模式）。
+>
+> ⚠️ **`mutation:check` 绝不能与任何 build 并行跑** ——
+> `mutation:check` 是**原地改源码**再跑测试的；
+> 并行跑 build 的话，构建会拿到**被变异过的源码** → e2e 报「找不到构建产物」，
+> **一个假故障**。要跑就**串行**。
+>
 > **上面 8 条命令现在都有**（`package.json` 里就是这 8 条）。
 > `validate:profiles` 与 `probe:board` **属于计划 2（M3/M4）**，现在还不存在——
 > 文档里引用它们的地方已标注「计划 2 起可用」，别照抄一个不存在的命令。

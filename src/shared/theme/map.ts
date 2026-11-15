@@ -1,4 +1,5 @@
 import { ALIASES } from './alias';
+import { materialVars } from './material';
 import { GEOMETRY, SEEDS, type ThemeName } from './seed';
 
 /**
@@ -44,10 +45,18 @@ export function aliasVars(theme: ThemeName): Record<string, string> {
 /**
  * 生成 `:root{…}` 的 CSS 文本。
  *
- * @param selector 变量挂在谁身上（`:root` 或 `[data-theme='dark']`）
+ * @param selector 变量挂在谁身上（`:root` 或 `[data-theme='light']`）
+ * @param includeMaterial 是否带上**材质层**（`--shell-mat-*`）。
+ *
+ *   ⚠️ **只有应用外壳要带，卡片不许带。**
+ *
+ *   材质层是外壳专有的（见 `material.ts`）。一旦卡片也能用 `--shell-mat-*`，
+ *   它就会开始自己造第二套材质，「统一皮肤」当场就破。
+ *   → 卡片注入的 `theme.css` 一律 `includeMaterial = false`。
  */
-export function themeCss(theme: ThemeName, selector = ':root'): string {
+export function themeCss(theme: ThemeName, selector = ':root', includeMaterial = false): string {
   const vars = aliasVars(theme);
+  if (includeMaterial) Object.assign(vars, materialVars(theme));
   const body = Object.entries(vars)
     .map(([name, value]) => `  ${name}: ${value};`)
     .join('\n');
@@ -60,7 +69,7 @@ export function allThemesCss(): string {
     '/* 本文件是**生成产物** —— 改它没有意义，改 `src/shared/theme/seed.ts`。 */',
     '/* 由 `npm run gen:theme` 生成；`npm run gen:theme:check` 守着它与种子一致。 */',
     '',
-    themeCss('dark', ':root'),
-    themeCss('light', "[data-theme='light']"),
+    themeCss('dark', ':root', true),
+    themeCss('light', "[data-theme='light']", true),
   ].join('\n');
 }

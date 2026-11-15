@@ -38,8 +38,11 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** 承载正文的面（面板底） */
-const SURFACE = { dark: '#12151A', light: '#FFFFFF' } as const;
+/** 承载正文的面（面板底）——**从 token 取**，不写死色值 */
+const SURFACE = {
+  dark: aliasVars('dark')['--cockpit-surface'] as string,
+  light: aliasVars('light')['--cockpit-surface'] as string,
+};
 
 describe('主题 · 别名层', () => {
   it('**契约里的 15 个别名一个都不能少**', () => {

@@ -2216,6 +2216,56 @@ const MUTATIONS = [
         '    // 变异：没有关闭路径\n',
       ),
   },
+
+  // ── 色彩纪律（ADR-D41）────────────────────────────────────
+  {
+    name: 'M181 材质层：**不许进卡片**（卡片一旦能造第二套材质，统一皮肤当场就破）',
+    file: 'src/shared/theme/map.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
+    expect: '不进卡片',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (includeMaterial) Object.assign(vars, materialVars(theme));',
+        '  if (includeMaterial || true) Object.assign(vars, materialVars(theme)); // 变异：卡片也拿到材质层',
+      ),
+  },
+  {
+    name: 'M182 色彩纪律：**CSS 里不许再抄色值**（第二份真相的温床）',
+    file: 'src/renderer/shell/visual.css',
+    check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
+    expect: '一个颜色字面量都没有',
+    apply: (s) =>
+      replace(
+        s,
+        '  --ui-highlight: var(--shell-mat-edge-highlight);',
+        '  --ui-highlight: rgba(255, 255, 255, 0.06); // 变异：又抄了一份',
+      ),
+  },
+  {
+    name: 'M183 终端：**兜底色必须等于种子真值**（不许另抄一份回落色）',
+    file: 'src/renderer/shell/theme.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
+    expect: '兜底色',
+    apply: (s) =>
+      replace(
+        s,
+        "    background: v('--cockpit-bg', FALLBACK['bg-0']),",
+        "    background: v('--cockpit-bg', '#14171c'), // 变异：计划 1 时代的老回落色",
+      ),
+  },
+  {
+    name: 'M184 材质层：**不许有影子变量**（CSS 里重新定义 = 又一份真相）',
+    file: 'src/renderer/shell/visual.css',
+    check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
+    expect: '又定义了一遍材质变量',
+    apply: (s) =>
+      replace(
+        s,
+        '  --ui-highlight: var(--shell-mat-edge-highlight);',
+        '  --shell-mat-edge-highlight: rgba(255, 255, 255, 0.06);\n  --ui-highlight: var(--shell-mat-edge-highlight);',
+      ),
+  },
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
