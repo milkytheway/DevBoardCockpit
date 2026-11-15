@@ -566,6 +566,14 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
     step.on_mismatch = value;
   }
 
+  // ── **规则 11**（契约 §九 ✓）：`danger: destructive` 的步不许用 `readback.kind: none` ✓
+  // → 与 `02` §4.4.1 同款 ✓（板型包的规则 15 就是它 ✓ —— 那边有 ✓，这边**一直缺着** ✗）
+  // → 不拦的后果 ✓：不可逆的步可以声明「不验证」✗ → 人点头后照样执行 ✓
+  //   → 时间线报 `ok:true / verified:false` ✓ → 界面把「根本没验证」说成「成功了」✗
+  if (step.danger === 'destructive' && step.readback?.kind === 'none') {
+    fail('destructive 的步不许用 readback.kind: none（不可逆动作不能「不验证」✓ —— 同 02 §4.4.1 ✓）', ctx.source);
+  }
+
   // ── 每种 kind 的必填 ──
   switch (step.kind) {
     case 'exec':

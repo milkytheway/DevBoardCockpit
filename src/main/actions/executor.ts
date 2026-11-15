@@ -1,4 +1,5 @@
 import { makeError } from '../../shared/errors';
+import { createHash } from 'node:crypto';
 import type { Connection, ExecResult } from '../hal/connection';
 import type { ActionDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
@@ -31,6 +32,13 @@ export interface Confirmations {
     packId: string,
     contractVersion: string,
     now: number,
+    /**
+     * **这一步最终命令的摘要** ✓（契约 `spec/05` §7.5-3 ✓）。
+     *
+     * → 最终命令是**消费时现算**的 ✓，而命令里的槽与路径**不在参数摘要里** ✓
+     * → 不绑它 ✓ → **同一张凭据认得两条不同的命令** ✗
+     */
+    commandDigest: string,
   ): string;
   /**
    * **人点了确认** → 这张凭据才可用 ✓。
@@ -52,6 +60,8 @@ export interface Confirmations {
     packId: string,
     contractVersion: string,
     now: number,
+    /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
+    commandDigest: string,
   ): boolean;
 }
 
@@ -224,6 +234,8 @@ export async function invokeAction(
 
   // ④ 确认（destructive / 超出批准域 / 命中地板）
   if (verdict.verdict === 'needs_confirmation') {
+    // **这一步最终命令的摘要** ✓（凭据要绑它 ✓ —— 契约 `spec/05` §7.5-3 ✓）
+    const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');
     const consumed =
       opts.confirmId !== undefined &&
       deps.confirmations.consume(
@@ -233,6 +245,7 @@ export async function invokeAction(
         deps.packId,
         deps.contractVersion,
         at,
+        commandDigest,
       );
     if (!consumed) {
       const confirmId = deps.confirmations.issue(
@@ -241,6 +254,7 @@ export async function invokeAction(
         deps.packId,
         deps.contractVersion,
         at,
+        commandDigest,
       );
       const outcome: ActionOutcome = {
         ok: false,

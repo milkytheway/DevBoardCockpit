@@ -92,55 +92,85 @@ describe('确认凭据 · confirm_id', () => {
 
   it('**签发 ≠ 有效**：没被人点过，用不了（契约 spec/04 §2.4.1 ✓）', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     // **签发只是「递了个请求」**（契约：「没有人点，confirm_id 永远无效」✓）
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(false);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(false);
     // **人点了之后**才可用 ✓
     expect(store.approve(token, 1_200)).toBe(true);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(true);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(true);
   });
 
   it('**第二次用不行**（一次性）', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(true);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(false);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(true);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(false);
   });
 
   it('动作不同 → 不行', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     store.approve(token, 1_200);
-    expect(store.consume(token, 'other.action', { value: 100 }, packId, contract, 1_500)).toBe(false);
+    expect(store.consume(token, 'other.action', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(false);
   });
 
   it('参数不同 → 不行（凭据绑的是**这一次**的参数）', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 200 }, packId, contract, 1_500)).toBe(false);
+    expect(store.consume(token, 'backlight.set', { value: 200 }, packId, contract, 1_500, 'cmd-A')).toBe(false);
+  });
+
+  it('**最终命令不同 → 不行**（凭据要绑「这一步的最终命令」✓ —— 契约 spec/05 §7.5-3 ✓）', () => {
+    const store = new ConfirmationStore();
+    // **签发时那条命令** ✓
+    const token = store.issue(
+      'backlight.set',
+      { value: 100 },
+      packId,
+      contract,
+      1_000,
+      'sha256-of-cmd-A',
+    );
+    store.approve(token, 1_200);
+    // **命令变了 → 那张凭据认不出来** ✓（独立评审 40 的 I-5 ✓）
+    expect(
+      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'sha256-of-cmd-B'),
+    ).toBe(false);
+    // **命令没变 → 用得了** ✓
+    expect(
+      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'sha256-of-cmd-A'),
+    ).toBe(true);
   });
 
   it('板型包或契约版本不同 → 不行', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, 'other-pack', contract, 1_500)).toBe(false);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, 'devboard/v2', 1_500)).toBe(false);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, 'other-pack', contract, 1_500, 'cmd-A')).toBe(false);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, 'devboard/v2', 1_500, 'cmd-A')).toBe(false);
   });
 
   it('超过 5 分钟 → 不行', () => {
     const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A');
     expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_000 + 5 * 60_000 + 1),
+      store.consume(
+        token,
+        'backlight.set',
+        { value: 100 },
+        packId,
+        contract,
+        1_000 + 5 * 60_000 + 1,
+        'cmd-A',
+      ),
     ).toBe(false);
   });
 
   it('没签发过的凭据 → 不行', () => {
     const store = new ConfirmationStore();
-    expect(store.consume('nonsense', 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(
+    expect(store.consume('nonsense', 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A')).toBe(
       false,
     );
   });

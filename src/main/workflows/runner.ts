@@ -102,6 +102,8 @@ export interface WorkflowRunDeps {
       packId: string,
       contractVersion: string,
       now: number,
+      /** **这一步最终命令的摘要** ✓（凭据要绑它 ✓ —— 契约 §7.5-3 ✓） */
+      commandDigest: string,
     ): string;
     /** **人点了确认** → 凭据才可用 ✓（契约 spec/04 §2.4.1 ✓） */
     approve(token: string, now: number): boolean;
@@ -121,6 +123,8 @@ export interface WorkflowRunDeps {
       packId: string,
       contractVersion: string,
       now: number,
+      /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
+      commandDigest: string,
     ): boolean;
   };
   /** 现在（毫秒） */
@@ -982,16 +986,16 @@ function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confir
     ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),
   });
   return {
-    issue: (actionId, params, packId, contractVersion, now) =>
-      store.issue(actionId, bind(params), packId, contractVersion, now),
+    issue: (actionId, params, packId, contractVersion, now, commandDigest) =>
+      store.issue(actionId, bind(params), packId, contractVersion, now, commandDigest),
     // **批准不绑参数**（它是「人点了」那一下 ✓ —— 摘要管的是「这一次执行」✓）
     approve: (token, now) => store.approve(token, now),
     // **请求也不绑**（它不批准任何东西 ✓ —— 只是「有人在等」✓）
     request: (token: string, now: number) => store.request(token, now),
     // **撤销**（作废 ✓ —— 取消运行的时候用 ✓）
     revoke: (token: string) => store.revoke(token),
-    consume: (token, actionId, params, packId, contractVersion, now) =>
-      store.consume(token, actionId, bind(params), packId, contractVersion, now),
+    consume: (token, actionId, params, packId, contractVersion, now, commandDigest) =>
+      store.consume(token, actionId, bind(params), packId, contractVersion, now, commandDigest),
   };
 }
 

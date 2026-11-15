@@ -1824,6 +1824,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M149 流程包校验 **规则 11**：destructive 的步不许 `readback.kind: none` ✓',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: 'destructive 的步不许用',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (step.danger === 'destructive' && step.readback?.kind === 'none') {",
+        '  if (false) { // 变异：规则 11 不执行',
+      ),
+  },
+  {
+    name: 'M150 执行器：凭据要绑**这一步的最终命令**（契约 §7.5-3 ✓ —— 独立评审 40 的 I-5 ✓）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '命令变了 → 那张凭据用不了',
+    apply: (s) =>
+      replace(
+        s,
+        "    const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');",
+        "    const commandDigest = ''; // 变异：不绑最终命令",
+      ),
+  },
+  {
+    name: 'M151 凭据摘要里**要有命令摘要**（同一张凭据不能认两条命令 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: '最终命令不同 → 不行',
+    apply: (s) =>
+      replace(
+        s,
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`,',
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`, // 变异：不绑命令',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

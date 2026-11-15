@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { invokeAction, type ActionExecutorDeps } from '../../../src/main/actions/executor';
+import {
+  invokeAction,
+  type ActionExecutorDeps,
+  type Confirmations,
+} from '../../../src/main/actions/executor';
+import { ConfirmationStore } from '../../../src/main/actions/authorization';
 import type { ActionDef } from '../../../src/main/tags/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { TagReading } from '../../../src/shared/tag-reading';
@@ -40,6 +45,8 @@ function harness(
     execResult?: ExecResult;
     granted?: Record<string, unknown>;
     hasExitCode?: boolean;
+    /** 换成**真的**凭据库 ✓（默认那个是假替身 ✓ —— 它不验摘要 ✗） */
+    confirmations?: Confirmations;
   } = {},
 ): Harness {
   const executed: string[] = [];
@@ -76,13 +83,14 @@ function harness(
         [action.id]: action.guard ?? undefined,
       },
     }),
-    confirmations: {
+    confirmations: over.confirmations ?? {
       issue: (
         _actionId: string,
         _params: Record<string, unknown>,
         _packId: string,
         _contractVersion: string,
         _now: number,
+        _commandDigest: string,
       ): string => {
         const token = `confirm-${confirmations.length}`;
         confirmations.push(token);
@@ -286,6 +294,41 @@ describe('执行器 · 回读形式 5', () => {
     const result = await invokeAction(led, { value: 128 }, h.deps);
     expect(result.ok).toBe(true);
     expect(result.verified).toBe(false);
+  });
+});
+
+describe('确认凭据 · 绑住**这一步的最终命令**（契约 spec/05 §7.5-3 ✓）', () => {
+  it('**命令变了 → 那张凭据用不了**（→ 得重新点头 ✓ —— 独立评审 40 的 I-5 ✓）', async () => {
+    const store = new ConfirmationStore();
+    const h = harness({ confirmations: store });
+    const dangerous = { ...ACTION, danger: 'destructive' as const };
+
+    // **第一次** → 签发凭据 ✓（命令是 A ✓）
+    const first = await invokeAction(dangerous, { value: 128 }, h.deps);
+    const confirmId = first.needsConfirmation?.confirmId ?? '';
+    expect(confirmId).toBeTruthy();
+    // **人点了** ✓
+    expect(store.approve(confirmId, Date.now())).toBe(true);
+
+    // **命令变了** ✓（同一个动作、同一组参数，但命令模板不同 ✓）
+    const changed = { ...dangerous, command: 'echo {value} > /tmp/other' };
+    const second = await invokeAction(changed, { value: 128 }, h.deps, { confirmId });
+
+    // **那张凭据认不出这条命令** ✓ → 重新要一次确认 ✓
+    expect(second.reason).toBe('needs_confirmation');
+    expect(second.needsConfirmation?.confirmId).not.toBe(confirmId);
+  });
+
+  it('**命令没变 → 那张凭据用得了** ✓', async () => {
+    const store = new ConfirmationStore();
+    const h = harness({ confirmations: store });
+    const dangerous = { ...ACTION, danger: 'destructive' as const };
+    const first = await invokeAction(dangerous, { value: 128 }, h.deps);
+    const confirmId = first.needsConfirmation?.confirmId ?? '';
+    store.approve(confirmId, Date.now());
+    const second = await invokeAction(dangerous, { value: 128 }, h.deps, { confirmId });
+    // **真跑起来了** ✓（不是又要确认 ✓）
+    expect(second.ok).toBe(true);
   });
 });
 

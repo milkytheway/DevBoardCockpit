@@ -171,10 +171,18 @@ export class ConfirmationStore {
     packId: string,
     contractVersion: string,
     now: number,
+    /**
+     * **这一步最终命令的摘要** ✓（契约 `spec/05` §7.5-3 ✓）。
+     *
+     * → 为什么要有它 ✓：最终命令是**消费时现算**的 ✓，
+     *   而命令里的 `{output:槽}` / `{from.path}` / `{to.path}` **不在参数摘要里** ✓
+     *   → 不绑它 ✓ → **同一张凭据认得两条不同的命令** ✗
+     */
+    commandDigest: string,
   ): string {
     const token = `${randomUUID()}`;
     this.issued.set(token, {
-      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`,
+      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`,
       at: now,
       state: 'pending',
     });
@@ -262,6 +270,8 @@ export class ConfirmationStore {
     packId: string,
     contractVersion: string,
     now: number,
+    /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
+    commandDigest: string,
   ): boolean {
     const entry = this.issued.get(token);
     if (entry === undefined) return false;
@@ -272,7 +282,7 @@ export class ConfirmationStore {
     }
     // **没被人点过 → 不能用**（契约 spec/04 §2.4.1 ✓）
     if (entry.state !== 'approved') return false;
-    const expected = `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`;
+    const expected = `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`;
     if (entry.digest !== expected) return false;
     // **一次性**：用掉就删
     this.issued.delete(token);

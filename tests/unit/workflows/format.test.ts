@@ -194,6 +194,49 @@ describe('流程包 · roles', () => {
   });
 });
 
+describe('流程包 · 规则 11（契约 §九）', () => {
+  it('**destructive 的步不许用 `readback.kind: none`**（不可逆动作不能「不验证」✓）', () => {
+    // ⚠️ 独立评审 40 的 I-4 ✓ —— 契约 §九 规则 11 早就写了 ✓，
+    // 而**板型包那边有同款检查** ✓（`tags/validator.ts` 的规则 15 ✓），
+    // → 流程包这边**静默放行** ✗ → 不可逆的步可以声明「不验证」✗
+    expectInvalid(
+      {
+        ...MINIMAL,
+        steps: [
+          {
+            id: 'wipe',
+            kind: 'exec',
+            role: 'build',
+            cmd: 'rm -rf /tmp/x',
+            danger: 'destructive',
+            readback: { kind: 'none', consequence: '没有可回读的状态' },
+          },
+        ],
+      },
+      /none/,
+    );
+  });
+
+  it('**reversible 的步可以用 `none`**（别把合法的也拦了 ✓）', () => {
+    const pack = parseWorkflow(
+      {
+        ...MINIMAL,
+        steps: [
+          {
+            id: 'ok',
+            kind: 'exec',
+            role: 'build',
+            cmd: 'echo hi',
+            readback: { kind: 'none', consequence: '没有可回读的状态' },
+          },
+        ],
+      },
+      'demo.yaml',
+    );
+    expect(pack.steps).toHaveLength(1);
+  });
+});
+
 describe('流程包 · file.transfer 的 from（契约 §4.4）', () => {
   it('**from 缺 path → 校验就报错**（别留到运行时才炸 ✓ —— 独立评审 40 的 I-2 ✓）', () => {
     expectInvalid(
