@@ -3005,3 +3005,281 @@ li.secondary__section:first-child {
   opacity: 0;
   overflow: hidden;
 }
+
+/* ═══════════════════════════════════════════════ v0.8 discipline pass ═══
+   One bloom, one glass, one accent. The canvas is a single diffused light
+   source; every surface is translucent glass over it; cards use the accent
+   only for state, never for identity. */
+
+.app-shell {
+  background:
+    radial-gradient(150% 122% at 50% -22%,
+      color-mix(in oklab, var(--cockpit-accent) 34%, transparent),
+      transparent 66%),
+    var(--shell-mat-canvas);
+}
+
+html[data-theme='light'] .app-shell {
+  background:
+    radial-gradient(150% 122% at 50% -22%,
+      color-mix(in oklab, var(--cockpit-accent) 16%, transparent),
+      transparent 68%),
+    var(--shell-mat-canvas);
+}
+
+.statusbar,
+.rail,
+.secondary,
+.detail {
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 36%),
+    color-mix(in oklab, var(--cockpit-surface) 52%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+}
+
+html[data-theme='light'] .statusbar,
+html[data-theme='light'] .rail,
+html[data-theme='light'] .secondary,
+html[data-theme='light'] .detail {
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 30%),
+    color-mix(in oklab, var(--cockpit-surface) 76%, transparent);
+}
+
+.cockpit-card {
+  --card-tone: var(--cockpit-accent);
+  background:
+    var(--shell-mat-sheen-card),
+    color-mix(in oklab, var(--cockpit-surface) 54%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  box-shadow: var(--shell-mat-shadow-glass);
+}
+
+html[data-theme='light'] .cockpit-card {
+  background:
+    var(--shell-mat-sheen-card),
+    color-mix(in oklab, var(--cockpit-surface) 78%, transparent);
+  box-shadow: var(--shell-mat-shadow-card);
+}
+
+.cockpit-card__head {
+  background: color-mix(in oklab, var(--cockpit-surface) 22%, transparent);
+}
+
+.cockpit-card__body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The icon tile is part of the shell chrome, not the card's identity: one
+   neutral tile, the glyph carries the meaning. */
+.cockpit-card__icon {
+  color: var(--cockpit-text-dim);
+  background: color-mix(in oklab, var(--cockpit-text) 6%, transparent);
+  border: 1px solid var(--ui-hairline);
+}
+
+.cockpit-card:hover .cockpit-card__icon {
+  color: var(--cockpit-accent);
+}
+
+/* ── secondary header: page name + sampling status on one line ── */
+
+.secondary__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 7px 14px;
+}
+
+.secondary__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.secondary__page {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.secondary__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--ui-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.secondary__status-detail {
+  display: none;
+}
+
+.secondary__status--ok .live-dot { background: var(--cockpit-ok); }
+.secondary__status--warn .live-dot { background: var(--cockpit-warn); }
+.secondary__status--danger .live-dot { background: var(--cockpit-danger); }
+.secondary__status--muted .live-dot { background: var(--cockpit-unavailable); }
+
+/* ── collapsible group and section headings ── */
+
+.secondary__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 12px 5px 12px;
+  border: 0;
+  background: none;
+  color: var(--ui-faint);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.secondary__title:hover { color: var(--ui-text); }
+.secondary__title .secondary__count { margin-left: auto; }
+
+.secondary__section {
+  padding: 6px 12px 2px 14px;
+}
+
+.secondary__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ui-faint);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.secondary__section-toggle:hover { color: var(--ui-text); }
+
+.secondary__section-toggle .is-collapsed,
+.secondary__title .is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.secondary__section-hint {
+  margin-left: auto;
+  color: var(--cockpit-accent);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.secondary__pin {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ui-faint);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.secondary__row:hover .secondary__pin,
+.secondary__pin.is-pinned {
+  opacity: 1;
+}
+
+.secondary__pin.is-pinned { color: var(--cockpit-accent); }
+.secondary__pin:hover { background: color-mix(in oklab, var(--cockpit-text) 8%, transparent); }
+
+.secondary__row { position: relative; }
+.secondary__row .secondary__item { padding-right: 34px; }
+.secondary__row:has(.secondary__pin) .secondary__item { padding-right: 54px; }
+
+/* ═══════════════════════════════════════════ v0.8.1 compact chrome ═══
+   The window is short; every row spent on chrome is a row the cards do not
+   get. The status band loses 4px, the card head loses its grip and the state
+   chip collapses to a dot. Narrow cards drop their subtitle instead of
+   ellipsising the title into one letter. */
+
+:root {
+  --ui-statusbar-h: 42px;
+}
+
+.statusbar {
+  height: var(--ui-statusbar-h);
+}
+
+.cockpit-card {
+  container-type: inline-size;
+}
+
+.cockpit-card__head {
+  gap: 6px;
+  padding: 6px 8px 6px 6px;
+}
+
+.cockpit-card__handle {
+  gap: 6px;
+}
+
+.cockpit-card__grip {
+  display: none;
+}
+
+.cockpit-card__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+.cockpit-card__title {
+  font-size: 12px;
+}
+
+.cockpit-card__sub {
+  font-size: 10px;
+}
+
+.state-chip--dot {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+}
+
+.card-menu .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+@container (max-width: 300px) {
+  .cockpit-card__sub {
+    display: none;
+  }
+}

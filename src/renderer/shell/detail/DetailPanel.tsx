@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import type { TagReading } from '../../../shared/tag-reading';
-import { cardLook, cardToneVar } from '../cards';
+import { cardLook } from '../cards';
 import { CloseIcon, CopyIcon } from '../Icons';
 import type { ActivityEntry, DetailTarget } from '../types';
 
@@ -71,7 +71,7 @@ export function DetailPanel({
   return (
     <aside className="detail" style={{ width }} aria-label="详情">
       <div className="detail__resize" onPointerDown={startResize} title="拖动调整宽度" />
-      <header className={`detail__head${look ? ` detail__head--${look.tone}` : ''}`}>
+      <header className="detail__head">
         <div className="detail__heading">
           <span className="detail__eyebrow">{isCard ? 'CARD INSTANCE' : 'TERMINAL SESSION'}</span>
           <h2 className="detail__title">
@@ -176,7 +176,6 @@ function CardDetail({
   activity: ActivityEntry[];
 }): JSX.Element {
   const look = cardLook(card.cardId);
-  const tone = cardToneVar(look.tone);
   const latest = useMemo(() => {
     const map = new Map<string, TagReading>();
     for (const reading of readings) map.set(reading.tag, reading);
@@ -198,7 +197,7 @@ function CardDetail({
 
   return (
     <>
-      <section className="detail__hero" style={{ '--card-tone': tone } as React.CSSProperties}>
+      <section className="detail__hero">
         <span className="detail__hero-dot" aria-hidden />
         <div>
           <p className="detail__hero-title">{look.note}</p>

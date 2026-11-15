@@ -3,29 +3,15 @@
   "kind": "Card",
   "id": "gpu-npu",
   "name": "GPU / NPU",
-  "version": "1.0.0",
-  "description": "GPU 与 NPU 利用率双环，附频率和温度；读 gpu.usage / gpu.freq_hz / npu.usage / temp.gpu / temp.npu",
+  "version": "3.0.0",
+  "description": "GPU 负载为主读数，NPU 与 GPU 频率/温度为辅助；读 gpu.usage / npu.usage / gpu.freq_hz / temp.gpu / temp.npu",
   "entry": "index.html",
   "requires": {
-    "tags": [
-      "gpu.usage"
-    ]
+    "tags": ["gpu.usage"]
   },
-  "layout": {
-    "w": 4,
-    "h": 5,
-    "min_w": 3,
-    "min_h": 4
-  },
+  "layout": { "w": 3, "h": 3, "min_w": 2, "min_h": 2 },
   "permissions": {
-    "read": [
-      "gpu.usage",
-      "gpu.freq_hz",
-      "npu.usage",
-      "temp.gpu",
-      "temp.npu",
-      "custom.rk3588-atk.npu.freq_hz"
-    ],
+    "read": ["gpu.usage", "npu.usage", "gpu.freq_hz", "temp.gpu", "temp.npu"],
     "write": []
   },
   "actions": []

@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   ChevronIcon,
   FolderIcon,
@@ -8,32 +8,86 @@ import {
   ListIcon,
   TerminalIcon,
 } from './Icons';
-import type { SecondaryGroup, SecondaryItem } from './nav';
+import type { SecondaryGroup } from './nav';
+
+const STORAGE_KEY = 'devboard.collapsedSections';
+
+function readCollapsed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export interface SecondaryStatus {
+  label: string;
+  detail: string;
+  tone: 'ok' | 'warn' | 'danger' | 'muted';
+}
 
 /**
  * The secondary sidebar: the options for the page you are on.
  *
- * ── one renderer, six pages ──
+ * ── the status lives in the header now ──
  *
- * The content comes from `nav.ts` as data; this component only draws it.
- * A page title and a collapse control live at the top so the sidebar can be
- * folded away when the cards need the whole window.
+ * The board state used to be its own block at the top of the list, which cost
+ * a scroll row on every page. It is now one line next to the page title:
+ * "工作台 · 采样中". The list starts with the cards, which is what the page is
+ * actually for.
+ *
+ * ── section headings collapse ──
+ *
+ * Pinned and each card family are separate sections; clicking a heading folds
+ * it. The folded set is remembered in localStorage, so the sidebar keeps the
+ * shape the user left it in.
  */
 export function Secondary({
   title,
+  status,
   groups,
   onCollapse,
 }: {
   title: string;
+  status: SecondaryStatus;
   groups: SecondaryGroup[];
   onCollapse: () => void;
 }): JSX.Element {
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      // memory-only sidebar still works
+    }
+  }, [collapsed]);
+
+  const toggle = (key: string): void => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <aside className="secondary" aria-label="页面选项">
       <header className="secondary__head">
         <div className="secondary__heading">
-          <span className="secondary__eyebrow">SIDEBAR</span>
           <h2 className="secondary__page">{title}</h2>
+          <span
+            className={`secondary__status secondary__status--${status.tone}`}
+            title={`${status.label} · ${status.detail}`}
+          >
+            <span className={`live-dot live-dot--${status.tone}`} aria-hidden />
+            <span className="secondary__status-label">{status.label}</span>
+            <span className="secondary__status-detail">{status.detail}</span>
+          </span>
         </div>
         <button
           type="button"
@@ -47,92 +101,147 @@ export function Secondary({
       </header>
 
       <div className="secondary__scroll">
-        {groups.map((group) => (
-          <section key={group.id} className={`secondary__group secondary__group--${group.id}`}>
-            <h3 className="secondary__title">
-              <span>{group.title}</span>
-              {group.id !== 'status' ? (
+        {groups.map((group) => {
+          const groupKey = `group:${group.id}`;
+          const groupCollapsed = collapsed.has(groupKey);
+          return (
+            <section key={group.id} className={`secondary__group secondary__group--${group.id}`}>
+              <button
+                type="button"
+                className="secondary__title"
+                onClick={() => toggle(groupKey)}
+                aria-expanded={!groupCollapsed}
+                title={groupCollapsed ? '展开' : '折叠'}
+              >
+                <ChevronIcon
+                  size={12}
+                  className={groupCollapsed ? 'is-collapsed' : undefined}
+                />
+                <span>{group.title}</span>
                 <span className="secondary__count">{group.items.length}</span>
-              ) : null}
-            </h3>
-            {group.items.length === 0 ? (
-              <p className="secondary__empty">没有可选项</p>
-            ) : (
-              <ul className="secondary__list">
-                {group.items.map((item, index) => {
-                  const previous = group.items[index - 1];
-                  const showSection =
-                    item.section !== undefined && item.section !== previous?.section;
-                  return (
-                    <Fragment key={item.id}>
-                      {showSection ? (
-                        <li className="secondary__section" role="presentation">
-                          <span>{item.section}</span>
-                          {item.section === 'Pinned' ? (
-                            <span className="secondary__section-hint">置顶</span>
+              </button>
+              {groupCollapsed ? null : group.items.length === 0 ? (
+                <p className="secondary__empty">没有可选项</p>
+              ) : (
+                <ul className="secondary__list">
+                  {group.items.map((item, index) => {
+                    const previous = group.items[index - 1];
+                    const showSection =
+                      item.section !== undefined && item.section !== previous?.section;
+                    const sectionKey = `${group.id}:${item.section ?? ''}`;
+                    const sectionCollapsed = collapsed.has(`section:${sectionKey}`);
+                    // A section hides **all of its rows**; the heading stays so
+                    // the group can be reopened. `item.section` is contiguous
+                    // (nav.ts sorts by it), so this only checks the current one.
+                    if (item.section !== undefined && sectionCollapsed) {
+                      return showSection ? (
+                        <li key={`${item.id}-heading`} className="secondary__section">
+                          <SectionHeading
+                            label={item.section}
+                            pinned={item.section === 'Pinned'}
+                            collapsed
+                            onToggle={() => toggle(`section:${sectionKey}`)}
+                          />
+                        </li>
+                      ) : null;
+                    }
+                    return (
+                      <Fragment key={item.id}>
+                        {showSection ? (
+                          <li className="secondary__section">
+                            <SectionHeading
+                              label={item.section ?? ''}
+                              pinned={item.section === 'Pinned'}
+                              collapsed={false}
+                              onToggle={() => toggle(`section:${sectionKey}`)}
+                            />
+                          </li>
+                        ) : null}
+                        <li className="secondary__row">
+                          <button
+                            type="button"
+                            className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
+                              item.tone === 'muted' ? ' is-muted' : ''
+                            }`}
+                            // **稳定的 e2e 钩子**（不认 class 名 —— 外壳的 DOM 可以整个换掉）
+                            data-cockpit-card-id={item.cardId}
+                            data-cockpit-session-id={item.sessionId}
+                            onClick={item.onSelect}
+                          >
+                            <span className="secondary__row-icon" aria-hidden>
+                              {iconFor(group.id)}
+                            </span>
+                            <span className="secondary__text">
+                              <span className="secondary__label">{item.label}</span>
+                              {item.hint ? <span className="secondary__hint">{item.hint}</span> : null}
+                            </span>
+                            {item.badge ? <span className="secondary__badge">{item.badge}</span> : null}
+                          </button>
+                          {item.onPin ? (
+                            <button
+                              type="button"
+                              className={`secondary__pin${item.pinned ? ' is-pinned' : ''}`}
+                              aria-label={item.pinned ? `取消置顶 ${item.label}` : `置顶 ${item.label}`}
+                              title={item.pinned ? '取消置顶' : '置顶'}
+                              onClick={item.onPin}
+                            >
+                              {item.pinned ? '★' : '☆'}
+                            </button>
+                          ) : null}
+                          {item.onClose ? (
+                            <button
+                              type="button"
+                              className="secondary__close"
+                              aria-label={`关闭 ${item.label}`}
+                              title="关闭会话"
+                              // **在行按钮外面**：点它不该顺手选中那一行
+                              onClick={item.onClose}
+                            >
+                              ✕
+                            </button>
                           ) : null}
                         </li>
-                      ) : null}
-                      <li className="secondary__row">
-                        <button
-                          type="button"
-                          className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
-                            item.tone === 'muted' ? ' is-muted' : ''
-                          }`}
-                          // **稳定的 e2e 钩子**（不认 class 名 —— 外壳的 DOM 可以整个换掉）
-                          data-cockpit-card-id={item.cardId}
-                          data-cockpit-session-id={item.sessionId}
-                          onClick={item.onSelect}
-                        >
-                          <span className="secondary__row-icon" aria-hidden>
-                            {iconFor(group.id, item)}
-                          </span>
-                          <span className="secondary__text">
-                            <span className="secondary__label">{item.label}</span>
-                            {item.hint ? <span className="secondary__hint">{item.hint}</span> : null}
-                          </span>
-                          {item.badge ? <span className="secondary__badge">{item.badge}</span> : null}
-                        </button>
-                        {item.onPin ? (
-                          <button
-                            type="button"
-                            className={`secondary__pin${item.pinned ? ' is-pinned' : ''}`}
-                            aria-label={item.pinned ? `取消置顶 ${item.label}` : `置顶 ${item.label}`}
-                            title={item.pinned ? '取消置顶' : '置顶'}
-                            onClick={item.onPin}
-                          >
-                            {item.pinned ? '★' : '☆'}
-                          </button>
-                        ) : null}
-                        {item.onClose ? (
-                          <button
-                            type="button"
-                            className="secondary__close"
-                            aria-label={`关闭 ${item.label}`}
-                            title="关闭会话"
-                            // **在行按钮外面**：点它不该顺手选中那一行
-                            onClick={item.onClose}
-                          >
-                            ✕
-                          </button>
-                        ) : null}
-                      </li>
-                    </Fragment>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        ))}
+                      </Fragment>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          );
+        })}
       </div>
     </aside>
   );
 }
 
-function iconFor(groupId: string, item: SecondaryItem): JSX.Element {
+function SectionHeading({
+  label,
+  pinned,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  pinned: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="secondary__section-toggle"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      title={collapsed ? `展开 ${label}` : `折叠 ${label}`}
+    >
+      <ChevronIcon size={11} className={collapsed ? 'is-collapsed' : undefined} />
+      <span>{label}</span>
+      {pinned ? <span className="secondary__section-hint">置顶</span> : null}
+    </button>
+  );
+}
+
+function iconFor(groupId: string): JSX.Element {
   switch (groupId) {
-    case 'status':
-      return <span className={`status-pip status-pip--${item.tone === 'muted' ? 'warn' : 'ok'}`} />;
     case 'cards':
     case 'library':
       return <LayersIcon size={14} />;

@@ -362,6 +362,9 @@ function stopMcpServer(): void {
   mcpHttp = undefined;
 }
 
+/** The shell theme; the card protocol injects the matching tokens. */
+let shellTheme: 'dark' | 'light' = 'dark';
+
 const cards = createCardWiring({
   roots: cardRoots,
   runtime: {
@@ -461,6 +464,7 @@ const cards = createCardWiring({
   layoutFile: join(userDataDir(), 'layout.json'),
   shellDir: join(__dirname, '../renderer'),
   shellCsp: SHELL_CSP,
+  theme: () => shellTheme,
 });
 
 cards.refresh();
@@ -485,6 +489,12 @@ handle(IPC.cardsRequest, (req) => cards.handleRequest(req as CardRequest));
 handle(IPC.layoutGet, () => cards.layoutGet());
 handle(IPC.layoutSet, (state) => {
   cards.layoutSet(state as LayoutState);
+  return undefined;
+});
+handle(IPC.themeSet, (theme) => {
+  // The renderer remounts the card frames after switching, so the next
+  // `cockpit://` response carries the new tokens (contract §6.2).
+  shellTheme = theme === 'light' ? 'light' : 'dark';
   return undefined;
 });
 

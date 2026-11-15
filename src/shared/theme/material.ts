@@ -172,15 +172,15 @@ export const MATERIALS: readonly MaterialDef[] = [
   {
     name: '--shell-mat-canvas',
     dark: '#06080b',
-    light: '#06080b',
+    light: '#F5F6F7',
     family: 'canvas',
     status: 'active',
-    usage: '玻璃画布的底 —— v0.7 生效值（比 --cockpit-bg 更黑，让浮层浮起来）',
+    usage: '玻璃画布的底 —— 深色比 --cockpit-bg 更黑让浮层浮起来；浅色用暖灰底衬托浮层',
   },
   {
     name: '--shell-mat-canvas-v1',
     dark: '#07090c',
-    light: '#07090c',
+    light: '#EEF0F2',
     family: 'canvas',
     status: 'legacy',
     usage: '玻璃画布的底 —— v0.7 第一遍',

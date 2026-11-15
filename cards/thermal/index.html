@@ -2,33 +2,22 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <title>温度</title>
     <link rel="stylesheet" href="./style.css" />
-    <script type="module" src="./card.js"></script>
   </head>
   <body>
-    <div class="th">
-      <div class="th-hero" id="hero">
-        <div class="th-hero__value" id="soc-value">—</div>
-        <div class="th-hero__unit" id="soc-unit">SoC 温度</div>
-        <div class="th-hero__at" id="soc-at">—</div>
+    <main class="temp">
+      <div class="temp__main">
+        <span id="soc" class="cockpit-value">—</span>
+        <span class="cockpit-unit">°C</span>
+        <span class="cockpit-label">SoC 温度</span>
       </div>
-      <div class="th-rows">
-        <div class="th-row" id="row-gpu">
-          <div class="th-row__head">
-            <span class="th-row__label">GPU</span>
-            <b class="th-row__value" id="gpu-value">—</b>
-          </div>
-          <div class="th-track"><span class="th-fill" id="gpu-fill"></span></div>
-        </div>
-        <div class="th-row" id="row-npu">
-          <div class="th-row__head">
-            <span class="th-row__label">NPU</span>
-            <b class="th-row__value" id="npu-value">—</b>
-          </div>
-          <div class="th-track"><span class="th-fill" id="npu-fill"></span></div>
-        </div>
+      <div class="temp__rows">
+        <div class="temp__row"><span>GPU</span><b id="gpu">—</b></div>
+        <div class="temp__row"><span>NPU</span><b id="npu">—</b></div>
       </div>
-      <div class="th-note" id="note">等待第一次采样</div>
-    </div>
+      <p id="note" class="cockpit-note">等待第一次采样</p>
+    </main>
+    <script type="module" src="./card.js"></script>
   </body>
 </html>

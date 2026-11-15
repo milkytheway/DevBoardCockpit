@@ -3,28 +3,15 @@
   "kind": "Card",
   "id": "cpu-usage",
   "name": "CPU 占用率",
-  "version": "2.0.0",
-  "description": "CPU 总占用半圈仪表、8 核负载、governor 与 60s 趋势；读 cpu.usage / cpu.core.*.usage / cpu.core.*.cluster / cpu.governor",
+  "version": "3.0.0",
+  "description": "CPU 总占用 + 每核分布；读 cpu.usage / cpu.core.*.usage / cpu.core.*.cluster",
   "entry": "index.html",
   "requires": {
-    "tags": [
-      "cpu.usage",
-      "cpu.governor"
-    ]
+    "tags": ["cpu.usage"]
   },
-  "layout": {
-    "w": 6,
-    "h": 5,
-    "min_w": 4,
-    "min_h": 4
-  },
+  "layout": { "w": 5, "h": 3, "min_w": 3, "min_h": 2 },
   "permissions": {
-    "read": [
-      "cpu.usage",
-      "cpu.core.*.usage",
-      "cpu.core.*.cluster",
-      "cpu.governor"
-    ],
+    "read": ["cpu.usage", "cpu.core.*.usage", "cpu.core.*.cluster"],
     "write": []
   },
   "actions": []

@@ -3,28 +3,15 @@
   "kind": "Card",
   "id": "board-identity",
   "name": "板卡身份",
-  "version": "1.0.0",
-  "description": "板型、调频 governor、GPU 频率与两路背光；读 board.model / cpu.governor / gpu.freq_hz / 背光 custom tag",
+  "version": "3.0.0",
+  "description": "板型号、调频策略与 GPU 频率；背光等控制项归控制面（M6）",
   "entry": "index.html",
   "requires": {
-    "tags": [
-      "board.model"
-    ]
+    "tags": ["board.model"]
   },
-  "layout": {
-    "w": 4,
-    "h": 4,
-    "min_w": 3,
-    "min_h": 3
-  },
+  "layout": { "w": 3, "h": 3, "min_w": 2, "min_h": 2 },
   "permissions": {
-    "read": [
-      "board.model",
-      "cpu.governor",
-      "gpu.freq_hz",
-      "custom.rk3588-atk.backlight.brightness",
-      "custom.rk3588-atk.backlight1.brightness"
-    ],
+    "read": ["board.model", "cpu.governor", "gpu.freq_hz"],
     "write": []
   },
   "actions": []

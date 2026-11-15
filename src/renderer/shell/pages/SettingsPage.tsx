@@ -54,16 +54,14 @@ export function SettingsPage({
                 type="button"
                 className={theme === mode ? 'is-active' : ''}
                 aria-pressed={theme === mode}
-                disabled={mode === 'light'}
-                title={mode === 'light' ? '浅色外壳待卡片主题通道接入（M6）' : '当前主题'}
                 onClick={() => onTheme(mode)}
               >
-                {mode === 'dark' ? '深色' : '浅色（待接入）'}
+                {mode === 'dark' ? '深色' : '浅色'}
               </button>
             ))}
           </div>
           <p className="settings-note">
-            外壳深色已就绪；浅色外壳的卡片颜色需要主进程把主题推给卡片（M6）。主题仍走 token 三层：改种子，不重写组件。
+            主题走 token 三层：改种子，不重写组件。切主题时外壳与卡片一起换——卡片宿主把主题推给 main，重新加载 iframe 时取同一套 token。
           </p>
 
           <h3 className="settings-card__sub">卡片密度</h3>

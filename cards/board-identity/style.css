@@ -1,24 +1,24 @@
-/* Board-identity card — theme variables only. */
+/* Board identity: the model is the claim; governor and GPU frequency are two
+   supporting rows. Backlight controls are not readings — they belong to the
+   control surface (M6). */
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html,
 body {
   height: 100%;
+  margin: 0;
 }
 
 body {
-  margin: 0;
-  padding: 10px 12px 8px;
-  font-family: var(--cockpit-font-ui);
-  color: var(--cockpit-text);
+  padding: 12px 14px;
   background: transparent;
-  overflow: hidden;
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
 }
 
-.bi {
+.board {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -26,147 +26,57 @@ body {
   min-height: 0;
 }
 
-.bi-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.bi-model {
-  font-family: var(--cockpit-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.bi-sub {
-  margin-left: auto;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--cockpit-text-faint);
-  white-space: nowrap;
-}
-
-.bi-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.bi-cell {
+.board__main {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 9px;
-  border-radius: 8px;
-  border: 1px solid var(--cockpit-border);
-  background: color-mix(in oklab, var(--cockpit-surface-active) 24%, transparent);
-  min-width: 0;
+  gap: 4px;
 }
 
-.bi-cell span {
-  font-size: 9px;
-  letter-spacing: 0.06em;
+.board__model {
+  font-family: var(--cockpit-font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--cockpit-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__main .cockpit-label {
+  font-size: 10px;
   color: var(--cockpit-text-faint);
 }
 
-.bi-cell b {
+.board__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cockpit-border);
+}
+
+.board__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--cockpit-text-dim);
+}
+
+.board__row b {
   font-family: var(--cockpit-font-mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--cockpit-text);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.bi-chip {
-  align-self: flex-start;
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid color-mix(in oklab, var(--cockpit-ok) 40%, transparent);
-  color: var(--cockpit-ok) !important;
-  background: color-mix(in oklab, var(--cockpit-ok) 12%, transparent);
-}
-
-.bi-chip[data-tone='none'] {
-  border-color: color-mix(in oklab, var(--cockpit-border) 80%, transparent);
-  color: var(--cockpit-text-faint) !important;
-  background: transparent;
-}
-
-.bi-backlights {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.bi-bl {
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) 64px;
-  align-items: center;
-  gap: 8px;
-}
-
-.bi-bl__label {
-  font-size: 9.5px;
-  color: var(--cockpit-text-faint);
   white-space: nowrap;
 }
 
-.bi-bar {
-  height: 7px;
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--cockpit-border) 60%, transparent);
-  background: color-mix(in oklab, var(--cockpit-surface-active) 60%, transparent);
-}
-
-.bi-bar i {
-  display: block;
-  height: 100%;
-  width: 0%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--cockpit-accent), var(--cockpit-accent-2));
-  transition: width 220ms ease-out;
-}
-
-.bi-bar i[data-tone='warn'] {
-  background: linear-gradient(90deg, var(--cockpit-warn), var(--cockpit-warn));
-}
-
-.bi-bar i[data-tone='ok'] {
-  background: linear-gradient(90deg, var(--cockpit-accent), var(--cockpit-accent-2));
-}
-
-.bi-bar i[data-tone='none'] {
-  background: var(--cockpit-text-faint);
-}
-
-.bi-bl__value {
-  font-family: var(--cockpit-font-mono);
-  font-variant-numeric: tabular-nums;
+#note {
+  margin: auto 0 0;
   font-size: 10px;
-  font-weight: 500;
-  color: var(--cockpit-text-dim);
-  text-align: right;
-  white-space: nowrap;
-}
-
-.bi-note {
-  margin-top: auto;
-  flex: 0 0 auto;
-  font-size: 9.5px;
   color: var(--cockpit-text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }

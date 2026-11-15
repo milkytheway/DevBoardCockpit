@@ -22,7 +22,7 @@ import {
   useRuntime,
   useTagStream,
 } from './data';
-import { describeError } from './format';
+import { describeError, runtimeText } from './format';
 import { downloadFile, uploadFile, type FileTransferHost } from './files';
 import { slotKey } from './layout-utils';
 import { secondaryGroupsFor } from './nav';
@@ -98,6 +98,7 @@ function readStoredPins(): string[] {
 
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
+  const [cardTheme, setCardTheme] = useState(theme);
   const [page, setPage] = useState<PageId>('workbench');
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<DetailTarget>(null);
@@ -121,13 +122,24 @@ export function Shell(): JSX.Element {
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
   // is re-read from the CSS variables after the styles have been applied.
-  // Dark is the only shipped shell theme for now: light needs the main process
-  // to push theme tokens into the card frames (tracked for M6).
+  // The host also needs it: card frames get their tokens from the protocol
+  // handler, so the theme is pushed to main *before* the frames remount.
   useEffect(() => {
     applyTheme(theme);
     const timer = window.setTimeout(() => setXtermTheme(readXtermTheme()), 30);
+    // The cards read their tokens from the main process, not from this
+    // document. Ack the theme first, then remount the frames — otherwise the
+    // iframe can reload with the previous palette.
+    void window.cockpit
+      .setTheme(theme)
+      .catch(() => undefined)
+      .finally(() => setCardTheme(theme));
     return () => window.clearTimeout(timer);
   }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   useEffect(() => {
     try {
@@ -250,6 +262,14 @@ export function Shell(): JSX.Element {
       { id: 'page-library', label: '打开卡片库', run: go('library') },
       { id: 'page-settings', label: '打开设置', run: go('settings') },
       {
+        id: 'toggle-theme',
+        label: theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
+        run: () => {
+          toggleTheme();
+          close();
+        },
+      },
+      {
         id: 'refresh-cards',
         label: '重新扫描卡片目录',
         run: () => {
@@ -270,7 +290,7 @@ export function Shell(): JSX.Element {
       });
     }
     return list;
-  }, [detail, goPage, log, refresh]);
+  }, [detail, goPage, log, refresh, theme, toggleTheme]);
 
   const secondary = useMemo(
     () =>
@@ -311,12 +331,17 @@ export function Shell(): JSX.Element {
   const activeConnection = terminal.activeSession
     ? (connections.find((connection) => connection.id === terminal.activeSession?.profileId) ?? null)
     : null;
+  const statusText = runtimeText(runtime, connections);
+  const secondaryStatus = {
+    ...statusText,
+    tone: statusText.tone === 'unknown' ? ('muted' as const) : statusText.tone,
+  };
 
   return (
     <div className="app-shell">
       <StatusBar
-        runtime={runtime}
-        connections={connections}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         cardCount={cards.length}
         placedCount={placedCards.length}
         secondaryOpen={secondaryOpen}
@@ -329,6 +354,7 @@ export function Shell(): JSX.Element {
         {secondaryOpen ? (
           <Secondary
             title={PAGE_TITLE[page]}
+            status={secondaryStatus}
             groups={secondary}
             onCollapse={() => setSecondaryOpen(false)}
           />
@@ -353,7 +379,7 @@ export function Shell(): JSX.Element {
                 cards={placedCards}
                 units={units}
                 broker={broker}
-                theme={theme}
+                theme={cardTheme}
                 density={density}
                 selectedInstanceId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}

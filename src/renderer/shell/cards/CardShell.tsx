@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { UserCard } from '../../cards/user-card';
-import { cardLook, cardToneVar } from '../cards';
+import { cardLook } from '../cards';
 import {
   ActivityIcon,
   BoardIcon,
@@ -69,15 +69,11 @@ export function CardShell({
     return () => window.removeEventListener('pointerdown', onPointerDown);
   }, [menuOpen]);
 
-  const style = { '--card-tone': cardToneVar(look.tone) } as CSSProperties;
-
   return (
     <section
       className={`cockpit-card${selected ? ' is-selected' : ''}`}
-      style={style}
       data-card-id={info.cardId}
       data-instance-id={info.instanceId}
-      data-tone={look.tone}
     >
       <header className="cockpit-card__head">
         <div
@@ -115,9 +111,12 @@ export function CardShell({
             </span>
           </span>
         </div>
-        <span className={`state-chip${info.degraded ? ' state-chip--warn' : ' state-chip--ok'}`}>
+        <span
+          className={`state-chip state-chip--dot${info.degraded ? ' state-chip--warn' : ' state-chip--ok'}`}
+          title={info.degraded ? '降级运行' : '运行中'}
+          aria-label={info.degraded ? '降级运行' : '运行中'}
+        >
           <span className={`live-dot live-dot--${info.degraded ? 'warn' : 'ok'}`} aria-hidden />
-          {info.degraded ? '降级' : '运行中'}
         </span>
         <div className="card-menu" ref={menuRef}>
           <button
@@ -166,16 +165,6 @@ export function CardShell({
       <div className="cockpit-card__body" key={theme}>
         <UserCard info={info} broker={broker} />
       </div>
-      <footer className="cockpit-card__foot">
-        <span className="foot-label">
-          <span className="live-dot live-dot--ok" aria-hidden />
-          沙箱运行
-        </span>
-        <span className="foot-sep" aria-hidden />
-        <span className="foot-mono" title={info.instanceId}>
-          {info.instanceId.slice(0, 8)}
-        </span>
-      </footer>
     </section>
   );
 }

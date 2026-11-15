@@ -1,25 +1,27 @@
-import type { ConnectionInfo } from '../../shared/ipc-contract';
-import type { RuntimeStatus } from '../../shared/runtime-status';
-import { runtimeText } from './format';
 import { PanelIcon, PaletteIcon, SearchIcon } from './Icons';
+import type { ThemeName } from '../../shared/theme/seed';
 
 /**
- * The status band: the app's title bar and its one-line health report.
+ * The status band: the app's title bar.
  *
- * It is also the window's drag region (the frame is hidden), which is why
- * every interactive child opts out of `-webkit-app-region: drag`.
+ * ── why the link state is not here ──
+ *
+ * The board state used to sit in this band. It now lives in the secondary
+ * sidebar's header, next to the page title: the top band is chrome (brand,
+ * window controls, command search), the sidebar header is context ("what am
+ * I looking at, and is it alive"). That also gives the cards back a row.
  */
 export function StatusBar({
-  runtime,
-  connections,
+  theme,
+  onToggleTheme,
   cardCount,
   placedCount,
   secondaryOpen,
   onToggleSecondary,
   onOpenPalette,
 }: {
-  runtime: RuntimeStatus;
-  connections: ConnectionInfo[];
+  theme: ThemeName;
+  onToggleTheme: () => void;
   /** How many cards are installed. */
   cardCount: number;
   /** How many of them are placed in the main area. */
@@ -28,9 +30,6 @@ export function StatusBar({
   onToggleSecondary: () => void;
   onOpenPalette: () => void;
 }): JSX.Element {
-  const rt = runtimeText(runtime, connections);
-  const board = rt.detail || rt.label;
-
   return (
     <header className="statusbar" data-testid="statusbar">
       <div className="statusbar__brand">
@@ -44,12 +43,6 @@ export function StatusBar({
         <span className="statusbar__title">DevBoard Cockpit</span>
         <span className="statusbar__version">M5b</span>
       </div>
-
-      <span className="statusbar__link" data-testid="runtime-chip">
-        <span className={`live-dot live-dot--${rt.tone}`} aria-hidden />
-        <span className="statusbar__link-label">{rt.label}</span>
-        <span className="statusbar__link-detail">{board}</span>
-      </span>
 
       <span className="statusbar__count" title="已摆进主区 / 已装卡片">
         <span className="mono">{placedCount}</span>
@@ -78,9 +71,9 @@ export function StatusBar({
       <button
         type="button"
         className="icon-btn icon-btn--bar"
-        disabled
-        title="深色主题；浅色外壳待卡片主题通道接入（M6）"
-        aria-label="主题：深色（浅色待接入）"
+        onClick={onToggleTheme}
+        title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+        aria-label="切换主题"
       >
         <PaletteIcon size={15} />
       </button>

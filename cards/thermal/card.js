@@ -1,115 +1,106 @@
 /**
- * Thermal card: SoC hero value plus GPU / NPU threshold bars.
+ * Thermal card: SoC is the claim; GPU/NPU are two supporting rows. The
+ * threshold decoration moved to the host detail panel.
  */
 
-const el = (id) => document.getElementById(id);
+const socEl = document.getElementById('soc');
+const gpuEl = document.getElementById('gpu');
+const npuEl = document.getElementById('npu');
+const noteEl = document.getElementById('note');
 
 const readings = new Map();
-const parts = {
-  soc: el('soc-value'),
-  socAt: el('soc-at'),
-  gpuValue: el('gpu-value'),
-  gpuFill: el('gpu-fill'),
-  npuValue: el('npu-value'),
-  npuFill: el('npu-fill'),
-  note: el('note'),
-};
+let lastGood = null;
 
-function ago(at) {
-  if (typeof at !== 'number') return '—';
+function subscribeWithRetry(name, cb) {
+  let stopped = false;
+  const attempt = () => {
+    if (stopped) return;
+    Promise.resolve(cockpit.tags.subscribe(name, cb)).then(
+      (result) => {
+        if (result && result.ok === false && result.reason === 'not_connected') {
+          setTimeout(attempt, 150);
+        }
+      },
+      () => setTimeout(attempt, 150),
+    );
+  };
+  attempt();
+  return () => {
+    stopped = true;
+  };
+}
+
+function statusOf(reading) {
+  return reading && typeof reading.status === 'string' ? reading.status : 'pending';
+}
+
+function ageText(at) {
   const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (seconds < 1) return '刚刚';
-  if (seconds < 60) return seconds + ' 秒前';
-  return Math.round(seconds / 60) + ' 分钟前';
+  return seconds <= 0 ? '刚刚' : `${seconds}s 前`;
 }
 
-function toneFor(value) {
-  if (typeof value !== 'number') return 'none';
-  if (value >= 85) return 'danger';
-  if (value >= 70) return 'warn';
-  return 'ok';
-}
-
-function fmtTemp(value) {
-  return typeof value === 'number' ? value.toFixed(1) : '—';
-}
-
-function renderRow(valueNode, fillNode, reading) {
-  const tone = toneFor(reading && (reading.status === 'ok' || reading.status === 'stale') ? reading.value : null);
-  if (valueNode) valueNode.textContent = fmtTemp(reading && (reading.status === 'ok' || reading.status === 'stale') ? reading.value : null) + ' °C';
-  if (fillNode) {
-    fillNode.dataset.tone = tone;
-    fillNode.style.width =
-      (reading && (reading.status === 'ok' || reading.status === 'stale') && typeof reading.value === 'number'
-        ? Math.max(0, Math.min(100, reading.value))
-        : 0) + '%';
+function setRow(element, reading) {
+  if (!element) return;
+  const parent = element.parentElement;
+  const status = statusOf(reading);
+  parent?.classList.remove('is-warn', 'is-danger');
+  if (status === 'unavailable') {
+    element.textContent = '不可用';
+    return;
   }
-  if (valueNode) {
-    valueNode.className = valueNode.className.replace(/\s*is-\w+/g, '') + (tone === 'none' ? '' : ' is-' + tone);
+  if (typeof reading?.value !== 'number') {
+    element.textContent = '—';
+    return;
   }
+  element.textContent = `${reading.value.toFixed(1)} °C`;
+  if (reading.value >= 85) parent?.classList.add('is-danger');
+  else if (reading.value >= 70) parent?.classList.add('is-warn');
 }
 
-function update() {
+function render() {
   const soc = readings.get('temp.soc');
-  const gpu = readings.get('temp.gpu');
-  const npu = readings.get('temp.npu');
+  const status = statusOf(soc);
 
-  const socOk = soc && (soc.status === 'ok' || soc.status === 'stale') && typeof soc.value === 'number';
-  parts.soc.textContent = socOk ? fmtTemp(soc.value) : '—';
-  parts.soc.className = 'th-hero__value';
-  if (socOk) {
-    const tone = toneFor(soc.value);
-    if (tone !== 'ok') parts.soc.classList.add('is-' + tone);
-    if (soc.status === 'stale') parts.soc.classList.add('is-stale');
-  }
-  parts.socAt.textContent = socOk ? '最后采样 ' + ago(soc.at) : '等待第一次采样';
-
-  renderRow(parts.gpuValue, parts.gpuFill, gpu);
-  renderRow(parts.npuValue, parts.npuFill, npu);
-
-  const states = [soc, gpu, npu].filter(Boolean).map((reading) => reading.status);
-  parts.note.className = 'th-note';
-  if (!soc && !gpu && !npu) {
-    parts.note.textContent = '等待第一次采样';
-  } else if (states.includes('unavailable')) {
-    parts.note.textContent = '部分温度通道不可用 · 板型包未提供';
-    parts.note.classList.add('is-warn');
-  } else if (states.includes('error')) {
-    parts.note.textContent = '读取失败 · 显示的是上一次的值';
-    parts.note.classList.add('is-error');
-  } else if (states.includes('stale')) {
-    parts.note.textContent = '数据已过时 · 72°C 预警 / 85°C 危险';
-    parts.note.classList.add('is-warn');
-  } else {
-    parts.note.textContent = '72°C 预警 / 85°C 危险';
-  }
-}
-
-const tags = window.cockpit && window.cockpit.tags;
-
-/**
- * The bridge hands its private port over asynchronously (hello -> host ->
- * MessagePort). A subscription issued before that resolves as `not_connected`
- * and is dropped, so retry until the handshake has settled.
- */
-function subscribeWithRetry(kind, name, callback) {
-  if (!tags) return;
-  const pending = tags[kind](name, callback);
-  if (pending && typeof pending.then === 'function') {
-    pending.then((result) => {
-      if (!result || result.ok !== true) {
-        setTimeout(() => subscribeWithRetry(kind, name, callback), 150);
+  if (socEl) {
+    socEl.className = 'cockpit-value';
+    if (status === 'unavailable') {
+      socEl.className = 'cockpit-unavailable';
+      socEl.textContent = '不可用';
+    } else if (status === 'pending') {
+      socEl.className = 'cockpit-pending';
+      socEl.textContent = '…';
+    } else {
+      if (typeof soc?.value === 'number') lastGood = soc.value;
+      const number = typeof soc?.value === 'number' ? soc.value : lastGood;
+      if (number === null || number === undefined) {
+        socEl.className = 'cockpit-value cockpit-value--error';
+        socEl.textContent = '—';
+      } else {
+        socEl.textContent = number.toFixed(1);
+        if (status === 'stale') socEl.className = 'cockpit-value cockpit-value--stale';
+        if (status === 'error') socEl.className = 'cockpit-value cockpit-value--error';
       }
-    });
+    }
+  }
+
+  setRow(gpuEl, readings.get('temp.gpu'));
+  setRow(npuEl, readings.get('temp.npu'));
+
+  if (noteEl) {
+    if (status === 'error') noteEl.textContent = '读取失败 · 显示的是上一次的值';
+    else if (status === 'stale') noteEl.textContent = `采样已过时 · ${ageText(soc.at)}`;
+    else if (status === 'unavailable') noteEl.textContent = '这块板不提供温度';
+    else if (status === 'pending') noteEl.textContent = '等待第一次采样';
+    else noteEl.textContent = `采样 ${ageText(soc.at)}`;
   }
 }
 
 for (const name of ['temp.soc', 'temp.gpu', 'temp.npu']) {
-  subscribeWithRetry('subscribe', name, (reading) => {
+  subscribeWithRetry(name, (reading) => {
     readings.set(name, reading);
-    update();
+    render();
   });
 }
 
-update();
-setInterval(update, 1000);
+setInterval(render, 1000);
+render();

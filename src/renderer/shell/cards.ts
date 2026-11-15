@@ -94,7 +94,7 @@ const LOOKS: Record<string, CardLook> = {
 
 const FALLBACK: CardLook = {
   name: '自定义卡片',
-  note: 'AI 生成 · 沙箱运行',
+  note: 'AI 生成 · 宿主隔离',
   icon: 'activity',
   tone: 'slate',
   group: '自定义',

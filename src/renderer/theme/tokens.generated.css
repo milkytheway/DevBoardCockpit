@@ -131,8 +131,8 @@
   --shell-mat-sheen-card-v2: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 48%);
   --shell-mat-sheen-card-v1: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%);
   --shell-mat-pure-white: #ffffff;
-  --shell-mat-canvas: #06080b;
-  --shell-mat-canvas-v1: #07090c;
+  --shell-mat-canvas: #F5F6F7;
+  --shell-mat-canvas-v1: #EEF0F2;
   --shell-mat-shadow-card: 0 10px 26px -20px rgba(23, 30, 40, 0.28), 0 1px 2px -1px rgba(23, 30, 40, 0.14);
   --shell-mat-shadow-float: 0 24px 60px -30px rgba(23, 30, 40, 0.3);
   --shell-mat-shadow-glass: 0 34px 66px -32px rgba(0, 0, 0, 0.98), 0 10px 26px -14px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.12);

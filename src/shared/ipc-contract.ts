@@ -62,6 +62,14 @@ export const IPC = {
   layoutGet: 'layout:get',
   /** 存布局（拖完之后） */
   layoutSet: 'layout:set',
+  /**
+   * 外壳主题（深/浅）。
+   *
+   * **为什么必须经过 main**：卡片 iframe 的 token 是协议 handler 在响应
+   * `cockpit://` 时注入的；renderer 改 document 属性只能改外壳自己。
+   * 主题落在 main，卡片重挂时才会带上新的 `theme.css`。
+   */
+  themeSet: 'theme:set',
 } as const;
 
 /** 一张卡片的一个实例 */
@@ -207,6 +215,8 @@ export interface CockpitApi {
   layoutGet(): Promise<LayoutState>;
   /** 存布局 */
   layoutSet(state: LayoutState): Promise<void>;
+  /** 把外壳主题告诉 main：卡片重新加载时会拿到对应的 token */
+  setTheme(theme: 'dark' | 'light'): Promise<void>;
   /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */
   cardsCsp(instanceId: string, detail: CardCspViolation): Promise<void>;
   /**

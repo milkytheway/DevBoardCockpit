@@ -2,27 +2,23 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <title>每核负载</title>
     <link rel="stylesheet" href="./style.css" />
-    <script type="module" src="./card.js"></script>
   </head>
   <body>
-    <div class="cl">
-      <div class="cl-head">
-        <div class="cl-summary">
-          <b id="avg">—</b>
-          <span>平均</span>
-        </div>
-        <div class="cl-summary">
-          <b id="peak">—</b>
-          <span>峰值</span>
-        </div>
-        <div class="cl-total">
-          <span>总占用</span>
-          <b id="total">—</b>
-        </div>
+    <main class="core">
+      <div class="core__main">
+        <span id="value" class="cockpit-value">—</span>
+        <span class="cockpit-unit">%</span>
+        <span class="cockpit-label">平均占用</span>
       </div>
-      <div class="cl-bars" id="bars" aria-label="每核负载"></div>
-      <div class="cl-note" id="note">等待第一次采样</div>
-    </div>
+      <div class="core__aux">
+        <span>峰值 <b id="peak">—</b></span>
+        <span>总占用 <b id="total">—</b></span>
+      </div>
+      <div id="bars" class="core__bars" aria-hidden="true"></div>
+      <p id="note" class="cockpit-note">等待第一次采样</p>
+    </main>
+    <script type="module" src="./card.js"></script>
   </body>
 </html>

@@ -2,38 +2,21 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <title>板卡身份</title>
     <link rel="stylesheet" href="./style.css" />
-    <script type="module" src="./card.js"></script>
   </head>
   <body>
-    <div class="bi">
-      <div class="bi-head">
-        <b class="bi-model" id="model">—</b>
-        <span class="bi-sub">板卡身份</span>
+    <main class="board">
+      <div class="board__main">
+        <span id="model" class="board__model">—</span>
+        <span class="cockpit-label">板型号</span>
       </div>
-      <div class="bi-grid">
-        <div class="bi-cell">
-          <span>调频策略</span>
-          <b class="bi-chip" id="governor">—</b>
-        </div>
-        <div class="bi-cell">
-          <span>GPU 频率</span>
-          <b id="gpu-freq">—</b>
-        </div>
+      <div class="board__rows">
+        <div class="board__row"><span>调频策略</span><b id="governor">—</b></div>
+        <div class="board__row"><span>GPU 频率</span><b id="freq">—</b></div>
       </div>
-      <div class="bi-backlights">
-        <div class="bi-bl">
-          <span class="bi-bl__label">背光 0</span>
-          <div class="bi-bar"><i id="bl0"></i></div>
-          <b class="bi-bl__value" id="bl0v">—</b>
-        </div>
-        <div class="bi-bl">
-          <span class="bi-bl__label">背光 1</span>
-          <div class="bi-bar"><i id="bl1"></i></div>
-          <b class="bi-bl__value" id="bl1v">—</b>
-        </div>
-      </div>
-      <div class="bi-note" id="note">等待第一次采样</div>
-    </div>
+      <p id="note" class="cockpit-note">等待第一次采样</p>
+    </main>
+    <script type="module" src="./card.js"></script>
   </body>
 </html>

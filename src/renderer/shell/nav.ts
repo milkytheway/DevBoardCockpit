@@ -93,29 +93,6 @@ export interface SecondaryContext {
 }
 
 /** The status block — the same on every page. */
-function statusGroup(ctx: SecondaryContext): SecondaryGroup {
-  const link =
-    ctx.runtime.state === 'running'
-      ? '采样中'
-      : ctx.runtime.state === 'no-pack'
-        ? '未识别板型'
-        : ctx.runtime.state === 'error'
-          ? '连接失败'
-          : '空闲';
-  return {
-    id: 'status',
-    title: '状态',
-    items: [
-      {
-        id: 'status-link',
-        label: link,
-        hint: ctx.runtime.detail ?? ctx.runtime.profileId ?? '还没有连上任何连接',
-        tone: ctx.runtime.state === 'error' ? 'muted' : 'default',
-      },
-    ],
-  };
-}
-
 /** The card catalogue: every installed card, placed or not. */
 function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
   const placed = new Set(ctx.placedSlotKeys);
@@ -181,7 +158,6 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     onClose: () => ctx.onCloseSession(session.sessionId),
   }));
   return [
-    statusGroup(ctx),
     { id: 'connections', title: '连接方式', items: connections },
     { id: 'sessions', title: '会话', items: sessions },
   ];
@@ -201,10 +177,7 @@ function fileGroups(ctx: SecondaryContext): SecondaryGroup[] {
     onSelect: () => ctx.onSelectSession(session.sessionId),
     onClose: () => ctx.onCloseSession(session.sessionId),
   }));
-  return [
-    statusGroup(ctx),
-    { id: 'sessions', title: '对象（可传文件的会话）', items: sessions },
-  ];
+  return [{ id: 'sessions', title: '对象（可传文件的会话）', items: sessions }];
 }
 
 function logGroups(ctx: SecondaryContext): SecondaryGroup[] {
@@ -221,13 +194,12 @@ function logGroups(ctx: SecondaryContext): SecondaryGroup[] {
     tone: ctx.activityFilter === id ? ('active' as const) : ('default' as const),
     onSelect: () => ctx.onActivityFilter(id),
   }));
-  return [statusGroup(ctx), { id: 'filter', title: '筛选', items: filters }];
+  return [{ id: 'filter', title: '筛选', items: filters }];
 }
 
 function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
   const degraded = ctx.cards.filter((card) => card.degraded).length;
   return [
-    statusGroup(ctx),
     {
       id: 'library',
       title: '筛选',
@@ -241,7 +213,6 @@ function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
 
 function settingsGroups(ctx: SecondaryContext): SecondaryGroup[] {
   return [
-    statusGroup(ctx),
     {
       id: 'settings',
       title: '设置',
@@ -258,7 +229,7 @@ function settingsGroups(ctx: SecondaryContext): SecondaryGroup[] {
 export function secondaryGroupsFor(page: PageId, ctx: SecondaryContext): SecondaryGroup[] {
   switch (page) {
     case 'workbench':
-      return [statusGroup(ctx), cardCatalogue(ctx)];
+      return [cardCatalogue(ctx)];
     case 'terminal':
       return terminalGroups(ctx);
     case 'files':
@@ -270,6 +241,6 @@ export function secondaryGroupsFor(page: PageId, ctx: SecondaryContext): Seconda
     case 'settings':
       return settingsGroups(ctx);
     default:
-      return [statusGroup(ctx)];
+      return [];
   }
 }
