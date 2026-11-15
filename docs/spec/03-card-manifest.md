@@ -564,10 +564,15 @@ const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 | `cockpit.actions.invoke(id, params)` | 写 | `permissions.write` |
 | `cockpit.workflows.list()` | 读 | 无（只列**用户批过的**流程 ✓） |
 | `cockpit.workflows.run(id, inputs)` | 写 | `permissions.workflows` 里有这个 id ✓ **且**它已批准 ✓ |
-| `cockpit.workflows.status(runId)` | 读 | 同上 |
+| `cockpit.workflows.status(runId)` | 读 | 同上（**卡片侧是缩减投影** ✓ —— `05` §八·B·B5 ✓） |
 | `cockpit.storage.get/set/remove/keys/clear` | 存储 | 无（限于本卡命名空间） |
 | `cockpit.log(level, message)` | 日志 | 无 |
 | `cockpit.notify(title, body)` | 通知 | 无 |
+
+**卡片没有「取消流程」的方法** ✓（2026-11-15，依据 `05` §八·A·A4 ✓）：
+「停不停」是**人的判断** ✓ —— 卡片权限**逐方法**授权 ✓，
+而「停一次别人的运行」**不在任何权限项里** ✓ → 要给就得**新增一条权限** ✓，
+而新增权限**不该由流程那一轮顺手加** ✓。
 
 **命名前缀统一为 `cockpit.*`**，方法名用小驼峰。
 （`docs/05` 的 ADR-D6 曾列过另一套名字 `getTag / subscribeTag / setAction / log / notify / listTags`，

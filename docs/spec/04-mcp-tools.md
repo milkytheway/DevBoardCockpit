@@ -261,10 +261,16 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
     ok: false,
     reason: "readback_mismatch" | "denied" | "not_found"
           | "needs_confirmation" | "timeout" | "invalid_params" | "failed"
-          | "unsupported_transport" | "guard_exceeded",
+          | "unsupported_transport" | "guard_exceeded" | "cancelled",
     expected: true, actual: false,
   }
 ```
+
+**`cancelled` 是什么**（2026-11-15 新增，依据 **ADR-D36** ✓）：
+**这次执行被叫停了** ✓ —— 不是「跑失败了」✓。
+→ 它的退出码是 `null` ✓（**不是 0、也不是 124** ✓）；
+→ **不报 `readback_mismatch`** ✓（那是在说「板子不听话」✗ —— 人叫停 ≠ 板子不听话 ✓）；
+→ **超时与取消是两件事** ✓（`timeout` vs `cancelled` ✓ —— 事实 G1 ✓）。
 
 **`verified` 字段**（2026-11-13 新增，依据 `docs/05` ADR-D25）：
 
@@ -420,9 +426,22 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 #### `workflow_status(run_id)`
 
 ```
-→ { state: "running" | "awaiting_confirmation" | "done" | "failed",
+→ { state: "running" | "awaiting_confirmation" | "done" | "failed" | "cancelled",
+    current: { stepId, kind, at } | null,
     stages: [ { stepId, kind, ok, verified, reason?, audit_id } ] }
 ```
+
+> **`current` = 当前这一步**（`05` §八·B ✓）：**正在跑** ✓ **或** **停下等人点头** ✓；
+> 运行已结束 → `null` ✓。
+> → `at` = **那一步开始的时刻** ✓（界面据此算「已经用了多久」✓）。
+> → **`current` 是活快照**（会变 ✓），`stages` 是**只增不改** ✓（两者幂等性不同 ✓，`05` §八·B·B3 ✓）。
+> → **`current` 不给角色** ✓（不给拓扑 ✓）。
+> → **卡片侧看到的是一份缩减投影** ✓（`03` §7.7 ✓）—— **不是**这个形状原样搬过去 ✓。
+
+#### 取消
+
+**agent 没有取消流程的工具** ✓ —— **「停不停」是人的判断** ✓（`05` §八·A·A4 ✓）：
+「行不行」不给 agent ✓（§2.4.1 ✓），「停不停」也不给 ✓。
 
 #### `confirm_workflow(run_id)`
 
@@ -549,7 +568,7 @@ get_card_runtime_log(id)     ← MCP：看运行结果
 |---|---|
 | 错误 | 用 `ok: false` + `reason`，不抛异常 |
 | 未知 | `status: "unavailable"`，不返回 `null` 也不返回 0 |
-| 时间 | 毫秒时间戳，UTC。`at` = **本次采样完成**的时刻，不是广播时刻 |
+| 时间 | 毫秒时间戳，UTC。`at` = **本次采样完成**的时刻，不是广播时刻<br>**（流程那一侧是例外 ✓：`05` 的 `at` = **那一步开始**的时刻 ✓ —— 同一个字段名在流程里指的是「那一步什么时候起的」✓）** |
 | 路径 | 绝对路径 |
 | 版本 | `apiVersion` 字段在每个响应里都带上 |
 
