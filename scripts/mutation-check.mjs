@@ -2331,7 +2331,7 @@ const MUTATIONS = [
     name: 'M197 MCP promote：**多于一个实例就报错** ✓（**不猜** ✓）',
     file: 'src/main/mcp/promote.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/promote.test.ts'],
-    expect: '实例',
+    expect: 'invalid_params',
     apply: (s) =>
       replace(
         s,
