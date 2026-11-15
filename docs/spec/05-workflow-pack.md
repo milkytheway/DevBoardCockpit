@@ -242,6 +242,20 @@ readback:
 （**没有 `key`** ✓ —— 凭据路径不该被插进命令 ✓：它会进审计行 ✓、会进 `dry_run` 回显 ✓，
 而且它**多半没用** —— 命令跑在**源目标**上，源目标用的是**它自己的**密钥 ✓）。
 
+**角色事实从哪来**（`02` §10.3 ✓）✓ —— **该角色所绑的连接 profile** ✓：
+
+| 事实 | 来源（**按顺序取，第一个有的算数** ✓） |
+|---|---|
+| `host` | profile 的 `options.ssh.host` ✓ → `options.host` ✓ → **空串** ✓ |
+| `port` | `options.ssh.port` ✓ → `options.port` ✓ → **22** ✓ |
+| `user` | `options.ssh.username` ✓ → `options.username` ✓ → **`root`** ✓ |
+| `profile_id` | 该角色的 `profile.id` ✓ |
+
+> **为什么要 `options.ssh` 这一层** ✓：**跨机器的动作在另一台机器上发起** ✓
+> （`file.transfer` 的命令跑在**源目标**上 ✓）→ 那条命令要用**板子的 SSH 地址** ✓
+> → **流程包不该知道板子的地址** ✓ → **它跟着 profile 走** ✓。
+> → **`transport: 'ssh'` 的 profile 自己就是那个端点** ✓ → **不许双写** ✓（漂移 ✓）。
+
 **两种替换模式**：
 
 | 模式 | 用在哪 | 输入值 | 角色事实 | 槽里的路径 |

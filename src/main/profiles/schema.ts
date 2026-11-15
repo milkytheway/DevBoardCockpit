@@ -20,7 +20,30 @@ export interface ConnectionProfile {
   transport: TransportKind;
   /** 绑定的板型包 id（契约口径的键名）。null / 缺省 = 不绑 */
   board_pack?: string | null;
+  /**
+   * **这块板的标识**（契约 `spec/02` §10.2 ✓）。
+   *
+   * → **板实物**与**连接**是两层 ✓ —— 一块板有 ADB / 串口 / SSH 三条连接 ✓
+   * → **同一块板的多条连接写同一个 `device_key`** ✓
+   * → 缺省 = `id` ✓（**一板一连** ✓ 的连接就这么办 ✓）。
+   *
+   * → **取值一律走 `deviceKeyOf()`** ✓ —— **别直接读这个字段** ✓
+   *   （手搓的 profile 没有它 ✓ → 直接读会拿到 `undefined` ✗）。
+   */
+  device_key?: string;
   options: Record<string, unknown>;
+}
+
+/**
+ * **这条连接属于哪块板** ✓。
+ *
+ * → **缺省 = profile id** ✓（契约 `spec/02` §10.2 ✓）
+ * → **这是取值的唯一入口** ✓ —— 别处直接读 `profile.device_key` ✗（可能是 `undefined` ✗）。
+ */
+export function deviceKeyOf(profile: ConnectionProfile): string {
+  return profile.device_key !== undefined && profile.device_key.length > 0
+    ? profile.device_key
+    : profile.id;
 }
 
 /** 各传输允许的 options。必填项必须有，其余可选。 */
@@ -44,15 +67,31 @@ interface TransportSpec {
  */
 const COMMON_OPTIONAL = ['pty', 'prompt', 'commands'] as const;
 
+/**
+ * **`options.ssh`** —— **这条连接背后那台机器**的 SSH 端点（契约 `spec/02` §10.3 ✓）。
+ *
+ * → **它跨传输** ✓ —— ADB 连的板子也能被 SSH 连 ✓ —— 同一块板 ✓
+ * → **跨机器的动作在另一台机器上发起** ✓ → 那条命令要用**板子的 SSH 地址** ✓
+ * → **流程包不该知道板子的地址** ✓ → **它跟着 profile 走** ✓。
+ *
+ * → **只给 `serial` / `adb`** ✓ ——
+ * → `ssh` 传输**自己就是那个端点** ✓ → 双写 = 漂移 ✓ → **报错** ✓（不是「谁赢」✓ —— **不猜** ✓）
+ * → `local` 是**宿主自己** ✓ → 没有背后的板子 ✓。
+ */
+const SSH_FACT_OPTIONAL = ['ssh'] as const;
+
+/** `options.ssh` 的封闭字段表。`host` 必填。 */
+const SSH_FACT_KEYS = ['host', 'port', 'username'] as const;
+
 const TRANSPORT_SPECS: Record<TransportKind, TransportSpec> = {
   serial: {
     required: ['port'],
-    optional: ['baudrate', ...COMMON_OPTIONAL],
+    optional: ['baudrate', ...SSH_FACT_OPTIONAL, ...COMMON_OPTIONAL],
     defaults: { baudrate: 115200 },
   },
   adb: {
     required: [],
-    optional: ['serial', ...COMMON_OPTIONAL],
+    optional: ['serial', ...SSH_FACT_OPTIONAL, ...COMMON_OPTIONAL],
   },
   ssh: {
     required: ['host'],
@@ -65,7 +104,14 @@ const TRANSPORT_SPECS: Record<TransportKind, TransportSpec> = {
   },
 };
 
-const TOP_LEVEL_KEYS = ['id', 'label', 'transport', 'board_pack', 'options'] as const;
+const TOP_LEVEL_KEYS = [
+  'id',
+  'label',
+  'transport',
+  'board_pack',
+  'device_key',
+  'options',
+] as const;
 const TRANSPORTS = Object.keys(TRANSPORT_SPECS) as TransportKind[];
 
 function fail(message: string, source: string, detail?: unknown): never {
@@ -106,6 +152,19 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   const rawOptions = raw['options'];
   if (!isRecord(rawOptions)) fail('options 必须是一个对象', source);
 
+  // **`options.ssh` 的传输冲突** ✓ —— **先于「未知字段」判** ✓
+  // （否则报的是「未知字段 'ssh'」✓ → 看不出那是**冲突**而不是拼错 ✓）
+  if (rawOptions['ssh'] !== undefined) {
+    if (transport === 'ssh') {
+      fail('options.ssh 不许带：这条连接自己就是那个 SSH 端点（双写会漂移）', source, {
+        transport,
+      });
+    }
+    if (transport === 'local') {
+      fail('options.ssh 不许带：local 是宿主自己，没有背后的板子', source, { transport });
+    }
+  }
+
   for (const key of Object.keys(rawOptions)) {
     if (!spec.required.includes(key) && !spec.optional.includes(key)) {
       fail(`未知字段 '${key}'`, source, { key, transport });
@@ -114,6 +173,27 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   for (const key of spec.required) {
     if (rawOptions[key] === undefined) {
       fail(`缺少必填字段 '${key}'`, source, { key, transport });
+    }
+  }
+
+  // **`options.ssh` 自己的封闭形状** ✓
+  const sshFact = rawOptions['ssh'];
+  if (sshFact !== undefined) {
+    if (!isRecord(sshFact)) fail('options.ssh 必须是一个对象', source);
+    for (const key of Object.keys(sshFact)) {
+      if (!SSH_FACT_KEYS.includes(key as (typeof SSH_FACT_KEYS)[number])) {
+        fail(`未知字段 '${key}'`, source, { key, in: 'options.ssh' });
+      }
+    }
+    const host = sshFact['host'];
+    if (typeof host !== 'string' || host.length === 0) {
+      fail('options.ssh 的 host 必填（非空字符串）', source);
+    }
+    if (sshFact['port'] !== undefined && typeof sshFact['port'] !== 'number') {
+      fail('options.ssh 的 port 必须是数字', source);
+    }
+    if (sshFact['username'] !== undefined && typeof sshFact['username'] !== 'string') {
+      fail('options.ssh 的 username 必须是字符串', source);
     }
   }
 
@@ -129,11 +209,22 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     fail('board_pack 必须是字符串或 null', source);
   }
 
+  // **`device_key`** ✓ —— 缺省 = profile id ✓
+  const rawDeviceKey = raw['device_key'];
+  if (
+    rawDeviceKey !== undefined &&
+    (typeof rawDeviceKey !== 'string' || rawDeviceKey.length === 0)
+  ) {
+    fail('device_key 必须是非空字符串', source);
+  }
+  const deviceKey = rawDeviceKey !== undefined ? (rawDeviceKey as string) : id;
+
   return {
     id,
     label,
     transport: transport as TransportKind,
     ...(boardPack !== undefined ? { board_pack: boardPack as string | null } : {}),
+    device_key: deviceKey,
     options,
   };
 }

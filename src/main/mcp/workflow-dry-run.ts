@@ -35,8 +35,13 @@ export interface DryRunStep {
   command?: string;
   /** 引用的动作 id（`action` 步 ✓） */
   action?: string;
-  /** 这一步的判据（**回读读什么** ✓） */
-  readback?: { kind: string; tag?: string; path?: string };
+  /**
+   * 这一步的判据（**回读读什么** ✓）。
+   *
+   * → **`kind` 可省** ✓ —— **形式 1（`tag`）不带 `kind`** ✓（同 `spec/02` §4.4 ✓）
+   * → **不填假值** ✓（**不猜** ✓）。
+   */
+  readback?: { kind?: string; tag?: string; path?: string };
   /** 危险等级（**默认 `reversible`** ✓） */
   danger: 'reversible' | 'destructive';
   /** 超时（毫秒） */
@@ -123,7 +128,9 @@ function previewStep(
   }
 
   if (step.readback !== undefined) {
-    const rb: { kind: string; tag?: string; path?: string } = { kind: step.readback.kind };
+    const rb: { kind?: string; tag?: string; path?: string } = {};
+    // **形式 1 只有 `tag`，没有 `kind`** ✓（同 `spec/02` §4.4 ✓）→ **不填 `kind: undefined`** ✓
+    if (step.readback.kind !== undefined) rb.kind = step.readback.kind;
     if (step.readback.tag !== undefined) rb.tag = step.readback.tag;
     if (step.readback.path !== undefined) rb.path = step.readback.path;
     out.readback = rb;

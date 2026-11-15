@@ -881,10 +881,25 @@ function factsOf(pack: WorkflowPack, deps: WorkflowRunDeps): Record<string, Role
     const profile = deps.profileFor(role.profile);
     if (profile === undefined) continue;
     const options = profile.options as Record<string, unknown>;
+    // ── **SSH 端点有两个来源** ✓（契约 `spec/05` §六 ✓）──
+    //
+    // → **`options.ssh`** ✓ —— **这条连接背后那台机器**的端点 ✓
+    //   （**adb / 串口连的板子也能被 ssh 连** ✓ —— 同一块板 ✓）
+    // → **`options.host`** ✓ —— **这条连接自己就是 ssh** ✓（**它自己就是那个端点** ✓）
+    //
+    // → **两者不会同时出现** ✓（`ssh` 传输的 profile **不许**带 `options.ssh` ✓ —— 报错 ✓）
+    // → **先读 `options.ssh`** ✓ —— 它更具体 ✓。
+    const sshFact =
+      typeof options['ssh'] === 'object' && options['ssh'] !== null
+        ? (options['ssh'] as Record<string, unknown>)
+        : {};
+
     facts[name] = {
-      host: typeof options['host'] === 'string' ? (options['host'] as string) : '',
-      port: typeof options['port'] === 'number' ? (options['port'] as number) : 22,
-      user: typeof options['username'] === 'string' ? (options['username'] as string) : 'root',
+      host: str(sshFact['host']) ?? str(options['host']) ?? '',
+      port: num(sshFact['port']) ?? num(options['port']) ?? 22,
+      user: str(sshFact['username']) ?? str(options['username']) ?? 'root',
+      // **私钥不进 `options.ssh`** ✓ —— 那把钥匙**在客机上** ✓（尖兵装的 ✓）
+      // → **只有这条连接自己的 `key_filename`** ✓
       ...(typeof options['key_filename'] === 'string'
         ? { key: options['key_filename'] as string }
         : {}),
@@ -892,6 +907,16 @@ function factsOf(pack: WorkflowPack, deps: WorkflowRunDeps): Record<string, Role
     };
   }
   return facts;
+}
+
+/** 取一个字符串事实（**空串不算** ✓） */
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+/** 取一个数字事实 */
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
 /** 端点（源路径与目的地路径）——`placement` 要问目标机器的内核版本 */

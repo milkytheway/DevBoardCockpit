@@ -52,11 +52,11 @@ describe('MCP · run_workflow 的 dry_run', () => {
     const result = dryRunWorkflow(pack(), { project: 'x' });
     expect(result.ok).toBe(true);
     expect(result.steps).toHaveLength(2);
-    expect(result.steps[0]?.id).toBe('compile');
-    expect(result.steps[0]?.kind).toBe('exec');
-    expect(result.steps[0]?.role).toBe('build');
+    expect(result.steps?.[0]?.id).toBe('compile');
+    expect(result.steps?.[0]?.kind).toBe('exec');
+    expect(result.steps?.[0]?.role).toBe('build');
     // **字符串输入按 shell 规矩编码 → 带引号** ✓（同 `actions/encoder` ✓）
-    expect(result.steps[0]?.command).toContain("make -C projects/'x'");
+    expect(result.steps?.[0]?.command).toContain("make -C projects/'x'");
   });
 
   it('**不执行任何一步** ✓（**它是预览** ✓）', () => {
@@ -69,13 +69,13 @@ describe('MCP · run_workflow 的 dry_run', () => {
 
   it('**占位符按输入替换** ✓（**看到的是真命令** ✓）', () => {
     const result = dryRunWorkflow(pack(), { project: 'myapp' });
-    expect(result.steps[0]?.command).toContain("projects/'myapp'");
+    expect(result.steps?.[0]?.command).toContain("projects/'myapp'");
   });
 
   it('**危险等级要给** ✓（**agent 要知道哪一步会毁东西** ✓）', () => {
     const result = dryRunWorkflow(pack(), { project: 'x' });
     // **默认是 reversible** ✓
-    expect(result.steps[0]?.danger).toBe('reversible');
+    expect(result.steps?.[0]?.danger).toBe('reversible');
   });
 
   it('**destructive 的步要标出来** ✓', () => {
@@ -91,7 +91,7 @@ describe('MCP · run_workflow 的 dry_run', () => {
       'demo.yaml',
     );
     const result = dryRunWorkflow(destructive, { project: 'x' });
-    expect(result.steps[1]?.danger).toBe('destructive');
+    expect(result.steps?.[1]?.danger).toBe('destructive');
   });
 
   it('**缺必填输入 → `invalid_params`** ✓（**不猜默认值** ✓）', () => {
@@ -105,6 +105,6 @@ describe('MCP · run_workflow 的 dry_run', () => {
     const result = dryRunWorkflow(pack(), { project: 'x' });
     expect(result.ok).toBe(true);
     // **角色名要给** ✓（**agent 看得见这一步在哪台机器上** ✓）
-    expect(result.steps[0]?.role).toBe('build');
+    expect(result.steps?.[0]?.role).toBe('build');
   });
 });

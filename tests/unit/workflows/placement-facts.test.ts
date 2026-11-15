@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TagStore } from '../../../src/main/tags/store';
 import { runWorkflow, type WorkflowRunDeps } from '../../../src/main/workflows/runner';
 import { parseWorkflow } from '../../../src/main/workflows/format';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';

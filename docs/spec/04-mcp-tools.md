@@ -55,8 +55,13 @@ list_capabilities →  现在能做什么
 #### `list_connections()`
 
 ```
-→ [{ id, label, transport, board_pack, connected, capabilities }]
+→ [{ id, label, transport, board_pack, device_key, current, connected, capabilities }]
 ```
+
+| 字段 | 含义 |
+|---|---|
+| **`device_key`** | **这块板的标识** ✓（`02` §10.2 ✓）—— **同一块板的多条连接给同一个值** ✓ |
+| **`current`** | **它是当前运行时那条连接吗** ✓（**与 `connected` 的两条判据分开** ✓ —— 开着终端会话的那条**也算 `connected`** ✓，但**不是**运行时那条 ✓） |
 
 `board_pack` 是当前这块板绑定的**板型包 id**；**没绑就是 `null`**。
 
@@ -458,7 +463,7 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 
 ### 2.4 执行动作
 
-#### `execute_action(actionId, params, dry_run)`
+#### `execute_action(actionId, params, dry_run, device_key?)`
 
 ```
 → {
@@ -523,6 +528,9 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 
 **行为**：
 
+0. **给了 `device_key` → 它必须是当前运行时那条连接的 `device_key`** ✓
+   → 否则 **`not_found`** ✓（detail 写清「没有这个设备：X」✓）。
+   → **绝不允许「忽略 `device_key` 然后打当前那块」** ✓ —— **那是「静默地做另一件事」** ✗。
 1. 查动作在当前板型包里存在吗 → 否则 `not_found`
 2. 查调用方的授权 → 否则 `denied`
 3. 校验参数（类型、范围、枚举）→ 否则 `invalid_params`
@@ -711,7 +719,7 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 > （同 `confirm_action` ✓）。**「批准」这个动作不是 MCP 工具** ✓——
 > 它在 GUI 那一侧 ✓。**agent 调不到它** ✓。
 
-#### `confirm_action(actionId, params)`
+#### `confirm_action(actionId, params, device_key?)`
 
 ```
 → { confirm_id: "...", expires_at: 1762910000000 }
@@ -735,7 +743,7 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 
 | 项 | 规则 |
 |---|---|
-| 绑定 | `(动作 id, 参数的规范化摘要, 板型包 id, 契约版本, **这一步最终命令的摘要**)` |
+| 绑定 | `(动作 id, 参数的规范化摘要, 板型包 id, 契约版本, **这一步最终命令的摘要**, **device_key**)` |
 | 参数变化 | **参数一变，凭据立即失效**。用户批准的是「把背光调到 30」，不是「把背光调到任意值」 |
 | 一次性 | **消费即失效**。用一次就作废，不能重放 |
 | 有效期 | 默认 5 分钟（`expires_at`）。过期后要重新请求 |
