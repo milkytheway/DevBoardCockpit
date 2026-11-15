@@ -1752,7 +1752,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M143 确认链：**人摇头 → 那一步不许跑**（没人点头就���许做 ✗）',
+    name: 'M143 确认链：**人摇头 → 那一步不许跑**（没人点头就不许做 ✗）',
     file: 'src/main/workflows/interactive.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/interactive.test.ts'],
     expect: '人摇头',
