@@ -2247,7 +2247,7 @@ const MUTATIONS = [
     name: 'M190 MCP 装卡：**没批过的同意不能消费** ✓（**签发 ≠ 批准** ✓）',
     file: 'src/main/cards/consent.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '没批过',
+    expect: '签发',
     apply: (s) =>
       replace(
         s,
@@ -2280,15 +2280,15 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M193 MCP 装卡：**没有 manifest 就不装** ✓（**不是「装个空卡」** ✓）',
+    name: 'M193 MCP 装卡：**manifest 坏了就不装** ✓（**不是「装个坏卡」** ✓）',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: 'manifest.json',
+    expect: 'manifest',
     apply: (s) =>
       replace(
         s,
-        "  if (!existsSync(manifestPath)) {",
-        "  if (false) {",
+        "    manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown, path);",
+        "    manifest = parseManifest({ apiVersion: 'devboard/v1', kind: 'Card', id: 'x', name: 'x', version: '1', entry: 'index.html', permissions: { read: [], write: [] } }, path);",
       ),
   },
   {
