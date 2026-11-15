@@ -354,6 +354,78 @@ describe('流程 · 确认凭据', () => {
   });
 });
 
+describe('流程 · 续跑', () => {
+  it('**从第几步开始** → 前面的步**不重跑**（重跑 = 编译两遍 ✗）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'first', kind: 'exec', role: 'build', cmd: 'echo first' },
+          { id: 'second', kind: 'exec', role: 'build', cmd: 'echo second' },
+        ],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true, startAt: 1 });
+    // **第一步没跑** ✓
+    expect(h.byId('guest')?.commands).toEqual(['echo second']);
+  });
+
+  it('续跑时**带上之前的产出**（槽还在 ✓）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'find', kind: 'discover', role: 'build', dir: 'build', pattern: '*.ko', out: 'artifacts' },
+          { id: 'use', kind: 'exec', role: 'build', cmd: 'ls {output:artifacts}' },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, {
+      approved: true,
+      startAt: 1,
+      outputs: { artifacts: 'build/hello.ko' },
+    });
+    // **第二步用的是之前那个槽** ✓
+    expect(h.byId('guest')?.commands).toEqual(["ls 'build/hello.ko'"]);
+    expect(result.outputs['artifacts']).toBe('build/hello.ko');
+  });
+
+  it('**续跑是同一次运行** → runId 沿用 ✓', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [{ id: 'a', kind: 'exec', role: 'build', cmd: 'echo a' }],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true, runId: 'wf-fixed' });
+    expect(result.runId).toBe('wf-fixed');
+  });
+});
+
 describe('流程 · discover 步', () => {
   it('按规则找到产物，**落进槽**', async () => {
     const h = harness({
