@@ -111,7 +111,7 @@ afterEach(() => {
 
 function service(
   pack: TestPack = PACK,
-  harnessOpts: { gate?: boolean } = {},
+  harnessOpts: { gate?: boolean; throwOnAudit?: boolean } = {},
 ): {
   svc: WorkflowService;
   reg: WorkflowRegistry;
@@ -122,12 +122,16 @@ function service(
   releaseOne: () => void;
   /** 等到有 n 条命令卡着 ✓ */
   untilWaiting: (n: number) => Promise<void>;
+  /** 审计被调用了几次 ✓（用来等「那一步真的跑完了」✓） */
+  auditCount: () => number;
 } {
   // **换一个包**（测试要能造 destructive 的那一种 ✓）
   writeFileSync(join(userDir, 'demo.yaml'), yamlOf(pack), 'utf8');
   const reg = new WorkflowRegistry({ dirs: [userDir], approvalFile });
   reg.scan();
   const audits: AuditRow[] = [];
+  const throwOnAudit = harnessOpts.throwOnAudit === true;
+  let auditCalls = 0;
   const profiles = new Map<string, ConnectionProfile>([
     ['guest', { id: 'guest', label: '客机', transport: 'ssh', options: { host: '10.0.0.2' } }],
   ]);
@@ -178,6 +182,10 @@ function service(
     } as never,
     profileFor: (id: string) => profiles.get(id),
     audit: (row: AuditRow) => {
+      // **审计抛错** → 用来走到**服务层的 catch 路径** ✓（独立评审 40 的 I-1 ✓）
+      // ⚠️ **第二次才抛** ✓ —— 第一次是 `cancel()` 自己那行审计 ✓（它不该炸 ✓）
+      auditCalls += 1;
+      if (throwOnAudit && auditCalls > 1) throw new Error('审计炸了');
       audits.push(row);
       return `audit-${audits.length}`;
     },
@@ -195,6 +203,7 @@ function service(
     confirmations,
     deps,
     releaseOne: () => waiting.shift()?.(),
+    auditCount: () => auditCalls,
     untilWaiting: async (n: number): Promise<void> => {
       for (let i = 0; i < 200 && waiting.length < n; i += 1) {
         await new Promise((r) => setTimeout(r, 5));
@@ -388,6 +397,33 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     // **取消一个已经结束的运行** → 不该改它的状态 ✓
     h.svc.cancel(runId);
     expect(h.svc.status(runId).state).toBe(before);
+  });
+
+  it('**取消之后走了异常路径 → 状态仍是 cancelled**（不是 failed ✓）', async () => {
+    // ⚠️ **独立评审 40 的 I-1** ✓：成功路径有守卫 ✓，**catch 路径没有** ✓
+    // → 取消之后只要有任何异常到达 execute ✓，界面上的「人叫停」就被说成「出错了」✗
+    const h = service(PACK, { gate: true, throwOnAudit: true });
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    await h.untilWaiting(1);
+
+    // **取消** ✓
+    h.svc.cancel(runId);
+    expect(h.svc.status(runId).state).toBe('cancelled');
+
+    // **放它过去** ✓ → 那一步跑完 ✓ → 审计抛错 ✓ → 服务层的 catch 路径 ✓
+    h.releaseOne();
+    // ⚠️ **不能等状态变** ✓ —— 取消后它已经是 `cancelled` ✓（不是 `running` ✓）
+    // → 那样循环直接跳过 ✓，断言在异常发生**之前**就跑了 ✓ → **判据是空的** ✗
+    // → 改成等「审计真的被调到第 2 次」✓（那就是那一步跑完的信号 ✓）
+    for (let i = 0; i < 50 && h.auditCount() < 2; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(h.auditCount()).toBeGreaterThanOrEqual(2);
+    // **异常处理完之后再看状态** ✓
+    await new Promise((r) => setTimeout(r, 20));
+    // **「人叫停」必须活到最后** ✓（契约 §八·A·A2 ✓）
+    expect(h.svc.status(runId).state).toBe('cancelled');
   });
 
   it('**取消会撤销那张待确认的凭据**（人不该去点一个已经取消的运行 ✓）', async () => {

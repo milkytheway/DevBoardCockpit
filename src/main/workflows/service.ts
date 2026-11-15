@@ -399,9 +399,13 @@ export class WorkflowService {
         status.current = null;
       }
     } catch (err) {
-      status.state = 'failed';
-      status.reason = err instanceof Error ? err.message : String(err);
-      status.finishedAt = this.now();
+      // **取消过的运行 → 状态不许被这条异常路径翻回去** ✓（独立评审 40 的 I-1 ✓）
+      // → 「人叫停」必须活到最后 ✓（契约 §八·A·A2 ✓ —— 取消不是失败 ✓）
+      if (status.state !== 'cancelled') {
+        status.state = 'failed';
+        status.reason = err instanceof Error ? err.message : String(err);
+        status.finishedAt = this.now();
+      }
     }
   }
 

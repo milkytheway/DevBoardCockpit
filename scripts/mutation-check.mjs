@@ -1764,6 +1764,18 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M144 流程层：**异常路径**也不许把「取消」翻成 failed（独立评审 40 的 I-1 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '取消之后走了异常路径',
+    apply: (s) =>
+      replace(
+        s,
+        "    } catch (err) {\n      // **取消过的运行 → 状态不许被这条异常路径翻回去** ✓（独立评审 40 的 I-1 ✓）\n      // → 「人叫停」必须活到最后 ✓（契约 §八·A·A2 ✓ —— 取消不是失败 ✓）\n      if (status.state !== 'cancelled') {",
+        "    } catch (err) {\n      // 变异：异常路径把「取消」翻成 failed\n      if (true) {",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
