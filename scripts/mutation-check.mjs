@@ -2227,8 +2227,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "      out.push(\n        `## ${id}（${label}）\n` +",
-        "      if (id !== 'cpu-usage') continue;\n      out.push(\n        `## ${id}（${label}）\n` +",
+        "      const tags = Array.isArray(perms.read) ? perms.read.filter((t): t is string => typeof t === 'string') : [];",
+        "      const tags = [] as string[];\n      if (id !== 'cpu-usage') continue;\n      out.push(\n        `## ${id}（${label}）\n` +",
       ),
   },
   {
