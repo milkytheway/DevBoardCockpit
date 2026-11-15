@@ -1920,6 +1920,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M157 MCP 发现文件：**先写 .tmp 再原子改名**（agent 不许读到半个文件 ✓ —— 契约 §7.2 ✓）',
+    file: 'src/main/mcp/discovery.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
+    expect: '读不到半个文件',
+    apply: (s) =>
+      replace(
+        s,
+        '  renameSync(tmp, path);',
+        '  writeFileSync(path, readFileSync(tmp, \'utf8\'), { encoding: \'utf8\' }); // 变异：不原子改名',
+      ),
+  },
+  {
+    name: 'M158 MCP 发现文件：**权限 0600**（token 不能被同机别的用户读到 ✓ —— 契约 §7.2 ✓）',
+    file: 'src/main/mcp/discovery.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
+    expect: '权限仅当前用户可读',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (process.platform !== 'win32') chmodSync(tmp, 0o600);",
+        '  // 变异：不钉权限（umask 说了算 → 可能变成 0644 ✗）',
+      ),
+  },
+  {
+    name: 'M159 MCP 发现文件：**退出时要删掉它**（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）',
+    file: 'src/main/mcp/discovery.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
+    expect: '删掉之后就没有了',
+    apply: (s) =>
+      replace(
+        s,
+        '    rmSync(path, { force: true });',
+        '    // 变异：不删',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
