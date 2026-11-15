@@ -917,10 +917,19 @@ async function resolveEndpoints(
     const profileId = ctx.pack.roles[roleName]?.profile;
     if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${roleName} 没绑定 profile`);
     // **落位目录要问目标机器**（内核模块的路径里有版本号 ✓）
-    const release = await ctx.deps.targets.runOn(profileId, async (conn) => {
-      const result = await conn.exec('uname -r');
-      return result.timedOut || result.exitCode !== 0 ? '' : result.stdout.trim();
-    });
+    //
+    // → **但只有 `kernel-module` 需要问** ✓（`user-program` 的落位是固定路径 ✓
+    //   —— `/usr/local/bin/` ✓ —— **问 `uname -r` 是白问** ✓）。
+    // → **白问的代价不止一次往返** ✓：**宿主必须能连上目标机器** ✓
+    //   —— 而「宿主只有 ADB、板子的私钥在客机上」时 ✓ —— **那条路走不通** ✗
+    //   → **本来不需要的依赖变成了硬依赖** ✗。
+    const release =
+      step.to.placement === 'kernel-module'
+        ? await ctx.deps.targets.runOn(profileId, async (conn) => {
+            const result = await conn.exec('uname -r');
+            return result.timedOut || result.exitCode !== 0 ? '' : result.stdout.trim();
+          })
+        : '';
     const dir = placementDir(step.to.placement as 'kernel-module', { kernel_release: release });
     to = `${dir}${basenameOf(from)}`;
   }

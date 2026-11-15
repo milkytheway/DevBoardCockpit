@@ -2340,6 +2340,18 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M198 工作流：**只有 kernel-module 才问目标机器的内核版本** ✓（**白问也是硬依赖** ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/placement-facts.test.ts'],
+    expect: 'user-program',
+    apply: (s) =>
+      replace(
+        s,
+        "      step.to.placement === 'kernel-module'",
+        "      true",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
