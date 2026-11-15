@@ -220,11 +220,19 @@ describe('MCP · 四个流程工具', () => {
     expect(list[0]?.id).toBe('demo.run');
     expect(list[0]?.name).toBe('演示流程');
     expect(list[0]?.inputs['project']).toBeTruthy();
-    // **不许露出角色/机器** ✓（契约 §2.4：「哪个角色连哪台机器 → 那是未授权方不该看到的」✓）
+    // **不许露出角色/机器** ✓（契约 §2.4 明写 ✓ —— 那是**拓扑** ✓）
     const dumped = JSON.stringify(list);
     expect(dumped).not.toContain('build');
     expect(dumped).not.toContain('guest');
     expect(dumped).not.toContain('ubuntu-ssh');
+    // **键就只有契约说的那几个** ✓（契约 §2.4：`[{ id, name, inputs }]` ✓）
+    // → 多一个键就是多漏一样东西 ✓（`version` / `approved` / 拓扑 ✓ 都不该有 ✓）
+    expect(Object.keys(list[0] as Record<string, unknown>).sort()).toEqual([
+      'apiVersion',
+      'id',
+      'inputs',
+      'name',
+    ]);
   });
 
   it('`run_workflow` → **返回 run_id** ✓', async () => {

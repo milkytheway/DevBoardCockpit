@@ -1956,22 +1956,22 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M162 MCP：**list_workflows 不给拓扑**（角色/机器名不许露 ✓ —— 契约 §2.4 ✓）',
+    name: 'M162 MCP：**list_workflows 只给契约说的那几个键**（多一个键 = 多漏一样东西 ✓ —— 契约 §2.4 ✓）',
     file: 'src/main/mcp/server.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
-    expect: '不给拓扑',
+    expect: '键就只有契约说的那几个',
     apply: (s) =>
       replace(
         s,
         '            inputs: w.inputs,\n          })),',
-        '            inputs: w.inputs,\n            roles: w.inputs,\n          })),',
+        '            inputs: w.inputs,\n            version: w.version,\n          })),',
       ),
   },
   {
     name: 'M163 MCP：**工具失败用 ok:false + reason**（不抛异常 ✓ —— 契约 §四 ✓）',
     file: 'src/main/mcp/server.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
-    expect: '失败（不是偷偷跑起来',
+    expect: '不是偷偷跑起来',
     apply: (s) =>
       replace(
         s,
