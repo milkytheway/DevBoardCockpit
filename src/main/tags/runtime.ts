@@ -6,7 +6,8 @@ import type { TagReading } from '../../shared/tag-reading';
 import { AppError, type ErrorCode } from '../../shared/errors';
 import type { ActionDef, BoardPack } from './schema';
 import { matchTagPattern } from './vocabulary';
-import { TagStore } from './store';
+import { TagStore, type TagSample } from './store';
+import { packView, type PackView } from './pack-view';
 import type { RuntimeState, RuntimeStatus } from '../../shared/runtime-status';
 import { TagSampler } from './sampler';
 import { PollScheduler } from './scheduler';
@@ -181,6 +182,27 @@ export class TagRuntime {
   /** 当前板型包的 id（**确认凭据要绑它**） */
   get packId(): string | undefined {
     return this.pack?.id;
+  }
+
+  /**
+   * **当前板型包的脱敏只读投影** ✓（MCP 的读侧工具要它 ✓）。
+   *
+   * → **不给原始的包** ✓ —— 原始 args 里有 `command` 与宿主路径 ✓
+   *   （`tags/pack-view.ts` 的放行表挡掉了 ✓ —— 契约 §1.3 ✓）。
+   * → **没有包就是 `null`** ✓（不猜 ✓）。
+   */
+  get packView(): PackView | null {
+    return packView(this.pack);
+  }
+
+  /**
+   * **样本缓冲**（最近若干个样本）✓ —— 支撑 `sample_tag(name, n)` 与 `describe_tag.history` ✓。
+   *
+   * → **先定向采一次** ✓（契约 v5 §2.1 ✓：不采的话 agent 拿到的是**冻结的旧样本** ✓）。
+   */
+  async sampleTagHistory(tag: string, n: number): Promise<TagSample[]> {
+    await this.sampleTag(tag);
+    return this.store.history(tag, n);
   }
 
   /**

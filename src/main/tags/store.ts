@@ -42,11 +42,49 @@ export interface TagReadingInput {
 /** 读数变化时的回调 */
 export type ReadingListener = (reading: TagReading) => void;
 
+/**
+ * **一个样本**（契约 `spec/04` §2.1 ✓）。
+ *
+ * → 形状与 `sample_tag` / `describe_tag.history` **完全一致** ✓。
+ */
+export interface TagSample {
+  value: number | string | boolean | null;
+  unit: string;
+  status: TagStatus;
+  /** 本次采样的完成时刻（毫秒 UTC） */
+  at: number;
+}
+
+/**
+ * **样本缓冲的默认容量**（**每个 tag** 各一份 ✓）。
+ *
+ * → **这是实现细节** ✓ —— 契约只说「最多 n 个，不足不补」✓ → **不锁死** ✓。
+ * → **为什么 64**：够跨越很多个快组周期（1s ✓）与慢组周期（30s ✓）✓ ——
+ *   agent 判断「抖动」要看**几个点** ✓，判断「刷新周期实际是多少」要看**跨越两个周期**的样本 ✓。
+ */
+export const DEFAULT_HISTORY_LIMIT = 64;
+
 export class TagStore {
   private readonly readings = new Map<string, TagReading>();
   /** 每个 tag 最后一次「好值」——`stale` / `error` 靠它保留旧值 */
   private readonly lastGood = new Map<string, number | string | boolean>();
   private readonly listeners: ReadingListener[] = [];
+  /**
+   * **样本环形缓冲**（每个 tag 一份 ✓）。
+   *
+   * → **为什么要有** ✓：`TagStore` 每个 tag 只留**最新一条** ✓ ——
+   *   而 MCP 的 `sample_tag(name, n)` 与 `describe_tag.history` 要**最近 n 个样本** ✓。
+   * → **环形** ✓：满了丢最旧的 ✓（内存有界 ✓）。
+   *
+   * → **字段名不叫 `history`** ✓ —— 那会与 `history()` 方法同名 ✓（JS 里类字段与方法同名会互相盖掉 ✓）。
+   */
+  private readonly samples = new Map<string, TagSample[]>();
+  /** 每个 tag 保留多少个样本 */
+  private readonly historyLimit: number;
+
+  constructor(opts: { historyLimit?: number } = {}) {
+    this.historyLimit = opts.historyLimit ?? DEFAULT_HISTORY_LIMIT;
+  }
 
   /** 当前的读数条数 */
   get size(): number {
@@ -98,8 +136,39 @@ export class TagStore {
     });
 
     this.readings.set(input.tag, reading);
+    this.appendHistory(reading);
     for (const listener of this.listeners) listener(reading);
     return reading;
+  }
+
+  /**
+   * **把这个读数记进样本缓冲** ✓。
+   *
+   * → **只记真正存下来的那个** ✓（乱序的旧值在上面就被丢了 ✓ → 不进历史 ✓）。
+   * → **环形** ✓：满了丢最旧的 ✓。
+   */
+  private appendHistory(reading: TagReading): void {
+    const samples = this.samples.get(reading.tag) ?? [];
+    samples.push({
+      value: reading.value,
+      unit: reading.unit,
+      status: reading.status,
+      at: reading.at,
+    });
+    while (samples.length > this.historyLimit) samples.shift();
+    this.samples.set(reading.tag, samples);
+  }
+
+  /**
+   * **最近 n 个样本**（**最旧 → 最新** ✓）。
+   *
+   * → **不足 n 个就有多少给多少** ✓（不补 ✓ —— 造不出没采过的样本 ✓）。
+   * → **没读过的 tag → 空数组** ✓（不是 `null` ✓）。
+   */
+  history(tag: string, n: number): TagSample[] {
+    const samples = this.samples.get(tag);
+    if (samples === undefined || n <= 0) return [];
+    return samples.slice(-n);
   }
 
   /** 取一个 tag 的最新读数 */

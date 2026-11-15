@@ -52,6 +52,14 @@ export interface TerminalManagerOptions {
 
 interface LiveSession {
   id: string;
+  /**
+   * **这条会话连的是哪个 profile** ✓。
+   *
+   * → 它答的是「**这条配置现在有活连接吗**」✓（契约 `spec/04` §2.1 的 `connected` ✓）。
+   * → **按 sessionId 索引会话，按 profileId 索引「谁连着」** ✓ —— 两个不同的问法 ✓
+   *   （同一个 profile 可以开两个标签 ✓ —— 按 profileId 索引**会话**会撞 ✓ —— 那个坑踩过 ✓）。
+   */
+  profileId: string;
   session: Session;
   connection: Connection;
   pty: boolean;
@@ -158,7 +166,7 @@ export class TerminalManager {
     // pipe 模式：远端不发提示符，宿主画（profile 的 `options.prompt`）
     const prompt = typeof profile.options['prompt'] === 'string' ? profile.options['prompt'] : '';
     const editor = new PipeInput(prompt);
-    this.sessions.set(id, { id, session, connection, pty, editor });
+    this.sessions.set(id, { id, profileId: profile.id, session, connection, pty, editor });
     // **按 sessionId 登记**：一个标签一个连接。
     // 按 profileId 登记的话，同一个 profile 开两个标签会互相覆盖。
     this.opts.onConnectionOpen?.(id, connection);
@@ -232,6 +240,24 @@ export class TerminalManager {
 
   onData(cb: (sessionId: string, chunk: string) => void): void {
     this.dataCbs.push(cb);
+  }
+
+  /**
+   * **现在有活连接的那些 profile id** ✓。
+   *
+   * → 这是「**这条配置现在有活连接吗**」的答案 ✓（契约 `spec/04` §2.1 的 `connected` ✓）。
+   * → **同一个 profile 开多个标签只出现一次** ✓ —— 问的是「有哪些 profile 连着」✓
+   *   不是「有几个会话」✓。
+   * → **关掉一个标签 → 另一个还在 → profile 还在** ✓。
+   *
+   * → **为什么需要它** ✓：宿主侧**没有连接 registry** ✓ ——
+   *   `main/index.ts` 的 `connections` Map 按 **sessionId** 索引 ✓（给文件互传用 ✓），
+   *   **按 profileId 索引会话会撞** ✓（同一个 profile 开两个标签 ✓）。
+   */
+  liveProfileIds(): string[] {
+    const ids = new Set<string>();
+    for (const live of this.sessions.values()) ids.add(live.profileId);
+    return [...ids];
   }
 
   onExit(cb: (sessionId: string, exitCode: number | null) => void): void {
