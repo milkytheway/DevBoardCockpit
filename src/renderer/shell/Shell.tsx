@@ -111,7 +111,7 @@ export function Shell(): JSX.Element {
 
   const reportError = useCallback((message: string) => setError(message), []);
   const { activity, log } = useActivity();
-  const connections = useConnections(reportError);
+  const { connections, refresh: refreshConnections } = useConnections(reportError);
   const runtime = useRuntime();
   const { cards, refresh } = useCards(reportError);
   const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
@@ -180,6 +180,32 @@ export function Shell(): JSX.Element {
     setPage(target);
     setDetail(null);
   }, []);
+
+  /**
+   * **换一条连接**（界面「选设备」✓ —— 板实物与连接是两层 ✓）。
+   *
+   * → **宿主去切** ✓（**界面不自己连** ✓ —— 那是宿主的活 ✓）
+   * → **连不上要说出来** ✓ —— **不静默地换一条** ✗
+   *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）
+   * → **切完刷新连接清单** ✓（「当前」变了 ✓）。
+   */
+  const [selecting, setSelecting] = useState(false);
+  const selectConnection = useCallback(
+    (profileId: string) => {
+      setSelecting(true);
+      void window.cockpit
+        .connectionsSelect(profileId)
+        .then(() => {
+          refreshConnections();
+          log('info', `已切到连接：${profileId}`);
+        })
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        })
+        .finally(() => setSelecting(false));
+    },
+    [log, refreshConnections],
+  );
 
   // The cards that are **placed** in the main area right now.
   const placedKeys = useMemo(() => new Set(units.map((u) => slotKey(u.cardId, u.connectionId))), [
@@ -374,6 +400,9 @@ export function Shell(): JSX.Element {
                 broker={broker}
                 theme={cardTheme}
                 density={density}
+                connections={connections}
+                selecting={selecting}
+                onSelectConnection={selectConnection}
                 selectedInstanceId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}
                 onOpenDetail={openDetail}

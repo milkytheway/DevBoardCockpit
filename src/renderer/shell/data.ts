@@ -35,29 +35,35 @@ function useLatest<T>(value: T): { current: T } {
   return ref;
 }
 
-/** Connection profiles, read once (they only change when the app restarts). */
-export function useConnections(reportError: ReportError): ConnectionInfo[] {
+/**
+ * Connection profiles.
+ *
+ * → **开机读一次** ✓（profile 只在重启时变 ✓），
+ *   **但「哪条是当前」会变** ✓（用户换了设备 ✓）→ **所以要能刷新** ✓。
+ */
+export function useConnections(reportError: ReportError): {
+  connections: ConnectionInfo[];
+  refresh: () => void;
+} {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const report = useLatest(reportError);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     const api = window.cockpit;
-    if (!api) return undefined;
-    let disposed = false;
+    if (!api) return;
     void api
       .connectionsList()
-      .then((list) => {
-        if (!disposed) setConnections(list);
-      })
+      .then((list) => setConnections(list))
       .catch((cause: unknown) =>
         report.current(cause instanceof Error ? cause.message : String(cause)),
       );
-    return () => {
-      disposed = true;
-    };
   }, [report]);
 
-  return connections;
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { connections, refresh };
 }
 
 /** Runtime status: once at boot, then polled (the host has no push for it). */

@@ -52,6 +52,7 @@ import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
+import { deviceKeyOf } from './profiles/schema';
 import { SEEDS } from '../shared/theme/seed';
 
 /** Height of the native window-controls overlay (kept in sync with visual.css). */
@@ -645,9 +646,37 @@ handle(IPC.connectionsList, () =>
     label: p.label,
     transport: p.transport,
     boardPack: p.board_pack ?? null,
+    // **这块板的标识** ✓（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）
+    deviceKey: deviceKeyOf(p),
+    // **它是当前运行时那条连接吗** ✓（**与「有没有活连接」是两条判据** ✓ —— 不混 ✓）
+    current: runtime.status.profileId === p.id,
     capabilities: capabilitiesFor(p),
   })),
 );
+
+/**
+ * **切换当前运行时连哪条连接** ✓（界面「选设备」✓ —— 契约 `spec/02` §10.2 ✓）。
+ *
+ * → **连不上就报错** ✓ —— **不静默地换一条** ✗
+ *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）。
+ * → **不试别的候选** ✓ —— 启动时那套「挨个试」是给**开机**用的 ✓
+ *   （**用户明确指名的就不该被替换** ✓）。
+ */
+handle(IPC.connectionsSelect, async (profileId) => {
+  const id = String(profileId);
+  const profile = listProfiles().find((p) => p.id === id);
+  if (profile === undefined) {
+    throw makeError('IPC_INVALID_PAYLOAD', `没有这个连接：${id}`);
+  }
+  const status = await runtime.start(profile);
+  if (status.state !== 'running') {
+    throw makeError(
+      'CONN_OPEN_FAILED',
+      status.detail ?? `连不上 ${profile.label}`,
+      { detail: { profileId: id, state: status.state } },
+    );
+  }
+});
 
 handle(IPC.filesList, (connectionId, remotePath) =>
   transfer.list(String(connectionId), String(remotePath)),

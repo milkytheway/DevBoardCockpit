@@ -22,6 +22,13 @@ export const IPC = {
   filesPull: 'files:pull',
   connectionsList: 'connections:list',
   /**
+   * **切换当前运行时连哪条连接** ✓（界面「选设备」✓）。
+   *
+   * → **v1 是单连接** ✓（`O11` / `O18` ✓）→ **「选板子」= 换一条连接** ✓
+   * → **不是「同时看多块板」** ✓（那是 M8 ✓ —— **另说** ✓）。
+   */
+  connectionsSelect: 'connections:select',
+  /**
    * tag 读数的**当前快照**。
    *
    * **为什么要有「取快照」而不只是「听推送」**：
@@ -187,6 +194,12 @@ export interface CockpitApi {
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
   connectionsList(): Promise<ConnectionInfo[]>;
   /**
+   * **切换当前运行时连哪条连接** ✓（界面「选设备」✓）。
+   *
+   * → **连不上就报错** ✓（**不静默地换一条** ✗ —— 那就是「静默地做另一件事」✗）。
+   */
+  connectionsSelect(profileId: string): Promise<void>;
+  /**
    * 当前全部 tag 读数的快照。
    *
    * **读数只经 TagStore 出**（ADR-D22）——renderer 拿不到别处的副本。
@@ -251,6 +264,19 @@ export interface ConnectionInfo {
   label: string;
   transport: TransportKind;
   boardPack: string | null;
+  /**
+   * **这块板的标识** ✓（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+   *
+   * → **同一块板的多条连接给同一个值** ✓ → 界面据此**按板子分组** ✓。
+   */
+  deviceKey: string;
+  /**
+   * **它是当前运行时那条连接吗** ✓。
+   *
+   * → **与「有没有活连接」是两条判据** ✓（**不混** ✓）——
+   * 开着终端会话也算有活连接 ✓ 但**不是运行时那条** ✓。
+   */
+  current: boolean;
   capabilities: ConnectionCapabilities;
 }
 

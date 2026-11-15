@@ -125,6 +125,15 @@ describe('连接 profile · device_key 与 options.ssh', () => {
       ),
     ).toThrow(/未知字段 'board'/);
   });
+
+  it('**`deviceKeyOf` 是取值的唯一入口** ✓（**缺省回落到 id** ✓）', () => {
+    // **没写 `device_key`** ✓ → **就是 profile id** ✓
+    expect(deviceKeyOf({ id: 'x', label: 'x', transport: 'adb', options: {} })).toBe('x');
+    // **写了** ✓ → **就是它** ✓
+    expect(
+      deviceKeyOf({ id: 'x', label: 'x', transport: 'adb', device_key: 'atk-01', options: {} }),
+    ).toBe('atk-01');
+  });
 });
 
 /**

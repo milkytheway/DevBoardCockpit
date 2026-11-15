@@ -1,8 +1,9 @@
-import type { CardInstanceInfo } from '../../../shared/ipc-contract';
+import type { CardInstanceInfo, ConnectionInfo } from '../../../shared/ipc-contract';
 import type { LayoutUnit, ViewDensity } from '../../../shared/layout';
 import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { CardGrid } from '../cards/CardGrid';
+import { DevicePicker } from '../DevicePicker';
 import { ActivityIcon, GridIcon, LayersIcon, RefreshIcon } from '../Icons';
 
 /**
@@ -17,6 +18,9 @@ export function WorkbenchPage({
   broker,
   theme,
   density,
+  connections,
+  selecting,
+  onSelectConnection,
   selectedInstanceId,
   onSelect,
   onOpenDetail,
@@ -33,6 +37,12 @@ export function WorkbenchPage({
   broker: CardBroker | null;
   theme: ThemeName;
   density: ViewDensity;
+  /** **宿主给的连接清单** ✓（**带 `deviceKey` 与 `current`** ✓） */
+  connections: ConnectionInfo[];
+  /** **正在换连接** ✓（**别让用户连点** ✓） */
+  selecting: boolean;
+  /** **换一条连接** ✓（界面「选设备」✓） */
+  onSelectConnection: (profileId: string) => void;
   selectedInstanceId: string | null;
   onSelect: (info: CardInstanceInfo) => void;
   onOpenDetail: (info: CardInstanceInfo) => void;
@@ -49,6 +59,12 @@ export function WorkbenchPage({
           <h1 className="page-head__title">总览</h1>
         </div>
         <div className="page-head__actions">
+          {/* **选设备** ✓（板实物与连接是两层 ✓ —— 一块板有几条连接 ✓）*/}
+          <DevicePicker
+            connections={connections}
+            onSelect={onSelectConnection}
+            busy={selecting}
+          />
           <div className="segmented segmented--density" role="group" aria-label="卡片密度">
             <button
               type="button"

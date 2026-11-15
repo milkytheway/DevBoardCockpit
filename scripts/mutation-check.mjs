@@ -2484,6 +2484,18 @@ const MUTATIONS = [
         "      host: str(options['host']) ?? '', // 变异：不读 options.ssh",
       ),
   },
+  {
+    name: 'M203 界面：**按设备分组** ✓（**同一块板的几条连接归一组** ✓ —— 板实物与连接是两层 ✓）',
+    file: 'src/renderer/shell/devices.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/device-picker.test.ts'],
+    expect: '同一块板的多条连接归到一组',
+    apply: (s) =>
+      replace(
+        s,
+        '    const list = byKey.get(connection.deviceKey);\n    if (list === undefined) byKey.set(connection.deviceKey, [connection]);\n    else list.push(connection);',
+        '    const list = byKey.get(connection.id);\n    if (list === undefined) byKey.set(connection.id, [connection]);\n    else list.push(connection); // 变异：按连接分组，不按设备',
+      ),
+  },
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
