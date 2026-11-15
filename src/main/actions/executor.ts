@@ -294,6 +294,20 @@ export async function invokeAction(
     return { execResult, result };
   });
 
+  // **被取消了** → 不是「失败」，是「人叫停」 ✓
+  // → **必须在这里判** ✓：回读形式是 `none` 时它会报 `ok: true` ✓
+  //   （「命令确实执行了、效果也确实有」✓ —— 但它**被砍到一半**了 ✗ → 那是撒谎 ✗）
+  if (execResult.cancelled === true) {
+    const cancelledOutcome: ActionOutcome = {
+      ok: false,
+      verified: false,
+      reason: 'cancelled',
+      detail: '这次执行被取消了',
+    };
+    record(cancelledOutcome);
+    return cancelledOutcome;
+  }
+
   const hasReadback =
     readback.value !== undefined || readback.unit !== undefined || readback.status !== undefined;
   // **输出要截断**（编译的输出能有几万行 → 全带出来会拖垮 IPC 与审计 ✓）

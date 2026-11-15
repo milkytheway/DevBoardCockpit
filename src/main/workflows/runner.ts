@@ -180,6 +180,9 @@ export async function runWorkflow(
 
   for (const [index, step] of pack.steps.entries()) {
     if (index < startAt) continue;
+    // **被叫停了 → 这一步就不跑了** ✓（独立评审 40 的 I-6 ✓）
+    // → 「人不要了，就别再往下做」✓（还往下做 = 不听话 ✗）
+    if (opts.signal?.aborted === true) break;
     const stage = await runStep(step, {
       pack,
       runId,
@@ -192,6 +195,9 @@ export async function runWorkflow(
       now,
     });
     stages.push(stage);
+
+    // **这一步跑着的时候被叫停了 → 不跑下一步** ✓（独立评审 40 的 I-6 ✓）
+    if (opts.signal?.aborted === true) break;
 
     if (stage.reason === 'needs_confirmation') {
       needsConfirmation = {
@@ -396,6 +402,9 @@ async function crossRoleReadback(
 > {
   const readRole = step.readback?.role;
   if (readRole === undefined || readRole === stepRole) return undefined;
+  // **被叫停了 → 不跑跨目标的判据** ✓（独立评审 40 的 I-6 ✓）
+  // → 「东西都没传完，验它有什么意思」✗；而且取消后**别再让人多等一条命令** ✓
+  if (ctx.opts.signal?.aborted === true) return undefined;
   const result = await runReadbackOnRole(ctx, readRole, step.readback, substitution);
   const auditId = ctx.deps.audit({
     at: started,
@@ -644,7 +653,10 @@ async function runReadbackOnRole(
       readTag: ctx.deps.readTag ?? (async () => undefined),
       readFile: async (path: string): Promise<string | null> => {
         const cat = await ctx.deps.targets.runOn(profileId, (conn) =>
-          conn.exec(`cat -- ${quotePath(path)}`),
+          conn.exec(
+            `cat -- ${quotePath(path)}`,
+            ctx.opts.signal === undefined ? {} : { signal: ctx.opts.signal },
+          ),
         );
         return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
       },
@@ -659,7 +671,9 @@ async function runReadbackOnRole(
             { detail: { command, pattern: floor.pattern } },
           );
         }
-        return ctx.deps.targets.runOn(profileId, (conn) => conn.exec(command));
+        return ctx.deps.targets.runOn(profileId, (conn) =>
+          conn.exec(command, ctx.opts.signal === undefined ? {} : { signal: ctx.opts.signal }),
+        );
       },
       hasExitCode,
     },

@@ -170,6 +170,20 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.reason).toBe('unsupported_transport');
   });
 
+  it('**动作那条命令被取消了** → 理由是 cancelled（**不是「不符」** ✓）', async () => {
+    // ⚠️ 取消的退出码是 `null` ✓（不是 0、也不是 124 ✓）——
+    // → 不看 `cancelled` 标志的话，它会掉进「返回非 0」那一档 ✗
+    // → 报「回读不符」是**撒谎** ✗（人叫停 ≠ 板子不听话 ✓）
+    const result = await runReadback(
+      { kind: 'command_ok' },
+      { raw: {}, encoded: {} },
+      deps(),
+      { exitCode: null, stdout: '', stderr: '', durationMs: 1, timedOut: false, cancelled: true },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('cancelled');
+  });
+
   it('verify：命令成功 → ok', async () => {
     const result = await runReadback(
       { kind: 'verify', command: 'test -e /tmp/marker', timeout_ms: 500 },

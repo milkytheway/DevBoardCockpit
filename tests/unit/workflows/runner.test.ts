@@ -28,7 +28,7 @@ interface FakeTarget {
   catAnswers: Record<string, string>;
 }
 
-function harness(opts: { files?: Record<string, FileEntry[]> } = {}) {
+function harness(opts: { files?: Record<string, FileEntry[]>; onExec?: (command: string) => void } = {}) {
   const targets: FakeTarget[] = [
     {
       profile: { id: 'guest', label: '客机', transport: 'ssh', options: { host: '10.0.0.2', username: 'builder' } },
@@ -66,6 +66,8 @@ function harness(opts: { files?: Record<string, FileEntry[]> } = {}) {
         close: async () => undefined,
         exec: async (command: string): Promise<ExecResult> => {
           target.commands.push(command);
+          // **测试可以在这里叫停** ✓（「在飞的那一步被取消」✓）
+          opts.onExec?.(command);
           if (command.startsWith('cat -- ')) {
             const path = command.slice('cat -- '.length).replace(/^'|'$/g, '');
             const answer = target.catAnswers[path];
@@ -651,6 +653,84 @@ describe('流程 · file.transfer 步（直传）', () => {
     // **验证命令跑在板子上**（不在客机上 ✓）
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(true);
     expect(h.byId('guest')?.commands.some((c) => c.includes('test -f'))).toBe(false);
+  });
+});
+
+describe('流程 · 取消（人叫停）', () => {
+  it('**被叫停了 → 后面那一步不跑**（人不要了，就别再往下做 ✓）', async () => {
+    const controller = new AbortController();
+    const h = harness({
+      // **第一步跑完就叫停** ✓
+      onExec: (command) => {
+        if (command.includes('first')) controller.abort();
+      },
+    });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'one', kind: 'exec', role: 'build', cmd: 'echo first' },
+          { id: 'two', kind: 'exec', role: 'build', cmd: 'echo second' },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, {
+      approved: true,
+      signal: controller.signal,
+    });
+    // **第一步跑了** ✓
+    expect(h.byId('guest')?.commands.some((c) => c.includes('first'))).toBe(true);
+    // **第二步不该跑** ✓（人叫停了 ✗ → 还往下做 = 不听话 ✗）
+    expect(h.byId('guest')?.commands.some((c) => c.includes('second'))).toBe(false);
+    // **时间线上只有第一步** ✓
+    expect(result.stages.map((s) => s.stepId)).toEqual(['one']);
+  });
+
+  it('**被叫停了 → 不跑跨目标的判据**（取消后别再让人多等一条命令 ✓）', async () => {
+    const controller = new AbortController();
+    const h = harness({
+      files: {
+        guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
+      },
+      // **传输那一步开始时叫停** ✓
+      onExec: (command) => {
+        if (command.startsWith('scp ')) controller.abort();
+      },
+    });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'find', kind: 'discover', role: 'build', dir: 'build', pattern: '*.ko', out: 'artifacts' },
+          {
+            id: 'deliver',
+            kind: 'file.transfer',
+            from: { role: 'build', path: '{output:artifacts}' },
+            to: { role: 'target', placement: 'kernel-module' },
+            cmd: 'scp {from.path} {role:target.user}@{role:target.host}:{to.path}',
+            out: 'dest',
+            readback: { kind: 'verify', role: 'target', command: 'test -f {to.path}' },
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true, signal: controller.signal });
+    // **板子上那条 `test -f` 不该跑** ✓（东西都没传完，验它没有意义 ✗）
+    expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(false);
   });
 });
 

@@ -197,10 +197,34 @@ export class WorkflowService {
     if (status === undefined) {
       throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
     }
+    // **已经结束的运行 → 状态一个字都不改** ✓
+    // （幂等 ✓ —— 取消不能把 `done` 改成 `cancelled` ✗）
+    if (status.state === 'done' || status.state === 'failed' || status.state === 'cancelled') {
+      return { runId };
+    }
     this.aborts.get(runId)?.abort();
     status.state = 'cancelled';
     status.reason = 'cancelled';
     status.finishedAt = this.now();
+
+    // **撤销那张待确认的凭据** ✓（独立评审 40 的 I-8 ✓）
+    // → 人**不该**再去点一个已经被取消的运行 ✗（队列里会挂着一条僵尸请求 ✓）
+    const pending = status.needsConfirmation?.confirmId;
+    if (pending !== undefined) {
+      this.opts.confirmations?.revoke(pending);
+      status.needsConfirmation = undefined;
+    }
+
+    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）
+    this.opts.runDeps.audit({
+      at: this.now(),
+      actor: 'host',
+      actionId: `workflow:${status.workflowId}:cancel`,
+      params: { runId },
+      ok: true,
+      verified: true,
+      detail: '人叫停了这次运行',
+    });
     return { runId };
   }
 
@@ -313,18 +337,22 @@ export class WorkflowService {
       status.stages = [...status.stages, ...result.stages];
       status.outputs = result.outputs;
       status.ok = result.ok;
-      status.state = result.ok ? 'done' : 'failed';
-      if (result.needsConfirmation !== undefined) {
-        status.needsConfirmation = result.needsConfirmation;
-        status.reason = 'needs_confirmation';
-        // **停在第几步**（索引 ✓）→ 续跑从这儿继续 ✓
-        status.pausedAtStep = startAt + result.stages.length - 1;
-        status.state = 'awaiting_confirmation';
-      } else if (!result.ok) {
-        const failed = result.stages.find((s) => !s.ok);
-        status.reason = failed?.reason ?? 'failed';
+      // **取消过的运行 → 状态不许被这次收尾翻回去** ✓（独立评审 40 的 C-1 ✓）
+      // → 「取消」这个状态**必须活到最后** ✓（否则界面会把「人叫停」说成「出错了」✗）
+      if (status.state !== 'cancelled') {
+        status.state = result.ok ? 'done' : 'failed';
+        if (result.needsConfirmation !== undefined) {
+          status.needsConfirmation = result.needsConfirmation;
+          status.reason = 'needs_confirmation';
+          // **停在第几步**（索引 ✓）→ 续跑从这儿继续 ✓
+          status.pausedAtStep = startAt + result.stages.length - 1;
+          status.state = 'awaiting_confirmation';
+        } else if (!result.ok) {
+          const failed = result.stages.find((s) => !s.ok);
+          status.reason = failed?.reason ?? 'failed';
+        }
+        status.finishedAt = result.needsConfirmation === undefined ? this.now() : undefined;
       }
-      status.finishedAt = result.needsConfirmation === undefined ? this.now() : undefined;
     } catch (err) {
       status.state = 'failed';
       status.reason = err instanceof Error ? err.message : String(err);

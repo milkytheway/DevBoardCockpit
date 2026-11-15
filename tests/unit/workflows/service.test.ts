@@ -123,13 +123,21 @@ function service(
     capabilities: () => ({ exec: true, files: true, exitCode: true, pty: false }),
     open: async () => undefined,
     close: async () => undefined,
-    exec: async (): Promise<ExecResult> => ({
-      exitCode: 0,
-      stdout: 'hi',
-      stderr: '',
-      durationMs: 1,
-      timedOut: false,
-    }),
+    // **认取消信号** ✓（真的 HAL 认 ✓ —— 假设备不认的话，
+    // 「在飞的那一步真停」这条判据**永远测不到** ✗）
+    // → 而且**给它 20ms 的窗口** ✓（否则取消总是晚一步 ✗）
+    exec: async (_command: string, opts?: { signal?: AbortSignal }): Promise<ExecResult> => {
+      await new Promise((r) => setTimeout(r, 20));
+      const cancelled = opts?.signal?.aborted === true;
+      return {
+        exitCode: cancelled ? null : 0,
+        stdout: 'hi',
+        stderr: '',
+        durationMs: 20,
+        timedOut: false,
+        ...(cancelled ? { cancelled: true } : {}),
+      };
+    },
     pull: async () => undefined,
     push: async () => undefined,
     list: async () => [],
@@ -287,7 +295,7 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
-  it('**取消**：状态变 cancelled（**不是 failed** ✓），且在飞的那一步真停 ✓', async () => {
+  it('**取消**：状态变 cancelled（**不是 failed** ✓）', async () => {
     const h = service();
     h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
@@ -297,6 +305,55 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     // **取消不是失败** ✓（契约 §八·3 的状态机 ✓）
     expect(status.state).toBe('cancelled');
     expect(status.reason).toBe('cancelled');
+  });
+
+  it('**取消之后它自己收尾时，不能把状态翻回去**（await 那次 unwind 之后仍然是 cancelled ✓）', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    h.svc.cancel(runId);
+
+    // **等它自己收尾** ✓（时间线出现 = 收尾走完了 ✓）
+    for (let i = 0; i < 50 && h.svc.status(runId).stages.length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(h.svc.status(runId).stages.length).toBeGreaterThan(0);
+
+    // ⚠️ **这一条是独立评审 40 的 C-1** ✓：
+    // 取消是**同步**置上的 ✓，但那次运行**自己 unwind 的时候**会再写一次状态 ✓ ——
+    // → 「取消」这个状态**必须活到最后** ✓（否则界面会把「人叫停」说成「出错了」✗）
+    expect(h.svc.status(runId).state).toBe('cancelled');
+    expect(h.svc.status(runId).reason).toBe('cancelled');
+  });
+
+  it('**被取消的那一步，理由写 cancelled**（不是「回读不符」✓ —— 人叫停 ≠ 板子不听话 ✓）', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    h.svc.cancel(runId);
+    for (let i = 0; i < 50 && h.svc.status(runId).stages.length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const stage = h.svc.status(runId).stages[0];
+    expect(stage?.ok).toBe(false);
+    // ⚠️ 取消的退出码是 `null` ✓ → 不看 `cancelled` 标志就会掉进「返回非 0」那一档 ✗
+    expect(stage?.reason).toBe('cancelled');
+  });
+
+  it('**取消一个已经跑完的运行 → 状态不变**（幂等 ✓ —— 不能把 done 改成 cancelled ✗）', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    // **等它跑完** ✓
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const before = h.svc.status(runId).state;
+    expect(before).toBe('done');
+
+    // **取消一个已经结束的运行** → 不该改它的状态 ✓
+    h.svc.cancel(runId);
+    expect(h.svc.status(runId).state).toBe(before);
   });
 
   it('**取消一个不存在的运行 → 报错** ✓', () => {

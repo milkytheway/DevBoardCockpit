@@ -1500,12 +1500,72 @@ const MUTATIONS = [
     name: 'M123 流程层：**取消**要把状态变成 cancelled（不是 failed ✓）',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '取消',
+    expect: '状态变 cancelled',
     apply: (s) =>
       replace(
         s,
         "    status.state = 'cancelled';",
         "    status.state = 'failed'; // 变异：取消被当成失败",
+      ),
+  },
+  {
+    name: 'M124 流程层：**取消**之后那次收尾不许把状态翻回去（独立评审 40 的 C-1 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '不能把状态翻回去',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (status.state !== 'cancelled') {",
+        '      if (true) { // 变异：收尾把「取消」翻回去了',
+      ),
+  },
+  {
+    name: 'M125 流程层：取消一个**已经结束**的运行 → 状态一个字都不改（幂等 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '状态不变',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (status.state === 'done' || status.state === 'failed' || status.state === 'cancelled') {",
+        '    if (false) { // 变异：连已经结束的运行也改状态',
+      ),
+  },
+  {
+    name: 'M126 执行器：被取消 → 理由是 cancelled（不是「回读不符」✓）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '理由写 cancelled',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (execResult.cancelled === true) {',
+        '  if (false) { // 变异：把「取消」当成「跑成了」',
+      ),
+  },
+  {
+    name: 'M127 流程层：被叫停 → **后面那一步不跑**（人不要了，就别再往下做 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '后面那一步不跑',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (opts.signal?.aborted === true) break;\n\n    if (stage.reason === 'needs_confirmation') {",
+        "    // 变异：叫停了也往下跑\n\n    if (stage.reason === 'needs_confirmation') {",
+      ),
+  },
+  {
+    name: 'M128 流程层：被叫停 → **不跑跨目标的判据**（取消后别再让人多等一条命令 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '不跑跨目标的判据',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (ctx.opts.signal?.aborted === true) return undefined;',
+        '  if (false) return undefined; // 变异：取消后还去验',
       ),
   },
   {

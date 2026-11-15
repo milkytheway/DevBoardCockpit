@@ -189,6 +189,12 @@ function commandOkForm(
   if (actionResult.timedOut) {
     return { ok: false, verified: false, reason: 'timeout', detail: '动作那条命令超时了' };
   }
+  // **被取消了** → 退出码是 `null` ✓（不是 0、也不是 124 ✓）
+  // → 不看这个标志的话，它会掉进「返回非 0」那一档 ✗
+  // → 报「回读不符」是**撒谎** ✗（人叫停 ≠ 板子不听话 ✓）
+  if (actionResult.cancelled === true) {
+    return { ok: false, verified: false, reason: 'cancelled', detail: '动作那条命令被取消了' };
+  }
   if (actionResult.exitCode !== 0) {
     return {
       ok: false,

@@ -216,6 +216,20 @@ export class ConfirmationStore {
   }
 
   /**
+   * **撤销**一张凭据（**作废** ✓ —— 不能再被批准 ✓）。
+   *
+   * → 取消一次运行的时候用得上 ✓（独立评审 40 的 I-8 ✓）：
+   * 人**不该**再去点一个已经被取消的运行 ✗（那是一条挂在队列里的僵尸请求 ✓）。
+   *
+   * @returns 有没有这张凭据（没有 → false ✓）
+   */
+  revoke(token: string): boolean {
+    if (!this.issued.has(token)) return false;
+    this.issued.delete(token);
+    return true;
+  }
+
+  /**
    * **请求**一次确认（**agent 唯一能做的事** ✓）。
    *
    * → 它**不批准任何东西** ✓：只是把请求**递进 GUI 的确认队列** ✓。
