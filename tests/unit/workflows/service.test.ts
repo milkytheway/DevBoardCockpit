@@ -7,6 +7,7 @@ import { WorkflowService } from '../../../src/main/workflows/service';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { AuditRow } from '../../../src/main/actions/audit';
+import { ConfirmationStore } from '../../../src/main/actions/authorization';
 
 /**
  * 流程的**宿主服务** —— 卡片与 agent 触发流程的那一层。
@@ -21,7 +22,18 @@ let dir: string;
 let userDir: string;
 let approvalFile: string;
 
-const PACK = {
+interface TestPack {
+  formatVersion: number;
+  kind: string;
+  id: string;
+  name: string;
+  version: string;
+  inputs: Record<string, { type: string; required?: boolean; maxLength?: number }>;
+  roles: Record<string, { purpose: string; profile: string }>;
+  steps: { id: string; kind: string; role: string; cmd: string; danger?: string }[];
+}
+
+const PACK: TestPack = {
   formatVersion: 1,
   kind: 'Workflow',
   id: 'demo.run',
@@ -32,7 +44,33 @@ const PACK = {
   steps: [{ id: 'hello', kind: 'exec', role: 'build', cmd: 'echo {input:project}' }],
 };
 
-function yamlOf(pack: typeof PACK): string {
+/** 一个带 destructive 步的流程（**要人点头** ✓） */
+const DANGEROUS_PACK = {
+  ...PACK,
+  id: 'demo.danger',
+  steps: [
+    {
+      id: 'danger',
+      kind: 'exec',
+      role: 'build',
+      danger: 'destructive',
+      cmd: 'echo {input:project}',
+    },
+  ],
+} as TestPack;
+
+function yamlOf(pack: TestPack): string {
+  const steps = pack.steps
+    .map((s) =>
+      [
+        `  - id: ${s.id}`,
+        `    kind: ${s.kind}`,
+        `    role: ${s.role}`,
+        ...(s.danger === undefined ? [] : [`    danger: ${s.danger}`]),
+        `    cmd: "${s.cmd}"`,
+      ].join('\n'),
+    )
+    .join('\n');
   return [
     'formatVersion: 1',
     'kind: Workflow',
@@ -44,10 +82,7 @@ function yamlOf(pack: typeof PACK): string {
     'roles:',
     '  build: { purpose: 客机, profile: guest }',
     'steps:',
-    '  - id: hello',
-    '    kind: exec',
-    '    role: build',
-    '    cmd: "echo {input:project}"',
+    steps,
     '',
   ].join('\n');
 }
@@ -64,7 +99,11 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function service(): { svc: WorkflowService; reg: WorkflowRegistry; audits: AuditRow[] } {
+function service(
+  pack: TestPack = PACK,
+): { svc: WorkflowService; reg: WorkflowRegistry; audits: AuditRow[]; confirmations: ConfirmationStore } {
+  // **换一个包**（测试要能造 destructive 的那一种 ✓）
+  writeFileSync(join(userDir, 'demo.yaml'), yamlOf(pack), 'utf8');
   const reg = new WorkflowRegistry({ dirs: [userDir], approvalFile });
   reg.scan();
   const audits: AuditRow[] = [];
@@ -91,9 +130,12 @@ function service(): { svc: WorkflowService; reg: WorkflowRegistry; audits: Audit
       throw new Error('不开会话');
     },
   } as unknown as Connection;
+  const confirmations = new ConfirmationStore();
   const svc = new WorkflowService({
     registry: reg,
+    confirmations,
     runDeps: {
+      confirmations,
       targets: {
         connectionFor: async () => conn,
         runOn: async <T>(_id: string, fn: (c: Connection) => Promise<T>): Promise<T> => fn(conn),
@@ -109,7 +151,7 @@ function service(): { svc: WorkflowService; reg: WorkflowRegistry; audits: Audit
     },
     now: () => 1_700_000_000_000,
   });
-  return { svc, reg, audits };
+  return { svc, reg, audits, confirmations };
 }
 
 describe('流程服务 · 只认 id，不认路径', () => {
@@ -139,6 +181,58 @@ describe('流程服务 · 只认 id，不认路径', () => {
     const { svc, reg } = service();
     reg.approve('demo.run');
     expect(() => svc.start('nobody', {})).toThrow(/没有这个流程包/);
+  });
+});
+
+describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () => {
+  it('destructive 步 → **停在等确认**（不是失败 ✓）', async () => {
+    const { svc, reg } = service(DANGEROUS_PACK);
+    reg.approve('demo.danger');
+    const { runId } = svc.start('demo.danger', { project: 'x' });
+    for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const status = svc.status(runId);
+    // **这一档是「等确认」**，不是 failed ✓
+    expect(status.state).toBe('awaiting_confirmation');
+    expect(status.needsConfirmation?.stepId).toBe('danger');
+    expect(status.pausedAtStep).toBe(0);
+  });
+
+  it('**人点头之后继续跑**（前面的步**不重跑** ✓）', async () => {
+    const h = service(DANGEROUS_PACK);
+    h.reg.approve('demo.danger');
+    const { runId } = h.svc.start('demo.danger', { project: 'x' });
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const token = h.svc.status(runId).needsConfirmation?.confirmId as string;
+    expect(token).toBeTruthy();
+
+    // **点头**（就是「人点了」那一下 ✓）
+    h.svc.confirm(runId, token);
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const status = h.svc.status(runId);
+    expect(status.state).toBe('done');
+    expect(status.ok).toBe(true);
+  });
+
+  it('**没点头就不许继续**（凭据还在待确认 ✓）', async () => {
+    const { svc, reg } = service(DANGEROUS_PACK);
+    reg.approve('demo.danger');
+    const { runId } = svc.start('demo.danger', { project: 'x' });
+    for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // **拿一张没被批准的凭据去续跑** → 拒绝 ✓
+    expect(() => svc.confirm(runId, 'cf-fake')).toThrow(/还没被批准/);
+  });
+
+  it('不是「等确认」的状态 → 不能 confirm', () => {
+    const { svc } = service();
+    expect(() => svc.confirm('wf-nope', 'cf-x')).toThrow(/没有这次运行/);
   });
 });
 

@@ -89,6 +89,7 @@ function harness(
         return token;
       },
       consume: (): boolean => false,
+      approve: (): boolean => true,
     },
     audit: (row: AuditRow): string => {
       audits.push(row);
@@ -239,6 +240,7 @@ describe('执行器 · 授权与确认', () => {
     h.deps.confirmations = {
       issue: () => 'confirm-0',
       consume: () => true,
+      approve: () => true,
     };
     const result = await invokeAction(
       { ...ACTION, danger: 'destructive' },

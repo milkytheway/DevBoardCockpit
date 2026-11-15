@@ -87,6 +87,8 @@ export interface WorkflowRunDeps {
       contractVersion: string,
       now: number,
     ): string;
+    /** **人点了确认** → 凭据才可用 ✓（契约 spec/04 §2.4.1 ✓） */
+    approve(token: string, now: number): boolean;
     consume(
       token: string,
       actionId: string,
@@ -105,6 +107,18 @@ export interface WorkflowRunOptions {
   approved?: boolean;
   /** 每一步的确认凭据（step id → confirm_id） */
   confirmIds?: Record<string, string>;
+  /**
+   * **从第几步开始跑**（续跑时用 ✓）。
+   *
+   * → 为什么要它：destructive 步要人点头 → 流程**停在那一步** ✓ →
+   * 人点了之后**从那一步继续** ✓ → **前面的步不能重跑** ✓
+   * （重跑 = 编译两遍、传两遍 ✗）。
+   */
+  startAt?: number;
+  /** 续跑时**带上之前的产出**（槽 ✓） */
+  outputs?: Record<string, string>;
+  /** **这次运行的 id**（续跑时沿用它 ✓ —— 续跑是**同一次运行** ✓） */
+  runId?: string;
 }
 
 /** 跑的输入（按流程包声明的类型校验） */
@@ -116,7 +130,8 @@ export async function runWorkflow(
 ): Promise<WorkflowRunResult> {
   const now = deps.now ?? (() => Date.now());
   const at = now();
-  const runId = `wf-${at.toString(36)}`;
+  // **续跑是同一次运行** → runId 由调用方给 ✓（不给就现生成一个 ✓）
+  const runId = opts.runId ?? `wf-${at.toString(36)}`;
   const outputs: Record<string, string> = {};
   const stages: WorkflowStage[] = [];
   let needsConfirmation: WorkflowRunResult['needsConfirmation'];
@@ -149,7 +164,14 @@ export async function runWorkflow(
 
   const roleFacts = factsOf(pack, deps);
 
-  for (const step of pack.steps) {
+  // **续跑**：从第几步开始 ✓ + 带上之前的产出 ✓
+  const startAt = Math.max(0, opts.startAt ?? 0);
+  if (opts.outputs !== undefined) {
+    for (const [slot, value] of Object.entries(opts.outputs)) outputs[slot] = value;
+  }
+
+  for (const [index, step] of pack.steps.entries()) {
+    if (index < startAt) continue;
     const stage = await runStep(step, {
       pack,
       runId,
@@ -788,7 +810,7 @@ function toReadbackDef(
 function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confirmations']> {
   const store = ctx.deps.confirmations;
   if (store === undefined) {
-    return { issue: () => '', consume: () => false };
+    return { issue: () => '', consume: () => false, approve: () => false };
   }
   const bind = (params: Record<string, unknown>): Record<string, unknown> => ({
     ...params,
@@ -798,6 +820,8 @@ function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confir
   return {
     issue: (actionId, params, packId, contractVersion, now) =>
       store.issue(actionId, bind(params), packId, contractVersion, now),
+    // **批准不绑参数**（它是「人点了」那一下 ✓ —— 摘要管的是「这一次执行」✓）
+    approve: (token, now) => store.approve(token, now),
     consume: (token, actionId, params, packId, contractVersion, now) =>
       store.consume(token, actionId, bind(params), packId, contractVersion, now),
   };

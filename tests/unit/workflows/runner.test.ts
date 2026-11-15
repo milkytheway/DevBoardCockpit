@@ -297,6 +297,7 @@ describe('流程 · 确认凭据', () => {
     // 一个**真的**确认凭据库（不是桩）
     const issued = new Map<string, { actionId: string; digest: string }>();
     const confirmations = {
+      approve: (): boolean => true,
       issue: (actionId: string, params: Record<string, unknown>): string => {
         const token = `cf-${issued.size}`;
         issued.set(token, {

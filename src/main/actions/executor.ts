@@ -24,7 +24,7 @@ import type { AuditRow } from './audit';
  * → 所以两者都跑在 `runTransaction` 里面（同一个队列槽位）。
  */
 export interface Confirmations {
-  /** 签发一张确认凭据 */
+  /** 签发一张确认凭据（**待确认** —— 还不能用来执行 ✓） */
   issue(
     actionId: string,
     params: Record<string, unknown>,
@@ -32,6 +32,12 @@ export interface Confirmations {
     contractVersion: string,
     now: number,
   ): string;
+  /**
+   * **人点了确认** → 这张凭据才可用 ✓。
+   *
+   * → 契约 `spec/04` §2.4.1：「没有人点，`confirm_id` 永远无效」✓
+   */
+  approve(token: string, now: number): boolean;
   /** 用掉一张（一次性） */
   consume(
     token: string,

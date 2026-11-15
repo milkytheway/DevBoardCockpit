@@ -140,10 +140,28 @@ export function paramsDigest(params: Record<string, unknown>): string {
  * 用掉就没了（重放 = 绕过确认）。
  */
 export class ConfirmationStore {
-  private readonly issued = new Map<string, { digest: string; at: number }>();
+  /**
+   * 凭据的状态。
+   *
+   * ── 为什么要有「待确认」这一档 ──
+   *
+   * 契约 `spec/04` §2.4.1 说得很死：
+   * > 「这个工具**不返回可直接使用的凭据**……真正的确认要等**人**点了之后，
+   * > `confirm_id` 才有效。**没有人点，`confirm_id` 永远无效。**」
+   *
+   * → 所以凭据**签发 ≠ 有效** ✓：
+   * `issue()` 把它挂成**待确认** ✓ → **人点了**（`approve()` ✓）→ 才**可用** ✓。
+   *
+   * → **没有这一档 = 「谁要谁批」** ✗：
+   * 拿到 `needs_confirmation` 的那一方**自己就能重试成功** ✓ → 确认通道形同虚设 ✗。
+   */
+  private readonly issued = new Map<
+    string,
+    { digest: string; at: number; state: 'pending' | 'approved' }
+  >();
 
   /**
-   * 签发一张凭据。
+   * 签发一张凭据（**待确认** —— 还不能用来执行 ✓）。
    *
    * @returns 凭据串（给 agent 拿去重试）
    */
@@ -158,8 +176,33 @@ export class ConfirmationStore {
     this.issued.set(token, {
       digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`,
       at: now,
+      state: 'pending',
     });
     return token;
+  }
+
+  /**
+   * **人点了确认** → 这张凭据才**可用** ✓。
+   *
+   * → 这是「人点头」那一下的**唯一入口** ✓
+   * （宿主侧由 GUI 调用；命令行侧由 `npm run workflow:confirm` 调用 ✓）。
+   *
+   * @returns 批不批（凭据不存在 / 已过期 → false ✓）
+   */
+  approve(token: string, now: number): boolean {
+    const entry = this.issued.get(token);
+    if (entry === undefined) return false;
+    if (now - entry.at > CONFIRM_TTL_MS) {
+      this.issued.delete(token);
+      return false;
+    }
+    entry.state = 'approved';
+    return true;
+  }
+
+  /** 这张凭据**是不是已经被人点过**（诊断用 ✓） */
+  isApproved(token: string): boolean {
+    return this.issued.get(token)?.state === 'approved';
   }
 
   /**
@@ -182,6 +225,8 @@ export class ConfirmationStore {
       this.issued.delete(token);
       return false;
     }
+    // **没被人点过 → 不能用**（契约 spec/04 §2.4.1 ✓）
+    if (entry.state !== 'approved') return false;
     const expected = `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`;
     if (entry.digest !== expected) return false;
     // **一次性**：用掉就删

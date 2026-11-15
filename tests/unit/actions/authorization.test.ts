@@ -90,17 +90,20 @@ describe('确认凭据 · confirm_id', () => {
   const packId = 'rk3588-atk';
   const contract = 'devboard/v1';
 
-  it('签发后可以用一次（动作、参数、包、契约版本全对上）', () => {
+  it('**签发 ≠ 有效**：没被人点过，用不了（契约 spec/04 §2.4.1 ✓）', () => {
     const store = new ConfirmationStore();
     const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
-    expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500),
-    ).toBe(true);
+    // **签发只是「递了个请求」**（契约：「没有人点，confirm_id 永远无效」✓）
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(false);
+    // **人点了之后**才可用 ✓
+    expect(store.approve(token, 1_200)).toBe(true);
+    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(true);
   });
 
   it('**第二次用不行**（一次性）', () => {
     const store = new ConfirmationStore();
     const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    store.approve(token, 1_200);
     expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(true);
     expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500)).toBe(false);
   });
@@ -108,18 +111,21 @@ describe('确认凭据 · confirm_id', () => {
   it('动作不同 → 不行', () => {
     const store = new ConfirmationStore();
     const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    store.approve(token, 1_200);
     expect(store.consume(token, 'other.action', { value: 100 }, packId, contract, 1_500)).toBe(false);
   });
 
   it('参数不同 → 不行（凭据绑的是**这一次**的参数）', () => {
     const store = new ConfirmationStore();
     const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    store.approve(token, 1_200);
     expect(store.consume(token, 'backlight.set', { value: 200 }, packId, contract, 1_500)).toBe(false);
   });
 
   it('板型包或契约版本不同 → 不行', () => {
     const store = new ConfirmationStore();
     const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000);
+    store.approve(token, 1_200);
     expect(store.consume(token, 'backlight.set', { value: 100 }, 'other-pack', contract, 1_500)).toBe(false);
     expect(store.consume(token, 'backlight.set', { value: 100 }, packId, 'devboard/v2', 1_500)).toBe(false);
   });

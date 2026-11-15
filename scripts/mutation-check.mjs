@@ -1326,6 +1326,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M109 确认凭据：**签发 ≠ 有效**（没人点，confirm_id 永远无效 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: '签发 ≠ 有效',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (entry.state !== 'approved') return false;",
+        '    // 变异：签发即可用（确认通道形同虚设）',
+      ),
+  },
+  {
+    name: 'M110 流程服务：**确认链有落点**（人点头 → 从停住的那步继续 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '人点头之后继续跑',
+    apply: (s) =>
+      replace(
+        s,
+        '    const approved = this.opts.confirmations?.approve(confirmId, this.now()) ?? false;',
+        '    const approved = true; // 变异：不用人点头就放行',
+      ),
+  },
+  {
+    name: 'M111 流程服务：**续跑从停住的那一步开始**（前面的步不重跑 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '续跑',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (index < startAt) continue;',
+        '    // 变异：续跑时从头再跑一遍',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
