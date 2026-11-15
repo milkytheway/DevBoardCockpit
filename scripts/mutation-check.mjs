@@ -1254,6 +1254,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M103 控制面：回读的**验证命令**也要过危险地板（包给的命令不能借「验证」之名跑危险命令）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '验证命令也要过地板',
+    apply: (s) =>
+      replace(
+        s,
+        '          const verifyFloor = checkFloor(cmd);',
+        '          const verifyFloor = { verdict: "ok", matched: false }; // 变异：不查地板',
+      ),
+  },
+  {
+    name: 'M104 流程层：确认凭据必须**绑住这一步的输入**（换输入 = 凭据作废）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '同一张凭据换一组输入',
+    apply: (s) =>
+      replace(
+        s,
+        '    ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),',
+        '    // 变异：输入不进摘要',
+      ),
+  },
+  {
+    name: 'M105 流程层：角色事实要**包引号**（profile 是半可信的 → 不能原样插）',
+    file: 'src/main/workflows/substitute.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '角色事实**要包引号**',
+    apply: (s) =>
+      replace(
+        s,
+        "    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), '连接事实');",
+        '    return String(value); // 变异：原样插',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

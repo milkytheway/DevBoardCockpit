@@ -179,6 +179,21 @@ describe('执行器 · 结果形状（**按契约**）', () => {
   });
 });
 
+describe('执行器 · 回读的验证命令也要过地板', () => {
+  it('**verify 的命令命中危险地板 → 不执行**（包给的命令不能借「验证」之名跑危险命令）', async () => {
+    const dangerous: ActionDef = {
+      ...ACTION,
+      id: 'probe',
+      command: 'echo hi',
+      readback: { kind: 'verify', command: 'rm -rf /' },
+    };
+    const h = harness({ action: dangerous });
+    await expect(invokeAction(dangerous, { value: 128 }, h.deps)).rejects.toThrow(/危险地板/);
+    // **那条危险命令没发出去** ✓
+    expect(h.executed.some((c) => c.includes('rm -rf'))).toBe(false);
+  });
+});
+
 describe('执行器 · 授权与确认', () => {
   it('destructive → 要人确认（**命令不执行**）', async () => {
     const destructive: ActionDef = { ...ACTION, danger: 'destructive' };

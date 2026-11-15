@@ -269,6 +269,90 @@ describe('流程 · 危险等级与输出', () => {
   });
 });
 
+describe('流程 · 角色事实', () => {
+  it('角色事实**要包引号**（profile 是半可信的 → 不能原样插）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'ping', kind: 'exec', role: 'build', cmd: 'ssh {role:build.user}@{role:build.host}' },
+        ],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(h.byId('guest')?.commands[0]).toBe("ssh 'builder'@'10.0.0.2'");
+  });
+});
+
+describe('流程 · 确认凭据', () => {
+  it('**同一张凭据换一组输入 → 作废**（凭据必须绑住这一步的输入 ✓）', async () => {
+    // 一个**真的**确认凭据库（不是桩）
+    const issued = new Map<string, { actionId: string; digest: string }>();
+    const confirmations = {
+      issue: (actionId: string, params: Record<string, unknown>): string => {
+        const token = `cf-${issued.size}`;
+        issued.set(token, {
+          actionId,
+          digest: JSON.stringify(params),
+        });
+        return token;
+      },
+      consume: (token: string, actionId: string, params: Record<string, unknown>): boolean => {
+        const found = issued.get(token);
+        if (found === undefined) return false;
+        issued.delete(token);
+        return found.actionId === actionId && found.digest === JSON.stringify(params);
+      },
+    };
+
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: { note: { type: 'string', maxLength: 64 } },
+        roles: ROLES,
+        steps: [
+          {
+            id: 'danger',
+            kind: 'exec',
+            role: 'target',
+            danger: 'destructive',
+            cmd: 'echo {input:note}',
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    const deps = { ...h.deps, confirmations };
+
+    // 第一次 → 要确认（凭据发下来了）
+    const first = await runWorkflow(pack, { note: 'a' }, deps, { approved: true });
+    expect(first.needsConfirmation).toBeTruthy();
+    const token = first.needsConfirmation?.confirmId as string;
+
+    // **拿同一张凭据换一组输入** → 必须作废 ✓
+    const replay = await runWorkflow(pack, { note: 'b' }, deps, {
+      approved: true,
+      confirmIds: { danger: token },
+    });
+    expect(replay.needsConfirmation).toBeTruthy();
+    // **命令没执行** ✓
+    expect(h.byId('board')?.commands.some((c) => c.includes('b'))).toBe(false);
+  });
+});
+
 describe('流程 · discover 步', () => {
   it('按规则找到产物，**落进槽**', async () => {
     const h = harness({

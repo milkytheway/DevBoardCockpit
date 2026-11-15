@@ -2,6 +2,7 @@ import { makeError } from '../../shared/errors';
 import { invokeAction } from '../actions/executor';
 import { runReadback, type ReadbackResult } from '../actions/readback';
 import { encodeParams } from '../actions/encoder';
+import { checkFloor } from '../actions/floor-check';
 import type { AuditRow } from '../actions/audit';
 import type { ActionDef, PackParam, ReadbackDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
@@ -410,6 +411,12 @@ async function runAction(
     def,
     values,
     executorDeps(ctx, profileId, def.id, step.timeout_ms),
+    {
+      // **destructive 的动作步也要能确认**（两条评审都点了这一条 ✓）
+      ...(ctx.opts.confirmIds?.[step.id] === undefined
+        ? {}
+        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
+    },
   );
   return {
     stepId: step.id,
@@ -605,8 +612,19 @@ async function runReadbackOnRole(
         );
         return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
       },
-      exec: (command: string) =>
-        ctx.deps.targets.runOn(profileId, (conn) => conn.exec(command)),
+      // **跨目标的判据命令也要过危险地板**（它跑在**另一台机器**上 ✓ ——
+      // 两条评审都点了这一条 ✓）→ 命中就**不执行**，判据失败 ✓。
+      exec: (command: string) => {
+        const floor = checkFloor(command);
+        if (floor.verdict === 'destructive') {
+          throw makeError(
+            'PACK_INVALID',
+            `跨目标判据的命令命中危险地板（${floor.why ?? '危险命令'}），不执行`,
+            { detail: { command, pattern: floor.pattern } },
+          );
+        }
+        return ctx.deps.targets.runOn(profileId, (conn) => conn.exec(command));
+      },
       hasExitCode,
     },
   );
@@ -753,6 +771,34 @@ function toReadbackDef(
   return def as unknown as ReadbackDef;
 }
 
+/**
+ * 确认凭据：**必须绑住这一步的输入** ✓。
+ *
+ * ── 为什么不能只绑动作参数 ──
+ *
+ * 执行器的确认凭据绑的是 `(动作 id, 参数摘要, 板型包 id, 契约版本)`。
+ * 流程的自由命令**没有动作参数** → 摘要恒为空 →
+ * **同一张凭据换一组 inputs 就能复用** ✗（两条评审都点了这一条 ✓）。
+ * → 把**这一步的输入**并进摘要里 ✓ → 换输入 = 换摘要 = 凭据作废 ✓。
+ */
+function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confirmations']> {
+  const store = ctx.deps.confirmations;
+  if (store === undefined) {
+    return { issue: () => '', consume: () => false };
+  }
+  const bind = (params: Record<string, unknown>): Record<string, unknown> => ({
+    ...params,
+    // **输入进摘要**（键名加前缀，免得跟动作参数重名 ✓）
+    ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),
+  });
+  return {
+    issue: (actionId, params, packId, contractVersion, now) =>
+      store.issue(actionId, bind(params), packId, contractVersion, now),
+    consume: (token, actionId, params, packId, contractVersion, now) =>
+      store.consume(token, actionId, bind(params), packId, contractVersion, now),
+  };
+}
+
 /** 执行器需要的依赖（**接到指名目标上** ✓ —— 计划 5 的 A17） */
 function executorDeps(ctx: StepContext, profileId: string, actionId: string, timeoutMs?: number) {
   const profile = ctx.deps.profileFor(profileId);
@@ -771,12 +817,7 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
         [actionId]: undefined,
       },
     }),
-    confirmations:
-      ctx.deps.confirmations ??
-      ({
-        issue: () => '',
-        consume: () => false,
-      } as unknown as NonNullable<WorkflowRunDeps['confirmations']>),
+    confirmations: confirmationsFor(ctx),
     audit: (row: AuditRow) =>
       ctx.deps.audit({ ...row, actor: row.actor === 'unknown' ? `workflow:${ctx.pack.id}` : row.actor }),
     actor: `workflow:${ctx.pack.id}`,

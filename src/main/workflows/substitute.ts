@@ -65,12 +65,17 @@ export function substituteCommand(text: string, ctx: SubstitutionContext): strin
     const value = ctx.endpoints?.[which];
     return value === undefined ? `{${which}.path}` : quoteShellValue(value, '路径');
   });
-  // ── 角色事实：原样（它是宿主自己的连接信息）──
+  // ── 角色事实：**也要包引号** ──
+  //
+  // 它来自**宿主的连接 profile**（半可信 ✓）——但「半可信」不等于「可信」：
+  // 一个手写的 profile 里塞了 `; reboot` 的 host，那条命令就会带着它跑出去 ✗。
+  // → **按类型编码的规矩：字符串包引号** ✓（数字类的 `port` 不包 ✓）。
   out = out.replace(/\{role:([^}.]+)\.([^}]+)\}/g, (_match, role: string, fact: string) => {
     const facts = ctx.roleFacts[role];
     if (facts === undefined) return `{role:${role}.${fact}}`;
     const value = (facts as unknown as Record<string, unknown>)[fact];
-    return value === undefined ? `{role:${role}.${fact}}` : String(value);
+    if (value === undefined) return `{role:${role}.${fact}}`;
+    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), '连接事实');
   });
   return out;
 }

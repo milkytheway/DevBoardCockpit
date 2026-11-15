@@ -1,3 +1,4 @@
+import { makeError } from '../../shared/errors';
 import type { Connection, ExecResult } from '../hal/connection';
 import type { ActionDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
@@ -242,8 +243,22 @@ export async function invokeAction(
           const cat = await connection.exec(`cat -- ${quoteShellValue(path)}`);
           return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
         },
-        // 回读的 `verify` 也在**同一条连接**上跑
-        exec: (cmd: string): Promise<ExecResult> => connection.exec(cmd),
+        // 回读的 `verify` 也在**同一条连接**上跑。
+        //
+        // **它也要过危险地板**（`verify` 的命令是**包给的** ✓）：
+        // 不查 → 一个包就能借「验证」之名在板上跑 `rm -rf /` ✗
+        // （两条独立评审都点了这一条 ✓）。
+        exec: (cmd: string): Promise<ExecResult> => {
+          const verifyFloor = checkFloor(cmd);
+          if (verifyFloor.verdict === 'destructive') {
+            throw makeError(
+              'PACK_INVALID',
+              `回读的验证命令命中危险地板（${verifyFloor.why ?? '危险命令'}），不执行`,
+              { detail: { command: cmd, pattern: verifyFloor.pattern } },
+            );
+          }
+          return connection.exec(cmd);
+        },
         hasExitCode: deps.hasExitCode,
       },
       execResult,
