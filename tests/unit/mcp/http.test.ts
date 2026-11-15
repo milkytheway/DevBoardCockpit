@@ -106,6 +106,13 @@ describe('MCP · HTTP 传输', () => {
     expect((address as { address: string }).address).toBe('127.0.0.1');
   });
 
+  it('**要绑别的地址 → 直接拒绝** ✓（不是「绑上了再说」✗ —— 那就晚了 ✓）', async () => {
+    // ⚠️ **0.0.0.0 = 所有网卡** ✓ —— 那是把服务暴露到局域网 ✓
+    await expect(
+      startMcpHttp({ mcp, token, host: '0.0.0.0', port: 0 }),
+    ).rejects.toThrow(/只能绑本机/);
+  });
+
   it('**JSON-RPC 请求 → 200 + JSON** ✓', async () => {
     const reply = await send('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(reply.status).toBe(200);
