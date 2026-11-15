@@ -31,6 +31,20 @@ export interface WorkflowSummary {
   inputs: Record<string, { type: string; required?: boolean; description?: string }>;
 }
 
+/**
+ * **当前这一步**（契约 `05` §八·B ✓）。
+ *
+ * → **正在跑** ✓ **或** **停下等人点头** ✓（那一步**也是**「当前」✓）→
+ * 运行结束 → `null` ✓。
+ * → **不给角色** ✓（不给拓扑 ✓ —— 卡片与 agent 不该知道「哪台机器」✓）。
+ */
+export interface WorkflowCurrent {
+  stepId: string;
+  kind: string;
+  /** **这一步开始的时刻** ✓ → 界面据此算「已经用了多久」✓ */
+  at: number;
+}
+
 export interface WorkflowRunStatus {
   runId: string;
   workflowId: string;
@@ -44,6 +58,8 @@ export interface WorkflowRunStatus {
   state: 'running' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled';
   /** 时间线（**跑到哪一步了** ✓） */
   stages: WorkflowStage[];
+  /** **当前这一步**（`null` = 没有在飞的 ✓ —— 运行已结束 ✓） */
+  current: WorkflowCurrent | null;
   /** 产出的槽 */
   outputs: Record<string, string>;
   ok?: boolean;
@@ -87,6 +103,19 @@ export interface WorkflowServiceOptions {
 }
 
 const DEFAULT_MAX_RUNS = 50;
+
+/**
+ * 把最后拿到的阶段并进时间线（**按 `stepId` 去重** ✓）。
+ *
+ * → 实时上报的那批与最后返回的那批**是同一批** ✓ → 不去重会**每一步出现两次** ✗。
+ */
+function mergeStages(live: WorkflowStage[], final: WorkflowStage[]): WorkflowStage[] {
+  const byId = new Map(live.map((s) => [s.stepId, s]));
+  for (const stage of final) {
+    if (!byId.has(stage.stepId)) byId.set(stage.stepId, stage);
+  }
+  return [...byId.values()];
+}
 
 export class WorkflowService {
   private readonly runs = new Map<string, WorkflowRunStatus>();
@@ -167,6 +196,7 @@ export class WorkflowService {
       workflowId: registered.id,
       state: 'running',
       stages: [],
+      current: null,
       outputs: {},
       inputs: { ...inputs },
       startedAt: this.now(),
@@ -324,6 +354,15 @@ export class WorkflowService {
           ...this.opts.runDeps,
           now: this.now,
           ...(this.opts.confirmations === undefined ? {} : { confirmations: this.opts.confirmations }),
+          // **实时时间线** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
+          timeline: {
+            onStepStart: (info) => {
+              status.current = { stepId: info.stepId, kind: info.kind, at: info.at };
+            },
+            onStage: (stage) => {
+              status.stages = [...status.stages, stage];
+            },
+          },
         },
         {
           approved: true,
@@ -334,7 +373,8 @@ export class WorkflowService {
           ...(signal === undefined ? {} : { signal }),
         },
       );
-      status.stages = [...status.stages, ...result.stages];
+      // **按 stepId 去重** ✓（实时上报的与最后返回的是同一批 ✓）
+      status.stages = mergeStages(status.stages, result.stages);
       status.outputs = result.outputs;
       status.ok = result.ok;
       // **取消过的运行 → 状态不许被这次收尾翻回去** ✓（独立评审 40 的 C-1 ✓）
@@ -352,6 +392,11 @@ export class WorkflowService {
           status.reason = failed?.reason ?? 'failed';
         }
         status.finishedAt = result.needsConfirmation === undefined ? this.now() : undefined;
+      }
+      // **运行结束了 → 没有「当前」了** ✓
+      // → 除非是**停下等人点头** ✓（那一步**仍然**是「当前」✓ —— 契约 §八·B·B1 ✓）
+      if (status.state !== 'awaiting_confirmation') {
+        status.current = null;
       }
     } catch (err) {
       status.state = 'failed';

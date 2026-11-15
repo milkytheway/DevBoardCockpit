@@ -1614,6 +1614,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M132 流程层：`status` 要说得出「**现在在第几步**」（界面不能一片死寂 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '说得出「现在在第几步',
+    apply: (s) =>
+      replace(
+        s,
+        '              status.current = { stepId: info.stepId, kind: info.kind, at: info.at };',
+        '              status.current = null; // 变异：不说「现在在第几步」',
+      ),
+  },
+  {
+    name: 'M133 流程层：**时间线边跑边填**（不是跑完才给 ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '时间线边跑边填',
+    apply: (s) =>
+      replace(
+        s,
+        '              status.stages = [...status.stages, stage];',
+        '              // 变异：不实时上报',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

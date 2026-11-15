@@ -345,6 +345,7 @@ describe('流程 · 确认凭据', () => {
     const confirmations = {
       approve: (): boolean => true,
       request: (): boolean => true,
+      revoke: (): boolean => true,
       issue: (actionId: string, params: Record<string, unknown>): string => {
         const token = `cf-${issued.size}`;
         issued.set(token, {

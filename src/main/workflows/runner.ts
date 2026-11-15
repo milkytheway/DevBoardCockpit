@@ -67,6 +67,19 @@ export interface WorkflowRunResult {
   needsConfirmation?: { stepId: string; confirmId: string; detail: string };
 }
 
+/**
+ * **时间线的实时钩子** ✓（契约 `05` §八·B ✓）。
+ *
+ * → 「跑到一半」这件事**得能被看见** ✓：
+ * 编译是分钟级 ✓（实测 58.9s / 98.5s ✓）→ 界面不能一片死寂 ✓。
+ */
+export interface WorkflowTimelineHooks {
+  /** **这一步开始了** ✓（宿主据此说得出「现在在第几步」✓） */
+  onStepStart?: (info: { stepId: string; kind: string; at: number }) => void;
+  /** **这一步有结果了** ✓（时间线**边跑边填** ✓ —— 不是跑完才给 ✓） */
+  onStage?: (stage: WorkflowStage) => void;
+}
+
 export interface WorkflowRunDeps {
   /** 目标登记处（按 profile id 拿连接） */
   targets: TargetRegistry;
@@ -79,6 +92,8 @@ export interface WorkflowRunDeps {
   /** 读一个 tag（回读形式 1 用） */
   readTag?: (tag: string) => Promise<TagReading | undefined>;
   /** 确认凭据（自由命令命中地板时要人点头） */
+  /** **实时时间线**（宿主用 ✓ —— 让 `status` 说得出「现在在第几步」✓） */
+  timeline?: WorkflowTimelineHooks;
   confirmations?: {
     issue(
       actionId: string,
@@ -91,6 +106,13 @@ export interface WorkflowRunDeps {
     approve(token: string, now: number): boolean;
     /** **请求**一次确认（agent 唯一能做的事 ✓ —— 评审 37 的 V3-C1 ✓） */
     request(token: string, now: number): boolean;
+    /**
+     * **撤销**一张凭据（**作废** ✓ —— 不能再被批准 ✓）。
+     *
+     * → 取消一次运行时用得上 ✓（独立评审 40 的 I-8 ✓）：
+     * 人**不该**再去点一个已经被取消的运行 ✗。
+     */
+    revoke(token: string): boolean;
     consume(
       token: string,
       actionId: string,
@@ -195,6 +217,8 @@ export async function runWorkflow(
       now,
     });
     stages.push(stage);
+    // **时间线边跑边填** ✓（不是跑完才给 ✓ —— 契约 §八·B ✓）
+    deps.timeline?.onStage?.(stage);
 
     // **这一步跑着的时候被叫停了 → 不跑下一步** ✓（独立评审 40 的 I-6 ✓）
     // → 靠**下一轮开头那道**拦住 ✓（那道在跑之前就问一次「还要跑吗」✓）
@@ -242,6 +266,9 @@ async function runStep(step: WorkflowStep, ctx: StepContext): Promise<WorkflowSt
   const at = ctx.now();
   const started = at;
   const role = step.role;
+
+  // **「这一步开始了」** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
+  ctx.deps.timeline?.onStepStart?.({ stepId: step.id, kind: step.kind, at: started });
 
   // ── 端点（`file.transfer` 的源与目的地）──
   const endpoints = await resolveEndpoints(step, ctx);
@@ -838,7 +865,13 @@ function toReadbackDef(
 function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confirmations']> {
   const store = ctx.deps.confirmations;
   if (store === undefined) {
-    return { issue: () => '', consume: () => false, approve: () => false, request: () => false };
+    return {
+      issue: () => '',
+      consume: () => false,
+      approve: () => false,
+      request: () => false,
+      revoke: () => false,
+    };
   }
   const bind = (params: Record<string, unknown>): Record<string, unknown> => ({
     ...params,
@@ -852,6 +885,8 @@ function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confir
     approve: (token, now) => store.approve(token, now),
     // **请求也不绑**（它不批准任何东西 ✓ —— 只是「有人在等」✓）
     request: (token: string, now: number) => store.request(token, now),
+    // **撤销**（作废 ✓ —— 取消运行的时候用 ✓）
+    revoke: (token: string) => store.revoke(token),
     consume: (token, actionId, params, packId, contractVersion, now) =>
       store.consume(token, actionId, bind(params), packId, contractVersion, now),
   };

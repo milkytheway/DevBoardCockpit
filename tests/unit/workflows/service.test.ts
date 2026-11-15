@@ -45,6 +45,15 @@ const PACK: TestPack = {
   steps: [{ id: 'hello', kind: 'exec', role: 'build', cmd: 'echo {input:project}' }],
 };
 
+/** 两步的流程（**看「跑到一半」那一下用** ✓） */
+const TWO_STEP_PACK: TestPack = {
+  ...PACK,
+  steps: [
+    { id: 'one', kind: 'exec', role: 'build', cmd: 'echo {input:project}' },
+    { id: 'two', kind: 'exec', role: 'build', cmd: 'echo second' },
+  ],
+};
+
 /** 一个带 destructive 步的流程（**要人点头** ✓） */
 const DANGEROUS_PACK = {
   ...PACK,
@@ -102,12 +111,17 @@ afterEach(() => {
 
 function service(
   pack: TestPack = PACK,
+  harnessOpts: { gate?: boolean } = {},
 ): {
   svc: WorkflowService;
   reg: WorkflowRegistry;
   audits: AuditRow[];
   confirmations: ConfirmationStore;
   deps: WorkflowRunDeps;
+  /** 放一条卡着的命令过去 ✓ */
+  releaseOne: () => void;
+  /** 等到有 n 条命令卡着 ✓ */
+  untilWaiting: (n: number) => Promise<void>;
 } {
   // **换一个包**（测试要能造 destructive 的那一种 ✓）
   writeFileSync(join(userDir, 'demo.yaml'), yamlOf(pack), 'utf8');
@@ -117,6 +131,9 @@ function service(
   const profiles = new Map<string, ConnectionProfile>([
     ['guest', { id: 'guest', label: '客机', transport: 'ssh', options: { host: '10.0.0.2' } }],
   ]);
+  // **闸门**：命令卡住，直到测试放它过去 ✓
+  // → 「跑到一半」这件事**得能被看见** ✓（不然只能靠 sleep 猜 ✗）
+  const waiting: (() => void)[] = [];
   const conn = {
     id: 'guest',
     transport: 'ssh',
@@ -127,7 +144,11 @@ function service(
     // 「在飞的那一步真停」这条判据**永远测不到** ✗）
     // → 而且**给它 20ms 的窗口** ✓（否则取消总是晚一步 ✗）
     exec: async (_command: string, opts?: { signal?: AbortSignal }): Promise<ExecResult> => {
-      await new Promise((r) => setTimeout(r, 20));
+      if (harnessOpts.gate === true) {
+        await new Promise<void>((r) => waiting.push(r));
+      } else {
+        await new Promise((r) => setTimeout(r, 20));
+      }
       const cancelled = opts?.signal?.aborted === true;
       return {
         exitCode: cancelled ? null : 0,
@@ -167,7 +188,20 @@ function service(
     confirmations,
     runDeps: deps,
   });
-  return { svc, reg, audits, confirmations, deps };
+  return {
+    svc,
+    reg,
+    audits,
+    confirmations,
+    deps,
+    releaseOne: () => waiting.shift()?.(),
+    untilWaiting: async (n: number): Promise<void> => {
+      for (let i = 0; i < 200 && waiting.length < n; i += 1) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(waiting.length).toBeGreaterThanOrEqual(n);
+    },
+  };
 }
 
 describe('流程服务 · 只认 id，不认路径', () => {
@@ -384,6 +418,46 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     const cancelRows = h.audits.filter((r) => r.actionId.endsWith(':cancel'));
     expect(cancelRows).toHaveLength(1);
     expect(cancelRows[0]?.params['runId']).toBe(runId);
+  });
+
+  it('**跑到一半，`status` 说得出「现在在第几步、从什么时候开始」**（界面不能一片死寂 ✓）', async () => {
+    const h = service(TWO_STEP_PACK, { gate: true });
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    await h.untilWaiting(1);
+
+    // **那一步还在跑** ✓ → 「现在在第几步」要说得出 ✓
+    const running = h.svc.status(runId);
+    expect(running.current?.stepId).toBe('one');
+    expect(running.current?.at).toBeGreaterThan(0);
+
+    // **跑完之后 → current 变 null** ✓（运行结束了就没有「当前」了 ✓）
+    h.releaseOne();
+    await h.untilWaiting(1); // 第二步卡住了 ✓
+    h.releaseOne();
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(h.svc.status(runId).current).toBeNull();
+  });
+
+  it('**时间线边跑边填**（不是跑完才给 ✓）', async () => {
+    const h = service(TWO_STEP_PACK, { gate: true });
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    await h.untilWaiting(1);
+
+    // **第一步还没跑完 → 时间线是空的** ✓
+    expect(h.svc.status(runId).stages).toHaveLength(0);
+
+    // **放第一步过去** ✓ → 第二步卡住 ✓
+    h.releaseOne();
+    await h.untilWaiting(1);
+
+    // **时间线已经有第一行了** ✓（不是等整条跑完才有 ✓）
+    expect(h.svc.status(runId).stages.map((s) => s.stepId)).toEqual(['one']);
+    // **「现在在第几步」也跟着走到第二步** ✓
+    expect(h.svc.status(runId).current?.stepId).toBe('two');
   });
 
   it('**取消一个不存在的运行 → 报错** ✓', () => {

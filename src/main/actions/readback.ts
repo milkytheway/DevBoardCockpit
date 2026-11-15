@@ -42,7 +42,14 @@ export interface ReadbackResult {
   /** 回读到的那个 tag 的状态 */
   status?: TagReading['status'];
   /** 为什么不符 / 为什么不成立 */
-  reason?: 'readback_mismatch' | 'not_found' | 'timeout' | 'unsupported_transport' | 'failed';
+  reason?:
+    | 'readback_mismatch'
+    | 'not_found'
+    | 'timeout'
+    | 'unsupported_transport'
+    | 'failed'
+    /** **被叫停了** ✓（不是「不符」✓ —— 人叫停 ≠ 板子不听话 ✓） */
+    | 'cancelled';
   /** 期望值 */
   expected?: unknown;
   /** 实际值 */
