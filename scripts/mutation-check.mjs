@@ -1317,7 +1317,7 @@ const MUTATIONS = [
     name: 'M108 流程服务：**只认 id 不认路径**（没批准的包跑不了）',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '还没有被批准',
+    expect: '没批准的流程跑不了',
     apply: (s) =>
       replace(
         s,
