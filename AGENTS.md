@@ -55,6 +55,7 @@ README.md
   └─ docs/spec/02-board-pack.md       板型包与 reader kind
   └─ docs/spec/03-card-manifest.md    卡片与权限
   └─ docs/spec/04-mcp-tools.md        MCP 工具集
+  └─ docs/spec/05-workflow-pack.md    流程包格式（一件事怎么做）
   └─ docs/02-设备事实清单.md          实测事实与踩坑（写代码前必读）
   └─ docs/04-架构设计.md              落地方式（Codex 撰写，待确认）
   └─ docs/05-决策记录.md              已冻结的决策（ADR-D1~D19）

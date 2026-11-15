@@ -55,10 +55,12 @@
 | `entry` | 是 | 入口 HTML，相对于卡片目录 |
 | `requires.tags` | 否 | 这张卡**想**读的 tag。用于依赖检查与降级提示 |
 | `requires.actions` | 否 | 这张卡**想**触发的动作 |
+| `requires.workflows` | 否 | 这张卡**想**触发的**流程**（流程包，`05`） |
 | `requires.min_board_pack` | 否 | 最低板型包版本要求 |
 | `layout` | 否 | 栅格尺寸与最小尺寸 |
 | `permissions.read` | 是 | 这张卡被允许读的 tag。**超出此列表的读取一律拒绝** |
 | `permissions.write` | 是 | 这张卡被允许触发的动作 id。**超出此列表一律拒绝** |
+| `permissions.workflows` | 否 | 这张卡被允许触发的**流程 id**（精确 id，**不许通配符** ✓）。**超出此列表一律拒绝** |
 | `actions` | 否 | 卡片自己声明的**视图内动作**（见 §五） |
 
 ### 2.2 模式的包含关系
@@ -102,6 +104,20 @@ permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
 只有两个都有的动作才能执行。
 
 这条规则让「用户只批准了其中一部分动作」有意义——否则用户点过头也没用。
+
+**流程也是两个集合的交集**（`05` §7.7 ✓）：
+
+```
+有效流程权限 = permissions.workflows ∩ 已授权的流程
+```
+
+→ 而且**流程的授权还有第三道** ✓：**流程包本身必须已被用户批准** ✓
+（`05` §7.2 的批准账 ✓）→ **三层都要过** ✓：
+**manifest 声明** → **用户授过这张卡** → **用户批过这个包** ✓。
+
+> **为什么流程要三层**（`05` §7.1 ✓）：
+> 流程**不是动作**（它不在板型包里 ✓），
+> 但它**一样能在用户机器上执行命令** ✗ → 它的入口必须**比动作更严** ✓。
 
 ### 2.5 manifest 的 schema 是封闭的
 
@@ -546,6 +562,9 @@ const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 | `cockpit.degradation()` | 读 | 无（只返回本卡的降级信息） |
 | `cockpit.capabilities()` | 读 | 无（只返回本宿主的信息） |
 | `cockpit.actions.invoke(id, params)` | 写 | `permissions.write` |
+| `cockpit.workflows.list()` | 读 | 无（只列**用户批过的**流程 ✓） |
+| `cockpit.workflows.run(id, inputs)` | 写 | `permissions.workflows` 里有这个 id ✓ **且**它已批准 ✓ |
+| `cockpit.workflows.status(runId)` | 读 | 同上 |
 | `cockpit.storage.get/set/remove/keys/clear` | 存储 | 无（限于本卡命名空间） |
 | `cockpit.log(level, message)` | 日志 | 无 |
 | `cockpit.notify(title, body)` | 通知 | 无 |
@@ -628,7 +647,7 @@ cards/
 |---|---|
 | 1 | `apiVersion` 是已知版本 |
 | 2 | `id` 全局唯一，不与已装卡片冲突 |
-| 3 | `requires` ⊆ `permissions`（愿望不得超出授权，按模式覆盖判定，§2.2） |
+| 3 | `requires` ⊆ `permissions`（愿望不得超出授权，按模式覆盖判定，§2.2）；**`requires.workflows` ⊆ `permissions.workflows`**（精确 id ✓） |
 | 4 | `permissions.read` 里每个 tag 名**匹配核心词表**或落在 `custom.*` 下 |
 | 5 | `permissions.write` 里每个动作 id 在**当前连接的板型包**里存在（连不上板时跳过此检查，标注「未验证」） |
 | 6 | `permissions.write` 里**不允许通配符**（§2.3） |
@@ -639,4 +658,5 @@ cards/
 | 11 | 卡片**不声明** `danger` / `readback`（那两样归板型包管，§5.1） |
 | 12 | `actions[]` 里**没有 `target` 的**是视图内动作，它**不得**出现在 `permissions.write` 里 |
 | 13 | `actions[].params` 的 `type` 必须是封闭取值（`02` §4.3）；`string` 必须有 `maxLength` |
+| 14 | `permissions.workflows` 里每个 id **不许通配符**（同 §2.3 ✓），且**必须是宿主里已声明的流程**（`05` §九 规则 6 ✓） |
 
