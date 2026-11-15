@@ -1975,8 +1975,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '            failure(reasonOf(err), err instanceof Error ? err.message : String(err)),',
-        "            { ok: true, run_id: 'wf-bogus' }, // 变异：失败也说成功",
+        '          return withVersion(\n            failure(reasonOf(err), err instanceof Error ? err.message : String(err)),\n          );',
+        "          return withVersion({ ok: true, run_id: 'wf-bogus' }); // 变异：失败也说成功",
       ),
   },
   {
