@@ -57,7 +57,7 @@ export interface WorkflowRunStatus {
    * 运行状态。
    *
    * → **`awaiting_confirmation` 是一档**（不是 `failed` ✓）：
-   * 「等���点头」**不是失败** ✓，它是流程**停在某一步等人** ✓。
+   * 「等人点头」**不是失败** ✓，它是流程**停在某一步等人** ✓。
    * （v2 提案漏了这一档 → 独立评审 V2-I1 ✓）
    */
   state: 'running' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled';

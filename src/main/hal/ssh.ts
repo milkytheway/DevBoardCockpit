@@ -471,7 +471,7 @@ class SshSession extends Session {
 
   close(): void {
     // 冲尾巴：远端可能只发了半个字符就断线了，那半个字符要显示成替换符，
-    // 不能悄悄丢掉（丢一半比显示成 � 更容易让人误判屏幕内容）。
+    // 不能悄悄丢掉（丢一半比显示成空白更容易让人误判屏幕内容）。
     const tail = this.decoder.end();
     if (tail.length > 0) {
       for (const c of this.dataCbs) c(tail);
