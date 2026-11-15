@@ -20,7 +20,9 @@ describe('中途叫停', () => {
   it('**进程真的被杀掉了**（不是「不等了」✓）', async () => {
     const controller = new AbortController();
 
-    const running = runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], {
+    // 睡 2 秒（**不是 10 分钟** ✓）：
+    // → 「取消没杀进程」时它会自然跑完 ✓ → 判据抓得住 ✓（而不是把测试挂死 ✗）
+    const running = runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 2000)'], {
       signal: controller.signal,
     });
 

@@ -1481,8 +1481,19 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "        child.kill('SIGTERM');",
-        '        // 变异：不杀进程（只是不等了）',
+        `      try {
+        child.kill('SIGTERM');
+      } catch {
+        // 已经退了就算了
+      }
+      setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // 已经没了就算了
+        }
+      }, 200);`,
+        `      // 变异：**只是不等了**（尖兵的现象 ✓ —— 进程还在后台跑 ✗）`,
       ),
   },
   {
