@@ -206,11 +206,15 @@ export class WorkflowRegistry {
   requireApproved(id: string): RegisteredWorkflow {
     const found = this.packs.get(id);
     if (found === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这个流程包：${id}`, { detail: { id } });
+      // **带上机器可读的 reason** ✓（MCP 那一层要把它回给 agent ✓ —— 契约 §四 ✓；
+      // 不然只能靠中文消息猜 ✓ —— 那是「解析错误消息」的坏味道 ✗）
+      throw makeError('IPC_INVALID_PAYLOAD', `没有这个流程包：${id}`, {
+        detail: { id, reason: 'not_found' },
+      });
     }
     if (!found.approved) {
       throw makeError('IPC_INVALID_PAYLOAD', `流程包「${id}」还没有被批准`, {
-        detail: { id, digest: found.digest },
+        detail: { id, digest: found.digest, reason: 'not_approved' },
       });
     }
     return found;

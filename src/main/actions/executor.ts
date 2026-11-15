@@ -52,6 +52,12 @@ export interface Confirmations {
    * → **不批准任何东西** ✓：只是把请求递进 GUI 队列 ✓。
    */
   request(token: string, now: number): boolean;
+  /**
+   * **撤销**一张凭据（**作废** ✓ —— 不能再被批准 ✓）。
+   *
+   * → 取消一次运行时用得上 ✓（独立评审 40 的 I-8 ✓）：人**不该**再去点一个已经被取消的运行 ✗。
+   */
+  revoke(token: string): boolean;
   /** 用掉一张（一次性） */
   consume(
     token: string,

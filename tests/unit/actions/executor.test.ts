@@ -99,6 +99,7 @@ function harness(
       consume: (): boolean => false,
       approve: (): boolean => true,
       request: (): boolean => true,
+      revoke: (): boolean => true,
     },
     audit: (row: AuditRow): string => {
       audits.push(row);
@@ -258,6 +259,7 @@ describe('执行器 · 授权与确认', () => {
       consume: () => true,
       approve: () => true,
       request: () => true,
+      revoke: () => true,
     };
     const result = await invokeAction(
       { ...ACTION, danger: 'destructive' },
