@@ -82,6 +82,13 @@ export interface ActionExecutorDeps {
    */
   auditInputs?: Record<string, unknown>;
   /**
+   * **中途叫停**（`AbortSignal` ✓）—— 「人不要了」✓。
+   *
+   * → 流程层用它实现「取消」✓（`spec/05` §八 ✓）；
+   * → 与超时**分开** ✓（超时是「等久了」✓）。
+   */
+  execSignal?: AbortSignal;
+  /**
    * 执行超时（毫秒）。
    *
    * → 流程层的长步骤（编译是分钟级）用它 ✓；
@@ -248,10 +255,10 @@ export async function invokeAction(
 
   // ⑤⑥ 执行 + 回读（**同一个独占事务**）
   const { result: readback, execResult } = await deps.runTransaction(async (connection) => {
-    const execResult = await connection.exec(
-      command,
-      deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs },
-    );
+    const execResult = await connection.exec(command, {
+      ...(deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs }),
+      ...(deps.execSignal === undefined ? {} : { signal: deps.execSignal }),
+    });
     const result = await runReadback(
       action.readback ?? { kind: 'none', consequence: '这个动作没有声明回读' },
       { raw: params, encoded },

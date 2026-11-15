@@ -8,7 +8,7 @@ import type { ConnectionProfile } from '../profiles/schema';
 import { Session, TIMEOUT_EXIT_CODE } from './session';
 import { capabilitiesFor, transportDefaults } from './capabilities';
 import { readFileSync } from 'node:fs';
-import type { ConnectionCapabilities, Connection, ExecResult } from './connection';
+import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult } from './connection';
 
 /**
  * SSH 传输。
@@ -193,7 +193,7 @@ export class SshConnection implements Connection {
     this.client = undefined;
   }
 
-  async exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
+  async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.client) {
       throw makeError('CONN_CLOSED', 'SSH 连接未打开', { detail: { id: this.id } });
     }
@@ -204,6 +204,7 @@ export class SshConnection implements Connection {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let cancelled = false;
       let settled = false;
       let stream: ClientChannel | undefined;
 
@@ -219,6 +220,7 @@ export class SshConnection implements Connection {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        opts?.signal?.removeEventListener('abort', onAbort);
         // 冲尾巴：最后一个 chunk 的尾巴可能还缓在 decoder 里
         stdout += stdoutDecoder.end();
         stderr += stderrDecoder.end();
@@ -228,6 +230,7 @@ export class SshConnection implements Connection {
           stderr,
           durationMs: Date.now() - startedAt,
           timedOut,
+          ...(cancelled ? { cancelled: true } : {}),
         });
       };
 
@@ -251,9 +254,28 @@ export class SshConnection implements Connection {
         settle(TIMEOUT_EXIT_CODE);
       }, timeoutMs);
 
+      // ── 取消：**关掉那一条通道** ──
+      // → 与超时同款（只关通道，不拆整条连接 ✓ —— 否则用户的交互终端会当场断掉 ✗）
+      const onAbort = (): void => {
+        if (settled) return;
+        cancelled = true;
+        try {
+          stream?.close();
+        } catch {
+          // 通道已经关了就算了
+        }
+        // **自己结算**：远端不主动关通道的话，这个 Promise 永不 settle ✗
+        settle(null);
+      };
+      if (opts?.signal !== undefined) {
+        if (opts.signal.aborted) onAbort();
+        else opts.signal.addEventListener('abort', onAbort, { once: true });
+      }
+
       this.client!.exec(command, (err, ch) => {
         if (err) {
           clearTimeout(timer);
+          opts?.signal?.removeEventListener('abort', onAbort);
           reject(makeError('CONN_OPEN_FAILED', `SSH 执行失败：${err.message}`, {
             detail: { host: this.opts.host, cause: err.message },
           }));

@@ -1474,6 +1474,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M122 HAL：取消必须**真的杀掉进程**（不是「不等了」✓ —— 尖兵的现象 ✓）',
+    file: 'src/main/util/spawn.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/spawn-abort.test.ts'],
+    expect: '进程真的被杀掉了',
+    apply: (s) =>
+      replace(
+        s,
+        "        child.kill('SIGTERM');",
+        '        // 变异：不杀进程（只是不等了）',
+      ),
+  },
+  {
+    name: 'M123 流程层：**取消**要把状态变成 cancelled（不是 failed ✓）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '取消',
+    apply: (s) =>
+      replace(
+        s,
+        "    status.state = 'cancelled';",
+        "    status.state = 'failed'; // 变异：取消被当成失败",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

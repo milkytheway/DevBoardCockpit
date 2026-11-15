@@ -7,7 +7,7 @@ import { runProcess } from '../util/spawn';
 import { Session } from './session';
 import { createLocalPtySession } from '../terminal/pty';
 import { capabilitiesFor, transportDefaults } from './capabilities';
-import type { ConnectionCapabilities, Connection, ExecResult, FileEntry } from './connection';
+import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult, FileEntry } from './connection';
 
 /**
  * 本机传输。
@@ -55,13 +55,16 @@ export class LocalConnection implements Connection {
     this.opened = false;
   }
 
-  async exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
+  async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', '本机连接未打开', { detail: { id: this.id } });
     }
     const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
     const args = process.platform === 'win32' ? ['/c', command] : ['-c', command];
-    return this.runner(shell, args, { timeoutMs: opts?.timeoutMs });
+    return this.runner(shell, args, {
+      timeoutMs: opts?.timeoutMs,
+      ...(opts?.signal === undefined ? {} : { signal: opts.signal }),
+    });
   }
 
   /**

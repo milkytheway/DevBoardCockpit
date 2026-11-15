@@ -119,6 +119,12 @@ export interface WorkflowRunOptions {
   startAt?: number;
   /** 续跑时**带上之前的产出**（槽 ✓） */
   outputs?: Record<string, string>;
+  /**
+   * **中途叫停**（`AbortSignal` ✓）—— 「人不要了」✓。
+   *
+   * → 尖兵实测：没有这条路时，一个 75 秒的传输步**收到取消后照跑完** ✗。
+   */
+  signal?: AbortSignal;
   /** **这次运行的 id**（续跑时沿用它 ✓ —— 续跑是**同一次运行** ✓） */
   runId?: string;
 }
@@ -864,6 +870,8 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
     now: ctx.now,
     // **长步骤要有超时**（编译是分钟级；尖兵实测传输波动 20 倍，A14 ✓）
     ...(timeoutMs === undefined ? {} : { execTimeoutMs: timeoutMs }),
+    // **中途叫停**（「人不要了」✓ —— 与超时分开 ✓）
+    ...(ctx.opts.signal === undefined ? {} : { execSignal: ctx.opts.signal }),
   };
 }
 

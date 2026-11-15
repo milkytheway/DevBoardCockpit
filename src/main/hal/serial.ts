@@ -5,7 +5,7 @@ import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
 import { buildMarker, extractMarkerOutput, Session, TIMEOUT_EXIT_CODE } from './session';
 import { capabilitiesFor, transportDefaults } from './capabilities';
-import type { ConnectionCapabilities, Connection, ExecResult, FileEntry } from './connection';
+import type { ConnectionCapabilities, Connection, ExecResult, FileEntry, ExecOptions } from './connection';
 
 /**
  * 串口传输。
@@ -204,7 +204,7 @@ export class SerialConnection implements Connection {
    * 走 marker 协议：发命令 → 在 transcript 里认领回包。
    * **有文本回包 = 0；超时 = 124**（事实 S5）——串口拿不到 exit status。
    */
-  async exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
+  async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
@@ -224,7 +224,7 @@ export class SerialConnection implements Connection {
     }
   }
 
-  private async execLocked(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
+  private async execLocked(command: string, opts?: ExecOptions): Promise<ExecResult> {
 
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const startedAt = Date.now();
@@ -247,8 +247,10 @@ export class SerialConnection implements Connection {
       // 事实 S4：getty 期待 CR，只发 \n 可能不换行
       this.port?.write(`${command}; echo ${marker}\r\n`);
 
-      const output = await this.waitForMarker(marker, timeoutMs);
+      const output = await this.waitForMarker(marker, timeoutMs, opts?.signal);
       const timedOut = output === undefined;
+      // **取消**与**超时**分开 ✓（串口上没有退出码 ✓，只能用标记区分 ✓）
+      const cancelled = output === undefined && opts?.signal?.aborted === true;
 
       const portName = this.profile.options['port'];
       return {
@@ -256,14 +258,15 @@ export class SerialConnection implements Connection {
         stdout: timedOut ? '' : output,
         stderr: '',
         durationMs: Date.now() - startedAt,
-        timedOut,
+        timedOut: timedOut && !cancelled,
+        ...(cancelled ? { cancelled: true } : {}),
         // 超时的**第一嫌疑**是「回包被别的程序吃了」，不是「板子慢」。
         //
         // 真机上真踩过（2026-11-13）：宿主上计划 1 验收留下的 `serial-server.py`
         // **独占打开了 COM3** —— 板子是活的、串口是通的，
         // 但**回包被它吃掉**，所以应用自己的 exec 永远等不到。
         // 不说清楚，人就会往「板子是不是死了」的方向查。
-        ...(timedOut
+        ...(timedOut && !cancelled
           ? {
               hint:
                 `串口 ${String(portName)} 一次往返超时。` +
@@ -312,7 +315,11 @@ export class SerialConnection implements Connection {
   }
 
   /** 等 marker 出现第二次。返回输出文本；超时返回 undefined */
-  private waitForMarker(marker: string, timeoutMs: number): Promise<string | undefined> {
+  private waitForMarker(
+    marker: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<string | undefined> {
     const deadline = Date.now() + timeoutMs;
     return new Promise((resolve) => {
       const check = (): void => {
@@ -320,6 +327,13 @@ export class SerialConnection implements Connection {
         // marker 出现两次才算收齐（板子回显一次 + 输出后一次）
         if (chunk.split(marker).length - 1 >= 2) {
           resolve(extractMarkerOutput(chunk, marker));
+          return;
+        }
+        // **被取消了 → 明确放弃** ✓（契约 §5.2 的「放弃等这个 marker」✓）
+        // → 串口上**没法杀远端的进程** ✓（那不是一条 shell 连接 ✗）
+        // → 至少**宿主不等了** ✓（尖兵实测：收到取消后照跑完 ✗ —— 就是因为宿主还在等 ✗）
+        if (signal?.aborted === true) {
+          resolve(undefined);
           return;
         }
         if (Date.now() > deadline) {

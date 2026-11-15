@@ -91,6 +91,8 @@ const DEFAULT_MAX_RUNS = 50;
 export class WorkflowService {
   private readonly runs = new Map<string, WorkflowRunStatus>();
   private readonly order: string[] = [];
+  /** 每次运行一个**叫停器**（取消用它 ✓） */
+  private readonly aborts = new Map<string, AbortController>();
   private readonly now: () => number;
   private readonly maxRuns: number;
 
@@ -173,7 +175,32 @@ export class WorkflowService {
     this.order.push(runId);
     this.trim();
 
-    void this.execute(status, registered, inputs, opts.confirmIds, 0);
+    // **每次运行一个叫停器** ✓（取消要能真的停掉在飞的那一步 ✓）
+    const abort = new AbortController();
+    this.aborts.set(runId, abort);
+
+    void this.execute(status, registered, inputs, opts.confirmIds, 0, abort.signal);
+    return { runId };
+  }
+
+  /**
+   * **取消**一次运行（「人不要了」✓）。
+   *
+   * → **真的停掉在飞的那一步** ✓（尖兵实测：没有这条路时，
+   * 一个 75 秒的传输步**收到取消后照跑完** ✗ —— 宿主还在等 marker ✓）。
+   * → 状态变成 `cancelled` ✓（**不是 failed** ✓ —— 取消不是失败 ✓）。
+   *
+   * @throws 没有这次运行 → `IPC_INVALID_PAYLOAD` ✓
+   */
+  cancel(runId: string): { runId: string } {
+    const status = this.runs.get(runId);
+    if (status === undefined) {
+      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
+    }
+    this.aborts.get(runId)?.abort();
+    status.state = 'cancelled';
+    status.reason = 'cancelled';
+    status.finishedAt = this.now();
     return { runId };
   }
 
@@ -239,7 +266,16 @@ export class WorkflowService {
     status.state = 'running';
     status.needsConfirmation = undefined;
     status.reason = undefined;
-    void this.execute(status, registered, status.inputs ?? {}, { [pausedStepId]: confirmId }, pausedAt);
+    const abort = new AbortController();
+    this.aborts.set(runId, abort);
+    void this.execute(
+      status,
+      registered,
+      status.inputs ?? {},
+      { [pausedStepId]: confirmId },
+      pausedAt,
+      abort.signal,
+    );
     return { runId };
   }
 
@@ -254,6 +290,7 @@ export class WorkflowService {
     inputs: Record<string, unknown>,
     confirmIds: Record<string, string> | undefined,
     startAt: number,
+    signal?: AbortSignal,
   ): Promise<void> {
     try {
       const result: WorkflowRunResult = await runWorkflow(
@@ -270,6 +307,7 @@ export class WorkflowService {
           startAt,
           outputs: status.outputs,
           ...(confirmIds === undefined ? {} : { confirmIds }),
+          ...(signal === undefined ? {} : { signal }),
         },
       );
       status.stages = [...status.stages, ...result.stages];
@@ -312,7 +350,10 @@ export class WorkflowService {
   private trim(): void {
     while (this.order.length > this.maxRuns) {
       const oldest = this.order.shift();
-      if (oldest !== undefined) this.runs.delete(oldest);
+      if (oldest !== undefined) {
+        this.runs.delete(oldest);
+        this.aborts.delete(oldest);
+      }
     }
   }
 }

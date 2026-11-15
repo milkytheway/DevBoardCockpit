@@ -29,6 +29,13 @@ export interface ExecResult {
   durationMs: number;
   timedOut: boolean;
   /**
+   * **被取消了**（不是超时 ✓ —— 两者不该同码 ✓：
+   * 「等久了没结果」与「人主动叫停」是两件事 ✗）。
+   *
+   * → 尖兵实测：没有这条路时，一个 75 秒的传输步**收到取消后照跑完** ✗。
+   */
+  cancelled?: boolean;
+  /**
    * **给人看的下一步**（可选）。
    *
    * 只在「失败形态容易误判」时给：
@@ -40,13 +47,26 @@ export interface ExecResult {
   hint?: string;
 }
 
+/**
+ * 执行一条命令的选项。
+ *
+ * → **`signal` 是「中途叫停」** ✓（`AbortSignal` ✓）：
+ * 超时是「等久了」✓，取消是「**人不要了**」✓ —— 两者分开 ✓。
+ */
+export interface ExecOptions {
+  /** 超时（毫秒） */
+  timeoutMs?: number;
+  /** 中途叫停（`AbortSignal` ✓） */
+  signal?: AbortSignal;
+}
+
 export interface Connection {
   readonly id: string;
   readonly transport: TransportKind;
   capabilities(): ConnectionCapabilities;
   open(): Promise<void>;
   close(): Promise<void>;
-  exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult>;
+  exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /**
    * 文件互传。
    *

@@ -19,6 +19,18 @@ export interface SpawnResult {
   durationMs: number;
   /** true 时 exitCode 必为 124 */
   timedOut: boolean;
+  /**
+   * 子进程的 pid（**诊断用** ✓）。
+   *
+   * → 「取消之后那个进程**真的没了**吗」——这条判据要靠它 ✓
+   * （尖兵当年的现象就是「进程还在跑」✗）。
+   */
+  pid?: number;
+  /**
+   * **被取消了**（不是超时 ✓ —— 两者不该同码 ✓：
+   * 「等久了没结果」与「人主动叫停」是两件事 ✗）。
+   */
+  cancelled?: boolean;
 }
 
 export interface SpawnOptions {
@@ -28,6 +40,14 @@ export interface SpawnOptions {
   input?: string;
   /** 追加到 process.env 的环境变量 */
   env?: Record<string, string>;
+  /**
+   * **中途叫停**（`AbortSignal` ✓）。
+   *
+   * → 超时是「等久了」✓；取消是「**人不要了**」✓ —— 两者分开 ✓
+   *   （尖兵实测：一个 75 秒的传输步收到取消后**照跑完** ✗ —— 就是因为没有这条路 ✓）。
+   * → 取消时**杀掉子进程** ✓（不是「不等了」——那样它还在后台跑 ✗）。
+   */
+  signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -54,12 +74,42 @@ export function runProcess(
     const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
     let timedOut = false;
+    let cancelled = false;
     let settled = false;
 
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
     }, timeoutMs);
+
+    // ── 取消：**杀掉子进程** ──
+    // → 「不等了」是不够的 ✗：进程还在后台跑（尖兵实测：75 秒的传输照跑完 ✗）
+    // → 先 SIGTERM，**给它 200ms 自己退** ✗，不退再 SIGKILL ✓
+    const onAbort = (): void => {
+      if (settled) return;
+      cancelled = true;
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // 已经退了就算了
+      }
+      setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // 已经没了就算了
+        }
+      }, 200);
+    };
+    if (opts.signal !== undefined) {
+      if (opts.signal.aborted) {
+        // **一开始就取消了** → 干脆别起 ✓（**也要标 cancelled** ✓）
+        cancelled = true;
+        child.kill();
+      } else {
+        opts.signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
 
     child.stdout?.on('data', (c: Buffer) => outChunks.push(c));
     child.stderr?.on('data', (c: Buffer) => errChunks.push(c));
@@ -68,6 +118,7 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       reject(err);
     });
 
@@ -75,12 +126,15 @@ export function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       resolve({
         exitCode: timedOut ? TIMEOUT_EXIT_CODE : code,
         stdout: Buffer.concat(outChunks).toString('utf8'),
         stderr: Buffer.concat(errChunks).toString('utf8'),
         durationMs: Date.now() - startedAt,
         timedOut,
+        ...(cancelled ? { cancelled: true } : {}),
+        pid: child.pid,
       });
     });
 

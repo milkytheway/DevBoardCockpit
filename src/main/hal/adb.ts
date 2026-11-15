@@ -9,7 +9,7 @@ import { quotePath } from '../util/shell-quote';
 import { parseLsLines } from '../util/ls-output';
 import { Session } from './session';
 import { terminalEnvScript } from './session-env';
-import type { ConnectionCapabilities, Connection, ExecResult } from './connection';
+import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult } from './connection';
 import { capabilitiesFor, transportDefaults } from './capabilities';
 
 /**
@@ -184,12 +184,13 @@ export class AdbConnection implements Connection {
     this.opened = false;
   }
 
-  async exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult> {
+  async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', 'ADB 连接未打开', { detail: { id: this.id } });
     }
     return this.runner(this.adbPath, adbArgs(this.profile, ['shell', command]), {
       timeoutMs: opts?.timeoutMs,
+      ...(opts?.signal === undefined ? {} : { signal: opts.signal }),
     });
   }
 

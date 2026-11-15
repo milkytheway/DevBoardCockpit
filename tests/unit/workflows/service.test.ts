@@ -287,6 +287,23 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
+  it('**取消**：状态变 cancelled（**不是 failed** ✓），且在飞的那一步真停 ✓', async () => {
+    const h = service();
+    h.reg.approve('demo.run');
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    // **取消** ✓
+    h.svc.cancel(runId);
+    const status = h.svc.status(runId);
+    // **取消不是失败** ✓（契约 §八·3 的状态机 ✓）
+    expect(status.state).toBe('cancelled');
+    expect(status.reason).toBe('cancelled');
+  });
+
+  it('**取消一个不存在的运行 → 报错** ✓', () => {
+    const { svc } = service();
+    expect(() => svc.cancel('wf-nope')).toThrow(/没有这次运行/);
+  });
+
   it('不是「等确认」的状态 → 不能 confirm', () => {
     const { svc } = service();
     expect(() => svc.approveAndResume('wf-nope', 'cf-x')).toThrow(/没有这次运行/);
