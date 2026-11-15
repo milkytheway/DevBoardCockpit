@@ -47,6 +47,21 @@ describe('假设备 · 接线规则', () => {
     expect(profilesWithFake([REAL], 'only', false)).toEqual([REAL]);
   });
 
+  it('**多个角色**（`COCKPIT_FAKE_PROFILES=build,target`）→ 每个都走假设备', () => {
+    const env = { COCKPIT_FAKE_PROFILES: 'build,target' } as NodeJS.ProcessEnv;
+    const out = profilesWithFake([REAL], 'only', true, env);
+    expect(out.map((p) => p.id)).toEqual(['build', 'target']);
+    expect(fakeRouteFor('build', 'on', true, env)).toBe('fake');
+    expect(fakeRouteFor('target', 'on', true, env)).toBe('fake');
+    // **不在名单里的 → 还是真 profile** ✓
+    expect(fakeRouteFor('board-adb', 'on', true, env)).toBe('not-fake');
+  });
+
+  it('角色名单**没给** → 默认只有 `fake-board`（行为与从前一样 ✓）', () => {
+    expect(fakeRouteFor('build', 'on', true, {} as NodeJS.ProcessEnv)).toBe('not-fake');
+    expect(fakeRouteFor(FAKE_PROFILE_ID, 'on', true, {} as NodeJS.ProcessEnv)).toBe('fake');
+  });
+
   it('路由：载入成功才走假设备；没载入成功就**拒绝**，绝不回落成真连接', () => {
     expect(fakeRouteFor(FAKE_PROFILE_ID, 'on', true)).toBe('fake');
     // **'refuse' 而不是 'not-fake'** —— 后者会掉进真的传输里

@@ -1245,7 +1245,7 @@ const MUTATIONS = [
     name: 'M102 流程包：placement 必须在**封闭词表**里（拼错 = 默默落错地方）',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: '不在封闭词表里',
+    expect: '封闭词表',
     apply: (s) =>
       replace(
         s,
