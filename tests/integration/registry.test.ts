@@ -27,10 +27,10 @@ describe('capabilitiesFor', () => {
 });
 
 describe('capabilitiesFor 与真实 profile 一致', () => {
-  it('仓库里的四个 profile 的能力位与传输相符', async () => {
+  it('仓库里的五个 profile 的能力位与传输相符', async () => {
     const { loadProfiles } = await import('../../src/main/profiles/loader');
     const list = loadProfiles({ builtinDir: 'profiles/targets' });
-    expect(list.length).toBe(4);
+    expect(list.length).toBe(5);
     for (const profile of list) {
       const caps = capabilitiesFor(profile);
       if (profile.transport === 'serial') {

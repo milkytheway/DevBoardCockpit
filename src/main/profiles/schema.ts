@@ -46,6 +46,47 @@ export function deviceKeyOf(profile: ConnectionProfile): string {
     : profile.id;
 }
 
+/** 一个 `device_key` 的冲突（**说清楚是哪几条** ✓） */
+export interface DeviceKeyConflict {
+  /** 冲突的那个 key ✓ */
+  device_key: string;
+  /** 声明了哪些板型包（**多于一个就是冲突** ✓） */
+  board_packs: string[];
+  /** 牵涉哪几条 profile ✓ */
+  profile_ids: string[];
+}
+
+/**
+ * **同一个 `device_key` 声明了不同的板型包** ✓（契约 `spec/02` §10.2 ✓）。
+ *
+ * → **一块板只有一个型号** ✓ → 同一个 key 声明了两个包 ✗ → **配置写错了** ✓
+ * → **要说得出来** ✓（**不静默** ✓ —— 界面会把它当一块板 ✓ → 混了型号 ✓）。
+ *
+ * → **两块同型号的板不算冲突** ✓（**它们的 key 不同** ✓ —— **共享一个包** ✓ 但不是一块 ✓）。
+ */
+export function deviceKeyConflicts(
+  profiles: readonly ConnectionProfile[],
+): DeviceKeyConflict[] {
+  const byKey = new Map<string, { packs: Set<string>; ids: string[] }>();
+  for (const profile of profiles) {
+    const key = deviceKeyOf(profile);
+    const entry = byKey.get(key) ?? { packs: new Set<string>(), ids: [] };
+    entry.packs.add(profile.board_pack ?? '');
+    entry.ids.push(profile.id);
+    byKey.set(key, entry);
+  }
+  const out: DeviceKeyConflict[] = [];
+  for (const [key, entry] of byKey) {
+    if (entry.packs.size <= 1) continue;
+    out.push({
+      device_key: key,
+      board_packs: [...entry.packs].sort(),
+      profile_ids: entry.ids,
+    });
+  }
+  return out;
+}
+
 /** 各传输允许的 options。必填项必须有，其余可选。 */
 interface TransportSpec {
   required: readonly string[];

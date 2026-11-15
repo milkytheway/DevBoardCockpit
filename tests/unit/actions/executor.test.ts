@@ -74,6 +74,8 @@ function harness(
   const deps: ActionExecutorDeps = {
     packId: 'rk3588-atk',
     contractVersion: 'devboard/v1',
+    // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    deviceKey: () => 'atk-01',
     hasExitCode: over.hasExitCode ?? true,
     runTransaction: async <T>(fn: (conn: Connection) => Promise<T>): Promise<T> =>
       fn(fakeConn as unknown as Connection),
@@ -91,6 +93,7 @@ function harness(
         _contractVersion: string,
         _now: number,
         _commandDigest: string,
+        _deviceKey: string,
       ): string => {
         const token = `confirm-${confirmations.length}`;
         confirmations.push(token);

@@ -118,6 +118,8 @@ describe('两张卡片 · 同一块板子', () => {
             {
               packId: 'tiny',
               contractVersion: 'devboard/v1',
+              // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+              deviceKey: () => 'tiny-board',
               hasExitCode: true,
               runTransaction: (fn) => runtime.runTransaction(fn),
               readTag: async () => undefined,

@@ -39,6 +39,14 @@ export interface McpHostDeps {
   capabilities: (profile: ConnectionProfile) => ConnectionCapabilities;
   /** **这条 profile 现在有活连接吗** ✓ */
   connected: (profileId: string) => boolean;
+  /**
+   * **当前运行时那条连接是哪个** ✓（**没有就是 `null`** ✓）。
+   *
+   * → **`list_connections` 的 `current` 靠它** ✓（契约 `spec/04` §2.1 ✓）
+   * → **与 `connected` 是两条判据** ✓：**开着终端会话**也算 `connected` ✓
+   *   但**不是运行时那条** ✓ → **两件事** ✓（不混 ✓）。
+   */
+  currentProfileId: () => string | null;
 
   /** 装着的卡片 */
   cards: () => McpCardEntry[];

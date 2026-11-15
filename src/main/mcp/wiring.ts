@@ -77,6 +77,8 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
       // ② **或开着终端会话** ✓
       return terminal.liveProfileIds().includes(profileId);
     },
+    // **当前运行时那条连接是哪个** ✓（**没有就是 `null`** ✓ —— 不猜 ✓）
+    currentProfileId: (): string | null => runtime.status.profileId ?? null,
     cards: (): McpCardEntry[] =>
       cards.cards().map((card) => {
         const state: CardState = cardState({

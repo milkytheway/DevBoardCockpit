@@ -361,6 +361,8 @@ async function startMcpServer(): Promise<void> {
           // 不一致 → **凭据永远消费不掉** ✗（症状是「人点了也没用」✗）
           packIdOf: () => runtime.packId ?? '',
           contractVersion: 'devboard/v1',
+          // **当前那块板是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+          deviceKey: () => runtime.currentDeviceKey ?? '',
           hasExitCode: runtime.hasExitCode,
           runTransaction: (fn) => runtime.runTransaction(fn),
           readTag: (tag) => runtime.sampleTag(tag),
@@ -486,6 +488,8 @@ const cards = createCardWiring({
       return invokeAction(action, params, {
         packId: runtime.packId ?? '',
         contractVersion: 'devboard/v1',
+        // **当前那块板是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+        deviceKey: () => runtime.currentDeviceKey ?? '',
         hasExitCode: runtime.hasExitCode,
         // **执行与回读在同一个独占事务里**（SPEC-D22）
         runTransaction: (fn) => runtime.runTransaction(fn),

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseProfile, type ConnectionProfile } from './schema';
+import { parseProfile, deviceKeyConflicts, type ConnectionProfile } from './schema';
 
 /**
  * 连接 profile 的加载。
@@ -52,5 +52,16 @@ export function loadProfiles(opts: LoadProfilesOptions): ConnectionProfile[] {
   collect(opts.builtinDir);
   collect(opts.userDir);
 
-  return Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
+  const list = Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
+
+  // **同一个 `device_key` 声明了不同的板型包** ✓ → **说一声** ✓
+  // → **不拖垮应用** ✓（同「坏文件只跳过一个」✓ —— 用户不该因为一个 typo 就起不来 ✓）
+  for (const conflict of deviceKeyConflicts(list)) {
+    warn(
+      `device_key '${conflict.device_key}' 同时声明了板型包 ${conflict.board_packs.join(' / ')}` +
+        `（牵涉 ${conflict.profile_ids.join(' / ')}）—— 一块板只有一个型号 ✓`,
+    );
+  }
+
+  return list;
 }

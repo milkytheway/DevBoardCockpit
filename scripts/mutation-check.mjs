@@ -2434,6 +2434,56 @@ const MUTATIONS = [
         '  --shell-mat-edge-highlight: rgba(255, 255, 255, 0.06);\n  --ui-highlight: var(--shell-mat-edge-highlight);',
       ),
   },
+
+  // ── 设备与连接（ADR-D43）────────────────────────────────────
+  {
+    name: 'M199 连接 profile：**`device_key` 缺省 = profile id** ✓（**一板一连** ✓ 的就这么办 ✓）',
+    file: 'src/main/profiles/schema.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/device-key.test.ts'],
+    expect: '缺省是 profile id',
+    apply: (s) =>
+      replace(
+        s,
+        "    : profile.id;",
+        "    : ''; // 变异：缺省不回落成 profile id",
+      ),
+  },
+  {
+    name: 'M200 MCP execute_action：**给了别的设备 → `not_found`** ✓（**绝不静默地打当前那块** ✓）',
+    file: 'src/main/mcp/action-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/device-key.test.ts'],
+    expect: '给了别的设备',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (deviceKey === current) return undefined;',
+        '  if (true) return undefined; // 变异：设备对不上也放过',
+      ),
+  },
+  {
+    name: 'M201 凭据：**绑住「这块板」** ✓（为 A 板签的不能动 B 板 ✓ —— 契约 §2.4.1 第六项 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: '设备不同',
+    apply: (s) =>
+      replace(
+        s,
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`,',
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`, // 变异：不绑设备',
+      ),
+  },
+  {
+    name: 'M202 工作流：**角色事实取自 `options.ssh`** ✓（**那条 scp 要用板子的地址** ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/role-facts.test.ts'],
+    expect: 'options.ssh',
+    apply: (s) =>
+      replace(
+        s,
+        "      host: str(sshFact['host']) ?? str(options['host']) ?? '',",
+        "      host: str(options['host']) ?? '', // 变异：不读 options.ssh",
+      ),
+  },
 ];
 
 /** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */

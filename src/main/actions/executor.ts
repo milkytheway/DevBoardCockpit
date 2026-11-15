@@ -39,6 +39,8 @@ export interface Confirmations {
      * → 不绑它 ✓ → **同一张凭据认得两条不同的命令** ✗
      */
     commandDigest: string,
+    /** **这一步动的是哪块板** ✓（契约 `spec/04` §2.4.1 的**第六项** ✓） */
+    deviceKey: string,
   ): string;
   /**
    * **人点了确认** → 这张凭据才可用 ✓。
@@ -68,6 +70,8 @@ export interface Confirmations {
     now: number,
     /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
     commandDigest: string,
+    /** **这一步动的是哪块板** ✓（与签发时必须是同一个 ✓） */
+    deviceKey: string,
   ): boolean;
 }
 
@@ -77,6 +81,13 @@ export interface ActionExecutorDeps {
   packId: string;
   /** 契约版本（凭据要绑它） */
   contractVersion: string;
+  /**
+   * **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 的**第六项** ✓）。
+   *
+   * → **是函数不是值** ✓ —— **当前那条连接会换** ✓（换板了 ✓）
+   * → **签发与消费读的是同一个函数** ✓ → 两边一致 ✓。
+   */
+  deviceKey: () => string;
   /** **这条连接有退出码吗**（串口没有，事实 S5） */
   hasExitCode: boolean;
   /** 在这条连接上跑一次独占事务（执行 + 回读都在里面） */
@@ -242,6 +253,8 @@ export async function invokeAction(
   if (verdict.verdict === 'needs_confirmation') {
     // **这一步最终命令的摘要** ✓（凭据要绑它 ✓ —— 契约 `spec/05` §7.5-3 ✓）
     const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');
+    // **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    const deviceKey = deps.deviceKey();
     const consumed =
       opts.confirmId !== undefined &&
       deps.confirmations.consume(
@@ -252,6 +265,7 @@ export async function invokeAction(
         deps.contractVersion,
         at,
         commandDigest,
+        deviceKey,
       );
     if (!consumed) {
       const confirmId = deps.confirmations.issue(
@@ -261,6 +275,7 @@ export async function invokeAction(
         deps.contractVersion,
         at,
         commandDigest,
+        deviceKey,
       );
       const outcome: ActionOutcome = {
         ok: false,

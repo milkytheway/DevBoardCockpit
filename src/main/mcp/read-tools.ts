@@ -3,6 +3,7 @@ import { matchTagPattern } from '../tags/vocabulary';
 import type { TagReading } from '../../shared/tag-reading';
 import type { PackView, ReaderView } from '../tags/pack-view';
 import type { McpHostDeps, McpCardEntry, TagSampleLike } from './host';
+import { deviceKeyOf } from '../profiles/schema';
 import { withVersion, withVersionEach } from './convention';
 
 export { withVersion, withVersionEach };
@@ -30,12 +31,18 @@ export { withVersion, withVersionEach };
 
 /** `list_connections` ✓ */
 export function listConnections(deps: McpHostDeps): Record<string, unknown>[] {
+  const current = deps.currentProfileId();
   return deps.profiles().map((profile) => ({
     id: profile.id,
     label: profile.label,
     transport: profile.transport,
     // **绑定的板型包 id** ✓ —— **没绑就是 `null`** ✓（**不给版本** ✓ —— 版本是包自己的属性 ✓）
     board_pack: profile.board_pack ?? null,
+    // **这块板的标识** ✓（契约 `spec/02` §10.2 ✓）——
+    // **同一块板的多条连接给同一个** ✓ → agent 才知道哪些连接是同一块板 ✓
+    device_key: deviceKeyOf(profile),
+    // **它是当前运行时那条连接吗** ✓（**与 `connected` 是两条判据** ✓ —— 不混 ✓）
+    current: current === profile.id,
     // **这条 profile 现在有活连接吗** ✓（**光看「运行时记着它」不够** ✓ —— 那个在连不上时仍有值 ✓）
     connected: deps.connected(profile.id),
     // **连接级**能力位 ✓（**不是板级词表** ✓）

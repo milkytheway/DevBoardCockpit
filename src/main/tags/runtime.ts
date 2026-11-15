@@ -2,6 +2,7 @@ import { RoundTripQueue } from '../hal/round-trip-queue';
 import type { Connection } from '../hal/connection';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
+import { deviceKeyOf } from '../profiles/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import { AppError, type ErrorCode } from '../../shared/errors';
 import type { ActionDef, BoardPack } from './schema';
@@ -73,6 +74,13 @@ export class TagRuntime {
   private state: RuntimeState = 'idle';
   private detail: string | undefined;
   private profileId: string | undefined;
+  /**
+   * **当前那块板的 `device_key`** ✓（契约 `spec/02` §10.2 ✓）。
+   *
+   * → **板实物与连接是两层** ✓ —— 一块板有 ADB / 串口 / SSH 三条连接 ✓
+   * → **凭据要绑它** ✓（契约 `spec/04` §2.4.1 的第六项 ✓）。
+   */
+  private deviceKey: string | undefined;
   /** 上次失败的错误码（`RuntimeStatus.detailCode` 的来源） */
   private detailCode: ErrorCode | undefined;
   /** 当前绑定的板型包（**执行器要查动作的定义**——`spec/02` §4） */
@@ -100,6 +108,8 @@ export class TagRuntime {
   async start(profile: ConnectionProfile): Promise<RuntimeStatus> {
     this.stop();
     this.profileId = profile.id;
+    // **这块板是哪块板** ✓（**板实物与连接是两层** ✓ —— 契约 `spec/02` §10.2 ✓）
+    this.deviceKey = deviceKeyOf(profile);
     this.detailCode = undefined;
 
     // 1) 建连接
@@ -182,6 +192,15 @@ export class TagRuntime {
   /** 当前板型包的 id（**确认凭据要绑它**） */
   get packId(): string | undefined {
     return this.pack?.id;
+  }
+
+  /**
+   * **当前那块板的 `device_key`** ✓（契约 `spec/02` §10.2 ✓）。
+   *
+   * → **没有运行时连接就是 `undefined`** ✓（不猜 ✓）
+   */
+  get currentDeviceKey(): string | undefined {
+    return this.deviceKey;
   }
 
   /**

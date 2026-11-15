@@ -7,6 +7,8 @@ import type { AuditRow } from '../actions/audit';
 import type { ActionDef, PackParam, ReadbackDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import type { ConnectionProfile } from '../profiles/schema';
+import { deviceKeyOf } from '../profiles/schema';
+import type { Confirmations } from '../actions/executor';
 import { quotePath } from '../util/shell-quote';
 import type { Connection } from '../hal/connection';
 import { capabilitiesFor } from '../hal/capabilities';
@@ -92,41 +94,15 @@ export interface WorkflowRunDeps {
   actionDef?: (actionId: string) => ActionDef | undefined;
   /** 读一个 tag（回读形式 1 用） */
   readTag?: (tag: string) => Promise<TagReading | undefined>;
-  /** 确认凭据（自由命令命中地板时要人点头） */
   /** **实时时间线**（宿主用 ✓ —— 让 `status` 说得出「现在在第几步」✓） */
   timeline?: WorkflowTimelineHooks;
-  confirmations?: {
-    issue(
-      actionId: string,
-      params: Record<string, unknown>,
-      packId: string,
-      contractVersion: string,
-      now: number,
-      /** **这一步最终命令的摘要** ✓（凭据要绑它 ✓ —— 契约 §7.5-3 ✓） */
-      commandDigest: string,
-    ): string;
-    /** **人点了确认** → 凭据才可用 ✓（契约 spec/04 §2.4.1 ✓） */
-    approve(token: string, now: number): boolean;
-    /** **请求**一次确认（agent 唯一能做的事 ✓ —— 评审 37 的 V3-C1 ✓） */
-    request(token: string, now: number): boolean;
-    /**
-     * **撤销**一张凭据（**作废** ✓ —— 不能再被批准 ✓）。
-     *
-     * → 取消一次运行时用得上 ✓（独立评审 40 的 I-8 ✓）：
-     * 人**不该**再去点一个已经被取消的运行 ✗。
-     */
-    revoke(token: string): boolean;
-    consume(
-      token: string,
-      actionId: string,
-      params: Record<string, unknown>,
-      packId: string,
-      contractVersion: string,
-      now: number,
-      /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
-      commandDigest: string,
-    ): boolean;
-  };
+  /**
+   * **确认凭据**（自由命令命中地板时要人点头 ✓）。
+   *
+   * → **直接用执行器那份形状** ✓（**不是在这里重抄一遍** ✓ ——
+   *   重抄 → **绑定项一加就漂移** ✗ —— 上次加「最终命令摘要」时就漂了 ✓）。
+   */
+  confirmations?: Confirmations;
   /** 现在（毫秒） */
   now?: () => number;
 }
@@ -1020,16 +996,25 @@ function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confir
     ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),
   });
   return {
-    issue: (actionId, params, packId, contractVersion, now, commandDigest) =>
-      store.issue(actionId, bind(params), packId, contractVersion, now, commandDigest),
+    issue: (actionId, params, packId, contractVersion, now, commandDigest, deviceKey) =>
+      store.issue(actionId, bind(params), packId, contractVersion, now, commandDigest, deviceKey),
     // **批准不绑参数**（它是「人点了」那一下 ✓ —— 摘要管的是「这一次执行」✓）
     approve: (token, now) => store.approve(token, now),
     // **请求也不绑**（它不批准任何东西 ✓ —— 只是「有人在等」✓）
     request: (token: string, now: number) => store.request(token, now),
     // **撤销**（作废 ✓ —— 取消运行的时候用 ✓）
     revoke: (token: string) => store.revoke(token),
-    consume: (token, actionId, params, packId, contractVersion, now, commandDigest) =>
-      store.consume(token, actionId, bind(params), packId, contractVersion, now, commandDigest),
+    consume: (token, actionId, params, packId, contractVersion, now, commandDigest, deviceKey) =>
+      store.consume(
+        token,
+        actionId,
+        bind(params),
+        packId,
+        contractVersion,
+        now,
+        commandDigest,
+        deviceKey,
+      ),
   };
 }
 
@@ -1039,6 +1024,9 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
   return {
     packId: ctx.pack.id,
     contractVersion: 'devboard/v1',
+    // **这一步动的是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    // → **是这一步落到的那个 profile 的设备** ✓（**不是流程包自己声明的** ✓ —— 那个是机器专属的值 ✓）
+    deviceKey: () => (profile === undefined ? '' : deviceKeyOf(profile)),
     hasExitCode: profile === undefined ? true : capabilitiesFor(profile).exitCode,
     // **执行与回读在同一条目标上、同一个独占事务里**（SPEC-D22 ✓）
     runTransaction: <T>(fn: (connection: Connection) => Promise<T>): Promise<T> =>

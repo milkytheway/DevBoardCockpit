@@ -75,6 +75,8 @@ function deps(over: Partial<McpHostDeps> = {}): McpHostDeps {
     ],
     capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
     connected: () => false,
+    // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+    currentProfileId: () => 'board',
     cards: () => [],
     cardDir: () => null,
     cardLog: () => [],
@@ -109,6 +111,10 @@ describe('MCP · 读侧 · list_connections', () => {
       label: '客机',
       transport: 'ssh',
       board_pack: null,
+      // **设备（板实物）与连接是两层** ✓ —— 契约 `spec/02` §10.2 ✓
+      device_key: 'guest',
+      // **当前运行时那条** ✓（契约 `spec/04` §2.1 ✓）
+      current: false,
       connected: false,
       capabilities: { exec: true, pty: false, files: true, exitCode: true },
     });

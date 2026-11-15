@@ -74,6 +74,8 @@ beforeEach(() => {
     packId: 'demo-pack',
     packIdOf: () => 'demo-pack',
     contractVersion: 'devboard/v1',
+    // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    deviceKey: () => 'atk-01',
     hasExitCode: true,
     runTransaction: async (fn: (c: unknown) => Promise<unknown>) =>
       fn({

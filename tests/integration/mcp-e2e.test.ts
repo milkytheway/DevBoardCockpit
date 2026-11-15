@@ -199,6 +199,8 @@ function hostDeps(): McpHostDeps {
     profiles: () => [{ id: 'guest', label: '客机', transport: 'ssh', options: {} }],
     capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
     connected: () => true,
+    // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+    currentProfileId: () => 'guest',
     cards: () => [],
     cardDir: () => null,
     validateCard: () => ({
@@ -214,6 +216,8 @@ function hostDeps(): McpHostDeps {
       packId: 'demo-pack',
       packIdOf: () => 'demo-pack',
       contractVersion: 'devboard/v1',
+      // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+      deviceKey: () => 'demo-board',
       hasExitCode: true,
       runTransaction: async <T>(fn: (connection: Connection) => Promise<T>): Promise<T> =>
         fn({

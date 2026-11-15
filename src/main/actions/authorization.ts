@@ -179,10 +179,17 @@ export class ConfirmationStore {
      *   → 不绑它 ✓ → **同一张凭据认得两条不同的命令** ✗
      */
     commandDigest: string,
+    /**
+     * **这一步动的是哪块板** ✓（契约 `spec/04` §2.4.1 的**第六项** ✓）。
+     *
+     * → **为什么现在加** ✓：将来多设备时 ✓，一张为 A 板签发的凭据
+     *   能拿去动 B 板 ✗ → **那时再加绑定项同样是破坏性变更** ✗ → **现在加** ✓。
+     */
+    deviceKey: string,
   ): string {
     const token = `${randomUUID()}`;
     this.issued.set(token, {
-      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`,
+      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`,
       at: now,
       state: 'pending',
     });
@@ -272,6 +279,8 @@ export class ConfirmationStore {
     now: number,
     /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
     commandDigest: string,
+    /** **这一步动的是哪块板** ✓（与签发时必须是同一个 ✓ —— 契约 §2.4.1 第六项 ✓） */
+    deviceKey: string,
   ): boolean {
     const entry = this.issued.get(token);
     if (entry === undefined) return false;
@@ -282,7 +291,7 @@ export class ConfirmationStore {
     }
     // **没被人点过 → 不能用**（契约 spec/04 §2.4.1 ✓）
     if (entry.state !== 'approved') return false;
-    const expected = `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`;
+    const expected = `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`;
     if (entry.digest !== expected) return false;
     // **一次性**：用掉就删
     this.issued.delete(token);

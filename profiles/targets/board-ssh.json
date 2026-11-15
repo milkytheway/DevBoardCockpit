@@ -3,6 +3,7 @@
   "label": "板子 · SSH",
   "transport": "ssh",
   "board_pack": "rk3588-atk",
+  "device_key": "atk-01",
   "options": {
     "host": "192.168.5.100",
     "port": 22,

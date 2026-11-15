@@ -55,6 +55,13 @@ export interface AgentActionDeps extends Omit<ActionExecutorDeps, 'granted' | 'a
    * → 宿主侧接线时**从同一处取** ✓。
    */
   packIdOf: () => string;
+  /**
+   * **当前运行时那块板的 `device_key`** ✓（**从 `ActionExecutorDeps` 继承** ✓）。
+   *
+   * → **`execute_action` 的设备检查靠它** ✓（契约 `spec/04` §2.4 ✓）
+   * → **凭据也绑它** ✓（§2.4.1 第六项 ✓）。
+   */
+  deviceKey: () => string;
 }
 
 /** agent 的授权集（**包里的全部动作** ✓ —— 契约 §2.4.1 ✓） */
@@ -112,8 +119,19 @@ export async function executeAction(
   deps: AgentActionDeps,
   actionId: string,
   params: Record<string, unknown>,
-  opts: { dryRun?: boolean; confirmId?: string } = {},
+  opts: { dryRun?: boolean; confirmId?: string; deviceKey?: string } = {},
 ): Promise<AgentActionResult> {
+  // ── **第 0 步 · 设备对不对** ✓（契约 `spec/04` §2.4 ✓ · ADR-D43 ✓）──
+  //
+  // → **给了 `device_key` → 它必须是当前运行时那条连接的 `device_key`** ✓
+  // → 否则 **`not_found`** ✓（detail 写清「没有这个设备：X」✓）
+  // → **绝不允许「忽略 `device_key` 然后打当前那块」** ✓
+  //   （**那是「静默地做另一件事」** ✗ —— agent 以为动了 b、实际动了 a ✗）
+  //
+  // → **它在第 1 步之前** ✓ —— **设备不对**比**动作不存在**更基本 ✓
+  const deviceError = checkDevice(deps, opts.deviceKey);
+  if (deviceError !== undefined) return deviceError;
+
   const action = deps.actions().find((a) => a.id === actionId);
   // **① 存在性先查** ✓（契约 §2.4 ✓ —— **顺序有讲究** ✓）
   if (action === undefined) {
@@ -152,6 +170,27 @@ export async function executeAction(
   }, opts.confirmId === undefined ? {} : { confirmId: opts.confirmId });
 
   return projectOutcome(outcome);
+}
+
+/**
+ * **`device_key` 对不对** ✓（契约 `spec/04` §2.4 ✓）。
+ *
+ * → **不给就放过** ✓（**当前运行时那块板** ✓ —— 从前的行为 ✓）
+ * → **给了就必须对得上** ✓ → 否则 **`not_found`** ✓
+ * → **绝不静默地打当前那块** ✓。
+ */
+function checkDevice(
+  deps: AgentActionDeps,
+  deviceKey: string | undefined,
+): AgentActionResult | undefined {
+  if (deviceKey === undefined) return undefined;
+  const current = deps.deviceKey();
+  if (deviceKey === current) return undefined;
+  return {
+    ok: false,
+    reason: 'not_found',
+    detail: `没有这个设备：${deviceKey}（当前那块是 ${current || '（没有）'}）`,
+  };
 }
 
 /** **把执行器的结果投影成契约的形状** ✓ */
@@ -203,7 +242,15 @@ export function confirmAction(
   deps: AgentActionDeps,
   actionId: string,
   params: Record<string, unknown>,
+  deviceKey?: string,
 ): { ok: true; confirm_id: string; expires_at: number } | { ok: false; reason: string; detail?: string } {
+  // ── **设备先对** ✓（**与 `execute_action` 同一条规矩** ✓）
+  // → **对不上 → 不签凭据** ✓（**签了也是废的** ✓ —— 而且那会**骗 agent 说「递上去了」** ✗）
+  const deviceError = checkDevice(deps, deviceKey);
+  if (deviceError !== undefined) {
+    return { ok: false, reason: deviceError.reason ?? 'not_found', detail: deviceError.detail };
+  }
+
   const action = deps.actions().find((a) => a.id === actionId);
   if (action === undefined) {
     return { ok: false, reason: 'not_found', detail: `没有这个动作：${actionId}` };
@@ -244,6 +291,8 @@ export function confirmAction(
     deps.contractVersion,
     now,
     commandDigest,
+    // **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    deps.deviceKey(),
   );
   // **递进确认队列** ✓（**状态不变** ✓ —— 还是「待确认」✓ —— 没人点就永远无效 ✓）
   deps.confirmations.request(confirmId, now);

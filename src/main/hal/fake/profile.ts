@@ -54,6 +54,10 @@ export function fakeProfile(id: string = FAKE_PROFILE_ID): ConnectionProfile {
     // `local` 是**宿主自己的 shell** ✗，假设备也不该走那条路 ✓。
     transport: 'ssh',
     board_pack: 'rk3588-atk',
+    // **这块板是哪块板** ✓（契约 `spec/02` §10.2 ✓）——
+    // **每个假目标就是一块板** ✓（**它有自己的虚拟盘** ✓ —— `fakeFilesystem(profile.id)` ✓）
+    // → **显式写出来** ✓（**别靠缺省** ✓ —— e2e 里要对得上 ✓）
+    device_key: id,
     options: {
       /**
        * **pipe 模式**（不是 pty）。

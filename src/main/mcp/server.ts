@@ -467,6 +467,12 @@ const READ_TOOL_DEFS: McpToolDef[] = [
         params: { type: 'object', description: '参数值（按动作声明给）' },
         dry_run: { type: 'boolean', description: '只预览将要执行的命令，**不执行**' },
         confirm_id: { type: 'string', description: '人已确认的那一次执行的凭据' },
+        device_key: {
+          type: 'string',
+          description:
+            '**要动的是哪块板** ✓（`list_connections` 的 `device_key` ✓ —— **同一块板的多条连接给同一个** ✓）。' +
+            '**不给 = 当前运行时那块** ✓；**给了但对不上 → `not_found`** ✓（**不会静默地打当前那块** ✓）。',
+        },
       },
       required: ['action_id'],
     },
@@ -482,6 +488,10 @@ const READ_TOOL_DEFS: McpToolDef[] = [
       properties: {
         action_id: { type: 'string', description: '板型包里声明的动作 id' },
         params: { type: 'object', description: '参数值（按动作声明给）' },
+        device_key: {
+          type: 'string',
+          description: '**要动的是哪块板** ✓（**不给 = 当前那块** ✓；**对不上 → `not_found`** ✓）',
+        },
       },
       required: ['action_id'],
     },
@@ -786,6 +796,10 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
         if (confirmId !== undefined && (typeof confirmId !== 'string' || confirmId.length === 0)) {
           return withVersion(failure('invalid_params', 'confirm_id 要么不给，要么给字符串'));
         }
+        const deviceKey = args['device_key'];
+        if (deviceKey !== undefined && (typeof deviceKey !== 'string' || deviceKey.length === 0)) {
+          return withVersion(failure('invalid_params', 'device_key 要么不给，要么给非空字符串'));
+        }
         const result = await executeAction(
           host.actions,
           actionId,
@@ -793,6 +807,7 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
           {
             ...(dryRun === undefined ? {} : { dryRun }),
             ...(confirmId === undefined ? {} : { confirmId }),
+            ...(deviceKey === undefined ? {} : { deviceKey }),
           },
         );
         return withVersion(result);
@@ -806,8 +821,14 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
           return withVersion(failure('invalid_params', 'confirm_action 缺 action_id'));
         }
         const params = (args['params'] ?? {}) as Record<string, unknown>;
+        const deviceKey = args['device_key'];
+        if (deviceKey !== undefined && (typeof deviceKey !== 'string' || deviceKey.length === 0)) {
+          return withVersion(failure('invalid_params', 'device_key 要么不给，要么给非空字符串'));
+        }
         // **只递请求** ✓ —— **不使凭据生效** ✓（契约 §2.4.1 ✓）
-        return withVersion(confirmAction(host.actions, actionId, params));
+        return withVersion(
+          confirmAction(host.actions, actionId, params, ...(deviceKey === undefined ? [] : [deviceKey])),
+        );
       },
     ],
   ]);

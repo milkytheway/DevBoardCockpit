@@ -135,6 +135,8 @@ function serverWithHost(): McpServer {
       profiles: () => [],
       capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
       connected: () => false,
+      // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+      currentProfileId: () => null,
       cards: () => [],
       cardDir: () => null,
       validateCard: () => ({

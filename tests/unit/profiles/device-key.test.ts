@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseProfile } from '../../../src/main/profiles/schema';
+import { parseProfile, deviceKeyOf, deviceKeyConflicts } from '../../../src/main/profiles/schema';
 
 /**
  * **连接 profile 的两个新字段**（契约 `spec/02` §10.1–10.3 ✓ · ADR-D43 ✓）。
@@ -124,5 +124,46 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         'x.json',
       ),
     ).toThrow(/未知字段 'board'/);
+  });
+});
+
+/**
+ * **同一个 `device_key` 只能指一块板** ✓（契约 `spec/02` §10.2 ✓）。
+ *
+ * → **一块板只有一个型号** ✓ → 同一个 `device_key` 声明了**两个板型包** ✗
+ * → **那是个配置写错了** ✓ → **要说得出来** ✓（**不静默** ✓）。
+ */
+describe('连接 profile · device_key 的冲突', () => {
+  const board = (id: string, key: string, pack: string | null) =>
+    parseProfile(
+      { id, label: id, transport: 'adb', board_pack: pack, device_key: key, options: {} },
+      `${id}.json`,
+    );
+
+  it('**同一个 key + 同一个板型包 → 没有冲突** ✓', () => {
+    const conflicts = deviceKeyConflicts([
+      board('board-adb', 'atk-01', 'rk3588-atk'),
+      board('board-ssh', 'atk-01', 'rk3588-atk'),
+    ]);
+    expect(conflicts).toEqual([]);
+  });
+
+  it('**同一个 key + 两个板型包 → 冲突** ✓（**一块板不能两个型号** ✓）', () => {
+    const conflicts = deviceKeyConflicts([
+      board('board-adb', 'atk-01', 'rk3588-atk'),
+      board('board-other', 'atk-01', 'rk3588-other'),
+    ]);
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0]?.device_key).toBe('atk-01');
+    // **说得清是哪两条** ✓
+    expect(conflicts[0]?.profile_ids.sort()).toEqual(['board-adb', 'board-other']);
+  });
+
+  it('**不同的 key → 没有冲突** ✓（**两块同型号的板** ✓ —— **共享一个包** ✓ 但不是一块 ✓）', () => {
+    const conflicts = deviceKeyConflicts([
+      board('board-a', 'atk-01', 'rk3588-atk'),
+      board('board-b', 'atk-02', 'rk3588-atk'),
+    ]);
+    expect(conflicts).toEqual([]);
   });
 });
