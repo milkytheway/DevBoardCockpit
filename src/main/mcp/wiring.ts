@@ -9,6 +9,7 @@ import type { ConnectionCapabilities } from '../../shared/ipc-contract';
 import type { TerminalManager } from '../terminal/manager';
 import type { LayoutState } from '../../shared/layout';
 import { capabilitiesFor } from '../hal/capabilities';
+import type { AgentActionDeps } from './action-tools';
 
 /**
  * **把宿主拼成 MCP 层要的形状**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
@@ -40,6 +41,8 @@ export interface McpHostWiring {
   layoutGet: () => LayoutState;
   /** 存布局（**同一份账** ✓ —— 不另开一套 ✓） */
   layoutSet: (state: LayoutState) => void;
+  /** agent 的动作执行依赖（**与卡片侧共用执行器** ✓） */
+  agentActions: AgentActionDeps;
 }
 
 /** 拼出 MCP 层的宿主依赖 ✓ */
@@ -104,5 +107,7 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
     cardLog: (cardId: string) => cardLog.read(cardId),
     layout: (): LayoutState => wiring.layoutGet(),
     saveLayout: (state: LayoutState) => wiring.layoutSet(state),
+    // **agent 的动作执行** ✓ —— **复用同一个执行器** ✓（卡片侧同一个 ✓）
+    actions: wiring.agentActions,
   };
 }

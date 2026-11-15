@@ -196,6 +196,16 @@ export class TagRuntime {
   }
 
   /**
+   * **板型包里声明的动作**（**完整定义** ✓ —— 参数 ✓ · guard ✓ · command ✓ · readback ✓）。
+   *
+   * → **不是** `packView.actions` ✓（那个只有 id ✓ —— 那是给 agent 看的清单 ✓）。
+   * → **执行器要完整定义** ✓（它要 `command` ✓ · `guard` ✓ · `readback` ✓）。
+   */
+  get actionDefs(): ActionDef[] {
+    return this.pack?.actions ?? [];
+  }
+
+  /**
    * **样本缓冲**（最近若干个样本）✓ —— 支撑 `sample_tag(name, n)` 与 `describe_tag.history` ✓。
    *
    * → **先定向采一次** ✓（契约 v5 §2.1 ✓：不采的话 agent 拿到的是**冻结的旧样本** ✓）。

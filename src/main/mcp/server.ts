@@ -3,6 +3,7 @@ import { projectRunStatusForAgent } from './view';
 import type { WorkflowService } from '../workflows/service';
 import type { McpHostDeps } from './host';
 import { withVersion, withVersionEach } from './convention';
+import { confirmAction, executeAction } from './action-tools';
 import {
   describeTag,
   getCardRuntimeLog,
@@ -386,6 +387,39 @@ const READ_TOOL_DEFS: McpToolDef[] = [
       required: ['layout'],
     },
   },
+  {
+    name: 'execute_action',
+    title: '执行一个动作',
+    description:
+      '执行板型包里声明的一个动作。**`reversible` 且参数在域内 → 直接执行** ✓；' +
+      '**`destructive` 或超出域 → 返回 `needs_confirmation`** ✓（带 `confirm_id` ✓ —— **人点了才生效** ✓）。' +
+      '`dry_run` 只返回**将要执行的命令** ✓（不执行 ✓）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action_id: { type: 'string', description: '板型包里声明的动作 id' },
+        params: { type: 'object', description: '参数值（按动作声明给）' },
+        dry_run: { type: 'boolean', description: '只预览将要执行的命令，**不执行**' },
+        confirm_id: { type: 'string', description: '人已确认的那一次执行的凭据' },
+      },
+      required: ['action_id'],
+    },
+  },
+  {
+    name: 'confirm_action',
+    title: '递一次动作确认请求',
+    description:
+      '**递一次确认请求**（把请求递到 GUI 的确认队列 ✓）。**这个工具不会让凭据生效** ✓——' +
+      '没有人点，`confirm_id` 永远无效 ✓（**批准不是 MCP 工具** ✓）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action_id: { type: 'string', description: '板型包里声明的动作 id' },
+        params: { type: 'object', description: '参数值（按动作声明给）' },
+      },
+      required: ['action_id'],
+    },
+  },
 ];
 
 /** 四个流程工具的实现（**薄封装** ✓ —— 契约 §9.2 ✓） */
@@ -583,6 +617,46 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
           updatedAt: Date.now(),
         });
         return withVersion({ ok: true, dropped: normalized.dropped });
+      },
+    ],
+    [
+      'execute_action',
+      async (args) => {
+        const actionId = args['action_id'];
+        if (typeof actionId !== 'string' || actionId.length === 0) {
+          return withVersion(failure('invalid_params', 'execute_action 缺 action_id'));
+        }
+        const params = (args['params'] ?? {}) as Record<string, unknown>;
+        const dryRun = args['dry_run'];
+        if (dryRun !== undefined && typeof dryRun !== 'boolean') {
+          return withVersion(failure('invalid_params', 'dry_run 要么不给，要么给布尔'));
+        }
+        const confirmId = args['confirm_id'];
+        if (confirmId !== undefined && (typeof confirmId !== 'string' || confirmId.length === 0)) {
+          return withVersion(failure('invalid_params', 'confirm_id 要么不给，要么给字符串'));
+        }
+        const result = await executeAction(
+          host.actions,
+          actionId,
+          params,
+          {
+            ...(dryRun === undefined ? {} : { dryRun }),
+            ...(confirmId === undefined ? {} : { confirmId }),
+          },
+        );
+        return withVersion(result);
+      },
+    ],
+    [
+      'confirm_action',
+      (args) => {
+        const actionId = args['action_id'];
+        if (typeof actionId !== 'string' || actionId.length === 0) {
+          return withVersion(failure('invalid_params', 'confirm_action 缺 action_id'));
+        }
+        const params = (args['params'] ?? {}) as Record<string, unknown>;
+        // **只递请求** ✓ —— **不使凭据生效** ✓（契约 §2.4.1 ✓）
+        return withVersion(confirmAction(host.actions, actionId, params));
       },
     ],
   ]);

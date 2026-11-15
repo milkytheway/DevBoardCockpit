@@ -315,6 +315,20 @@ async function startMcpServer(): Promise<void> {
         // **布局是同一份账** ✓ —— 与卡片侧共用 ✓（不另开一套 ✓）
         layoutGet: () => cards.layoutGet(),
         layoutSet: (state) => cards.layoutSet(state),
+        // **agent 的动作执行** ✓ —— **同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）
+        agentActions: {
+          packId: runtime.packId ?? '',
+          // **与执行器用的是同一个值** ✓（**同一处取** ✓）——
+          // 不一致 → **凭据永远消费不掉** ✗（症状是「人点了也没用」✗）
+          packIdOf: () => runtime.packId ?? '',
+          contractVersion: 'devboard/v1',
+          hasExitCode: runtime.hasExitCode,
+          runTransaction: (fn) => runtime.runTransaction(fn),
+          readTag: (tag) => runtime.sampleTag(tag),
+          confirmations,
+          audit: (row) => actionAudit.append(row),
+          actions: () => runtime.actionDefs,
+        },
       }),
     });
     const started = await startMcpHttp({

@@ -86,6 +86,7 @@ function deps(over: Partial<McpHostDeps> = {}): McpHostDeps {
     }),
     layout: () => ({ version: 3, units: [], density: 'comfortable', updatedAt: 0 }),
     saveLayout: () => undefined,
+    actions: {} as never,
   };
   return { ...base, ...over };
 }
