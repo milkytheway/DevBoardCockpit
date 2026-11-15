@@ -34,8 +34,6 @@ function harness(
     onExec?: (command: string) => void;
     /** 命中这些片段的命令**返回非 0** ✓（模拟传输失败 ✓） */
     failCommands?: string[];
-    /** 传输失败时**在目标上留一个半截文件** ✓（真实的 scp 就是这样 ✓） */
-    leavesResidue?: boolean;
   } = {},
 ) {
   const targets: FakeTarget[] = [
@@ -78,27 +76,28 @@ function harness(
           // **测试可以在这里叫停** ✓（「在飞的那一步被取消」✓）
           opts.onExec?.(command);
           // **某些命令要失败** ✓（模拟传输没成 ✓）
-          if (opts.failCommands?.some((frag) => command.includes(frag)) === true) {
-            // **传输失败 → 在目标上留一个半截文件** ✓
-            // （真的 scp 就是这样 ✓：**边传边写** ✓ —— 尖兵 §三·F2 的现象 ✓）
-            if (opts.leavesResidue === true && command.startsWith('scp ')) {
-              // **路径在命令里是带引号的** ✓（命令模式 ✓）→ 取出来要把引号剥掉 ✓
-              // （shell 会剥 ✓ —— 真的 scp 写的是**没引号**的那个路径 ✓）
-              const dest = command.slice(command.lastIndexOf(':') + 1).replace(/^'|'$/g, '');
-              const board = byId('board');
-              if (board !== undefined) {
-                board.files = [
-                  ...board.files,
-                  {
-                    name: dest.slice(dest.lastIndexOf('/') + 1),
-                    path: dest,
-                    isDirectory: false,
-                    sizeBytes: 3,
-                    modifiedAt: null,
-                  },
-                ];
-              }
+          // **传输会在目标上留下那个文件** ✓
+          // （真的 scp **边传边写** ✓ —— 成功是完整文件 ✓，失败是**半截** ✓；
+          //   尖兵 §三·F2 的现象就是它 ✓）
+          if (command.startsWith('scp ')) {
+            // **路径在命令里是带引号的** ✓（命令模式 ✓）→ 取出来要把引号剥掉 ✓
+            // （shell 会剥 ✓ —— 真的 scp 写的是**没引号**的那个路径 ✓）
+            const dest = command.slice(command.lastIndexOf(':') + 1).replace(/^'|'$/g, '');
+            const board = byId('board');
+            if (board !== undefined) {
+              board.files = [
+                ...board.files,
+                {
+                  name: dest.slice(dest.lastIndexOf('/') + 1),
+                  path: dest,
+                  isDirectory: false,
+                  sizeBytes: 3,
+                  modifiedAt: null,
+                },
+              ];
             }
+          }
+          if (opts.failCommands?.some((frag) => command.includes(frag)) === true) {
             return { exitCode: 1, stdout: '', stderr: '传输失败', durationMs: 1, timedOut: false };
           }
           if (command.startsWith('cat -- ')) {
@@ -716,7 +715,6 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
   it('传输没成 → **清掉那个半截文件**（不留残留 ✓）', async () => {
     const h = harness({
       failCommands: ['scp '],
-      leavesResidue: true,
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
       },
@@ -770,7 +768,6 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
   it('**清理路径必须编码**（`to.path` 是包给的 ✓ —— 不编码就是一条注入面 ✓）', async () => {
     const h = harness({
       failCommands: ['scp '],
-      leavesResidue: true,
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
       },
@@ -799,7 +796,6 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
   it('目的地**原本就有**那个文件 → **不许删**（别删用户的东西 ✓）', async () => {
     const h = harness({
       failCommands: ['scp '],
-      leavesResidue: true,
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
         board: [
