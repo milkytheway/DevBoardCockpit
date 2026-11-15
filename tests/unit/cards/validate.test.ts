@@ -40,6 +40,7 @@ function ctx(over: Partial<ValidateCardContext> = {}): ValidateCardContext {
   return {
     availableTags: ['cpu.usage', 'mem.usage'],
     availableActions: ['backlight.set'],
+    availableWorkflows: ['demo.run'],
     installedCardIds: ['other-card'],
     fileExists: (rel) => rel === 'index.html',
     ...over,
@@ -48,11 +49,54 @@ function ctx(over: Partial<ValidateCardContext> = {}): ValidateCardContext {
 
 /** 找某个规则号的 issue */
 function byRule(
-  result: { errors: { rule: number; path?: string }[]; warnings: { rule: number; path?: string }[] },
+  result: {
+    errors: { rule: number; path?: string; severity?: string }[];
+    warnings: { rule: number; path?: string; severity?: string }[];
+  },
   rule: number,
 ) {
   return [...result.errors, ...result.warnings].filter((i) => i.rule === rule);
 }
+
+describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
+  it('**通配符 → 报错**（流程权限只许精确 id ✓ —— 同 §2.3 ✓）', () => {
+    const result = validateCard(
+      manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.*'] } }),
+      ctx(),
+    );
+    const issues = byRule(result, 14);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues[0]?.severity).toBe('error');
+  });
+
+  it('**宿主里没有这个流程 → 报错** ✓', () => {
+    const result = validateCard(
+      manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['nope.run'] } }),
+      ctx(),
+    );
+    const issues = byRule(result, 14);
+    expect(issues.some((i) => i.severity === 'error')).toBe(true);
+  });
+
+  it('**离线 → 是警告不是错误** ✓（「未验证」≠「不合法」✓）', () => {
+    const result = validateCard(
+      manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.run'] } }),
+      ctx({ availableWorkflows: null }),
+    );
+    const issues = byRule(result, 14);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.every((i) => i.severity === 'warning')).toBe(true);
+    expect(result.ok).toBe(true);
+  });
+
+  it('**宿主里有的流程 → 通过** ✓', () => {
+    const result = validateCard(
+      manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.run'] } }),
+      ctx(),
+    );
+    expect(byRule(result, 14)).toHaveLength(0);
+  });
+});
 
 describe('规则 3 的流程那一半（评审 35 的 V2-C2）', () => {
   it('`requires.workflows` 被 `permissions.workflows` 覆盖 → 通过', () => {

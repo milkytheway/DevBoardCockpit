@@ -45,6 +45,7 @@ describe('内置的第一张卡', () => {
     const result = validateCard(manifest, {
       availableTags: null,
       availableActions: null,
+      availableWorkflows: null,
       installedCardIds: [],
       fileExists: (rel) => existsSync(join(CARD_DIR, rel)),
     });

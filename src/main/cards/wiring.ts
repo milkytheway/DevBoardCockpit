@@ -52,6 +52,12 @@ export interface CardWiringDeps {
   /** 这张卡的权限集（manifest + 已授权） */
   permsFor: (cardId: string) => CardPermissions;
   /**
+   * 宿主里已声明的流程 id（规则 14 ✓）。
+   *
+   * → `null` = **离线**（查不到 ✓）→ 规则 14 降级成**警告** ✓。
+   */
+  availableWorkflows?: () => string[] | null;
+  /**
    * 每张卡的写侧（动作执行器，M6）。
    *
    * 做成**工厂**：执行器要拿着**这张卡的授权**，而授权是每卡一份的。
@@ -107,7 +113,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     roots: deps.roots,
     loadManifest: (dir) => loadManifestOf(dir),
     validate: (manifest, dir) => {
-      const result = validateManifest(manifest, dir, registry);
+      const result = validateManifest(manifest, dir, registry, deps.availableWorkflows);
       return [...result.errors, ...result.warnings];
     },
   });
@@ -284,11 +290,14 @@ function validateManifest(
   manifest: Parameters<typeof validateCard>[0],
   dir: string,
   registry: CardRegistry,
+  availableWorkflows?: () => string[] | null,
 ): ReturnType<typeof validateCard> {
   return validateCard(manifest, {
     // **离线**：连不上板 → 动作与 tag 的存在性「未验证」，不是「不合法」
     availableTags: null,
     availableActions: null,
+    // **流程 id 宿主自己就知道** ✓（不像板子要连上才查得到 ✓）
+    availableWorkflows: availableWorkflows?.() ?? null,
     // 规则 2 比的是 **manifest 的 id**，而且**要排除自己**：
     // 比目录名的话，卡片**改一次文件**（热更新必然触发一次 refresh）
     // 就会在第二次 refresh 里把自己判成「重名」→ 卡片无缘无故变成 degraded。

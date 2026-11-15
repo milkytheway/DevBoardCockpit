@@ -298,6 +298,8 @@ const cards = createCardWiring({
     if (profile === undefined) return null;
     return { label: profile.label, transport: profile.transport };
   },
+  /** 宿主里已声明的流程 id（规则 14 ✓）——**没接上就是 null（离线）✓** */
+  availableWorkflows: () => workflowRegistry.list().map((w) => w.id),
   permsFor: (cardId) => {
     const card = cards.registry.cards().find((c) => c.cardId === cardId);
     const declared = {

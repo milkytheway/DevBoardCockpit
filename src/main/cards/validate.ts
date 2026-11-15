@@ -37,6 +37,8 @@ export interface ValidateCardContext {
   availableTags: string[] | null;
   /** 当前板型包声明的动作 id。`null` = **离线** */
   availableActions: string[] | null;
+  /** 宿主里已声明的流程 id（规则 14 ✓）。`null` = **离线**（查不到 ✓） */
+  availableWorkflows: string[] | null;
   /** 已经装着的卡片 id（规则 2） */
   installedCardIds: string[];
   /** 卡片目录里有没有这个相对路径（规则 9） */
@@ -130,6 +132,26 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
       warn(5, 'permissions.write', `动作「${id}」**未验证**（连不上板，没法确认板型包里有它）`);
     } else if (!ctx.availableActions.includes(id)) {
       error(5, 'permissions.write', `当前板型包里没有动作「${id}」`);
+    }
+  }
+
+  /* ── 规则 14：流程权限只许精确 id，且**必须是宿主里已声明的流程** ──
+     （契约 §九 的最后一条 ✓ —— 计划 7 补上 ✓）
+     → 「通配」与写权限同款理由 ✓（§2.3 ✓）：写侧的通配会让授权范围变大 ✓
+     → 「宿主里没有」与规则 5 同款处理 ✓：**离线时是警告** ✓（不是「不合法」✓） */
+  const workflowIds: string[] = [];
+  for (const id of perms.workflows ?? []) {
+    if (id.includes('*')) {
+      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);
+    } else {
+      workflowIds.push(id);
+    }
+  }
+  for (const id of workflowIds) {
+    if (ctx.availableWorkflows === null) {
+      warn(14, 'permissions.workflows', `流程「${id}」**未验证**（离线，没法确认宿主里有没有它）`);
+    } else if (!ctx.availableWorkflows.includes(id)) {
+      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);
     }
   }
 

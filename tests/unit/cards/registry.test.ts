@@ -74,6 +74,7 @@ function deps() {
       const r = validateCard(m, {
         availableTags: null,
         availableActions: null,
+        availableWorkflows: null,
         installedCardIds: [],
         fileExists: () => true,
       });

@@ -1716,6 +1716,34 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M140 卡片校验 **规则 14**：流程权限不许通配符（契约 §九 ✓）',
+    file: 'src/main/cards/validate.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
+    expect: '规则 14',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (id.includes('*')) {
+      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);",
+        "    if (false) {
+      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);",
+      ),
+  },
+  {
+    name: 'M141 卡片校验 **规则 14**：宿主里没有这个流程 → 报错 ✓',
+    file: 'src/main/cards/validate.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
+    expect: '规则 14',
+    apply: (s) =>
+      replace(
+        s,
+        "    } else if (!ctx.availableWorkflows.includes(id)) {
+      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);",
+        "    } else if (false) {
+      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
