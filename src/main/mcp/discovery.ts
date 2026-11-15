@@ -52,9 +52,11 @@ export function discoveryFilePath(dataDir: string): string {
  */
 export function writeDiscoveryFile(path: string, info: DiscoveryInfo): void {
   const tmp = `${path}.tmp`;
+  // **`mode: 0o600` 就够了** ✓（文件**创建**时的权限 ✓ —— 会被 umask 再掩一道 ✓，
+  // 但 0600 & ~umask **还是 0600** ✓ —— umask 最多把「组/其他」那两位去掉 ✓，
+  // 而那两位本来也是 0 ✓）。
+  // → **不需要事后再 chmod** ✓（那是**死代码** ✓ —— 一行看着在做事的代码最会骗人 ✓）。
   writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  // **POSIX 上把权限钉死** ✓（umask 会改它 ✓ —— 0644 的话 token 就被同机别的用户读到了 ✗）
-  if (process.platform !== 'win32') chmodSync(tmp, 0o600);
   renameSync(tmp, path);
 }
 
