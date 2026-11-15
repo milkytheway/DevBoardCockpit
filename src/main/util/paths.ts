@@ -57,6 +57,16 @@ export function cardStorageDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'card-storage');
 }
 
+/**
+ * 用户自己的流程包目录（**放这儿 ≠ 批准** ✓ —— 批准是另一本账 ✓）。
+ *
+ * → 与卡片目录同一个道理：**「放在那儿」只是「候选」**，
+ * 能不能跑看**批准账**（`workflows-approved.json` ✓）。
+ */
+export function userWorkflowsDir(appName: string = DEFAULT_APP): string {
+  return join(userDataDir(appName), 'workflows');
+}
+
 /** 会话日志目录 */
 export function logDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'logs');

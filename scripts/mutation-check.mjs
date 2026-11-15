@@ -1290,6 +1290,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M106 流程注册表：**放一个文件进目录 ≠ 批准它**（否则 agent 能自写包就跑）',
+    file: 'src/main/workflows/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
+    expect: '还没有被批准',
+    apply: (s) =>
+      replace(
+        s,
+        '          approved: approval !== undefined && approval.digest === digest,',
+        '          approved: true, // 变异：放进目录就算批准',
+      ),
+  },
+  {
+    name: 'M107 流程注册表：**批准绑内容摘要**（改了内容要重新批准）',
+    file: 'src/main/workflows/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
+    expect: '改了内容要重新批准',
+    apply: (s) =>
+      replace(
+        s,
+        '          approved: approval !== undefined && approval.digest === digest,',
+        '          approved: approval !== undefined, // 变异：只认 id 不认内容',
+      ),
+  },
+  {
+    name: 'M108 流程服务：**只认 id 不认路径**（没批准的包跑不了）',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '还没有被批准',
+    apply: (s) =>
+      replace(
+        s,
+        '    const registered = this.opts.registry.requireApproved(id);',
+        '    const registered = this.opts.registry.get(id); // 变异：不查批准账\n    if (registered === undefined) {\n      throw makeError(\'IPC_INVALID_PAYLOAD\', `没有这个流程包：${id}`);\n    }',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
