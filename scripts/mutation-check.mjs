@@ -2184,7 +2184,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M181 MCP SDK 活文档：**API 清单来自注册表** ✓（**手抄的会漂** ✓）',
+    name: 'M185 MCP SDK 活文档：**API 清单来自注册表** ✓（**手抄的会漂** ✓）',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'tags.get',
@@ -2196,7 +2196,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M182 MCP SDK 活文档：**没实现的 API 不列** ✓（**列了 = 卡片以为能调** ✓）',
+    name: 'M186 MCP SDK 活文档：**没实现的 API 不列** ✓（**列了 = 卡片以为能调** ✓）',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'notify',
@@ -2208,7 +2208,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M183 MCP SDK 活文档：**每个方法都要有一句说明** ✓（**光有名字 agent 不知道何时用** ✓）',
+    name: 'M187 MCP SDK 活文档：**每个方法都要有一句说明** ✓（**光有名字 agent 不知道何时用** ✓）',
     file: 'src/main/cards/api-registry.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: '说明',
@@ -2220,15 +2220,15 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M184 MCP SDK 活文档：**示例卡是真卡** ✓（**编的会与实际不符** ✓）',
+    name: 'M188 MCP SDK 活文档：**示例卡是真卡** ✓（**编的会与实际不符** ✓）',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'cpu-usage',
     apply: (s) =>
       replace(
         s,
-        "      const tags = Array.isArray(perms.read) ? perms.read.filter((t): t is string => typeof t === 'string') : [];",
-        "      const tags = [] as string[];\n      if (id !== 'cpu-usage') continue;\n      out.push(\n        `## ${id}（${label}）\n` +",
+        "      if (id === 'cpu-usage') continue;",
+        "      if (id === 'cpu-usage') continue; // 变异：剔掉这张卡",
       ),
   },
   {
