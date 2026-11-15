@@ -9,6 +9,9 @@
     "dev": "electron-vite dev",
     "build": "node scripts/clean-out.mjs && electron-vite build && tsx scripts/check-build.ts",
     "build:fake": "node scripts/clean-out.mjs && electron-vite build --mode fake",
+    "dist": "electron-vite build && tsx scripts/check-build.ts && electron-builder --win --publish never",
+    "dist:dir": "electron-vite build && tsx scripts/check-build.ts && electron-builder --dir --publish never",
+    "check:package": "tsx scripts/check-package.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
@@ -62,7 +65,8 @@
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "7.3.1",
-    "vitest": "4.0.18"
+    "vitest": "4.0.18",
+    "electron-builder": "26.0.12"
   },
   "allowScripts": {
     "electron": true,
@@ -71,5 +75,31 @@
     "ssh2": false,
     "@serialport/bindings-cpp": false,
     "@playwright/test": false
+  },
+  "build": {
+    "appId": "com.devboard.cockpit",
+    "productName": "DevBoardCockpit",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "cards/**/*",
+      "profiles/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "DevBoardCockpit"
+    },
+    "npmRebuild": true
   }
 }
