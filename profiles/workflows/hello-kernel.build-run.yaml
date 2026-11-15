@@ -45,7 +45,12 @@ steps:
   - id: compile
     kind: exec
     role: build
-    cmd: "make -C {input:build_dir}/{input:project} modules"
+    # **`cd` 而不是 `make -C`**（2026-11-15 真板实测踩到 ✓）：
+    # 这个 Makefile 用 `$(PWD)` 算 `M=`（内核树的模块目录），
+    # 而 **`make -C` 只改 make 的当前目录，不改 `PWD` 环境变量** ✓
+    # → 它会去编译 `/home/alientek/Makefile` ✗（实测报错 ✓）。
+    # → **默认目标 `all`** ✓（`modules` 是内核树里的目标，不是这个工程的 ✓）。
+    cmd: "cd {input:build_dir}/{input:project} && make"
     timeout_ms: 1800000
     # **编译成功的判据 = 命令返回 0**（编译不是板上的量测 ✓）
     readback:

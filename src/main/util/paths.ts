@@ -58,6 +58,16 @@ export function cardStorageDir(appName: string = DEFAULT_APP): string {
 }
 
 /**
+ * **内置**的流程包目录（随应用分发的那一批 ✓）。
+ *
+ * → 与 `profiles/boards/`（板型包）、`profiles/targets/`（连接 profile）**同处** ✓：
+ * 「宿主侧的数据文件都在 `profiles/` 下」✓。
+ */
+export function builtinWorkflowsDir(appRoot: string): string {
+  return join(appRoot, 'profiles', 'workflows');
+}
+
+/**
  * 用户自己的流程包目录（**放这儿 ≠ 批准** ✓ —— 批准是另一本账 ✓）。
  *
  * → 与卡片目录同一个道理：**「放在那儿」只是「候选」**，

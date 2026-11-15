@@ -378,7 +378,7 @@ describe('流程包 · 导出', () => {
 });
 
 describe('流程包 · 黄金样本', () => {
-  const DIR = join(__dirname, '../../../fixtures/workflows');
+  const DIR = join(__dirname, '../../../profiles/workflows');
 
   /**
    * ── 为什么样本要当测试跑 ──
