@@ -1855,8 +1855,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`,',
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}`, // 变异：不绑命令',
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`,',
+        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${deviceKey}`, // 变异：不绑命令',
       ),
   },
   {
