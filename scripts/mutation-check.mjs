@@ -1879,8 +1879,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "  if (origin === 'null') return false;",
-        '  // 变异：不拦 null 来源',
+        "  return url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';",
+        '  return true; // 变异：什么 Origin 都放行',
       ),
   },
   {
