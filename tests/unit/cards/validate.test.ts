@@ -47,9 +47,38 @@ function ctx(over: Partial<ValidateCardContext> = {}): ValidateCardContext {
 }
 
 /** 找某个规则号的 issue */
-function byRule(result: { errors: { rule: number }[]; warnings: { rule: number }[] }, rule: number) {
+function byRule(
+  result: { errors: { rule: number; path?: string }[]; warnings: { rule: number; path?: string }[] },
+  rule: number,
+) {
   return [...result.errors, ...result.warnings].filter((i) => i.rule === rule);
 }
+
+describe('规则 3 的流程那一半（评审 35 的 V2-C2）', () => {
+  it('`requires.workflows` 被 `permissions.workflows` 覆盖 → 通过', () => {
+    const result = validateCard(
+      manifest({
+        requires: { workflows: ['demo.run'] },
+        permissions: { read: [], write: [], workflows: ['demo.run'] },
+      }),
+      ctx(),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('**声明了却没授权 → 报错**（规则 3 不能有例外口子 ✓）', () => {
+    const result = validateCard(
+      manifest({
+        requires: { workflows: ['demo.run'] },
+        permissions: { read: [], write: [] },
+      }),
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    const issues = byRule(result, 3);
+    expect(issues.some((i) => i.path === 'requires.workflows')).toBe(true);
+  });
+});
 
 describe('契约 §九 的 13 条规则', () => {
   it('规则 1：apiVersion 不是已知版本', () => {

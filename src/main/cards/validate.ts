@@ -97,6 +97,14 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
       error(3, 'requires.actions', `动作「${actionId}」没有出现在 permissions.write 里`);
     }
   }
+  // **流程 id 同理**（评审 35 的 V2-C2 ✓）：
+  // 声明了 `requires.workflows` 却没在 `permissions.workflows` 里覆盖 → **报错** ✓
+  // （否则规则 3 有个例外口子 = 「愿望可以超出授权」✗）
+  for (const workflowId of requires.workflows ?? []) {
+    if (!(perms.workflows ?? []).includes(workflowId)) {
+      error(3, 'requires.workflows', `流程「${workflowId}」没有出现在 permissions.workflows 里`);
+    }
+  }
 
   /* ── 规则 4：读权限里的 tag 必须在核心词表或 custom.* 下 ── */
   for (const tag of perms.read) {

@@ -41,9 +41,9 @@ export interface CardManifest {
   version: string;
   description?: string;
   entry: string;
-  requires?: { tags?: string[]; actions?: string[]; min_board_pack?: string };
+  requires?: { tags?: string[]; actions?: string[]; workflows?: string[]; min_board_pack?: string };
   layout?: { w?: number; h?: number; min_w?: number; min_h?: number };
-  permissions: { read: string[]; write: string[] };
+  permissions: { read: string[]; write: string[]; workflows?: string[] };
   actions?: CardActionDef[];
 }
 
@@ -65,8 +65,21 @@ const TOP_ALLOWED = [
 
 const TOP_REQUIRED = ['apiVersion', 'kind', 'id', 'name', 'version', 'entry', 'permissions'] as const;
 
-const REQUIRES_ALLOWED = ['tags', 'actions', 'min_board_pack'] as const;
-const PERMISSIONS_ALLOWED = ['read', 'write'] as const;
+const REQUIRES_ALLOWED = ['tags', 'actions', 'workflows', 'min_board_pack'] as const;
+/**
+ * `permissions` 的封闭字段表。
+ *
+ * → **`workflows` 在这里**（2026-11-15 加 ✓）：
+ * 契约 §九 规则 3 说「requires ⊆ permissions」——
+ * 而卡片声明 `requires.workflows` 就**必须**有一个 permissions 字段覆盖它 ✓，
+ * 否则规则 3 无从判定 ✓（评审 35 的 V2-C2 ✓）。
+ *
+ * → **它为什么不是 `permissions.write`** ✓：
+ * `permissions.write` 装的是**板型包里的动作 id** ✓，
+ * 而规则 5/6 会对它做「在板型包里存在吗」「不许通配符」的检查 ✓——
+ * **流程 id 不是动作 id** ✓ → 混进去会让那两条规则误判 ✓。
+ */
+const PERMISSIONS_ALLOWED = ['read', 'write', 'workflows'] as const;
 const PERMISSIONS_REQUIRED = ['read', 'write'] as const;
 const LAYOUT_ALLOWED = ['w', 'h', 'min_w', 'min_h'] as const;
 const ACTION_ALLOWED = ['id', 'label', 'target', 'params'] as const;
@@ -243,6 +256,9 @@ export function parseManifest(raw: unknown, source: string): CardManifest {
     if (requires['actions'] !== undefined) {
       r.actions = asStringArray(ctx, requires['actions'], 'requires.actions');
     }
+    if (requires['workflows'] !== undefined) {
+      r.workflows = asStringArray(ctx, requires['workflows'], 'requires.workflows');
+    }
     if (requires['min_board_pack'] !== undefined) {
       r.min_board_pack = asString(ctx, requires['min_board_pack'], 'requires.min_board_pack');
     }
@@ -266,6 +282,9 @@ export function parseManifest(raw: unknown, source: string): CardManifest {
   manifest.permissions = {
     read: asStringArray(ctx, permissions['read'], 'permissions.read'),
     write: asStringArray(ctx, permissions['write'], 'permissions.write'),
+    ...(permissions['workflows'] === undefined
+      ? {}
+      : { workflows: asStringArray(ctx, permissions['workflows'], 'permissions.workflows') }),
   };
 
   if (obj['actions'] !== undefined) {

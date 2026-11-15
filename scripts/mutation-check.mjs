@@ -1386,6 +1386,18 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M114 卡片校验：规则 3 的**流程那一半**（声明了却没授权 → 报错 ✓）',
+    file: 'src/main/cards/validate.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
+    expect: '声明了却没授权',
+    apply: (s) =>
+      replace(
+        s,
+        "  for (const workflowId of requires.workflows ?? []) {",
+        '  for (const workflowId of [] as string[]) { // 变异：流程那一半不查',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
