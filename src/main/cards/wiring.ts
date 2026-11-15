@@ -57,6 +57,12 @@ export interface CardWiringDeps {
    * 做成**工厂**：执行器要拿着**这张卡的授权**，而授权是每卡一份的。
    */
   actionsFor?: (cardId: string) => CardServices['actions'];
+  /**
+   * 每张卡的**流程侧**（计划 7 ✓）。
+   *
+   * 做成**工厂**：流程的授权是每卡一份的 ✓（与 `actionsFor` 同形 ✓）。
+   */
+  workflowsFor?: (cardId: string) => CardServices['workflows'];
   /** 存储的根目录 */
   storageDir: string;
   /** 布局文件（**宿主记的账**：哪张卡在哪个格子里） */
@@ -130,6 +136,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       log.append(cardId, { source: 'card', level, message });
     },
     ...(deps.actionsFor === undefined ? {} : { actionsFor: deps.actionsFor }),
+    ...(deps.workflowsFor === undefined ? {} : { workflowsFor: deps.workflowsFor }),
     connectionInfo: deps.connectionInfo,
   });
 

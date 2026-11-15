@@ -58,6 +58,12 @@ export interface CardSessionManagerDeps {
    * 而授权是每卡一份的。
    */
   actionsFor?: (cardId: string) => CardServices['actions'];
+  /**
+   * 每张卡的**流程侧**（计划 7 ✓）。
+   *
+   * 做成**工厂**：流程的授权是每卡一份的 ✓（与 `actionsFor` 同形 ✓）。
+   */
+  workflowsFor?: (cardId: string) => CardServices['workflows'];
   /** 当前连接的身份（给 `capabilities()` 用） */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
@@ -140,6 +146,8 @@ export class CardSessionManager {
         degradation: () => tags.degradation(),
       },
       actions: this.deps.actionsFor?.(cardId) ?? emptyActions(),
+      // **流程侧**（计划 7 ✓）——没接上时**一律拒绝** ✓（不是「放行」✗）
+      workflows: this.deps.workflowsFor?.(cardId) ?? emptyWorkflows(),
       storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
         this.deps.logFor?.(cardId)(level, message);
@@ -204,11 +212,18 @@ export class CardSessionManager {
     }
 
     const args = (req.args ?? {}) as Record<string, unknown>;
-    if (api.permission === 'write') {
+    if (api.permission === 'write' || api.permission === 'workflow') {
+      // **两维各看各的** ✓（契约 §2.3 / §3.3 ✓ —— 流程 id **不许混进 write** ✓）
+      const allowed =
+        api.permission === 'write' ? session.perms.write : (session.perms.workflows ?? []);
       const argName = api.scopeArg;
-      const value = argName === undefined ? undefined : args[argName];
-      if (typeof value !== 'string' || !session.perms.write.includes(value)) {
-        return { id: req.id, ok: false, reason: 'denied' };
+      // **`scopeArg` 为空 → 这一层不判** ✓
+      // （`workflows.status` 的参数是 **run id** ✓ —— 归属校验**在实现里做** ✓）
+      if (argName !== undefined) {
+        const value = args[argName];
+        if (typeof value !== 'string' || !allowed.includes(value)) {
+          return { id: req.id, ok: false, reason: 'denied' };
+        }
       }
     }
 
@@ -269,6 +284,20 @@ function isMethodFailure(value: unknown): value is { ok: false; reason: string }
 function emptyActions(): CardServices['actions'] {
   return {
     invoke: (id: string) => ({ ok: false, reason: 'unknown_action', actionId: id }),
+  };
+}
+
+/**
+ * 还没接上流程侧时的占位（**一律拒绝** ✓）。
+ *
+ * → **不是「放行」** ✗ —— 没接上就意味着「宿主不知道这个流程」✓
+ *   → 放行 = 让卡片以为流程能跑 ✗。
+ */
+function emptyWorkflows(): CardServices['workflows'] {
+  return {
+    list: () => [],
+    run: () => ({ ok: false, reason: 'denied' }),
+    status: () => ({ ok: false, reason: 'denied' }),
   };
 }
 

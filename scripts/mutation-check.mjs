@@ -1686,6 +1686,36 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M138 卡片会话：流程的授权看**自己那一维**（不许混进 permissions.write ✓）',
+    file: 'src/main/cards/session.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
+    expect: '第四维授权',
+    apply: (s) =>
+      replace(
+        s,
+        "        api.permission === 'write' ? session.perms.write : (session.perms.workflows ?? []);",
+        '        session.perms.write; // 变异：两维混成一维',
+      ),
+  },
+  {
+    name: 'M139 卡片侧流程状态：**缩减投影**（路径/角色/明细/审计号一个都不给 ✓ —— V3-M7 ✓）',
+    file: 'src/main/cards/workflow-view.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/workflow-view.test.ts'],
+    expect: '只留契约说的那几个字段',
+    apply: (s) =>
+      replace(
+        s,
+        `    stages: status.stages.map((stage) => ({
+      stepId: stage.stepId,
+      kind: stage.kind,
+      ok: stage.ok,
+      verified: stage.verified,
+      ...(stage.reason === undefined ? {} : { reason: stage.reason }),
+    })),`,
+        '    stages: status.stages.map((stage) => ({ ...stage })), // 变异：全泄',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

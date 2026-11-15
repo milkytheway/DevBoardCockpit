@@ -3,6 +3,7 @@ import {
   permissionCovers,
   requiresSatisfied,
   effectiveWrite,
+  effectiveWorkflows,
   type CardPermissions,
 } from '../../../src/main/cards/permissions';
 
@@ -51,6 +52,21 @@ describe('requires 与 permissions 的关系', () => {
 
   it('空的 requires 恒满足', () => {
     expect(requiresSatisfied([], { read: [], write: [] })).toBe(true);
+  });
+});
+
+describe('有效流程权限（契约 §3.3 的第二维）', () => {
+  it('是 permissions.workflows 与已授权的交集', () => {
+    const perms: CardPermissions = { read: [], write: [], workflows: ['a.run', 'b.run'] };
+    expect(effectiveWorkflows(perms, ['a.run'])).toEqual(['a.run']);
+  });
+
+  it('没被授过的流程不生效（**声明了不算数** ✓）', () => {
+    expect(effectiveWorkflows({ read: [], write: [], workflows: ['a.run'] }, [])).toEqual([]);
+  });
+
+  it('**没声明流程的卡 → 有效权限是空的** ✓（不是「全部放行」✗）', () => {
+    expect(effectiveWorkflows({ read: [], write: [] }, ['a.run'])).toEqual([]);
   });
 });
 

@@ -19,7 +19,15 @@
  */
 import type { ReasonCode, TagReading } from '../../shared/tag-reading';
 
-export type CardApiPermission = 'read' | 'write' | 'none';
+/**
+ * 权限的**种类** ✓。
+ *
+ * → `'workflow'` 是**第四维** ✓（契约 §3.3 ✓）：
+ * 流程**不是动作** ✓（不在板型包里 ✓），但它**一样能在用户机器上执行命令** ✗ →
+ * 它**必须**有自己的授权面 ✓ → **不许混进 `permissions.write`** ✓
+ * （那一维的语义是「动作 id」✓ —— 混进去就成了两套规则 ✓）。
+ */
+export type CardApiPermission = 'read' | 'write' | 'workflow' | 'none';
 
 /** 一次调用的上下文（宿主注入） */
 export interface CardApiContext {
@@ -64,6 +72,21 @@ export interface CardServices {
    */
   actions: {
     invoke(id: string, params: Record<string, unknown>): Promise<unknown> | unknown;
+  };
+  /**
+   * 流程侧（计划 7 · 契约 `spec/03` §7.7 的三行 ✓）。
+   *
+   * → **每卡一份** ✓（做成工厂 ✓ —— 与 `actions` 同形 ✓：
+   *   流程的授权是每卡一份的 ✓）。
+   * → **返回的是给卡片看的那一份** ✓（投影 ✓ —— `workflow-view.ts` ✓）。
+   */
+  workflows: {
+    /** 列流程（**只列用户批过的** ✓ —— 契约 `05` §7.2 ✓） */
+    list(): unknown;
+    /** 起一条流程（**授权已经判过了** ✓ —— 会话层与宿主层各一道门 ✓） */
+    run(id: string, inputs: Record<string, unknown>): Promise<unknown> | unknown;
+    /** 看一次运行的状态（**缩减投影** ✓） */
+    status(runId: string): Promise<unknown> | unknown;
   };
 }
 
@@ -159,6 +182,38 @@ export function cardApis(): CardApiDef[] {
       // → 会话层**不把它塌成信封失败**（塌了 `confirm_id` 就没了 → 确认通道形同虚设）
       make: (services) => (_ctx, args) =>
         services.actions.invoke(String(args['id']), (args['params'] ?? {}) as Record<string, unknown>),
+    },
+    {
+      // **列流程**（契约 §7.7：权限「无」——只列**用户批过的** ✓）
+      name: 'workflows.list',
+      permission: 'read',
+      params: [],
+      make: (services) => () => services.workflows.list(),
+    },
+    {
+      // **起一条流程**（契约 §7.7：写侧 ✓ —— 权限看**流程 id** ✓）
+      name: 'workflows.run',
+      permission: 'workflow',
+      scopeArg: 'id',
+      params: ['id', 'inputs'],
+      make: (services) => (_ctx, args) =>
+        services.workflows.run(
+          String(args['id']),
+          (args['inputs'] ?? {}) as Record<string, unknown>,
+        ),
+    },
+    {
+      /**
+       * **看一次运行的状态**（契约 §7.7：读侧 ✓）。
+       *
+       * → **`scopeArg` 是空的** ✓：方法的参数是 **run id** ✓，
+       *   而权限要看的是**这个 run 属于哪个流程** ✓ —— 那个映射**只有宿主知道** ✓
+       *   → 所以归属校验**在实现里做** ✓（会话层这一层不判 ✓）。
+       */
+      name: 'workflows.status',
+      permission: 'workflow',
+      params: ['runId'],
+      make: (services) => (_ctx, args) => services.workflows.status(String(args['runId'])),
     },
     {
       name: 'storage.get',

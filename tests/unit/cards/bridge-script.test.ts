@@ -39,6 +39,17 @@ describe('卡片 API 注册表', () => {
     expect(apiByName().get('actions.invoke')?.scopeArg).toBe('id');
   });
 
+  it('**流程侧自计划 7 起有了**（契约 §7.7 的三行 ✓）', () => {
+    const byName = apiByName();
+    expect(byName.has('workflows.list')).toBe(true);
+    expect(byName.has('workflows.run')).toBe(true);
+    expect(byName.has('workflows.status')).toBe(true);
+    // **流程的写权限是它自己那一维** ✓（**不许混进 permissions.write** ✓ —— 契约 §2.3 ✓）
+    expect(byName.get('workflows.run')?.permission).toBe('workflow');
+    // **权限看流程 id** ✓
+    expect(byName.get('workflows.run')?.scopeArg).toBe('id');
+  });
+
   it('读方法的权限是 read，存储与日志是 none', () => {
     const byName = apiByName();
     expect(byName.get('tags.get')?.permission).toBe('read');

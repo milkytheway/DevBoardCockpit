@@ -27,12 +27,40 @@ const PERMS: CardPermissions = { read: ['cpu.usage'], write: [] };
 function managerWith(
   runtime: { readings: () => never[]; subscribe: (cb: (r: never) => void) => () => void },
   perms: CardPermissions = PERMS,
+  workflowsFor?: (cardId: string) => {
+    list(): unknown;
+    run(id: string, inputs: Record<string, unknown>): unknown;
+    status(runId: string): unknown;
+  },
 ): CardSessionManager {
   return new CardSessionManager({
     runtime: runtime as never,
     permsFor: () => perms,
     now: () => 1000,
+    ...(workflowsFor === undefined ? {} : { workflowsFor }),
   });
+}
+
+/** 流程侧的假实现（**记下调用** ✓ —— 判据要看「有没有真被调到」✓） */
+function fakeWorkflows(calls: string[]): {
+  list(): unknown;
+  run(id: string, inputs: Record<string, unknown>): unknown;
+  status(runId: string): unknown;
+} {
+  return {
+    list: () => {
+      calls.push('list');
+      return [];
+    },
+    run: (id: string) => {
+      calls.push(`run:${id}`);
+      return { ok: true, runId: 'wf-1' };
+    },
+    status: (runId: string) => {
+      calls.push(`status:${runId}`);
+      return { ok: true, runId };
+    },
+  };
 }
 
 describe('会话 · 退订真的释放', () => {
@@ -103,6 +131,65 @@ describe('会话 · 订阅数有上限（一张卡不能把 main 打满）', () 
       });
       expect(res.ok).toBe(true);
     }
+  });
+});
+
+describe('会话 · 流程的**第四维授权**（契约 §3.3）', () => {
+  it('**不在 `permissions.workflows` 里 → denied**（流程 id 不许混进 write ✓）', async () => {
+    const calls: string[] = [];
+    const m = managerWith(
+      { readings: () => [], subscribe: () => () => undefined },
+      { read: [], write: [], workflows: ['other.run'] },
+      () => fakeWorkflows(calls),
+    );
+    m.open('inst-1', 'cpu-usage', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'workflows.run',
+      args: { id: 'demo.run', inputs: {} },
+    });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('denied');
+    // **实现压根没被调到** ✓（权限没过就不该有副作用 ✓）
+    expect(calls).toEqual([]);
+  });
+
+  it('**在 `permissions.workflows` 里 → 放行** ✓', async () => {
+    const calls: string[] = [];
+    const m = managerWith(
+      { readings: () => [], subscribe: () => () => undefined },
+      { read: [], write: [], workflows: ['demo.run'] },
+      () => fakeWorkflows(calls),
+    );
+    m.open('inst-1', 'cpu-usage', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'workflows.run',
+      args: { id: 'demo.run', inputs: {} },
+    });
+    expect(res.ok).toBe(true);
+    expect(calls).toEqual(['run:demo.run']);
+  });
+
+  it('**流程的授权不靠 `permissions.write`**（两维各看各的 ✓）', async () => {
+    const calls: string[] = [];
+    const m = managerWith(
+      { readings: () => [], subscribe: () => () => undefined },
+      // **write 里有它、workflows 里没有** → 仍然被拒 ✓
+      { read: [], write: ['demo.run'], workflows: [] },
+      () => fakeWorkflows(calls),
+    );
+    m.open('inst-1', 'cpu-usage', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'workflows.run',
+      args: { id: 'demo.run', inputs: {} },
+    });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('denied');
   });
 });
 

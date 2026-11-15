@@ -17,7 +17,15 @@ import { fakeRouteFor, profilesWithFake } from './hal/fake/wiring';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
-import { builtinProfilesDir, cardRootsDir, cardStorageDir, userDataDir, userProfilesDir } from './util/paths';
+import {
+  builtinProfilesDir,
+  builtinWorkflowsDir,
+  cardRootsDir,
+  cardStorageDir,
+  userDataDir,
+  userProfilesDir,
+  userWorkflowsDir,
+} from './util/paths';
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
@@ -26,7 +34,11 @@ import { ActionAudit } from './actions/audit';
 import { invokeAction } from './actions/executor';
 import { ConfirmationStore } from './actions/authorization';
 import { GrantStore } from './cards/grants';
-import { effectiveWrite } from './cards/permissions';
+import { effectiveWrite, effectiveWorkflows } from './cards/permissions';
+import { projectRunStatus, workflowReasonOf } from './cards/workflow-view';
+import { WorkflowRegistry, workflowApprovalsFile } from './workflows/registry';
+import { WorkflowService } from './workflows/service';
+import { TargetRegistry } from './workflows/targets';
 import { cspViolationMessage } from './cards/csp-violation';
 import { SHELL_CSP } from './shell-csp';
 import type { CardRoot } from './cards/roots';
@@ -231,6 +243,48 @@ function grantedFor(cardId: string): { actions: Record<string, Record<string, { 
   return { actions };
 }
 
+/**
+ * 流程层（计划 6 ✓ · 计划 7 把它接给卡片 ✓）。
+ *
+ * → **注册表**扫两个目录：随应用分发的（`profiles/workflows/` ✓）+ 用户自己的 ✓
+ *   （用户目录优先 ✓ —— 与卡片目录同规矩 ✓）。
+ * → **批准账**在用户数据目录 ✓（`workflows-approved.json` ✓）——
+ *   「放一个文件进目录 ≠ 批准它」✓（契约 `05` §7.3 的 T1 ✓）。
+ */
+const workflowRegistry = new WorkflowRegistry({
+  dirs: [builtinWorkflowsDir(app.getAppPath()), userWorkflowsDir()],
+  approvalFile: workflowApprovalsFile(userDataDir()),
+});
+workflowRegistry.scan();
+
+/** 流程的目标登记处（**角色 → 连接** ✓ —— 计划 6 ✓） */
+const workflowTargets = new TargetRegistry({
+  profileFor: (id) => listProfiles().find((p) => p.id === id),
+  createConnection: (profile) =>
+    createConnectionFor(
+      profile,
+      new SessionLog({
+        label: `workflow-${profile.id}`,
+        transport: profile.transport,
+        dataDir: userDataDir(),
+      }),
+    ),
+});
+
+const workflowService = new WorkflowService({
+  registry: workflowRegistry,
+  confirmations,
+  runDeps: {
+    targets: workflowTargets,
+    profileFor: (id) => listProfiles().find((p) => p.id === id),
+    // **流程的每一步也进同一本动作审计** ✓（契约 `05` §7.2 的第三本账 ✓）
+    audit: (row) => actionAudit.append(row),
+    confirmations,
+  },
+  /** 卡级授权（**第二层** ✓ —— 第一层是 manifest 声明 ✓，第三层是包已批准 ✓） */
+  grantedWorkflows: (cardId) => grants.workflowIds(cardId),
+});
+
 const cards = createCardWiring({
   roots: cardRoots,
   runtime: {
@@ -249,13 +303,59 @@ const cards = createCardWiring({
     const declared = {
       read: card?.manifest.permissions.read ?? [],
       write: card?.manifest.permissions.write ?? [],
+      workflows: card?.manifest.permissions.workflows ?? [],
     };
     // **有效写权限 = 声明 ∩ 人授过的**（契约 §2.4）
+    // **有效流程权限 = 声明 ∩ 人授过的**（契约 §3.3 —— 流程**不是动作** ✓）
     return {
       read: declared.read,
       write: effectiveWrite(declared, grants.actionIds(cardId)),
+      workflows: effectiveWorkflows(declared, grants.workflowIds(cardId)),
     };
   },
+  /**
+   * 每张卡的**流程侧**（计划 7 ✓）。
+   *
+   * → **每卡一份** ✓（授权是每卡一份的 ✓）。
+   * → **返回给卡片的是缩减投影** ✓（契约 `05` §八·B·B5 ✓ —— V3-M7 在这里关掉 ✓）。
+   */
+  workflowsFor: (cardId) => ({
+    list: () => workflowService.list(),
+    run: (id: string, inputs: Record<string, unknown>) => {
+      try {
+        // **三层授权**（契约 §3.3 ✓）：会话层查了「卡级」✓，
+        // 这里 `start` 还会查「**包已批准**」✓（`requireApproved` ✓）。
+        const { runId } = workflowService.start(id, inputs, { cardId });
+        return { ok: true, runId };
+      } catch (err) {
+        // **封闭的理由码** ✓（不能把宿主侧的话泄给卡片 —— 里面有路径 ✓）
+        return { ok: false, reason: workflowReasonOf(err) };
+      }
+    },
+    status: (runId: string) => {
+      try {
+        const status = workflowService.status(runId);
+        // **归属校验** ✓：这张卡有没有**这个流程**的权限 ✓
+        // （契约 §7.7：「同上」= `permissions.workflows` 里有这个 id ✓）
+        const allowed = effectiveWorkflows(
+          {
+            read: [],
+            write: [],
+            workflows: cards.registry
+              .cards()
+              .find((c) => c.cardId === cardId)?.manifest.permissions.workflows ?? [],
+          },
+          grants.workflowIds(cardId),
+        );
+        if (!allowed.includes(status.workflowId)) {
+          return { ok: false, reason: 'denied' };
+        }
+        return { ok: true, ...projectRunStatus(status) };
+      } catch (err) {
+        return { ok: false, reason: workflowReasonOf(err) };
+      }
+    },
+  }),
   actionsFor: (cardId) => ({
     invoke: async (actionId: string, params: Record<string, unknown>) => {
       const action = runtime.actionDef(actionId);
