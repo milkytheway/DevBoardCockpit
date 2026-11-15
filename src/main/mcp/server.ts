@@ -5,6 +5,7 @@ import type { McpHostDeps } from './host';
 import { withVersion, withVersionEach } from './convention';
 import { confirmAction, executeAction } from './action-tools';
 import { sdkDocs } from './sdk-docs';
+import { installCard, uninstallCard } from './card-tools';
 import {
   describeTag,
   getCardRuntimeLog,
@@ -271,6 +272,29 @@ const TOOL_DEFS: McpToolDef[] = [
     },
   },
   {
+    name: 'install_card',
+    title: '装一张卡',
+    description:
+      '把一个卡片目录装到卡片根（**复制 + 热重载** ✓）。' +
+      '**要新的写权限 → 不装** ✓，返回 `needs_consent` 与待批清单 ✓ —— ' +
+      '**用户交互发生在 GUI 里，agent 只是重试** ✓。',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string', description: '卡片目录的绝对路径' } },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'uninstall_card',
+    title: '卸一张卡',
+    description: '删掉一张用户卡（**授权账一并清掉** ✓ —— 装回来要重新征求 ✓）。',
+    inputSchema: {
+      type: 'object',
+      properties: { card_id: { type: 'string', description: '卡片 id' } },
+      required: ['card_id'],
+    },
+  },
+  {
     name: 'get_card_sdk_docs',
     title: '拿写卡片的语法参考',
     description:
@@ -488,6 +512,32 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         } catch {
           return withVersion(failure('not_found', '没有这次运行'));
         }
+      },
+    ],
+    [
+      'install_card',
+      (args) => {
+        const path = args['path'];
+        if (typeof path !== 'string' || path.length === 0) {
+          return withVersion(failure('invalid_params', 'install_card 缺 path'));
+        }
+        if (deps.host?.cardTools === undefined) {
+          return withVersion(failure('failed', '宿主没接上装卡能力'));
+        }
+        return withVersion(installCard(deps.host.cardTools, path));
+      },
+    ],
+    [
+      'uninstall_card',
+      (args) => {
+        const cardId = args['card_id'];
+        if (typeof cardId !== 'string' || cardId.length === 0) {
+          return withVersion(failure('invalid_params', 'uninstall_card 缺 card_id'));
+        }
+        if (deps.host?.cardTools === undefined) {
+          return withVersion(failure('failed', '宿主没接上装卡能力'));
+        }
+        return withVersion(uninstallCard(deps.host.cardTools, cardId));
       },
     ],
     [

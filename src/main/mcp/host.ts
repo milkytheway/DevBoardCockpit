@@ -7,6 +7,7 @@ import type { CardIssue } from '../cards/validate';
 import type { CardLogEntry } from '../cards/runtime-log';
 import type { LayoutState } from '../../shared/layout';
 import type { AgentActionDeps } from './action-tools';
+import type { CardToolDeps } from './card-tools';
 
 /**
  * **MCP 层的宿主依赖面**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
@@ -61,6 +62,8 @@ export interface McpHostDeps {
    * → **复用同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）。
    */
   actions: AgentActionDeps;
+  /** 装卡与卸卡（**契约 §2.3** ✓）—— **没接就不提供这两个工具** ✓ */
+  cardTools?: CardToolDeps;
 }
 
 /** 一个样本（**与 `TagStore` 的那个同形** ✓ —— 宿主侧换个类型也不改形状 ✓） */

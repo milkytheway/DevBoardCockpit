@@ -10,6 +10,8 @@ import type { TerminalManager } from '../terminal/manager';
 import type { LayoutState } from '../../shared/layout';
 import { capabilitiesFor } from '../hal/capabilities';
 import type { AgentActionDeps } from './action-tools';
+import type { GrantStore } from '../cards/grants';
+import type { ConsentQueue } from '../cards/consent';
 
 /**
  * **把宿主拼成 MCP 层要的形状**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
@@ -43,6 +45,14 @@ export interface McpHostWiring {
   layoutSet: (state: LayoutState) => void;
   /** agent 的动作执行依赖（**与卡片侧共用执行器** ✓） */
   agentActions: AgentActionDeps;
+  /** 用户卡片根（**装卡到这里** ✓） */
+  cardsRoot?: string;
+  /** 授权账 */
+  grants?: GrantStore;
+  /** 同意队列（**待人批的** ✓） */
+  consents?: ConsentQueue;
+  /** 内置卡 id（**内置卡不许删** ✓） */
+  builtinCardIds?: string[];
 }
 
 /** 拼出 MCP 层的宿主依赖 ✓ */
@@ -109,5 +119,18 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
     saveLayout: (state: LayoutState) => wiring.layoutSet(state),
     // **agent 的动作执行** ✓ —— **复用同一个执行器** ✓（卡片侧同一个 ✓）
     actions: wiring.agentActions,
+    // **装卡与卸卡** ✓（契约 §2.3 ✓）
+    ...(wiring.cardsRoot === undefined
+      ? {}
+      : {
+          cardTools: {
+            cardsRoot: wiring.cardsRoot,
+            registry: cards,
+            ...(wiring.grants === undefined ? {} : { grants: wiring.grants }),
+            ...(wiring.consents === undefined ? {} : { pending: wiring.consents }),
+            packActions: () => runtime.actionDefs,
+            ...(wiring.builtinCardIds === undefined ? {} : { builtinIds: wiring.builtinCardIds }),
+          },
+        }),
   };
 }

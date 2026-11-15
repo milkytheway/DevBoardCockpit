@@ -84,11 +84,11 @@ function builtinCardSummaries(cardsDir: string | undefined): string[] {
       const r = raw as Record<string, unknown>;
       const id = typeof r['id'] === 'string' ? r['id'] : name;
       const label = typeof r['name'] === 'string' ? r['name'] : id;
-      const read = Array.isArray(r['permissions']) ? r['permissions'] : [];
-      const perms = (read.find((p) => p !== null && typeof p === 'object' && 'read' in p) ?? {}) as {
-        read?: unknown;
-      };
-      const tags = Array.isArray(perms.read) ? perms.read.filter((t): t is string => typeof t === 'string') : [];
+      // **`permissions` 是一个对象** ✓（不是数组 ✓ —— 那是 `requires` 的形状 ✓）
+      const perms = (r['permissions'] ?? {}) as { read?: unknown };
+      const tags = Array.isArray(perms.read)
+        ? perms.read.filter((t): t is string => typeof t === 'string')
+        : [];
       out.push(
         `## ${id}（${label}）\n` +
           `- 目录名：\`${name}\`\n` +

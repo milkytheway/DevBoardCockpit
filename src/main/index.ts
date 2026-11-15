@@ -37,6 +37,7 @@ import { GrantStore } from './cards/grants';
 import { effectiveWrite, effectiveWorkflows } from './cards/permissions';
 import { McpServer } from './mcp/server';
 import { buildMcpHost } from './mcp/wiring';
+import { ConsentQueue } from './cards/consent';
 import { startMcpHttp } from './mcp/http';
 import { generateToken } from './mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
@@ -46,7 +47,7 @@ import { WorkflowService } from './workflows/service';
 import { TargetRegistry } from './workflows/targets';
 import { cspViolationMessage } from './cards/csp-violation';
 import { SHELL_CSP } from './shell-csp';
-import type { CardRoot } from './cards/roots';
+import { listCardDirs, type CardRoot } from './cards/roots';
 import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
 import { uniqueDownloadPath } from './files/download-target';
@@ -258,6 +259,13 @@ const cardRoots: CardRoot[] = [
  * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
  */
 const grants = new GrantStore(join(userDataDir(), 'grants.json'));
+/**
+ * **装卡的同意队列** ✓（契约 §2.3 ✓）。
+ *
+ * → **在内存里** ✓（重启即失 ✓ —— 那是**安全的一边** ✓）：
+ *   「人点过头」的记录消失 ✓ → agent 得**重新求** ✓。
+ */
+const consents = new ConsentQueue();
 const confirmations = new ConfirmationStore();
 const actionAudit = new ActionAudit(join(userDataDir(), 'logs', 'actions.log'));
 
@@ -337,6 +345,15 @@ async function startMcpServer(): Promise<void> {
         // **布局是同一份账** ✓ —— 与卡片侧共用 ✓（不另开一套 ✓）
         layoutGet: () => cards.layoutGet(),
         layoutSet: (state) => cards.layoutSet(state),
+        // **装卡与卸卡** ✓（契约 §2.3 ✓）
+        cardsRoot: cardRootsDir(),
+        grants,
+        consents: consents,
+        // **内置卡 id** ✓ —— **只从内置目录取** ✓
+        // （用户目录的卡**可以卸** ✓ —— 那才是「用户装的东西」✓）
+        builtinCardIds: listCardDirs([{ dir: join(app.getAppPath(), 'cards'), kind: 'builtin' }]).map(
+          (c) => c.cardId,
+        ),
         // **agent 的动作执行** ✓ —— **同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）
         agentActions: {
           packId: runtime.packId ?? '',

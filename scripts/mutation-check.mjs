@@ -2232,6 +2232,66 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M189 MCP 装卡：**同意要绑目录快照** ✓（**不绑 → 装的可能不是人批的那份** ✗）',
+    file: 'src/main/cards/consent.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: '快照',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (req.snapshot !== snapshot) {",
+        "    if (false) {",
+      ),
+  },
+  {
+    name: 'M190 MCP 装卡：**没批过的同意不能消费** ✓（**签发 ≠ 批准** ✓）',
+    file: 'src/main/cards/consent.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: '没批过',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (!req.approved) return false;",
+        "    if (false) return false;",
+      ),
+  },
+  {
+    name: 'M191 MCP 装卡：**同意是一次性的** ✓（**重放 = 绕过授权** ✗）',
+    file: 'src/main/cards/consent.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: '一次性',
+    apply: (s) =>
+      replace(
+        s,
+        "    // **一次性** ✓\n    this.requests.delete(id);",
+        "    // **一次性** ✓\n    // 变异：不删",
+      ),
+  },
+  {
+    name: 'M192 MCP 卸卡：**授权账一并清掉** ✓（**否则装回来带着旧授权** ✗）',
+    file: 'src/main/mcp/card-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: '授权账',
+    apply: (s) =>
+      replace(
+        s,
+        "    deps.grants?.revokeAll(cardId);",
+        "    // 变异：不清授权",
+      ),
+  },
+  {
+    name: 'M193 MCP 装卡：**没有 manifest 就不装** ✓（**不是「装个空卡」** ✓）',
+    file: 'src/main/mcp/card-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: 'manifest.json',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (!existsSync(manifestPath)) {",
+        "  if (false) {",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

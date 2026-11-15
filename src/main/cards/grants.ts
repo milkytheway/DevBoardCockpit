@@ -119,6 +119,19 @@ export class GrantStore {
     this.save();
   }
 
+  /**
+   * **收回这张卡的全部授权** ✓（卸卡时用 ✓）。
+   *
+   * → **为什么要整张清** ✓：卸卡后**装回来是新卡** ✓（契约 §2.3：「改 manifest 要重新征求授权」✓）→
+   *   留着旧授权 = **装回来就带着旧的写权限** ✗ —— 那不是「重新装」✓，那是**绕过征求** ✗。
+   * → 逐个 `revoke` 也行 ✓，但**流程授权**（`workflows` 那一维 ✓）也要清 ✓ → **一个口子** ✓ 更不容易漏 ✓。
+   */
+  revokeAll(cardId: string): void {
+    const hadActions = this.cards.delete(cardId);
+    const hadWorkflows = this.workflowGrants.delete(cardId);
+    if (hadActions || hadWorkflows) this.save();
+  }
+
   /** 读盘（读不出来就算没有授权——**默认是「没有」**） */
   private load(): void {
     if (!existsSync(this.filePath)) return;
