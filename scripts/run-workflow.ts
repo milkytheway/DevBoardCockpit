@@ -32,6 +32,7 @@ import { WorkflowRegistry, workflowApprovalsFile } from '../src/main/workflows/r
 import { loadProfiles } from '../src/main/profiles/loader';
 import { createConnection } from '../src/main/hal/registry';
 import { ActionAudit } from '../src/main/actions/audit';
+import { ConfirmationStore } from '../src/main/actions/authorization';
 import { SessionLog } from '../src/main/logging/session-log';
 import { builtinWorkflowsDir, userDataDir, userWorkflowsDir } from '../src/main/util/paths';
 
@@ -40,6 +41,10 @@ interface Args {
   id?: string;
   input: Record<string, string>;
   dryRun: boolean;
+  /** 确认凭据（**人点头之后**带它重跑那一步 ✓） */
+  confirm?: string;
+  /** 从第几步继续（续跑 ✓ —— 前面的步不重跑） */
+  from?: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -62,6 +67,14 @@ function parseArgs(argv: string[]): Args {
     }
     if (arg === '--dry-run') {
       out.dryRun = true;
+      continue;
+    }
+    if (arg === '--confirm') {
+      out.confirm = argv[++i];
+      continue;
+    }
+    if (arg === '--from') {
+      out.from = Number(argv[++i]);
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -129,6 +142,8 @@ async function main(): Promise<void> {
   }
 
   const audit = new ActionAudit(join(dataDir, 'logs', 'actions.log'));
+  // **确认凭据的库**（流程层与 M6 共用一份 ✓ —— 语义只有一处 ✓）
+  const confirmations = new ConfirmationStore();
   const registry = new TargetRegistry({
     profileFor: (id) => profileById.get(id),
     createConnection: (profile) => {
@@ -149,9 +164,18 @@ async function main(): Promise<void> {
         targets: registry,
         profileFor: (id) => profileById.get(id),
         audit: (row) => audit.append(row),
+        confirmations,
       },
       // **人跑它 = 这一次点头**（ADR-D31 R2 的信任模型 ✓）
-      { approved: true },
+      {
+        approved: true,
+        // **带了确认凭据 → 那是「人点了」之后重跑那一步** ✓
+        // **键是步骤 id** ✓（执行器按步骤查凭据 ✓）
+        ...(args.confirm === undefined
+          ? {}
+          : { confirmIds: { [confirmStepId(args.confirm)]: confirmToken(args.confirm) } }),
+        ...(args.from === undefined ? {} : { startAt: args.from }),
+      },
     );
 
     console.log(`\n运行 ${result.runId}：${result.ok ? '成功' : '未成功'}`);
@@ -164,7 +188,11 @@ async function main(): Promise<void> {
       );
     }
     if (result.needsConfirmation !== undefined) {
-      console.log(`\n⚠ 第 ${result.needsConfirmation.stepId} 步要人确认：${result.needsConfirmation.detail}`);
+      const nc = result.needsConfirmation;
+      console.log(`\n⚠ 第 ${nc.stepId} 步要人确认：${nc.detail}`);
+      console.log(`  确认凭据：${nc.confirmId}`);
+      console.log('  → 批准它：npm run workflow:confirm -- <运行 id> <凭据>');
+      console.log(`  → 然后重跑同一条流程：--confirm ${nc.stepId}=<凭据>`);
     }
     if (Object.keys(result.outputs).length > 0) {
       console.log(`\n产出：${JSON.stringify(result.outputs)}`);
@@ -173,6 +201,21 @@ async function main(): Promise<void> {
   } finally {
     await registry.closeAll();
   }
+}
+
+/**
+ * 确认凭据的写法：`<步骤 id>=<凭据>`（如 `deliver=cf-xxxx`）。
+ *
+ * → **键是步骤 id** ✓（执行器按步骤查凭据 ✓）。
+ */
+function confirmStepId(spec: string): string {
+  const at = spec.indexOf('=');
+  return at <= 0 ? '' : spec.slice(0, at);
+}
+
+function confirmToken(spec: string): string {
+  const at = spec.indexOf('=');
+  return at <= 0 ? spec : spec.slice(at + 1);
 }
 
 /**
