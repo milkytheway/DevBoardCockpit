@@ -1939,8 +1939,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "  if (process.platform !== 'win32') chmodSync(tmp, 0o600);",
-        '  // 变异：不钉权限（umask 说了算 → 可能变成 0644 ✗）',
+        "  writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\\n`, { encoding: 'utf8', mode: 0o600 });",
+        "  writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\\n`, { encoding: 'utf8' }); // 变异：不钉权限",
       ),
   },
   {
