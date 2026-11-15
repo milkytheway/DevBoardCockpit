@@ -8,7 +8,7 @@ import { FAKE_DEVICE_MARKER, FakeDevice } from './device';
 import { fakeExecOutput } from './exec';
 import { fakeFileCommand } from './file-ops';
 import { fakeFilesystem, VirtualFs } from './fs';
-import { FAKE_PROFILE_ID, fakeProfile } from './profile';
+import { fakeProfile } from './profile';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 
@@ -67,7 +67,8 @@ const DEFAULT_TIMEOUT_EVERY = 20;
 const DEFAULT_BREAK_MEMINFO_EVERY = 5;
 
 export class FakeConnection implements Connection {
-  readonly id = FAKE_PROFILE_ID;
+  /** 连接的 id **跟着 profile 走**（假设备扮多个角色时每条线各有各的 id ✓） */
+  readonly id: string;
   readonly transport = 'local' as const;
 
   private readonly device: FakeDevice;
@@ -86,6 +87,7 @@ export class FakeConnection implements Connection {
     this.device = new FakeDevice({ now: opts.now });
     this.log = opts.log;
     this.profile = opts.profile ?? fakeProfile();
+    this.id = this.profile.id;
     this.fs = opts.fs ?? fakeFilesystem(this.profile.id);
     this.timeoutEvery = opts.timeoutEvery ?? DEFAULT_TIMEOUT_EVERY;
     this.breakMeminfoEvery = opts.breakMeminfoEvery ?? DEFAULT_BREAK_MEMINFO_EVERY;

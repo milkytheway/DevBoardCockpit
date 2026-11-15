@@ -116,6 +116,17 @@ export interface ActionOutcome {
   detail?: string;
   /** 审计行的 id（追责单位） */
   audit_id?: string;
+  /**
+   * **命令的输出**（stdout，**截断过的** ✓）。
+   *
+   * → 「跑一下，把输出给我看」这类需求要它 ✓
+   *   （用户那张卡的「**观察中间结果**」就靠它 ✓）；
+   * → 流程层的步骤也要它：把一条命令的输出**交给下一步** ✓
+   *   （凭据准备那一步：源目标的公钥 → 目标目标的 `authorized_keys` ✓）。
+   */
+  output?: string;
+  /** 输出被截断了吗（**说清楚**，别让人以为看全了） */
+  outputTruncated?: boolean;
 }
 
 /** 调一次动作 */
@@ -214,7 +225,7 @@ export async function invokeAction(
   }
 
   // ⑤⑥ 执行 + 回读（**同一个独占事务**）
-  const { result: readback } = await deps.runTransaction(async (connection) => {
+  const { result: readback, execResult } = await deps.runTransaction(async (connection) => {
     const execResult = await connection.exec(
       command,
       deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs },
@@ -242,9 +253,17 @@ export async function invokeAction(
 
   const hasReadback =
     readback.value !== undefined || readback.unit !== undefined || readback.status !== undefined;
+  // **输出要截断**（编译的输出能有几万行 → 全带出来会拖垮 IPC 与审计 ✓）
+  const rawOutput = execResult.stdout ?? '';
+  const OUTPUT_LIMIT = 8 * 1024;
+  const truncated = rawOutput.length > OUTPUT_LIMIT;
+  const output = truncated ? rawOutput.slice(-OUTPUT_LIMIT) : rawOutput;
+
   const outcome: ActionOutcome = {
     ok: readback.ok,
     verified: readback.verified,
+    ...(output === '' ? {} : { output }),
+    ...(truncated ? { outputTruncated: true } : {}),
     // **回读到的值在 `readback` 里**（契约 §2.4 / §5.2——卡片按 `r.readback.value` 渲染）
     ...(hasReadback
       ? {

@@ -115,6 +115,15 @@ export interface WorkflowStep {
   readback?: WorkflowReadback;
   /** `assert` 不符时怎么办：`fail`（默认）| `continue` */
   on_mismatch?: 'fail' | 'continue';
+  /**
+   * 这一步的**危险等级**（默认 `reversible`）。
+   *
+   * → `destructive` 的步骤**每次都要人确认**（ADR-D31 R2 的信任模型 ✓）。
+   * → **凭据准备那一步必须是 `destructive`**：它写的是目标机器的
+   *   `~/.ssh/authorized_keys`（ADR-D31 R7 / 计划 6 的 A10 ✓）。
+   * → **危险地板命中 → 也按 `destructive` 处理**（取更严的 ✓）。
+   */
+  danger?: 'reversible' | 'destructive';
 }
 
 export interface WorkflowPack {
@@ -163,6 +172,7 @@ const STEP_KEYS = [
   'out',
   'readback',
   'on_mismatch',
+  'danger',
 ] as const;
 
 const ENDPOINT_KEYS = ['role', 'path', 'placement'] as const;
@@ -421,6 +431,13 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   }
   if (raw['out'] !== undefined) step.out = nonEmptyString(raw['out'], 'step.out', ctx);
   if (raw['readback'] !== undefined) step.readback = parseReadback(raw['readback'], pack, ctx);
+  if (raw['danger'] !== undefined) {
+    const danger = raw['danger'];
+    if (danger !== 'reversible' && danger !== 'destructive') {
+      fail("step.danger 必须是 'reversible' 或 'destructive'", ctx.source);
+    }
+    step.danger = danger;
+  }
   if (raw['on_mismatch'] !== undefined) {
     const value = raw['on_mismatch'];
     if (value !== 'fail' && value !== 'continue') {

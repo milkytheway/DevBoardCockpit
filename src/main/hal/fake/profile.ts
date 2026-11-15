@@ -24,11 +24,31 @@ export function fakeMode(env: NodeJS.ProcessEnv = process.env): FakeMode {
   return 'off';
 }
 
+/**
+ * 假设备要扮**几个**角色（`COCKPIT_FAKE_PROFILES=build,target`）。
+ *
+ * ── 为什么现在需要多个 ──
+ *
+ * 流程层要在**两个目标**之间跑（客机 → 板子 ✓），
+ * 而**每块假板子有自己的虚拟盘**（`fakeFilesystem(profile.id)` ✓）→
+ * 两个角色 = **两块盘** ✓ = 两个 profile id ✓。
+ *
+ * → **默认只有一个**（`fake-board` ✓）→ 行为与从前完全一样 ✓。
+ */
+export function fakeProfileIds(env: NodeJS.ProcessEnv = process.env): string[] {
+  const raw = (env['COCKPIT_FAKE_PROFILES'] ?? '').trim();
+  const ids = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return ids.length === 0 ? [FAKE_PROFILE_ID] : [...new Set(ids)];
+}
+
 /** The fake profile (in memory, never written to disk). */
-export function fakeProfile(): ConnectionProfile {
+export function fakeProfile(id: string = FAKE_PROFILE_ID): ConnectionProfile {
   return {
-    id: FAKE_PROFILE_ID,
-    label: '假板子 · 合成数据',
+    id,
+    label: id === FAKE_PROFILE_ID ? '假板子 · 合成数据' : `假目标 · ${id} · 合成数据`,
     transport: 'local',
     board_pack: 'rk3588-atk',
     options: {

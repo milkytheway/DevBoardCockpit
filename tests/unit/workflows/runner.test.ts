@@ -76,6 +76,16 @@ function harness(opts: { files?: Record<string, FileEntry[]> } = {}) {
           if (command === 'uname -r') {
             return { exitCode: 0, stdout: '6.1.141\n', stderr: '', durationMs: 1, timedOut: false };
           }
+          if (command.includes('id_ed25519.pub')) {
+            // **公钥那一步要真的产出东西**（凭据准备靠它 ✓）
+            return {
+              exitCode: 0,
+              stdout: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test claude-sandbox\n',
+              stderr: '',
+              durationMs: 1,
+              timedOut: false,
+            };
+          }
           return { exitCode: 0, stdout: '', stderr: '', durationMs: 1, timedOut: false };
         },
         pull: async () => undefined,
@@ -201,6 +211,61 @@ describe('流程 · exec 步', () => {
     expect(result.stages[1]?.audit_id).toBe('audit-2');
     // 审计的 actor 是这个流程
     expect(h.audits[0]?.actor).toBe('workflow:w');
+  });
+});
+
+describe('流程 · 危险等级与输出', () => {
+  it('**声明 destructive 的步要人确认**（凭据准备那一步 ✓ A10）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          {
+            id: 'authorize',
+            kind: 'exec',
+            role: 'target',
+            danger: 'destructive',
+            cmd: 'cat >> /root/.ssh/authorized_keys',
+          },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(false);
+    expect(result.needsConfirmation?.stepId).toBe('authorize');
+    // **命令没执行**（确认之前不许跑 ✓）
+    expect(h.byId('board')?.commands).toEqual([]);
+  });
+
+  it('`out` 槽 = **这条命令的输出**（下一步要用它 ✓）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'read', kind: 'exec', role: 'build', cmd: 'cat ~/.ssh/id_ed25519.pub', out: 'pubkey' },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(true);
+    // **槽里就是那条命令的输出** ✓（下一步要用它 ✓）
+    expect(result.outputs['pubkey']).toBe('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test claude-sandbox');
   });
 });
 

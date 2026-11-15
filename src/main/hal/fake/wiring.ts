@@ -1,5 +1,5 @@
 import type { ConnectionProfile } from '../../profiles/schema';
-import { FAKE_PROFILE_ID, fakeProfile, type FakeMode } from './profile';
+import { fakeProfile, fakeProfileIds, type FakeMode } from './profile';
 
 /**
  * 假设备的**接线规则** —— 纯函数，所以能单测。
@@ -29,10 +29,13 @@ export function profilesWithFake(
   profiles: ConnectionProfile[],
   mode: FakeMode,
   fakeReady: boolean,
+  env: NodeJS.ProcessEnv = process.env,
 ): ConnectionProfile[] {
   if (mode === 'off') return profiles;
   if (!fakeReady) return profiles;
-  return mode === 'only' ? [fakeProfile()] : [fakeProfile(), ...profiles];
+  // **假设备可以扮多个角色**（`COCKPIT_FAKE_PROFILES=build,target` ✓）
+  const fakes = fakeProfileIds(env).map((id) => fakeProfile(id));
+  return mode === 'only' ? fakes : [...fakes, ...profiles];
 }
 
 /** What to do with a profile id. */
@@ -50,8 +53,13 @@ export type FakeRoute = 'fake' | 'refuse' | 'not-fake';
  * 于是用户看到的是**自己机器的 shell**（`transport: 'local'`）——
  * 标着「合成数据」，其实是真机器。
  */
-export function fakeRouteFor(profileId: string, mode: FakeMode, fakeReady: boolean): FakeRoute {
-  if (profileId !== FAKE_PROFILE_ID) return 'not-fake';
+export function fakeRouteFor(
+  profileId: string,
+  mode: FakeMode,
+  fakeReady: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): FakeRoute {
+  if (!fakeProfileIds(env).includes(profileId)) return 'not-fake';
   if (mode === 'off') return 'not-fake';
   return fakeReady ? 'fake' : 'refuse';
 }

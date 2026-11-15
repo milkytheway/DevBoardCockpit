@@ -1194,6 +1194,66 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M98 流程层：步声明 destructive 时必须**要人确认**（凭据准备那一步 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '声明 destructive 的步要人确认',
+    apply: (s) =>
+      replace(
+        s,
+        "    danger: step.danger ?? 'reversible',",
+        "    danger: 'reversible', // 变异：步自己声明的 danger 被丢掉",
+      ),
+  },
+  {
+    name: 'M99 流程层：命令的输出必须**进槽**（下一步要靠它 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '槽里就是那条命令的输出',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (step.out !== undefined && outcome.output !== undefined) {',
+        '  if (false) { // 变异：输出不进槽',
+      ),
+  },
+  {
+    name: 'M100 假设备：**多个角色**都要走假设备（只认一个 = 流程层演不了）',
+    file: 'src/main/hal/fake/wiring.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/fake-wiring.test.ts'],
+    expect: '假设备',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (!fakeProfileIds(env).includes(profileId)) return \'not-fake\';',
+        "  if (profileId !== 'fake-board') return 'not-fake'; // 变异：只认一个角色",
+      ),
+  },
+  {
+    name: 'M101 流程层：命令里的输入必须**用编码后的片段**（原始值 = 注入面敞开）',
+    file: 'src/main/workflows/substitute.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '输入**按类型编码**',
+    apply: (s) =>
+      replace(
+        s,
+        '    const encoded = ctx.encoded[name];',
+        '    const encoded = ctx.inputs[name] === undefined ? undefined : String(ctx.inputs[name]); // 变异：原始值',
+      ),
+  },
+  {
+    name: 'M102 流程包：placement 必须在**封闭词表**里（拼错 = 默默落错地方）',
+    file: 'src/main/workflows/format.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
+    expect: '不在封闭词表里',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (!isPlacement(placement)) {',
+        '    if (false) { // 变异：词表不查了',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

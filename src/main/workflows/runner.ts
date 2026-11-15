@@ -276,7 +276,8 @@ async function runExec(
   const action: ActionDef = {
     id: `exec:${step.id}`,
     label: step.id,
-    danger: 'reversible',
+    // **步可以声明自己是 destructive**（凭据准备那一步 ✓ A10）
+    danger: step.danger ?? 'reversible',
     params: {},
     command,
     // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
@@ -296,6 +297,10 @@ async function runExec(
     },
   );
   const cross = await crossRoleReadback(step, ctx, substitution, role, started);
+  // **`out` 槽 = 这条命令的输出**（凭据准备那一步靠它把公钥交给下一步 ✓）
+  if (step.out !== undefined && outcome.output !== undefined) {
+    ctx.outputs[step.out] = outcome.output.trim();
+  }
   return {
     stepId: step.id,
     kind: step.kind,
@@ -513,7 +518,7 @@ async function runTransfer(
   const action: ActionDef = {
     id: `transfer:${step.id}`,
     label: step.id,
-    danger: 'reversible',
+    danger: step.danger ?? 'reversible',
     params: {},
     command,
     // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
