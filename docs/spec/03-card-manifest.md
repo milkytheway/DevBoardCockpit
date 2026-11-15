@@ -664,4 +664,14 @@ cards/
 | 12 | `actions[]` 里**没有 `target` 的**是视图内动作，它**不得**出现在 `permissions.write` 里 |
 | 13 | `actions[].params` 的 `type` 必须是封闭取值（`02` §4.3）；`string` 必须有 `maxLength` |
 | 14 | `permissions.workflows` 里每个 id **不许通配符**（同 §2.3 ✓），且**必须是宿主里已声明的流程**（`05` §九 规则 6 ✓） |
+| 15 | **`id` 必须等于卡片目录名** ✓ |
+
+> **规则 15 为什么有** ✓（2026-11-15 加 ✓ · 依据 ADR-D40 ✓）：
+> 宿主侧**一切按目录名索引** ✓（注册表 ✓ · `uninstall_card` ✓ · `get_card_runtime_log` ✓ · 布局 ✓）。
+> 而 manifest 的 `id` **原本可以与目录名不同** ✓ →
+> 那 agent 从 `list_cards` 拿到的 id 喂给 `uninstall_card` **就找不到东西** ✗。
+> → **一条规则把两套 id 空间并成一套** ✓。
+> → `list_cards` 因此给**两个字段** ✓：`id`（= 目录名 ✓）与 `manifest_id`（= manifest 声明的 ✓）——
+> 两者**仍然可能不同** ✓（manifest 声明的 id 是作者的意愿 ✓ · 目录名是落地的位置 ✓）→
+> **要让 agent 看见这个差别** ✓（`04` §2.2 ✓）。
 

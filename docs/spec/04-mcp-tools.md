@@ -58,12 +58,30 @@ list_capabilities →  现在能做什么
 → [{ id, label, transport, board_pack, connected, capabilities }]
 ```
 
-`board_pack` 是当前这块板加载的包 id 与版本——agent 靠它知道「这块板是什么」。
+`board_pack` 是当前这块板绑定的**板型包 id**；**没绑就是 `null`**。
+
+> **只给 id，不给版本** ✓：版本是**包自己的属性**——同 id 的包可以有好几个版本，
+> 那不是「这条连接」的属性。版本在 `list_data_sources` 里给（那里本来就在讲包）。
+
+| 字段 | 含义 |
+|---|---|
+| `id` / `label` / `transport` | 连接 **profile** 的身份（**不是**某条活连接） |
+| `board_pack` | 绑定的板型包 id，或 `null` |
+| `connected` | **这条 profile 现在有活着的连接吗**（布尔） |
+| `capabilities` | **连接级**能力位：`exec` / `pty` / `files` / `exitCode`（`spec/02` §10.3 的**连接级**那一套，**不是**板级词表） |
+
+**`connected` 的判据**（两条**都要满足**才算「连着」）：
+
+1. 它是**当前 tag 运行时那条连接**，**且**运行时状态是 `running`；
+   —— **光看「运行时记着这个 profile」不够**：连不上或已停下时那条记录仍在。
+2. **或**它**开着终端会话**。
+
+> **「有 profileId」≠「连着」** ✓。
 
 #### `list_data_sources()`
 
 ```
-→ [{ id, board, poll_group, reader, kind, interval_ms,
+→ [{ id, board, poll_group, kind, interval_ms,
      provides: ["cpu.usage", ...], status }]
 ```
 
@@ -72,6 +90,29 @@ list_capabilities →  现在能做什么
 
 注意这返回的是 **reader 粒度**，不是 tag 粒度——因为「哪些 tag 可读」这个问题的答案天然按 reader 组织（一个 reader 挂了，它提供的 tag 全挂）。
 
+| 字段 | 含义 |
+|---|---|
+| `id` | **reader 的 id**（数据源就是 reader 粒度） |
+| `board` | **当前板型包的 id**（不是连接 id） |
+| `poll_group` | 这个 reader 所在的轮询组 id |
+| `kind` | reader 的 kind（`proc_stat` / `file_read` / …） |
+| `interval_ms` | 它所在**轮询组**的周期（reader 自己没有周期） |
+| `provides` | 这个 reader 提供的 **tag 具体名**（**展开后的**——包里写的是模式，见下） |
+| `status` | reader 自身状态（映射表见下） |
+
+> **`provides` 给具体名** ✓：包里写的是 `cpu.core.*.usage`（**模式**），
+> 而 agent 要写卡片 → 卡片要填**具体 tag 名**。模式另由 `describe_tag` 的语义承担。
+
+**reader 的 `status` 是映射表**（不是「取最差」）：
+
+| 情形 | `status` |
+|---|---|
+| 它的 tag **一个都不在**读数里 | `pending` |
+| 有 tag，且**全部** `unavailable` | `unavailable` |
+| 有 tag，且**存在** `error` | `error` |
+| 有 tag，且**存在** `stale`（没有 error） | `stale` |
+| 全部 `ok` | `ok` |
+
 #### `list_capabilities()`
 
 ```
@@ -79,6 +120,13 @@ list_capabilities →  现在能做什么
 ```
 
 工作台自己有什么。给 agent 判断「这个功能有没有」。
+
+| 字段 | 取值域 |
+|---|---|
+| `transports` | **连接级**能力的封闭词表：`exec` / `pty` / `files` / `exitCode`（`spec/02` §10.3 的**连接级**那一套）——**不是**板级词表 |
+| `features` | 工作台自己的能力位，**封闭**：`cards` / `mcp` / `layout_share` / `record` |
+
+> **加值要改契约** ✓（封闭词表 ✓）。
 
 #### `list_tags(board?)`
 
@@ -95,6 +143,24 @@ list_capabilities →  现在能做什么
 
 agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直接告诉 agent 有哪些 tag 名可用。
 
+| 字段 | 含义 |
+|---|---|
+| `name` | tag 名 |
+| `type` | **核心词表**里的类型（`number` / `string` / `boolean` / `enum`）；**没有词表条目就是 `null`** |
+| `unit` | 单位——**没有词表条目是 `'-'`**（无量纲），**不是 `null`** |
+| `range` | **核心词表**里的取值域：**二元数组** `[min,max]` **或字符串**（如 `"开放枚举"` / `"≥0"`）；没有词表条目是 `null` |
+| `status` / `value` | 当前读数（五态，原样） |
+| `board` | 当前板型包的 id |
+| `source_reader` | 这个 tag 是**哪个 reader** 提供的 |
+
+**`source_reader` 怎么算**：拿 tag 名去匹配各 reader 的 `provides` 模式
+（**含 `custom` 里的 reader**——否则 `custom.*` 的量全都是 `null`）。
+**一个 tag 至多匹配一个 reader**——板型包规则 2 保证 reader 的 tag 模式不重叠，
+不合规的包运行时根本不加载。**匹配不上就是 `null`**（不猜）。
+
+> `board` 这个字段与 `list_connections` 的 `board_pack` **不是一回事** ✓：
+> 前者是**当前生效的那块板的包 id**，后者是**这条连接绑的包 id**。
+
 #### `describe_tag(name)`
 
 ```
@@ -104,7 +170,32 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 
 `semantics` 是 tag 契约里的语义描述原文。**这是防误用的关键**——agent 看到 `npu.usage` 就该知道它是「各 NPU 核占用率的最大值」，而不是任何模糊的「NPU 负载」。
 
+> `semantics` 是**词表原文**（**含 Markdown 强调标记**——agent 按纯文本读 ✓）；
+> 没有词表条目（`custom.*` 的私有量）是 `null`。
+
 `source.args_summary` 让 agent 知道这个量是怎么来的（哪个文件、什么 kind），但**不暴露**具体命令（避免 agent 学着去发裸命令）。
+
+**放行表按 `(kind, 参数名)` 判定**——**不按参数名单独判定**：
+
+| kind | 给 agent 的参数 | 挡掉的 |
+|---|---|---|
+| `proc_stat` | `stat_path`, `cpuinfo_path` | — |
+| `meminfo` | `path` | — |
+| `devfreq_load` | `path`, `measure` | — |
+| `rknpu_load` | `path` | — |
+| `thermal_zone` | `glob`, `type_map` | — |
+| `file_read` | `path`, `glob`, `format`, `strip_trailing_null` | — |
+| `exec_regex` | `pattern`, `format` | **`command`** |
+| `script` | **（空）** | **`path`, `interpreter`, `format`** |
+
+> **为什么不能按参数名单独筛**：`path` 在 `file_read` 是**板上路径**（可给），
+> 在 `script` 是**宿主文件系统上的路径**（不可给——泄漏本机目录结构，
+> 且 `interpreter + path` 拼起来就是一条命令）。
+> **不在表里的参数一律不给**（封闭表，不是「先给再筛」）。
+> `script` 的 `args_summary` **恒为空对象**——agent 只知道「这个量来自一个脚本」。
+
+**`history`** = 最近的样本，形状与 `sample_tag` 完全一致：`[{ value, unit, status, at }]`。
+`at` 是**本次采样完成的时刻**（毫秒 UTC）。
 
 #### `sample_tag(name, n)`
 
@@ -113,6 +204,18 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 ```
 
 取最近 n 个样本。给 agent 判断「这个量是稳定的还是抖动的」，以及「刷新周期实际是多少」。
+
+| 项 | 语义 |
+|---|---|
+| `n` | 最近 **n** 个样本（**不是最近 n 秒**） |
+| **先采一次** | **先定向采一次** `name` 所在的轮询组（**一次往返**），**再**从样本缓冲里取最近 n 个 |
+| `n` 大于已有的样本数 | **有多少给多少**（不补） |
+| `n ≤ 0` | `invalid_params` |
+| 这个 tag 从来没被读过 | **空数组**（不是 `null`） |
+
+> **为什么要先采一次**：不采的话，agent 拿到的是**冻结的旧样本**（连接断了就永远不更新）——
+> 那它判断的「抖动」是**过去**的抖动。
+> **代价是一次往返**——agent 可以拿这个工具当「刷新一次」用。
 
 ---
 
@@ -124,7 +227,52 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 → [{ id, name, version, path, installed_at, status, degraded, missing_tags }]
 ```
 
+#### `list_cards()`
+
+```
+→ [{ id, manifest_id, name, version, path, installed_at, status,
+     degraded, missing_tags, unreadable_tags }]
+```
+
 `degraded` / `missing_tags` 让 agent 知道这张卡在当前板上是不是残的。
+
+| 字段 | 含义 |
+|---|---|
+| `id` | **卡片 id = 卡片目录名**——宿主侧一切按它索引（`uninstall_card` / `get_card_runtime_log` / 布局都用它） |
+| `manifest_id` | manifest 里声明的 id（**可以与目录名不同**——所以要两个字段**） |
+| `name` / `version` | manifest 的 |
+| `path` | 卡片目录的**绝对路径** |
+| `installed_at` | **卡片目录的最后修改时刻**（毫秒 UTC）——**不是「人点装上的时刻」** |
+| `status` | `ok` / `degraded` / `invalid`（封闭） |
+| `degraded` | 这张卡在当前板上**是不是残的**（布尔） |
+| `missing_tags` | 这张卡要的、**当前板型包根本没有**的 tag |
+| `unreadable_tags` | 声明了、包也提供了、但**现在读不出来**的 tag |
+
+> **`installed_at` 的免责** ✓：宿主**从没记过安装时间**——
+> 加一个字段要改所有卡的落盘流程，而 MCP 契约明写「不做文件 IO（除了 install_card 的复制）」。
+> → **用目录 mtime** ✓，并**明写它是什么** ✓——
+> **否则 agent 会拿它排序「最近装的卡」** ✗（那会错）✗。
+
+**`status` 的取值域**（封闭）：
+
+| 值 | 含义 |
+|---|---|
+| `ok` | manifest 合法，**且**它要的 tag 都可读 |
+| `degraded` | manifest 合法，**但**有 tag 读不到 |
+| `invalid` | **manifest 本身不合法** |
+
+> **`invalid` 的卡仍然列出来** ✓——agent 要知道「我上次装的那张卡坏了」✓。
+
+**「读不到」与「不存在」是两件事**（同 `spec/01` §2.1 的 `unavailable` vs `error`）：
+
+| 字段 | 判据 | 粒度 |
+|---|---|---|
+| `missing_tags` | 对 `permissions.read` 的**每个模式** P：当前板型包的所有 reader 的 provides 模式里**没有一个覆盖 P** → **P 整条记进去** | **模式级**（记模式本身，不展开） |
+| `unreadable_tags` | **该具体名在读数里存在**，**且**状态不是 `ok` | **具体名级**（只列读数里有的那些） |
+
+> **通配 tag 的实例在读数里缺席时，不得据此判定「缺失」**——
+> 采样器**按契约不猜具体实例名**。
+> `degraded` = `missing_tags` 非空 **或** `unreadable_tags` 非空。
 
 #### `get_card_sdk_docs(topic?)`
 
@@ -138,6 +286,20 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 
 **注意**：这是**语法**参考，不是**现状**参考。现状永远用 `list_*` 拿。
 
+**`content` 是一个字符串**（agent 把它当提示词的一部分读）。
+
+**从活代码与活数据生成**——**不是手抄的静态文本**（手抄的会漂：
+API 加一个方法它不会自己更新，agent 照着写会调一个不存在的 API）：
+
+| topic | 来源 | 生成方式 | 限制 |
+|---|---|---|---|
+| `manifest` | 卡片 manifest 的**封闭 schema 白名单表** | 字段名与必填性**从代码取**；**字段语义从 `03` §二取** | — |
+| `api` | 卡片 API 注册表 | 方法名 / 参数 / 权限维度从代码取；**每个方法补一句说明** | — |
+| `examples` | 内置卡目录 | manifest **+ 入口的 html/js** | 每张卡 ≤ 8 KB，超出截断并标注 |
+| `layout` | 布局的纯数据形状 | **按本契约的词写**（`cards` / `card_id`） | 不照抄实现层的内部字段名 |
+
+> **代码给形状，契约给语义** ✓。
+
 ---
 
 ### 2.3 写卡片与自测
@@ -145,12 +307,25 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 #### `validate_card(path)`
 
 ```
-→ { ok, errors: [...], warnings: [...], resolved: { tags, actions, layout } }
+→ { ok, errors: [...], warnings: [...],
+    resolved: { tags, actions, layout, missing_tags, missing_actions } }
 ```
 
 静态校验，**不安装**。校验规则见 `03-card-manifest.md` §九。
 
 `resolved` 告诉 agent：这张卡实际会绑到哪些 tag 和动作，哪些会缺失。
+
+| 字段 | 含义 |
+|---|---|
+| `resolved.tags` | 这张卡**要读、且当前板上可读**的 tag（**具体名**） |
+| `resolved.actions` | 这张卡**要写、且当前板型包里确实有**的动作 id |
+| `resolved.layout` | 解出来的格子尺寸（`w`/`h`/`min_w`/`min_h`）；**没有 layout 就是 `null`** |
+| `resolved.missing_tags` | 要读但**当前不可读**的 tag（口径同 `list_cards` 的 `missing_tags`） |
+| `resolved.missing_actions` | 要写但**当前板型包里没有**的动作 id |
+
+> **`resolved.tags` / `resolved.actions` 是「声明 ∩ 当前可用」**——
+> 不是**声明值**。agent 要知道的是「这张卡真能绑上什么」，
+> 而不是「它声称要什么」。
 
 #### `get_card_runtime_log(cardId, since?)`
 
@@ -162,10 +337,21 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 
 卡片崩了、tag 读失败了、action 回读不匹配了，都在这里。
 
+| 字段 | 含义 |
+|---|---|
+| `level` | `error` / `warn` / `info`（封闭） |
+| `at` | 毫秒 UTC |
+| `message` | 一句话 |
+| `source` | `card` / `host` / `csp`（封闭） |
+| `since`（参数） | 只给 `at >= since` 的（毫秒 UTC）；**缺省给全部** |
+
+> **日志是运行时内存**（每卡最多 200 条）——**重启即失**。
+> `since` 的过滤在宿主侧做。
+
 #### `install_card(path)`
 
 ```
-→ { card_id, installed: true, degraded: bool, missing: [...] }
+→ { ok: true, card_id, installed: true, degraded: bool, missing: [...] }
 ```
 
 把卡片目录放进卡片根目录，触发热重载。
@@ -173,7 +359,8 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 **如果这张卡需要新的授权**，`install_card` **不会**直接装上，而是返回：
 
 ```
-→ { card_id, installed: false, needs_consent: true,
+→ { ok: false, reason: "needs_consent",
+    card_id, installed: false, needs_consent: true,
     consent_id: "c-123",
     pending: [
       { action: "backlight.set", danger: "reversible", label: "设置背光亮度",
@@ -181,6 +368,22 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
       { action: "system.reboot", danger: "destructive", label: "重启板子" }
     ] }
 ```
+
+**三个返回形状**（封闭）：
+
+| 情形 | 返回 |
+|---|---|
+| 装上了 | `{ ok: true, card_id, installed: true, degraded, missing }` |
+| 要人授权 | `{ ok: false, reason: "needs_consent", card_id, installed: false, needs_consent: true, consent_id, pending }` |
+| 用户拒绝了全部 | `{ ok: false, reason: "denied", card_id, installed: false, denied: [...] }` |
+
+**`pending[]` 与 `denied[]` 同形**：每条是
+`{ action, danger, label, guard? }`（`guard` 可省 ✓）。
+
+> `reason: "denied"` 是**「人拒绝了」**；
+> `denied[]` 是**被拒绝的那几条**——**同名，两种角色** ✓。
+
+`degraded` 与 `missing` 的口径**同 `list_cards`**（`missing` = 缺失的 tag 名清单）。
 
 **这不会让 agent 的回路卡死。** 流程是：
 
@@ -238,6 +441,18 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 ```
 → { ok }
 ```
+
+删掉用户卡片根下的那个目录。**内置卡删不掉**（`denied`——它在应用目录里）。
+
+| 情形 | `reason` |
+|---|---|
+| 卡不存在 | `not_found` |
+| 是内置卡 | `denied` |
+| 删掉了 | 无（`ok: true`） |
+
+**副作用**：删目录，**该卡的授权账一并清掉**——
+否则装回来就带着旧的授权（那不是「重新装」，那是「装回来」）。
+**卡片存储保留**（`03` §六·2）。
 
 ---
 
@@ -311,14 +526,18 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 1. 查动作在当前板型包里存在吗 → 否则 `not_found`
 2. 查调用方的授权 → 否则 `denied`
 3. 校验参数（类型、范围、枚举）→ 否则 `invalid_params`
-4. 参数超出该动作的 `guard` 域 → `needs_confirmation`（`guard_exceeded: true`）
-5. `danger: destructive` 且未获确认 → `needs_confirmation`
-6. `dry_run: true` → 返回将要执行的命令 + 参数，**不执行**
+4. **`dry_run: true` → 直接返回将要执行的命令 + 参数**（**不执行、不回读、不写审计**）
+   —— **它在第 5/6 步之前** ✓：否则 agent 永远拿不到 `destructive` 动作的预览 ✗
+5. 参数超出该动作的 `guard` 域 → `needs_confirmation`（**另带 `guard_exceeded: true`** ✓）
+6. `danger: destructive` 且未获确认 → `needs_confirmation`
 7. 执行 → 失败则 `failed`（命令非零退出）；串口上不支持依赖退出码的动作则 `unsupported_transport`
 8. 回读 → 不符则 `readback_mismatch`。
    **若该动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5）→ 跳过回读，
    返回 `ok: true` + `verified: false`**
 9. 写审计日志（用 `none` 的动作必须在审计里标出「未验证」，`02` §5.4）
+
+> **`dry_run` 不写审计** ✓：审计记的是「**每一次尝试**」——
+> 而 dry_run **连尝试都不是**（它是一次**预览**）→ 写进去会污染「谁动过板子」这本账 ✓。
 
 **`not_found` 与 `denied` 的顺序**：先查存在性，再查授权。这样一个未授权的调用方能知道
 「这个动作存在」，但**不能知道它会做什么**——动作的 `command` 只在通过授权后才返回。
@@ -326,6 +545,14 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 
 **`dry_run` 返回的 `command` 是**编码后**的最终命令**（`02` §4.6），
 不是模板。这样 agent 在预览时看到的与实际执行的完全一致。
+
+**`dry_run` 的返回形状**（`02` §5.3 的形状 **+ 本节 §四 的 `ok`** ✓）：
+
+```
+→ { ok: true, dry_run: true, command: "...", readback_tag: "..." }
+```
+
+`readback_tag` 是这个动作的回读要读哪个 tag；**回读不是「读 tag」形式时是 `null`** ✓。
 
 #### 2.4.1 agent 的授权
 
@@ -341,6 +568,18 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 | `reversible`，参数在 `guard` 域内 | agent 直接可以执行，**记审计日志** |
 | `reversible`，参数**超出** `guard` 域 | 走一次确认（同 `destructive` 的流程） |
 | `destructive` | **必须有人在 GUI 里点确认**。agent 提交请求，然后等 |
+
+**三条细则**：
+
+| # | 细则 |
+|---|---|
+| 1 | agent 的授权集 = **当前板型包声明的全部动作**——**且这个包已经由人确认过**（§2.4.2 ✓ · `02` §5.6 ✓）。**未经人确认的包根本不生效** ✓ |
+| 2 | 参数域用**动作自己声明的 `guard`** ✓——卡片那份「人授过的更窄的域」**对 agent 不适用** ✓（那是卡片的事 ✓） |
+| 3 | **先查存在性、再查授权** ✓（上面的行为表 ✓）——动作的 `command` 只在通过授权后才返回 ✓ |
+
+> **`denied` 在 v1 几乎不会发生** ✓（除了「没有包」✓）→ **但它必须存在** ✓：
+> 它是**这个位置的护栏** ✓——将来若加「按连接/按用户的更窄授权」✓，这个理由码已经在那儿了 ✓。
+> **说清楚**：不要以为它一直在生效 ✗。
 
 **破坏性动作的确认需要人。** agent 不能自己造确认凭据。
 
@@ -446,10 +685,12 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 #### `confirm_workflow(run_id)`
 
 ```
-→ { confirm_id: "...", expires_at: 1762910060 }
+→ { confirm_id: "...", expires_at: 1762910000000 }
 ```
 
 **递一次确认请求**（人点了才有效 ✓）。
+
+> **`expires_at` 是毫秒 UTC 的绝对时刻** ✓（同 §四 的「时间」那条 ✓）。
 
 > **⚠️ 这个工具不使凭据生效** ✓ —— 它只是把请求递到 GUI 的确认队列 ✓
 > （同 `confirm_action` ✓）。**「批准」这个动作不是 MCP 工具** ✓——
@@ -458,7 +699,7 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 #### `confirm_action(actionId, params)`
 
 ```
-→ { confirm_id: "...", expires_at: 1762910060 }
+→ { confirm_id: "...", expires_at: 1762910000000 }
 ```
 
 请求对 `destructive` 动作的一次确认。
@@ -470,19 +711,25 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 `execute_action` 带 `confirm_id` 重试时，若用户已点确认则执行，否则仍返回
 `needs_confirmation`。
 
+> **`expires_at` 是毫秒 UTC 的绝对时刻** ✓（同 §四 的「时间」那条 ✓）。
+> —— 本节早前写的 `1762910060` 是**笔误**（那是秒级）✓。
+
 ##### `confirm_id` 的生命周期（**动作与流程同一套** ✓）
 
 `confirm_id` 是「人已经批准了**这一次**特定执行」的凭据，所以它必须绑得很死：
 
 | 项 | 规则 |
 |---|---|
-| 绑定 | `(动作 id, 参数的规范化摘要, 板型包 id, 契约版本)` |
+| 绑定 | `(动作 id, 参数的规范化摘要, 板型包 id, 契约版本, **这一步最终命令的摘要**)` |
 | 参数变化 | **参数一变，凭据立即失效**。用户批准的是「把背光调到 30」，不是「把背光调到任意值」 |
 | 一次性 | **消费即失效**。用一次就作废，不能重放 |
 | 有效期 | 默认 5 分钟（`expires_at`）。过期后要重新请求 |
 | 确认界面 | 必须显示动作名、**参数与最终命令**、参数域，以及这次执行的后果 |
 | 用户拒绝 | `confirm_id` 立即作废，不再有效；agent 收到 `denied` |
 | 数量 | 同一动作可以同时挂多个待确认请求（agent 并行提问），但各自独立 |
+
+> **为什么要绑「最终命令的摘要」** ✓：最终命令是**消费时现算**的 ✓ ——
+> 不绑它 ✓ → 同一张凭据可能认得**两条不同的命令** ✗（同 `05` §7.5-3 的同款理由 ✓）。
 
 **流程层的扩展**（`05` §7.5 ✓）：
 
@@ -509,11 +756,14 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 | 参数超出 `guard` 域 | `needs_confirmation`（`reason` 同为 `needs_confirmation`，另带 `guard_exceeded: true`） |
 | 动作 `reversible` 且参数在域内 | 直接执行 |
 
+> **`guard_exceeded` 是一个标志位，不是 `reason` 码** ✓——
+> `reason` **恒为 `needs_confirmation`** ✓。
+
 ---
 
 ### 2.5 布局
 
-#### `promote_card(cardId)`
+#### `promote_card(cardId, connectionId?)`
 
 ```
 → { ok, mode: "fullscreen" }
@@ -521,19 +771,50 @@ agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界
 
 把卡片提为全屏。交互上终端这类东西必须能独占（`htop` 在小卡里没法用），但契约上它仍是一张卡。
 
+**它改的是布局** ✓ —— 把这一格放大到**铺满主区** ✓：
+
+| 项 | 规则 |
+|---|---|
+| 宽 | `w = 12`（12 列网格） |
+| 高 | 「**铺满当前主区可视高度**」的格数——**由宿主按视口算**（契约给口径，不给数字） |
+| 其它格 | **保持自己的 w/h** ✓，`y` **统一后移 h 格**（`y' = y + h`）✓ —— **不删、不隐藏** ✓ |
+| 连接 | `connectionId` 缺省 = 该卡**唯一**的实例；**多于一个时报错**（不猜） |
+
+> **为什么用「改布局」而不是「新增一个 mode 字段」** ✓：
+> 新增 mode → 布局模型要长出第二套形状（格式版本要升 ✓ · 渲染器要改 ✓）；
+> 改布局**复用已有的那套** ✓（持久化 ✓ · 渲染 ✓）。
+> **代价**：全屏会**占掉用户的布局** ✓（要靠 `set_layout` 恢复 ✓）—— **明说这个代价** ✓。
+
 #### `set_layout(layout)`
 
 ```
-→ { ok }
+→ { ok, dropped: [...] }
 ```
 
-保存布局。
+保存布局（**整份替换**——不是增量）。
+
+**写之前先归一** ✓：
+
+| 项 | 规则 |
+|---|---|
+| `x` / `y` | 非负整数 |
+| `w` | `1 ≤ w ≤ 12` |
+| `h` | `h ≥ 1` |
+| **重叠** | **不判**（交给渲染器） |
+| 越界的格子 | **整条丢掉** ✓，并在 `dropped[]` 里报它的 `card_id` ✓ |
 
 #### `get_layout()`
 
 ```
-→ { cards: [{ card_id, x, y, w, h }] }
+→ { cards: [{ card_id, connection_id, x, y, w, h }] }
 ```
+
+| 字段 | 含义 |
+|---|---|
+| `card_id` | 卡片 id（**与 `list_cards[].id` 同名同义** ✓） |
+| `connection_id` | 这个格子绑的是哪条连接（`null` = 没有连接上下文） |
+
+> **布局的键是 `(card_id, connection_id)`** ✓ —— 一张卡在多条连接上各有一个格子 ✓。
 
 ---
 
@@ -570,12 +851,57 @@ get_card_runtime_log(id)     ← MCP：看运行结果
 | 未知 | `status: "unavailable"`，不返回 `null` 也不返回 0 |
 | 时间 | 毫秒时间戳，UTC。`at` = **本次采样完成**的时刻，不是广播时刻<br>**（流程那一侧是例外 ✓：`05` 的 `at` = **那一步开始**的时刻 ✓ —— 同一个字段名在流程里指的是「那一步什么时候起的」✓）** |
 | 路径 | 绝对路径 |
-| 版本 | `apiVersion` 字段在每个响应里都带上 |
+| 版本 | `apiVersion` 字段在每个响应里都带上（**列表是每一项都带** ✓） |
 
 > **版本字段的拼写统一为 `apiVersion`**（与 manifest、板型包一致）。
 > 历史上出现过 `api_version` 与 `version` 三种写法，
 > 现在只有 `apiVersion` 一种——响应里的 `apiVersion` 表示**契约版本**，
 > 不是工具集自己的版本。
+
+> **「值是 null」与「这一项没有」是两件事** ✓：
+> `status: "unavailable"` 说的是**读数** ✓；
+> 而 `range` / `semantics` / `type` 这类**元数据字段**在词表里查不到时给 `null` ✓
+> （意思是「**这一项没有**」✓）——不矛盾 ✓。
+
+### 4.1 失败理由码（**一张表，所有工具共用** ✓）
+
+**封闭** ✓ —— **所有 MCP 工具的失败都从这里取** ✓：
+
+| 码 | 什么时候 | 谁用 |
+|---|---|---|
+| `invalid_params` | 参数不合（类型/范围/枚举/取值非法） | **全部** ✓ |
+| `not_found` | 东西不存在（动作/流程/卡片/读数**同名同义** ✓ ADR-D27 ✓） | **全部** ✓ |
+| `denied` | 不许做（用户拒绝 / 无授权） | 写侧 ✓ |
+| `needs_confirmation` | 要人点头（**带 `confirm_id`** ✓） | 写侧 ✓ |
+| `not_approved` | 这个包/流程**用户还没批过** | 流程 ✓ |
+| `busy` | 同一件事正在跑，不能并发 | 流程 ✓ |
+| `no_pending_confirmation` | 这次运行**没有待确认的步骤** | `confirm_workflow` ✓ |
+| `invalid` | 内容不合法（manifest 本身不合法） | 卡片侧 ✓ |
+| `failed` | 别的失败 | **全部** ✓ |
+| `readback_mismatch` | 回读到的值与期望不符 | `execute_action` ✓ |
+| `timeout` | 命令或回读超时 | `execute_action` ✓ |
+| `unsupported_transport` | 回读要退出码而这条连接没有（串口） | `execute_action` ✓ |
+| `cancelled` | **被叫停**（不是失败 ✓） | `execute_action` ✓ |
+
+> **`guard_exceeded` 不在这张表里** ✓ —— 它是一个**标志位** ✓，
+> `reason` **恒为 `needs_confirmation`** ✓（§2.4 ✓）。
+
+> **码表加项 = 契约变更** ✓ —— 与 `danger_floor_version`（`02` §5.2.1 ✓）、
+> `reason_code_version`（`01` §2.1.1 ✓）是**同一套治理** ✓：
+> 封闭词表改了就要走评审 ✓。
+
+### 4.2 `apiVersion` 什么时候升（**口径** ✓）
+
+| 情形 | 升不升 |
+|---|---|
+| **`devboard/v1` 尚未随任何实现发布** | **不升** ✓ —— 这是「**v1 定稿前的修正**」✓（先例 `docs/05` ADR-D24 / D25 / D26 ✓） |
+| **v1 已发布之后** | **一律升** ✓ |
+
+> **理由不能写成「加字段不算破坏性变更」** ✓ —— 本工程**没有**这条通则 ✓：
+> 封闭 schema 管的是**产物**（manifest / pack / workflow 的输入 ✓），
+> **MCP 响应不是产物** ✓ → 加字段不违反已声明的规则 ✓，
+> 但**依据是「v1 未发布」** ✓ —— **换个依据就站不住了** ✓。
+
 
 **`sample_tag(name, n)` 的 `n` 是「最近 n 个样本」**，不是「最近 n 秒」。
 窗口长度由各 tag 所在 poll group 的周期决定（`01` §3.2），
