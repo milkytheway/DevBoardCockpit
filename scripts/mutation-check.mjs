@@ -1406,7 +1406,7 @@ const MUTATIONS = [
       replace(
         s,
         '    const queued = this.opts.confirmations?.request(confirmId, this.now()) ?? false;',
-        '    const queued = true; // 变异：请求即批准',
+        '    const queued = this.opts.confirmations?.approve(confirmId, this.now()) ?? false; // 变异：请求即批准',
       ),
   },
   {
@@ -1425,7 +1425,7 @@ const MUTATIONS = [
     name: 'M117 流程服务：**同一个流程同时只允许跑一次**（两个流程抢一条线会串台 ✓）',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '正在跑',
+    expect: '同一个流程同时只允许跑一次',
     apply: (s) =>
       replace(
         s,
