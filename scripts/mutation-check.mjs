@@ -1362,6 +1362,30 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M112 审计行：必须带**最终命令**（追责的第一环 ✓）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '命令是编码过的',
+    apply: (s) =>
+      replace(
+        s,
+        '      command,\n      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),',
+        '      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }), // 变异：命令不进审计行',
+      ),
+  },
+  {
+    name: 'M113 审计行：流程的**输入值**要进去（不然事后看不到用了哪个工程 ✓）',
+    file: 'src/main/actions/executor.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '这一步的输入',
+    apply: (s) =>
+      replace(
+        s,
+        '      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),',
+        '      // 变异：输入不进审计行',
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

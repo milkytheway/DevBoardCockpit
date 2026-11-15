@@ -35,6 +35,21 @@ export interface AuditRow {
   actionId: string;
   /** 本次调用的参数（原始值） */
   params: Record<string, unknown>;
+  /**
+   * **最终命令**（编码之后的 ✓）。
+   *
+   * → 追责链的第一环：**「到底执行了什么」** ✓
+   *   （只有动作 id 与参数，事后拼不出命令 ✓）。
+   * → 流程层尤其需要它：**流程的命令是包给的** ✓（不是板型包里的动作 ✓）。
+   */
+  command?: string;
+  /**
+   * **这一步的输入值**（流程层用 ✓）。
+   *
+   * → 流程的参数在**流程包**里声明，不在**板型包**里 ✓
+   *   → 不记的话，事后只看到「跑了某一步」，看不到「用了哪个工程」✗。
+   */
+  inputs?: Record<string, unknown>;
   /** 动作成功了吗 */
   ok: boolean;
   /** **确认**板子真的进入目标状态了吗 */
@@ -61,6 +76,8 @@ export function formatAuditRow(row: AuditRow): string {
     `ok=${String(row.ok)}`,
     `verified=${String(row.verified)}`,
   ];
+  if (row.command !== undefined) parts.push(`command=${JSON.stringify(row.command)}`);
+  if (row.inputs !== undefined) parts.push(`inputs=${JSON.stringify(row.inputs)}`);
   if (row.value !== undefined) parts.push(`value=${JSON.stringify(row.value)}`);
   if (row.detail !== undefined) parts.push(`detail=${JSON.stringify(row.detail)}`);
   return parts.join(' ');

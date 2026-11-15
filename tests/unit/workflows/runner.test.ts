@@ -187,6 +187,50 @@ describe('流程 · exec 步', () => {
     expect(h.byId('board')?.commands).not.toContain('echo after');
   });
 
+  it('**审计行里有最终命令**（追责的第一环 ✓）', async () => {
+    const h = harness();
+    await runWorkflow(
+      parseWorkflow(
+        {
+          formatVersion: 1,
+          kind: 'Workflow',
+          id: 'w',
+          name: 'w',
+          version: '1.0.0',
+          inputs: { value: { type: 'integer', min: 0, max: 255 } },
+          roles: ROLES,
+          steps: [{ id: 'set', kind: 'exec', role: 'target', cmd: 'echo {input:value} > /tmp/v' }],
+        },
+        'w.yaml',
+      ),
+      { value: 128 },
+      h.deps,
+      { approved: true },
+    );
+    // **命令是编码过的** ✓（整数不带引号 ✓）
+    expect(h.audits[0]?.command).toBe('echo 128 > /tmp/v');
+  });
+
+  it('流程的审计行里有**这一步的输入**（流程的参数在流程包里，不在板型包里 ✓）', async () => {
+    const h = harness();
+    const pack = parseWorkflow(
+      {
+        formatVersion: 1,
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: { project: { type: 'string', maxLength: 50 } },
+        roles: ROLES,
+        steps: [{ id: 'compile', kind: 'exec', role: 'build', cmd: 'make {input:project}' }],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, { project: '01-hello' }, h.deps, { approved: true });
+    expect(h.audits[0]?.inputs).toEqual({ project: '01-hello' });
+    expect(h.audits[0]?.command).toBe("make '01-hello'");
+  });
+
   it('**每步一行审计**，时间线上的 audit_id 指得到', async () => {
     const h = harness();
     const pack = parseWorkflow(

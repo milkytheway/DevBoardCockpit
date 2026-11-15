@@ -394,6 +394,7 @@ async function crossRoleReadback(
     actor: `workflow:${ctx.pack.id}`,
     actionId: `workflow:${ctx.pack.id}:${step.id}:readback`,
     params: {},
+    inputs: { ...ctx.inputs },
     ok: result.ok,
     verified: result.verified,
     ...(result.value === undefined ? {} : { value: result.value }),
@@ -513,6 +514,7 @@ async function runDiscover(
     actor: `workflow:${ctx.pack.id}`,
     actionId: `workflow:${ctx.pack.id}:${step.id}`,
     params: { dir, pattern },
+    inputs: { ...ctx.inputs },
     ok: true,
     verified: true,
     value: found.join(','),
@@ -849,6 +851,8 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
     audit: (row: AuditRow) =>
       ctx.deps.audit({ ...row, actor: row.actor === 'unknown' ? `workflow:${ctx.pack.id}` : row.actor }),
     actor: `workflow:${ctx.pack.id}`,
+    // **这一步的输入进审计行**（流程的参数在**流程包**里，不在板型包里 ✓）
+    auditInputs: { ...ctx.inputs },
     now: ctx.now,
     // **长步骤要有超时**（编译是分钟级；尖兵实测传输波动 20 倍，A14 ✓）
     ...(timeoutMs === undefined ? {} : { execTimeoutMs: timeoutMs }),

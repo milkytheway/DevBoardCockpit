@@ -70,6 +70,12 @@ export interface ActionExecutorDeps {
   /** 谁触发的（卡片 id / agent / 用户） */
   actor?: string;
   /**
+   * **这一步的输入**（流程层给 ✓ —— 流程的参数在**流程包**里声明，
+   * 不在板型包里 ✓；不记的话事后只看到「跑了某一步」，
+   * 看不到「用了哪个工程」✗ —— 追责链断了一环 ✓）。
+   */
+  auditInputs?: Record<string, unknown>;
+  /**
    * 执行超时（毫秒）。
    *
    * → 流程层的长步骤（编译是分钟级）用它 ✓；
@@ -158,6 +164,9 @@ export async function invokeAction(
       actor,
       actionId: action.id,
       params,
+      // **最终命令**进审计行（追责的第一环 ✓ —— 事后要能拼出「到底执行了什么」✓）
+      command,
+      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),
       ok: outcome.ok,
       verified: outcome.verified,
       ...(value === undefined ? {} : { value }),
