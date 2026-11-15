@@ -4,6 +4,7 @@ import type { WorkflowService } from '../workflows/service';
 import type { McpHostDeps } from './host';
 import { withVersion, withVersionEach } from './convention';
 import { confirmAction, executeAction } from './action-tools';
+import { sdkDocs } from './sdk-docs';
 import {
   describeTag,
   getCardRuntimeLog,
@@ -269,6 +270,23 @@ const TOOL_DEFS: McpToolDef[] = [
       required: ['run_id'],
     },
   },
+  {
+    name: 'get_card_sdk_docs',
+    title: '拿写卡片的语法参考',
+    description:
+      '写卡片的**语法参考**：manifest 格式 / 本 build 实际有的 API / 示例卡片 / 布局。' +
+      '**从活代码生成** ✓ —— 不会漂 ✓。省略 topic 则返回全部。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        topic: {
+          type: 'string',
+          enum: ['manifest', 'api', 'examples', 'layout'],
+          description: '要哪一块（**省略就是全部** ✓）',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -470,6 +488,16 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         } catch {
           return withVersion(failure('not_found', '没有这次运行'));
         }
+      },
+    ],
+    [
+      'get_card_sdk_docs',
+      (args) => {
+        const topic = args['topic'];
+        if (topic !== undefined && typeof topic !== 'string') {
+          return withVersion(failure('invalid_params', 'topic 要么不给，要么给字符串'));
+        }
+        return withVersion(sdkDocs(topic));
       },
     ],
     [

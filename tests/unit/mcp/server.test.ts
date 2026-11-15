@@ -122,6 +122,35 @@ function call(method: string, params?: unknown): Promise<Record<string, unknown>
   }) as Promise<Record<string, unknown>>;
 }
 
+
+/** **带宿主依赖的 server** ✓（读侧工具要有 host 才列 ✓） */
+function serverWithHost(): McpServer {
+  return new McpServer({
+    workflows: service,
+    host: {
+      pack: () => null,
+      readings: () => [],
+      history: () => [],
+      refreshTag: async () => undefined,
+      profiles: () => [],
+      capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
+      connected: () => false,
+      cards: () => [],
+      cardDir: () => null,
+      validateCard: () => ({
+        ok: true,
+        errors: [],
+        warnings: [],
+        resolved: { tags: [], actions: [], layout: null, missing_tags: [], missing_actions: [] },
+      }),
+      cardLog: () => [],
+      layout: () => ({ version: 3, units: [], density: 'comfortable', updatedAt: 0 }),
+      saveLayout: () => undefined,
+      actions: {} as never,
+    },
+  });
+}
+
 describe('MCP · initialize', () => {
   it('**回 protocolVersion / capabilities / serverInfo** ✓', async () => {
     const res = await call('initialize', { protocolVersion: '2025-06-18' });
@@ -191,6 +220,27 @@ describe('MCP · 未知方法', () => {
     const res = await call('nope/nope');
     const err = res['error'] as { code: number; message: string };
     expect(err.code).toBe(-32601);
+  });
+});
+
+describe('MCP · get_card_sdk_docs', () => {
+  it('**在 `tools/list` 里** ✓（契约 §2.3 ✓）', async () => {
+    const res = await call('tools/list');
+    const tools = (res['result'] as Record<string, unknown>)['tools'] as { name: string }[];
+    expect(tools.map((t) => t.name)).toContain('get_card_sdk_docs');
+  });
+
+  it('**调得通** ✓ —— 且**内容来自活代码** ✓', async () => {
+    const svc = serverWithHost();
+    const res = (await svc.callTool('get_card_sdk_docs', { topic: 'api' })) as {
+      apiVersion: string;
+      topics: string[];
+      content: string;
+    };
+    expect(res.apiVersion).toBe('devboard/v1');
+    expect(res.topics).toEqual(['api']);
+    // **方法名来自 API 注册表** ✓（不是手抄的 ✓）
+    expect(res.content).toContain('tags.get');
   });
 });
 

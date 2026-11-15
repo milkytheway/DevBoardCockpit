@@ -49,7 +49,7 @@ export interface CardManifest {
 
 /* ── 白名单（契约 §2.5：每一层都封闭）── */
 
-const TOP_ALLOWED = [
+export const TOP_ALLOWED = [
   'apiVersion',
   'kind',
   'id',
@@ -63,9 +63,9 @@ const TOP_ALLOWED = [
   'actions',
 ] as const;
 
-const TOP_REQUIRED = ['apiVersion', 'kind', 'id', 'name', 'version', 'entry', 'permissions'] as const;
+export const TOP_REQUIRED = ['apiVersion', 'kind', 'id', 'name', 'version', 'entry', 'permissions'] as const;
 
-const REQUIRES_ALLOWED = ['tags', 'actions', 'workflows', 'min_board_pack'] as const;
+export const REQUIRES_ALLOWED = ['tags', 'actions', 'workflows', 'min_board_pack'] as const;
 /**
  * `permissions` 的封闭字段表。
  *
@@ -79,15 +79,15 @@ const REQUIRES_ALLOWED = ['tags', 'actions', 'workflows', 'min_board_pack'] as c
  * 而规则 5/6 会对它做「在板型包里存在吗」「不许通配符」的检查 ✓——
  * **流程 id 不是动作 id** ✓ → 混进去会让那两条规则误判 ✓。
  */
-const PERMISSIONS_ALLOWED = ['read', 'write', 'workflows'] as const;
-const PERMISSIONS_REQUIRED = ['read', 'write'] as const;
-const LAYOUT_ALLOWED = ['w', 'h', 'min_w', 'min_h'] as const;
-const ACTION_ALLOWED = ['id', 'label', 'target', 'params'] as const;
-const ACTION_REQUIRED = ['id', 'label'] as const;
-const PARAM_ALLOWED = ['type', 'min', 'max', 'maxLength', 'pattern', 'values', 'default'] as const;
+export const PERMISSIONS_ALLOWED = ['read', 'write', 'workflows'] as const;
+export const PERMISSIONS_REQUIRED = ['read', 'write'] as const;
+export const LAYOUT_ALLOWED = ['w', 'h', 'min_w', 'min_h'] as const;
+export const ACTION_ALLOWED = ['id', 'label', 'target', 'params'] as const;
+export const ACTION_REQUIRED = ['id', 'label'] as const;
+export const PARAM_ALLOWED = ['type', 'min', 'max', 'maxLength', 'pattern', 'values', 'default'] as const;
 
 /** 参数类型的封闭取值（契约 §2.4 / §九 规则 13） */
-const PARAM_TYPES = ['integer', 'number', 'string', 'boolean', 'enum'] as const;
+export const PARAM_TYPES = ['integer', 'number', 'string', 'boolean', 'enum'] as const;
 
 interface Ctx {
   source: string;

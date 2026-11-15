@@ -2184,6 +2184,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M181 MCP SDK 活文档：**API 清单来自注册表** ✓（**手抄的会漂** ✓）',
+    file: 'src/main/mcp/sdk-docs.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
+    expect: 'tags.get',
+    apply: (s) =>
+      replace(
+        s,
+        "  for (const api of cardApis()) {",
+        "  for (const api of []) {",
+      ),
+  },
+  {
+    name: 'M182 MCP SDK 活文档：**没实现的 API 不列** ✓（**列了 = 卡片以为能调** ✓）',
+    file: 'src/main/mcp/sdk-docs.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
+    expect: 'notify',
+    apply: (s) =>
+      replace(
+        s,
+        "    lines.push(`## cockpit.${api.name}`);",
+        "    lines.push(`## cockpit.${api.name}`);\n    if (api.name === 'capabilities') lines.push('cockpit.notify');",
+      ),
+  },
+  {
+    name: 'M183 MCP SDK 活文档：**每个方法都要有一句说明** ✓（**光有名字 agent 不知道何时用** ✓）',
+    file: 'src/main/cards/api-registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
+    expect: '说明',
+    apply: (s) =>
+      replace(
+        s,
+        "      name: 'tags.get',\n      summary: '读一个 tag 的当前值与状态。**读面板上的数用这个**。',",
+        "      name: 'tags.get',",
+      ),
+  },
+  {
+    name: 'M184 MCP SDK 活文档：**示例卡是真卡** ✓（**编的会与实际不符** ✓）',
+    file: 'src/main/mcp/sdk-docs.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
+    expect: 'cpu-usage',
+    apply: (s) =>
+      replace(
+        s,
+        "      out.push(\n        `## ${id}（${label}）\n` +",
+        "      if (id !== 'cpu-usage') continue;\n      out.push(\n        `## ${id}（${label}）\n` +",
+      ),
+  },
+  {
     name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],

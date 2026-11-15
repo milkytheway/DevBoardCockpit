@@ -95,6 +95,15 @@ export type CardApiHandler = (ctx: CardApiContext, args: Record<string, unknown>
 export interface CardApiDef {
   /** 全名，如 `tags.get`。bridge 按点号拆成命名空间 */
   name: string;
+  /**
+   * **一句人话**（这个方法什么时候用 ✓）。
+   *
+   * → **它进 SDK 活文档** ✓（`get_card_sdk_docs` ✓ —— 契约 §2.3 ✓）——
+   *   **光有方法名不够** ✓：agent 看到 `degradation()` **不知道它什么时候用** ✗。
+   * → **手写在这里，不在手抄的文档里** ✓ —— **它跟方法同生共死** ✓
+   *   （方法删了，说明也一起没了 ✓ → 文档不会漂 ✓）。
+   */
+  summary: string;
   permission: CardApiPermission;
   /** 权限检查看 `args` 里的哪个参数（tag 名 / 动作 id）。`none` 的方法没有 */
   scopeArg?: string;
@@ -122,6 +131,7 @@ export function cardApis(): CardApiDef[] {
   return [
     {
       name: 'capabilities',
+      summary: '问宿主：我能调哪些方法、现在连的是哪块板、上面有哪些 tag。**卡片启动时先问这个**。',
       permission: 'none',
       params: [],
       // **本 build 实际有的方法**（不是契约全集）——否则卡片会以为能调还不存在的方法
@@ -134,6 +144,7 @@ export function cardApis(): CardApiDef[] {
     },
     {
       name: 'tags.get',
+      summary: '读一个 tag 的当前值与状态。**读面板上的数用这个**。',
       permission: 'read',
       scopeArg: 'name',
       params: ['name'],
@@ -141,6 +152,7 @@ export function cardApis(): CardApiDef[] {
     },
     {
       name: 'tags.subscribe',
+      summary: '订阅一个 tag 的变化。**卡片要跟着数动就用它**（先 subscribe，再在回调里更新界面）。',
       permission: 'read',
       scopeArg: 'name',
       params: ['name'],
@@ -152,6 +164,7 @@ export function cardApis(): CardApiDef[] {
     },
     {
       name: 'tags.subscribePattern',
+      summary: '按模式订阅一族 tag（如 `cpu.core.*.usage`）。**要盯一组数时用它**。',
       permission: 'read',
       scopeArg: 'pattern',
       params: ['pattern'],
@@ -161,18 +174,21 @@ export function cardApis(): CardApiDef[] {
     },
     {
       name: 'tags.list',
+      summary: '列出当前所有可读的 tag（含值与状态）。**不知道有哪些数时先问这个**。',
       permission: 'read',
       params: [],
       make: (services) => () => services.tags.list(),
     },
     {
       name: 'degradation',
+      summary: '列出**读不到**的 tag 与原因。**面板要显示「这个数没有」时用它**。',
       permission: 'none',
       params: [],
       make: (services) => () => services.tags.degradation(),
     },
     {
       name: 'actions.invoke',
+      summary: '执行一个板型包里声明的动作（写侧）。**要改板子状态就用它**（受危险分级约束）。',
       permission: 'write',
       // **写权限按动作 id 判**（契约 §2.3：读权限用模式，写权限不用——
       // 模式让授权范围变大，对读来说方便，对写来说**危险**）
@@ -186,6 +202,7 @@ export function cardApis(): CardApiDef[] {
     {
       // **列流程**（契约 §7.7：权限「无」——只列**用户批过的** ✓）
       name: 'workflows.list',
+      summary: '列出用户批过的流程（只有 id / 名称 / 输入声明）。',
       permission: 'read',
       params: [],
       make: (services) => () => services.workflows.list(),
@@ -193,6 +210,7 @@ export function cardApis(): CardApiDef[] {
     {
       // **起一条流程**（契约 §7.7：写侧 ✓ —— 权限看**流程 id** ✓）
       name: 'workflows.run',
+      summary: '跑一条流程，**立刻返回 run_id**；进度用 `workflows.status` 轮询。',
       permission: 'workflow',
       scopeArg: 'id',
       params: ['id', 'inputs'],
@@ -211,18 +229,21 @@ export function cardApis(): CardApiDef[] {
        *   → 所以归属校验**在实现里做** ✓（会话层这一层不判 ✓）。
        */
       name: 'workflows.status',
+      summary: '看一次运行的状态与阶段时间线。',
       permission: 'workflow',
       params: ['runId'],
       make: (services) => (_ctx, args) => services.workflows.status(String(args['runId'])),
     },
     {
       name: 'storage.get',
+      summary: '读这张卡自己的持久化存储（**每张卡一份**）。',
       permission: 'none',
       params: ['key'],
       make: (services) => (_ctx, args) => services.storage.get(String(args['key'])),
     },
     {
       name: 'storage.set',
+      summary: '写这张卡自己的持久化存储。',
       permission: 'none',
       params: ['key', 'value'],
       make: (services) => (_ctx, args) =>
@@ -230,24 +251,28 @@ export function cardApis(): CardApiDef[] {
     },
     {
       name: 'storage.remove',
+      summary: '删掉一个存储键。',
       permission: 'none',
       params: ['key'],
       make: (services) => (_ctx, args) => services.storage.remove(String(args['key'])),
     },
     {
       name: 'storage.keys',
+      summary: '列出这张卡的存储键。',
       permission: 'none',
       params: [],
       make: (services) => () => services.storage.keys(),
     },
     {
       name: 'storage.clear',
+      summary: '清空这张卡的存储。',
       permission: 'none',
       params: [],
       make: (services) => () => services.storage.clear(),
     },
     {
       name: 'log',
+      summary: '往这张卡的运行时日志写一条（**agent 的自测眼睛能看见**）。',
       permission: 'none',
       params: ['level', 'message'],
       make: (services) => (_ctx, args) => {
