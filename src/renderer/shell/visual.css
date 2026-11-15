@@ -2414,3 +2414,613 @@ html[data-theme='light'] .detail {
 .files-stage .cockpit-tree__list {
   overflow: auto;
 }
+
+/* ═════════════════════════════════════════════════ v0.7 refinements ═══ */
+
+/* ── compact page head: title and controls on one row, no small print ── */
+.page-head {
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+}
+
+.page-head__eyebrow,
+.page-head__sub {
+  display: none;
+}
+
+.page-head__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.page-head__hint {
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+  color: var(--ui-faint);
+  white-space: nowrap;
+}
+
+.app-scroll {
+  padding: 12px 18px 22px;
+}
+
+/* ── sidebar: status collapsed to one line; cards gain sections ── */
+.secondary__scroll {
+  padding-top: 6px;
+}
+
+.secondary__group--status {
+  margin-top: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ui-hairline-soft);
+}
+
+.secondary__group--status .secondary__title {
+  display: none;
+}
+
+.secondary__group--status .secondary__item {
+  padding: 5px 9px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.secondary__group--status .secondary__hint {
+  display: none;
+}
+
+.secondary__group--status .secondary__label {
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
+.secondary__section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 3px;
+  padding: 0 8px;
+  list-style: none;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-faint);
+}
+
+li.secondary__section:first-child {
+  margin-top: 4px;
+}
+
+.secondary__section-hint {
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--cockpit-warn) 75%, var(--ui-faint));
+}
+
+.secondary__pin {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ui-faint);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.secondary__row:hover .secondary__pin,
+.secondary__pin.is-pinned {
+  opacity: 1;
+}
+
+.secondary__pin.is-pinned {
+  color: var(--cockpit-warn);
+}
+
+.secondary__pin:hover {
+  color: var(--cockpit-warn);
+  border-color: var(--ui-hairline);
+  background: color-mix(in oklab, var(--cockpit-warn) 10%, transparent);
+}
+
+.secondary__row:has(.secondary__pin) .secondary__item {
+  padding-right: 32px;
+}
+
+/* ── detail: tabs, tag rows, raw event stream ── */
+.detail__tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ui-hairline-soft);
+}
+
+.detail__tabs button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ui-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.detail__tabs button:hover {
+  color: var(--ui-text);
+  background: color-mix(in oklab, var(--cockpit-surface) 60%, transparent);
+}
+
+.detail__tabs button.is-active {
+  color: var(--ui-text);
+  border-color: var(--ui-hairline);
+  background: color-mix(in oklab, var(--cockpit-accent) 12%, transparent);
+}
+
+.detail__tags {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail__tag {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--ui-hairline-soft);
+}
+
+.detail__tag:last-child {
+  border-bottom: 0;
+}
+
+.detail__tag-dot {
+  grid-row: 1 / span 2;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cockpit-unavailable);
+}
+
+.detail__tag-dot.is-ok {
+  background: var(--cockpit-ok);
+}
+
+.detail__tag-dot.is-stale,
+.detail__tag-dot.is-pending {
+  background: var(--cockpit-warn);
+}
+
+.detail__tag-dot.is-error {
+  background: var(--cockpit-danger);
+}
+
+.detail__tag-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
+.detail__tag-value {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ui-text);
+}
+
+.detail__tag-value.is-stale {
+  color: var(--cockpit-warn);
+}
+
+.detail__tag-value.is-error {
+  color: var(--cockpit-danger);
+}
+
+.detail__tag-value.is-unavailable,
+.detail__tag-value.is-pending {
+  color: var(--ui-faint);
+}
+
+.detail__tag-meta {
+  grid-column: 2 / span 2;
+  font-size: 10px;
+  color: var(--ui-faint);
+}
+
+.detail__hint {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ui-faint);
+}
+
+.detail__json {
+  max-height: 260px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--ui-hairline);
+  border-radius: 10px;
+  background: rgba(4, 6, 9, 0.5);
+  color: var(--ui-dim);
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail__events {
+  max-height: 340px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  border: 1px solid var(--ui-hairline-soft);
+  border-radius: 10px;
+}
+
+.detail__event {
+  display: grid;
+  grid-template-columns: 56px 48px minmax(0, 1fr) auto 38px;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--ui-hairline-soft);
+  font-size: 10.5px;
+}
+
+.detail__event:last-child {
+  border-bottom: 0;
+}
+
+.detail__event-status {
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: var(--ui-faint);
+}
+
+.detail__event-status.is-ok {
+  color: var(--cockpit-ok);
+}
+
+.detail__event-status.is-stale,
+.detail__event-status.is-pending {
+  color: var(--cockpit-warn);
+}
+
+.detail__event-status.is-error {
+  color: var(--cockpit-danger);
+}
+
+.detail__event-tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-dim);
+}
+
+.detail__event-value {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text);
+  white-space: nowrap;
+}
+
+.detail__event-seq {
+  color: var(--ui-faint);
+  text-align: right;
+}
+
+/* ── terminal: single / split / quad pane grid ── */
+.page--terminal {
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+.terminal-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.terminal-grid[data-layout='split'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.terminal-grid[data-layout='quad'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.terminal-grid .terminal__pane {
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--ui-hairline);
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 30%),
+    rgba(6, 8, 11, 0.66);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.terminal-grid .terminal__pane[hidden] {
+  display: none;
+}
+
+.terminal-grid .terminal__pane.is-active {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 42%, var(--ui-hairline));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--cockpit-accent) 18%, transparent),
+    var(--ui-shadow-card);
+}
+
+.terminal__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 6px 0 8px;
+  border-bottom: 1px solid var(--ui-hairline-soft);
+  background: color-mix(in oklab, var(--cockpit-surface) 34%, transparent);
+}
+
+.terminal__tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-dim);
+  cursor: pointer;
+}
+
+.terminal__tab:hover {
+  background: color-mix(in oklab, var(--cockpit-surface) 55%, transparent);
+  color: var(--ui-text);
+}
+
+.terminal__tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.terminal__tab-id {
+  font-size: 9.5px;
+  color: var(--ui-faint);
+}
+
+.terminal__tab-active {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cockpit-accent) 16%, transparent);
+  color: var(--cockpit-accent);
+  font-size: 9px;
+}
+
+.terminal__pane-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-faint);
+  cursor: pointer;
+}
+
+.terminal__pane-close:hover {
+  color: var(--cockpit-danger);
+  border-color: var(--ui-hairline);
+  background: color-mix(in oklab, var(--cockpit-danger) 10%, transparent);
+}
+
+.terminal__surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal__surface .cockpit-terminal {
+  height: 100%;
+}
+
+/* ── frosted glass: translucent cards floating over a lit canvas ── */
+.app-shell {
+  background:
+    radial-gradient(52% 46% at 12% -4%, color-mix(in oklab, var(--cockpit-accent) 22%, transparent), transparent 64%),
+    radial-gradient(44% 42% at 94% 4%, color-mix(in oklab, var(--cockpit-accent-2) 17%, transparent), transparent 62%),
+    radial-gradient(46% 42% at 62% 104%, color-mix(in oklab, var(--cockpit-series-3) 12%, transparent), transparent 66%),
+    radial-gradient(80% 60% at 40% 40%, rgba(255, 255, 255, 0.025), transparent 70%),
+    var(--cockpit-bg);
+}
+
+.statusbar,
+.rail,
+.secondary,
+.detail {
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 40%),
+    color-mix(in oklab, var(--cockpit-surface) 58%, transparent);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+}
+
+.cockpit-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%),
+    color-mix(in oklab, var(--cockpit-surface) 72%, transparent);
+  border-color: color-mix(in oklab, var(--cockpit-border) 78%, rgba(255, 255, 255, 0.16));
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  box-shadow:
+    0 28px 56px -30px rgba(0, 0, 0, 0.95),
+    0 6px 18px -10px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.cockpit-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--cockpit-accent) 30%, var(--ui-hairline));
+  box-shadow:
+    0 34px 64px -30px rgba(0, 0, 0, 0.98),
+    0 10px 24px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.cockpit-card.is-selected {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 55%, transparent);
+}
+
+.detail__json {
+  background: color-mix(in oklab, var(--cockpit-bg) 62%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-card,
+  .cockpit-card:hover {
+    transform: none;
+  }
+}
+
+/* A one-pane terminal keeps the full width even when the split layout is
+   selected; two panes in quad mode use one row instead of an empty second. */
+.terminal-grid[data-panes='1'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.terminal-grid[data-panes='2'][data-layout='quad'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* v0.7 glass pass: a lit canvas under translucent cards. */
+.app-shell {
+  background:
+    radial-gradient(42% 38% at 10% -6%, color-mix(in oklab, var(--cockpit-accent) 32%, transparent), transparent 62%),
+    radial-gradient(38% 34% at 96% 2%, color-mix(in oklab, var(--cockpit-accent-2) 26%, transparent), transparent 60%),
+    radial-gradient(44% 40% at 54% 108%, color-mix(in oklab, var(--cockpit-series-3) 20%, transparent), transparent 64%),
+    radial-gradient(30% 32% at 78% 58%, color-mix(in oklab, var(--cockpit-series-5) 12%, transparent), transparent 72%),
+    #07090c;
+}
+
+.statusbar,
+.rail,
+.secondary,
+.detail {
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 44%),
+    color-mix(in oklab, var(--cockpit-surface) 46%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+}
+
+.cockpit-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 48%),
+    color-mix(in oklab, var(--cockpit-surface) 56%, transparent);
+  backdrop-filter: blur(26px) saturate(155%);
+  -webkit-backdrop-filter: blur(26px) saturate(155%);
+  box-shadow:
+    0 34px 66px -32px rgba(0, 0, 0, 0.98),
+    0 10px 26px -14px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.cockpit-card__head,
+.cockpit-card__foot {
+  background: color-mix(in oklab, var(--cockpit-surface) 24%, transparent);
+}
+
+/* Keep hidden terminal panes laid out at page size: xterm's own viewport
+   observer crashes when it measures a `display:none` host (dimensions are
+   undefined). Invisible absolute panes still keep their scrollback alive. */
+.terminal__pane[hidden] {
+  display: block !important;
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Second glass pass: more of the lit canvas shows through the cards, and a
+   card lifts a little when the pointer is over it. */
+.app-shell {
+  background:
+    radial-gradient(48% 44% at 8% -8%, color-mix(in oklab, var(--cockpit-accent) 44%, transparent), transparent 62%),
+    radial-gradient(42% 38% at 98% 0%, color-mix(in oklab, var(--cockpit-accent-2) 34%, transparent), transparent 60%),
+    radial-gradient(50% 46% at 52% 112%, color-mix(in oklab, var(--cockpit-series-3) 28%, transparent), transparent 66%),
+    radial-gradient(34% 36% at 80% 60%, color-mix(in oklab, var(--cockpit-series-5) 16%, transparent), transparent 72%),
+    #06080b;
+}
+
+.cockpit-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.025) 46%),
+    color-mix(in oklab, var(--cockpit-surface) 46%, transparent);
+  backdrop-filter: blur(30px) saturate(165%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.cockpit-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--cockpit-text) 22%, transparent);
+  box-shadow:
+    0 44px 86px -34px rgba(0, 0, 0, 1),
+    0 14px 34px -16px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.cockpit-card.is-selected {
+  transform: translateY(-2px);
+}
+
+/* Keep hidden panes rendered (opacity, not visibility): xterm only creates
+   its renderer/dimensions for a visible box, and hiding it is what makes its
+   viewport observer throw. */
+.terminal__pane[hidden] {
+  visibility: visible !important;
+  opacity: 0;
+  overflow: hidden;
+}

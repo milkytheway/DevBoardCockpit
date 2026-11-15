@@ -1,5 +1,6 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
+import { cardLook, CARD_GROUPS } from './cards';
 import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
 
@@ -43,6 +44,16 @@ export interface SecondaryItem {
   cardId?: string;
   /** The session id — the stable e2e hook (`data-cockpit-session-id`). */
   sessionId?: string;
+  /**
+   * A sub-heading inside the group. The card catalogue uses this to draw
+   * "Pinned" first, then the card's own bucket (性能 / 内存与温度 / …).
+   * The group id itself stays `cards` so the rows keep their one data shape.
+   */
+  section?: string;
+  /** Whether this card is pinned to the top of the catalogue. */
+  pinned?: boolean;
+  /** Toggle the pin. Drawn as a star outside the row button. */
+  onPin?: () => void;
 }
 
 export interface SecondaryGroup {
@@ -76,6 +87,9 @@ export interface SecondaryContext {
   onOpenSession: (profileId: string) => void;
   onSelectSession: (sessionId: string) => void;
   onCloseSession: (sessionId: string) => void;
+  /** Card ids the user pinned to the top of the catalogue (optional). */
+  pinnedCardIds?: string[];
+  onTogglePin?: (cardId: string) => void;
 }
 
 /** The status block — the same on every page. */
@@ -105,22 +119,39 @@ function statusGroup(ctx: SecondaryContext): SecondaryGroup {
 /** The card catalogue: every installed card, placed or not. */
 function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
   const placed = new Set(ctx.placedSlotKeys);
-  const items = ctx.cards.map((card) => {
+  const pinned = new Set(ctx.pinnedCardIds ?? []);
+  const items: SecondaryItem[] = ctx.cards.map((card) => {
     const key = slotKey(card.cardId, card.connectionId);
     const isPlaced = placed.has(key);
+    const look = cardLook(card.cardId);
+    const isPinned = pinned.has(card.cardId);
     return {
       id: card.instanceId,
-      label: card.cardId,
+      label: look.name,
       // **说清楚第二次点击会发生什么** ——
       // 摆好的卡再点一次是「撤下」，不写出来的话那是一次**静默的删除**。
-      hint: isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区',
-      tone: isPlaced ? ('active' as const) : ('default' as const),
+      hint: `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
+      tone: isPlaced ? 'active' : 'default',
       cardId: card.cardId,
+      section: isPinned ? 'Pinned' : look.group,
+      pinned: isPinned,
+      onPin: ctx.onTogglePin ? () => ctx.onTogglePin?.(card.cardId) : undefined,
       onSelect: () => {
         if (isPlaced) ctx.onRemoveCard(card);
         else ctx.onPlaceCard(card);
       },
     };
+  });
+  // Pinned first, then the card's own bucket, then name. Sorting happens in
+  // the data, so the renderer only has to draw the section headings.
+  items.sort((a, b) => {
+    const pin = Number(b.section === 'Pinned') - Number(a.section === 'Pinned');
+    if (pin !== 0) return pin;
+    const group =
+      CARD_GROUPS.indexOf(a.section as (typeof CARD_GROUPS)[number]) -
+      CARD_GROUPS.indexOf(b.section as (typeof CARD_GROUPS)[number]);
+    if (group !== 0) return group;
+    return a.label.localeCompare(b.label, 'zh-Hans-CN');
   });
   return { id: 'cards', title: '卡片', items };
 }

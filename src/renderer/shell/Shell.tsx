@@ -20,6 +20,7 @@ import {
   useConnections,
   useLayout,
   useRuntime,
+  useTagStream,
 } from './data';
 import { describeError } from './format';
 import { downloadFile, uploadFile, type FileTransferHost } from './files';
@@ -83,6 +84,18 @@ function readStoredDetailWidth(): number {
   return 380;
 }
 
+/** Card ids the user pinned in the sidebar. */
+function readStoredPins(): string[] {
+  try {
+    const raw = window.localStorage.getItem('devboard.pinnedCards');
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
   const [page, setPage] = useState<PageId>('workbench');
@@ -94,6 +107,7 @@ export function Shell(): JSX.Element {
   const [xtermTheme, setXtermTheme] = useState<XtermTheme>(readXtermTheme);
   const [secondaryOpen, setSecondaryOpen] = useState(readStoredSecondary);
   const [detailWidth, setDetailWidth] = useState(readStoredDetailWidth);
+  const [pinnedCardIds, setPinnedCardIds] = useState<string[]>(readStoredPins);
 
   const reportError = useCallback((message: string) => setError(message), []);
   const { activity, log } = useActivity();
@@ -103,6 +117,7 @@ export function Shell(): JSX.Element {
   const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
   const broker = useBroker();
   const terminal = useTerminal(connections, reportError, log);
+  const tagStream = useTagStream();
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
   // is re-read from the CSS variables after the styles have been applied.
@@ -129,6 +144,26 @@ export function Shell(): JSX.Element {
       // memory-only shell still works
     }
   }, [detailWidth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('devboard.pinnedCards', JSON.stringify(pinnedCardIds));
+    } catch {
+      // memory-only shell still works
+    }
+  }, [pinnedCardIds]);
+
+  const togglePin = useCallback(
+    (cardId: string) => {
+      setPinnedCardIds((current) =>
+        current.includes(cardId)
+          ? current.filter((id) => id !== cardId)
+          : [...current, cardId],
+      );
+      log('info', `${pinnedCardIds.includes(cardId) ? '取消置顶' : '置顶'}卡片：${cardId}`);
+    },
+    [log, pinnedCardIds],
+  );
 
   const goPage = useCallback((target: PageId) => {
     setPage(target);
@@ -254,6 +289,8 @@ export function Shell(): JSX.Element {
         onOpenSession: terminal.openSession,
         onSelectSession: terminal.selectSession,
         onCloseSession: terminal.closeSession,
+        pinnedCardIds,
+        onTogglePin: togglePin,
       }),
     [
       activity,
@@ -263,9 +300,11 @@ export function Shell(): JSX.Element {
       handlePlace,
       handleRemove,
       page,
+      pinnedCardIds,
       placedKeys,
       runtime,
       terminal,
+      togglePin,
     ],
   );
 
@@ -335,6 +374,8 @@ export function Shell(): JSX.Element {
                 terminalSubscribe={terminal.terminalSubscribe}
                 onTerminalWrite={terminal.onTerminalWrite}
                 onTerminalResize={terminal.onTerminalResize}
+                onSelectSession={terminal.selectSession}
+                onCloseSession={terminal.closeSession}
               />
             ) : null}
 
@@ -408,6 +449,9 @@ export function Shell(): JSX.Element {
           target={detail}
           width={detailWidth}
           activity={activity}
+          readings={tagStream.readings}
+          historyFor={tagStream.historyFor}
+          sampleCount={tagStream.sampleCount}
           onWidthChange={setDetailWidth}
           onClose={() => setDetail(null)}
           onRemoveCard={handleRemove}

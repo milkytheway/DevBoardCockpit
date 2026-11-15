@@ -44,15 +44,9 @@ export function WorkbenchPage({
 }): JSX.Element {
   return (
     <div className="page page--workbench">
-      <header className="page-head">
+      <header className="page-head page-head--compact">
         <div className="page-head__text">
-          <span className="page-head__eyebrow">WORKBENCH</span>
           <h1 className="page-head__title">总览</h1>
-          <p className="page-head__sub">
-            {cards.length > 0
-              ? `${cards.length} 张卡片在主区 · 拖动标题栏移动 · 拖右下角缩放`
-              : '主区还没有卡片 · 从卡片库挑一张摆进来'}
-          </p>
         </div>
         <div className="page-head__actions">
           <div className="segmented segmented--density" role="group" aria-label="卡片密度">

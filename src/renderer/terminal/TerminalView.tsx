@@ -64,6 +64,24 @@ function readToken(name: string, fallback: string): string {
   return value.length > 0 ? value : fallback;
 }
 
+/**
+ * Measure only when the host really has a box.
+ *
+ * A pane in a grid transition (or a `display:none` pane) can be measured at
+ * 0×0. xterm's renderer then has no dimensions yet and FitAddon throws
+ * "Cannot read properties of undefined (reading 'dimensions')". Skipping the
+ * measurement is correct: there is nothing to fit until the box exists.
+ */
+function safeFit(fit: FitAddon, host: HTMLElement): boolean {
+  if (host.clientWidth < 20 || host.clientHeight < 20) return false;
+  try {
+    fit.fit();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function TerminalView({
   sessionId,
   onWrite,
@@ -107,7 +125,7 @@ export function TerminalView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
-    fit.fit();
+    safeFit(fit, host);
     // **把焦点给终端**：否则开完标签直接打字没反应，
     // 而回车还会再开一个标签（焦点还在工具栏的按钮上）。
     term.focus();
@@ -129,7 +147,7 @@ export function TerminalView({
     const observer = new ResizeObserver(() => {
       // **隐藏时不要 fit**：容器 0×0，FitAddon 会量出一个假尺寸
       if (!activeRef.current) return;
-      fit.fit();
+      if (!safeFit(fit, host)) return;
       report();
     });
     observer.observe(host);
@@ -175,8 +193,9 @@ export function TerminalView({
     if (!active) return;
     const term = termRef.current;
     const fit = fitRef.current;
-    if (term === null || fit === null) return;
-    fit.fit();
+    const host = hostRef.current;
+    if (term === null || fit === null || host === null) return;
+    if (!safeFit(fit, host)) return;
     if (term.cols > 2 && term.rows > 1) onResizeRef.current?.(term.cols, term.rows);
     term.refresh(0, term.rows - 1);
     term.focus();

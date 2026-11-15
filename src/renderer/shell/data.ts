@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { LayoutState, LayoutUnit, ViewDensity } from '../../shared/layout';
 import { defaultUnit, withDensity, withUnits } from '../../shared/layout';
 import type { RuntimeStatus } from '../../shared/runtime-status';
+import type { TagReading } from '../../shared/tag-reading';
 import { CardBroker } from '../cards/broker';
 import type { ActivityEntry, ActivityLevel } from './types';
 
@@ -265,8 +266,7 @@ export function useLayout(reportError: ReportError): {
 export function useActivity(limit = 200): {
   activity: ActivityEntry[];
   log: (level: ActivityLevel, message: string) => void;
-} {
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+} {  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const idRef = useRef(0);
 
   const log = useCallback(
@@ -279,6 +279,75 @@ export function useActivity(limit = 200): {
   );
 
   return { activity, log };
+}
+
+/**
+ * The tag stream: the latest reading for every tag plus a short history.
+ *
+ * The detail panel needs **raw host data**, not the pretty value the cards
+ * draw: the same `TagReading` the main process puts into the store (status,
+ * reason, at, seq). The history is renderer memory only — the host has no
+ * "read history" IPC, and adding one is a main/contract change.
+ */
+export interface TagStream {
+  /** Latest reading per tag, sorted by tag name. */
+  readings: TagReading[];
+  latestFor: (tag: string) => TagReading | undefined;
+  historyFor: (tag: string) => readonly TagReading[];
+  /** Total number of stored samples across every tag. */
+  sampleCount: number;
+}
+
+export function useTagStream(limitPerTag = 120): TagStream {
+  const latestRef = useRef(new Map<string, TagReading>());
+  const historyRef = useRef(new Map<string, TagReading[]>());
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const api = window.cockpit;
+    if (!api) return undefined;
+    let disposed = false;
+    const push = (reading: TagReading): void => {
+      if (disposed) return;
+      latestRef.current.set(reading.tag, reading);
+      const history = historyRef.current.get(reading.tag) ?? [];
+      history.push(reading);
+      if (history.length > limitPerTag) history.splice(0, history.length - limitPerTag);
+      historyRef.current.set(reading.tag, history);
+      // One bump per batch is enough for React to re-render; a burst of
+      // pushes in the same tick is rare (the sampler groups its reads).
+      setVersion((value) => value + 1);
+    };
+    void api
+      .tagsReadings()
+      .then((list) => {
+        for (const reading of list) push(reading);
+      })
+      .catch(() => undefined);
+    const off = api.onTagChanged(push);
+    return () => {
+      disposed = true;
+      off();
+    };
+  }, [limitPerTag]);
+
+  const readings = useMemo(
+    () => [...latestRef.current.values()].sort((a, b) => a.tag.localeCompare(b.tag)),
+    // `version` is the render trigger: the maps are mutable refs.
+    [version],
+  );
+
+  const latestFor = useCallback((tag: string) => latestRef.current.get(tag), []);
+  const historyFor = useCallback(
+    (tag: string): readonly TagReading[] => historyRef.current.get(tag) ?? [],
+    [],
+  );
+  const sampleCount = useMemo(
+    () => [...historyRef.current.values()].reduce((sum, list) => sum + list.length, 0),
+    [version],
+  );
+
+  return { readings, latestFor, historyFor, sampleCount };
 }
 
 /**

@@ -9,6 +9,10 @@
  */
 export type CardTone = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose' | 'slate';
 
+/** The sidebar buckets, in display order. */
+export const CARD_GROUPS = ['性能', '内存与温度', '系统', '自定义'] as const;
+export type CardGroup = (typeof CARD_GROUPS)[number];
+
 export interface CardLook {
   /** Human name shown in the card chrome. */
   name: string;
@@ -18,6 +22,17 @@ export interface CardLook {
   icon: 'cpu' | 'gpu' | 'memory' | 'thermal' | 'board' | 'activity';
   /** Accent used for the icon tile and the card's left edge. */
   tone: CardTone;
+  /** Which sidebar bucket the card belongs to. */
+  group: CardGroup;
+  /**
+   * The tags this card is expected to read.
+   *
+   * The renderer cannot read a card's manifest (the card lives in an opaque
+   * iframe, and the host does not expose manifests over IPC). This list is
+   * display metadata for the built-in cards only; an unknown card shows an
+   * honest "the host does not disclose its tag list" note in the detail panel.
+   */
+  tags: string[];
 }
 
 const LOOKS: Record<string, CardLook> = {
@@ -26,36 +41,54 @@ const LOOKS: Record<string, CardLook> = {
     note: '总占用 · 8 核分布',
     icon: 'cpu',
     tone: 'blue',
+    group: '性能',
+    tags: ['cpu.usage', 'cpu.governor'],
   },
   'core-load': {
     name: '核心负载',
     note: 'A55 / A76 逐核负载',
     icon: 'activity',
     tone: 'cyan',
+    group: '性能',
+    tags: ['cpu.usage', 'cpu.core.*.usage', 'cpu.core.*.cluster'],
   },
   'gpu-npu': {
     name: 'GPU / NPU',
     note: '负载 · 频率 · 温度',
     icon: 'gpu',
     tone: 'violet',
+    group: '性能',
+    tags: ['gpu.usage', 'gpu.freq_hz', 'npu.usage', 'temp.gpu', 'temp.npu'],
   },
   memory: {
     name: '内存',
     note: '已用 / 可用 · 采样趋势',
     icon: 'memory',
     tone: 'green',
+    group: '内存与温度',
+    tags: ['mem.usage', 'mem.used_bytes', 'mem.total_bytes', 'mem.available_bytes'],
   },
   thermal: {
     name: '温度',
     note: 'SoC / GPU / NPU 温区',
     icon: 'thermal',
     tone: 'amber',
+    group: '内存与温度',
+    tags: ['temp.soc', 'temp.gpu', 'temp.npu'],
   },
   'board-identity': {
     name: '板卡身份',
     note: '型号 · 调频 · 背光',
     icon: 'board',
     tone: 'rose',
+    group: '系统',
+    tags: [
+      'board.model',
+      'cpu.governor',
+      'gpu.freq_hz',
+      'custom.rk3588-atk.backlight.brightness',
+      'custom.rk3588-atk.backlight1.brightness',
+    ],
   },
 };
 
@@ -64,6 +97,8 @@ const FALLBACK: CardLook = {
   note: 'AI 生成 · 沙箱运行',
   icon: 'activity',
   tone: 'slate',
+  group: '自定义',
+  tags: [],
 };
 
 export function cardLook(cardId: string): CardLook {
