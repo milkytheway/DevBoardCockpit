@@ -94,7 +94,19 @@ async function waitForDisplay(display: string): Promise<void> {
  * @param opts.env 追加的环境变量（如 `COCKPIT_FAKE=only` → 只连假设备）。
  */
 export async function launchApp(
-  opts: { executablePath?: string; userDataDir?: string; env?: Record<string, string> } = {},
+  opts: {
+    executablePath?: string;
+    userDataDir?: string;
+    env?: Record<string, string>;
+    /**
+     * **应用启动之前**往 userData 里写东西 ✓。
+     *
+     * → 为什么需要它 ✓：**流程注册表在应用启动时扫一次目录** ✓
+     *   → 流程包与批准账**必须在启动前就位** ✓（晚一步就找不到 ✓）。
+     * → 授权账（`grants.json` ✓）同理 ✓。
+     */
+    prepare?: (userDataDir: string) => void;
+  } = {},
 ): Promise<Launched> {
   const xvfb = ensureDisplay();
   if (xvfb !== undefined) await waitForDisplay(process.env['DISPLAY'] as string);
@@ -121,6 +133,8 @@ export async function launchApp(
   const root = opts.userDataDir ?? mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
   const userDataDir = join(root, APP_NAME);
   mkdirSync(userDataDir, { recursive: true });
+  // **启动前把该写的写了** ✓（流程包 · 批准账 · 授权账 ✓）
+  opts.prepare?.(userDataDir);
   const env: NodeJS.ProcessEnv = { ...process.env, ...(opts.env ?? {}) };
   if (process.platform === 'win32') {
     env['LOCALAPPDATA'] = root;
