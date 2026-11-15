@@ -197,7 +197,7 @@ export async function runWorkflow(
     stages.push(stage);
 
     // **这一步跑着的时候被叫停了 → 不跑下一步** ✓（独立评审 40 的 I-6 ✓）
-    if (opts.signal?.aborted === true) break;
+    // → 靠**下一轮开头那道**拦住 ✓（那道在跑之前就问一次「还要跑吗」✓）
 
     if (stage.reason === 'needs_confirmation') {
       needsConfirmation = {

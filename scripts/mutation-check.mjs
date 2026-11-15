@@ -1552,8 +1552,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    if (opts.signal?.aborted === true) break;\n\n    if (stage.reason === 'needs_confirmation') {",
-        "    // 变异：叫停了也往下跑\n\n    if (stage.reason === 'needs_confirmation') {",
+        "    if (opts.signal?.aborted === true) break;\n    const stage = await runStep(step, {",
+        "    // 变异：叫停了也往下跑\n    const stage = await runStep(step, {",
       ),
   },
   {
