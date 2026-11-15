@@ -1915,7 +1915,7 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '  if (origin === undefined || origin === '') return true;',
+        "  if (origin === undefined || origin === '') return true;",
         "  if (origin === undefined || origin === '') return false; // 变异：没 Origin 也拒",
       ),
   },
