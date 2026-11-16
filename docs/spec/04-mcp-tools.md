@@ -452,8 +452,8 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → {
     ok: false,
     reason: "readback_mismatch" | "denied" | "not_found"
-          | "needs_confirmation" | "timeout" | "invalid_params" | "failed"
-          | "unsupported_transport" | "guard_exceeded" | "cancelled",
+          | "timeout" | "invalid_params" | "failed"
+          | "unsupported_transport" | "cancelled",
     expected: true, actual: false,
   }
 ```
@@ -494,7 +494,6 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 | `actionId` | 板型包里声明的动作 id（不是卡片 id） |
 | `params` | 按动作声明的参数 |
 | `dry_run` | 只返回「将会执行什么」，不执行 |
-| `confirm_id` | 用户已确认的那一次执行的凭据（`§2.4.1`） |
 
 **为什么要按动作 id 而不是卡片 id**：动作是板子的能力，卡片只是引用者。同一张卡可以调多个动作，同一个动作也可以被多张卡调。按动作 id 授权更精确（授权的是「改背光」这件事，不是「这张卡」）。
 
@@ -508,8 +507,8 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 3. 校验参数（类型、范围、枚举）→ 否则 `invalid_params`
 4. **`dry_run: true` → 直接返回将要执行的命令 + 参数**（**不执行、不回读、不写审计**）
    —— **它在第 5/6 步之前** ✓：否则 agent 永远拿不到 `destructive` 动作的预览 ✗
-5. 参数超出该动作的 `guard` 域 → `needs_confirmation`（**另带 `guard_exceeded: true`** ✓）
-6. `danger: destructive` 且未获确认 → `needs_confirmation`
+5. 参数超出该动作的 `guard` 域 → **`denied`** ✓（**guard 是包作者划的界** ✓ —— **超出去就是不许可** ✓）
+6. **`danger: destructive` → 照做** ✓（**不再问人** ✓ —— **危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓ · `03` §2.4 ✓ · **ADR-D48** ✓）
 7. 执行 → 失败则 `failed`（命令非零退出）；串口上不支持依赖退出码的动作则 `unsupported_transport`
 8. 回读 → 不符则 `readback_mismatch`。
    **若该动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5）→ 跳过回读，
@@ -546,8 +545,12 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 | 档 | agent 怎么做 |
 |---|---|
 | `reversible`，参数在 `guard` 域内 | agent 直接可以执行，**记审计日志** |
-| `reversible`，参数**超出** `guard` 域 | 走一次确认（同 `destructive` 的流程） |
-| `destructive` | **必须有人在 GUI 里点确认**。agent 提交请求，然后等 |
+| `reversible`，参数**超出** `guard` 域 | **`denied`** ✓（**guard 是包作者划的界** ✓ —— **超出去就是不许可** ✓） |
+| `destructive` | **照做** ✓（**不再问人** ✓ —— **危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓ · `03` §2.4 ✓ · **ADR-D48** ✓） |
+
+> **2026-11-16 改**（**ADR-D48** ✓ · 用户原话：「**不要再问"命令危不危险"，
+> 一律都用权限，开启权限默认知道危险性**」✓）—— **原来 destructive 要人点头** ✓
+> → **现在不问了** ✓ → **危险的动作在设置里默认关** ✓（**打开它就是那一下知情** ✓）。
 
 **三条细则**：
 
@@ -561,28 +564,18 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 > 它是**这个位置的护栏** ✓——将来若加「按连接/按用户的更窄授权」✓，这个理由码已经在那儿了 ✓。
 > **说清楚**：不要以为它一直在生效 ✗。
 
-**破坏性动作的确认需要人。** agent 不能自己造确认凭据。
+**没有确认链了** ✓（**2026-11-16 砍掉** ✓ —— ADR-D48 ✓）。
 
-流程：
+→ **agent 调 `execute_action` → 直接执行** ✓（**destructive 也是** ✓）。
+→ **参数超出 `guard` → `denied`** ✓。
+→ **`confirm_action` / `confirm_workflow` 两个工具没了** ✓（**21 → 19** ✓）——
+  **确认凭据那一整套也没了** ✓（`ConfirmationStore` ✓ · `requestConfirmation` ✓ ·
+  `approveAndResume` ✓ · `confirm_id` ✓ · `workflow:confirm` ✓）。
 
-1. agent 调 `execute_action(actionId, params)`，动作是 `destructive`（或参数超出 `guard`）
-2. 返回 `ok: false, reason: "needs_confirmation"`，带一个 `confirm_id`
-3. **GUI 弹出模态框**，显示这个动作要做什么、参数是什么
-4. 用户点「确认」或「取消」
-5. 用户点完后，agent **再调一次** `execute_action`，这次带上 `confirm_id`
-6. 这次才真的执行
-
-也就是说：**人机交互发生在 GUI 里，agent 只是重试。**
-（**卡片那条路不一样** ✓ —— **用户点按钮就是那一下人点** ✓，`03` §2.4 ✓ · ADR-D46 ✓。）
-
-**为什么不让 agent 自己确认**：agent 是概率性的，它可能误解意图。
-重启板子这种动作不可逆，值得多一次确认——而「多一次确认」只有在**人**参与时才有意义。
-一个能自己给自己发确认的确认框，等于没有确认框。
-
-**确认界面必须显示最终命令与参数域。** 光显示动作名不够：
-「重启板子」背后是 `reboot`，而「把背光调到 30」背后是
-`echo 30 > /sys/class/backlight/backlight/brightness`。
-用户要看到的是**将要发生什么**，不是动作的标签。
+**那 agent 怎么被管住** ✓：**设置里的统一权限区** ✓（`03` §2.4 ✓ · ADR-D47 ✓）——
+→ **每一条操作一行** ✓ · **两种执行者两个开关** ✓（**卡片** / **agent** ✓）
+→ **危险的动作默认关** ✓（**打开它就是那一下知情** ✓）
+→ **它就是那本账** ✓（**一个地方** ✓ —— 不再有第二份「谁授过」✓）。
 
 **agent 不能做的事**：agent 不能改授权本身。它不能给自己提权，
 也不能修改任何卡片的授权。它只能执行已声明的动作。
@@ -667,17 +660,17 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 | **有 `run_id` 吗** | **没有** ✓ —— 没有运行 → 没有运行 id ✓ |
 | **占位符** | **输入值按类型编码后替换** ✓（字符串带引号 ✓ —— 同 `02` §4.6 ✓）；**角色事实与输出槽留占位** ✓ —— **没连接、没跑，不知道** ✓ |
 | **危险等级** | 每步都要给 ✓（默认 `reversible` ✓）—— agent 要知道**哪一步会毁东西** ✓ |
-| **没批过的流程** | **不给预览** ✓（`not_approved` ✓）—— 预览会泄出「这个包会干什么」✓ —— **那是没授权方不该知道的** ✗ |
+| **没有的流程** | **不给预览** ✓（`not_found` ✓）—— 预览会泄出「这个包会干什么」✓ —— **那是没授权方不该知道的** ✗ |
 
 #### `workflow_status(run_id)`
 
 ```
-→ { state: "running" | "awaiting_confirmation" | "done" | "failed" | "cancelled",
+→ { state: "running" | "done" | "failed" | "cancelled",
     current: { stepId, kind, at } | null,
     stages: [ { stepId, kind, ok, verified, reason?, audit_id } ] }
 ```
 
-> **`current` = 当前这一步**（`05` §八·B ✓）：**正在跑** ✓ **或** **停下等人点头** ✓；
+> **`current` = 当前这一步**（`05` §八·B ✓）：**正在跑** ✓；
 > 运行已结束 → `null` ✓。
 > → `at` = **那一步开始的时刻** ✓（界面据此算「已经用了多久」✓）。
 > → **`current` 是活快照**（会变 ✓），`stages` 是**只增不改** ✓（两者幂等性不同 ✓，`05` §八·B·B3 ✓）。
@@ -688,85 +681,6 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 
 **agent 没有取消流程的工具** ✓ —— **「停不停」是人的判断** ✓（`05` §八·A·A4 ✓）：
 「行不行」不给 agent ✓（§2.4.1 ✓），「停不停」也不给 ✓。
-
-#### `confirm_workflow(run_id)`
-
-```
-→ { confirm_id: "...", expires_at: 1762910000000 }
-```
-
-**递一次确认请求**（人点了才有效 ✓）。
-
-> **`expires_at` 是毫秒 UTC 的绝对时刻** ✓（同 §四 的「时间」那条 ✓）。
-
-> **⚠️ 这个工具不使凭据生效** ✓ —— 它只是把请求递到 GUI 的确认队列 ✓
-> （同 `confirm_action` ✓）。**「批准」这个动作不是 MCP 工具** ✓——
-> 它在 GUI 那一侧 ✓。**agent 调不到它** ✓。
-
-#### `confirm_action(actionId, params, device_key?)`
-
-```
-→ { confirm_id: "...", expires_at: 1762910000000 }
-```
-
-请求对 `destructive` 动作的一次确认。
-
-**注意**：这个工具**不返回可直接使用的凭据**——它只是把请求递到 GUI 的确认队列，
-并给 agent 一个 `confirm_id`。真正的确认要等**人**点了之后，`confirm_id` 才有效。
-没有人点，`confirm_id` 永远无效。
-
-`execute_action` 带 `confirm_id` 重试时，若用户已点确认则执行，否则仍返回
-`needs_confirmation`。
-
-> **`expires_at` 是毫秒 UTC 的绝对时刻** ✓（同 §四 的「时间」那条 ✓）。
-> —— 本节早前写的 `1762910060` 是**笔误**（那是秒级）✓。
-
-##### `confirm_id` 的生命周期（**动作与流程同一套** ✓）
-
-`confirm_id` 是「人已经批准了**这一次**特定执行」的凭据，所以它必须绑得很死：
-
-| 项 | 规则 |
-|---|---|
-| 绑定 | `(动作 id, 参数的规范化摘要, 板型包 id, 契约版本, **这一步最终命令的摘要**, **device_key**)` |
-| 参数变化 | **参数一变，凭据立即失效**。用户批准的是「把背光调到 30」，不是「把背光调到任意值」 |
-| 一次性 | **消费即失效**。用一次就作废，不能重放 |
-| 有效期 | 默认 5 分钟（`expires_at`）。过期后要重新请求 |
-| 确认界面 | 必须显示动作名、**参数与最终命令**、参数域，以及这次执行的后果 |
-| 用户拒绝 | `confirm_id` 立即作废，不再有效；agent 收到 `denied` |
-| 数量 | 同一动作可以同时挂多个待确认请求（agent 并行提问），但各自独立 |
-
-> **为什么要绑「最终命令的摘要」** ✓：最终命令是**消费时现算**的 ✓ ——
-> 不绑它 ✓ → 同一张凭据可能认得**两条不同的命令** ✗（同 `05` §7.5-3 的同款理由 ✓）。
-
-**流程层的扩展**（`05` §7.5 ✓）：
-
-| 项 | 流程层的规则 |
-|---|---|
-| **绑定** | `(动作 id（含**步骤 id**）, 参数摘要 + **这一步的输入摘要**, **这一步最终命令的摘要**, 包 id, 契约版本)` |
-| **谁能批** | **只有人点的路径**（GUI 确认界面 / 宿主命令行 ✓）—— **agent 只能递请求** ✓ |
-| **批完怎么续** | 流程**从停住的那一步继续**（**前面的步不重跑** ✓），**同一个 `run_id`** ✓ |
-| **重新触发** | **= 从头再跑** ✓（与「续跑」是**两条互斥的路** ✓） |
-
-> **为什么绑参数摘要**：如果凭据只绑动作 id，agent 完全可以先要一次
-> 「把背光调到 30」的批准，再拿同一个 `confirm_id` 去执行「把背光调到 0」——
-> 人批准的那一次和实际执行的那一次不是同一件事。
-> 绑定参数摘要 + 一次性消费，是让「人确认过」这句话有确切所指的两条最小机制。
-
-##### 参数域与确认的关系
-
-`execute_action` 的参数若**超出该动作的 `guard` 域**（`02` §5.5），
-即使动作是 `reversible`，也要走同一条确认通道：
-
-| 情形 | 返回 |
-|---|---|
-| 动作 `destructive` | `needs_confirmation` |
-| 参数超出 `guard` 域 | `needs_confirmation`（`reason` 同为 `needs_confirmation`，另带 `guard_exceeded: true`） |
-| 动作 `reversible` 且参数在域内 | 直接执行 |
-
-> **`guard_exceeded` 是一个标志位，不是 `reason` 码** ✓——
-> `reason` **恒为 `needs_confirmation`** ✓。
-
----
 
 ### 2.5 布局
 
@@ -887,10 +801,7 @@ get_card_runtime_log(id)     ← MCP：看运行结果
 | `invalid_params` | 参数不合（类型/范围/枚举/取值非法） | **全部** ✓ |
 | `not_found` | 东西不存在（动作/流程/卡片/读数**同名同义** ✓ ADR-D27 ✓） | **全部** ✓ |
 | `denied` | 不许做（用户拒绝 / 无授权） | 写侧 ✓ |
-| `needs_confirmation` | 要人点头（**带 `confirm_id`** ✓） | 写侧 ✓ |
-| `not_approved` | 这个包/流程**用户还没批过** | 流程 ✓ |
 | `busy` | 同一件事正在跑，不能并发 | 流程 ✓ |
-| `no_pending_confirmation` | 这次运行**没有待确认的步骤** | `confirm_workflow` ✓ |
 | `invalid` | 内容不合法（manifest 本身不合法） | 卡片侧 ✓ |
 | `failed` | 别的失败 | **全部** ✓ |
 | `readback_mismatch` | 回读到的值与期望不符 | `execute_action` ✓ |
@@ -898,8 +809,8 @@ get_card_runtime_log(id)     ← MCP：看运行结果
 | `unsupported_transport` | 回读要退出码而这条连接没有（串口） | `execute_action` ✓ |
 | `cancelled` | **被叫停**（不是失败 ✓） | `execute_action` ✓ |
 
-> **`guard_exceeded` 不在这张表里** ✓ —— 它是一个**标志位** ✓，
-> `reason` **恒为 `needs_confirmation`** ✓（§2.4 ✓）。
+> **`guard_exceeded` 不在这张表里** ✓ —— 2026-11-16 起**没有这个标志位了** ✓
+> （**超 guard 域直接 `denied`** ✓ —— **§2.4 ✓**）。
 
 > **码表加项 = 契约变更** ✓ —— 与 `danger_floor_version`（`02` §5.2.1 ✓）、
 > `reason_code_version`（`01` §2.1.1 ✓）是**同一套治理** ✓：
