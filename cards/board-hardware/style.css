@@ -1,0 +1,131 @@
+/* 板卡硬件：一张「这块板有什么 · 怎么自己验」的清单。
+   颜色只用 --cockpit-*（契约 §六：卡片只许用宿主注入的变量）。 */
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  padding: 12px 14px;
+  background: transparent;
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+}
+
+.hw {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------- 头 ---------- */
+
+.hw__head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hw__title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hw__applies {
+  font-size: 10.5px;
+  color: var(--cockpit-text-dim);
+}
+
+.hw__applies.is-ok {
+  color: var(--cockpit-ok);
+}
+
+.hw__applies.is-warn {
+  color: var(--cockpit-warn);
+}
+
+/* ---------- 清单 ---------- */
+
+.hw__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+
+.hw__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'head live'
+    'spec live'
+    'cmd  live';
+  column-gap: 8px;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+.hw__item-head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hw__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cockpit-text);
+}
+
+.hw__ref {
+  font-family: var(--cockpit-font-mono);
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+}
+
+.hw__spec {
+  grid-area: spec;
+  font-size: 10.5px;
+  color: var(--cockpit-text-dim);
+  line-height: 1.45;
+}
+
+.hw__cmd {
+  grid-area: cmd;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  color: var(--cockpit-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hw__live {
+  grid-area: live;
+  align-self: center;
+  font-family: var(--cockpit-font-mono);
+  font-size: 12px;
+  color: var(--cockpit-text);
+  white-space: nowrap;
+}
+
+.hw__src {
+  margin: auto 0 0;
+  font-size: 9.5px;
+  color: var(--cockpit-text-faint);
+}

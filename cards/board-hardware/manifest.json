@@ -1,0 +1,18 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "board-hardware",
+  "name": "板卡硬件",
+  "version": "1.0.0",
+  "description": "按《ATK-DLRK3588 Buildroot 快速体验手册 V1.1》整理的硬件清单与自检命令；实时读数取自板型包",
+  "entry": "index.html",
+  "requires": {
+    "tags": ["board.model"]
+  },
+  "layout": { "w": 4, "h": 5, "min_w": 3, "min_h": 3 },
+  "permissions": {
+    "read": ["board.model", "temp.soc", "npu.usage"],
+    "write": []
+  },
+  "actions": []
+}

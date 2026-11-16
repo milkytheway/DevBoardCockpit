@@ -2569,6 +2569,37 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M212 卡片：**手册的关键事实不许错** ✓（**写错了就是在骗人** ✗）',
+    file: 'cards/board-hardware/card.js',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/board-hardware-card.test.ts'],
+    expect: '手册的关键事实都在',
+    apply: (s) => replace(s, 'GPIO1_A3', 'GPIO1_A4'), // 变异：引脚写错
+  },
+  {
+    name: 'M213 卡片：**先认「是不是手册那块板」** ✓（**不装作适用** ✗）',
+    file: 'cards/board-hardware/card.js',
+    check: ['npx', 'vitest', 'run', 'tests/web/board-hardware-card.test.tsx'],
+    expect: '不是手册那块 → 明说不适用',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (model.includes(BOARD_KEY)) {',
+        '  if (true) { // 变异：不管什么板都说适用',
+      ),
+  },
+  {
+    name: 'M214 卡片：**「读不到」不是 0** ✓（**没数与零是两件事** ✓）',
+    file: 'cards/board-hardware/card.js',
+    check: ['npx', 'vitest', 'run', 'tests/web/board-hardware-card.test.tsx'],
+    expect: '读不到就说读不到',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (status === 'unavailable') return '读不到';",
+        "  if (status === 'unavailable') return '0'; // 变异：读不到就说 0",
+      ),
+  },
+  {
     name: 'M211 卡片：**跑的时候把输入带上** ✓（**不传空参数** ✓）',
     file: 'cards/build-deploy/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
