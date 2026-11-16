@@ -8,7 +8,6 @@ import type { ActionDef, PackParam, ReadbackDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
 import type { ConnectionProfile } from '../profiles/schema';
 import { deviceKeyOf } from '../profiles/schema';
-import type { Confirmations } from '../actions/executor';
 import { quotePath } from '../util/shell-quote';
 import type { Connection } from '../hal/connection';
 import { capabilitiesFor } from '../hal/capabilities';
@@ -67,7 +66,6 @@ export interface WorkflowRunResult {
   /** 产出的槽 */
   outputs: Record<string, string>;
   /** 有一步要人确认（自由命令命中了危险地板） */
-  needsConfirmation?: { stepId: string; confirmId: string; detail: string };
 }
 
 /**
@@ -102,7 +100,6 @@ export interface WorkflowRunDeps {
    * → **直接用执行器那份形状** ✓（**不是在这里重抄一遍** ✓ ——
    *   重抄 → **绑定项一加就漂移** ✗ —— 上次加「最终命令摘要」时就漂了 ✓）。
    */
-  confirmations?: Confirmations;
   /** 现在（毫秒） */
   now?: () => number;
 }
@@ -110,8 +107,6 @@ export interface WorkflowRunDeps {
 export interface WorkflowRunOptions {
   /** **这次运行已经被人点头了**（宿主跑它 = 点头 ✓；ADR-D31 R2） */
   approved?: boolean;
-  /** 每一步的确认凭据（step id → confirm_id） */
-  confirmIds?: Record<string, string>;
   /**
    * **从第几步开始跑**（续跑时用 ✓）。
    *
@@ -145,7 +140,6 @@ export async function runWorkflow(
   const runId = opts.runId ?? `wf-${at.toString(36)}`;
   const outputs: Record<string, string> = {};
   const stages: WorkflowStage[] = [];
-  let needsConfirmation: WorkflowRunResult['needsConfirmation'];
 
   // ── 输入：**默认值先填上**（调用方给的值优先 ✓）──
   // → 契约 §二：`default` = 「调用方没给时用它」✓
@@ -216,14 +210,6 @@ export async function runWorkflow(
     // **这一步跑着的时候被叫停了 → 不跑下一步** ✓（独立评审 40 的 I-6 ✓）
     // → 靠**下一轮开头那道**拦住 ✓（那道在跑之前就问一次「还要跑吗」✓）
 
-    if (stage.reason === 'needs_confirmation') {
-      needsConfirmation = {
-        stepId: step.id,
-        confirmId: String((stage.value as { confirmId?: string } | undefined)?.confirmId ?? ''),
-        detail: stage.detail ?? '这一步要人确认',
-      };
-      break;
-    }
     if (!stage.ok) {
       // `assert` 不符时可以不中断（`on_mismatch: continue`）
       if (step.kind === 'assert' && step.on_mismatch === 'continue') continue;
@@ -234,10 +220,9 @@ export async function runWorkflow(
   return {
     runId,
     packId: pack.id,
-    ok: stages.every((s) => s.ok) && needsConfirmation === undefined,
+    ok: stages.every((s) => s.ok),
     stages,
     outputs,
-    ...(needsConfirmation === undefined ? {} : { needsConfirmation }),
   };
 }
 
@@ -354,11 +339,6 @@ async function runExec(
     action,
     {},
     executorDeps(ctx, profileId, action.id, step.timeout_ms),
-    {
-      ...(ctx.opts.confirmIds?.[step.id] === undefined
-        ? {}
-        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
-    },
   );
   const cross = await crossRoleReadback(step, ctx, substitution, role, started);
   // **`out` 槽 = 这条命令的输出**（凭据准备那一步靠它把公钥交给下一步 ✓）
@@ -386,9 +366,6 @@ async function runExec(
       : cross.value === undefined
         ? {}
         : { value: cross.value }),
-    ...(outcome.needsConfirmation === undefined
-      ? {}
-      : { value: { confirmId: outcome.needsConfirmation.confirmId } }),
   };
 }
 
@@ -468,12 +445,6 @@ async function runAction(
     def,
     values,
     executorDeps(ctx, profileId, def.id, step.timeout_ms),
-    {
-      // **destructive 的动作步也要能确认**（两条评审都点了这一条 ✓）
-      ...(ctx.opts.confirmIds?.[step.id] === undefined
-        ? {}
-        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
-    },
   );
   return {
     stepId: step.id,
@@ -686,11 +657,6 @@ async function runTransfer(
     action,
     {},
     executorDeps(ctx, profileId, action.id, step.timeout_ms),
-    {
-      ...(ctx.opts.confirmIds?.[step.id] === undefined
-        ? {}
-        : { confirmId: ctx.opts.confirmIds[step.id] as string }),
-    },
   );
 
   // **传输命令自己没成 → 按判据处理那个半截文件** ✓（契约 §八·C ✓）
@@ -970,54 +936,6 @@ function toReadbackDef(
 }
 
 /**
- * 确认凭据：**必须绑住这一步的输入** ✓。
- *
- * ── 为什么不能只绑动作参数 ──
- *
- * 执行器的确认凭据绑的是 `(动作 id, 参数摘要, 板型包 id, 契约版本)`。
- * 流程的自由命令**没有动作参数** → 摘要恒为空 →
- * **同一张凭据换一组 inputs 就能复用** ✗（两条评审都点了这一条 ✓）。
- * → 把**这一步的输入**并进摘要里 ✓ → 换输入 = 换摘要 = 凭据作废 ✓。
- */
-function confirmationsFor(ctx: StepContext): NonNullable<WorkflowRunDeps['confirmations']> {
-  const store = ctx.deps.confirmations;
-  if (store === undefined) {
-    return {
-      issue: () => '',
-      consume: () => false,
-      approve: () => false,
-      request: () => false,
-      revoke: () => false,
-    };
-  }
-  const bind = (params: Record<string, unknown>): Record<string, unknown> => ({
-    ...params,
-    // **输入进摘要**（键名加前缀，免得跟动作参数重名 ✓）
-    ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),
-  });
-  return {
-    issue: (actionId, params, packId, contractVersion, now, commandDigest, deviceKey) =>
-      store.issue(actionId, bind(params), packId, contractVersion, now, commandDigest, deviceKey),
-    // **批准不绑参数**（它是「人点了」那一下 ✓ —— 摘要管的是「这一次执行」✓）
-    approve: (token, now) => store.approve(token, now),
-    // **请求也不绑**（它不批准任何东西 ✓ —— 只是「有人在等」✓）
-    request: (token: string, now: number) => store.request(token, now),
-    // **撤销**（作废 ✓ —— 取消运行的时候用 ✓）
-    revoke: (token: string) => store.revoke(token),
-    consume: (token, actionId, params, packId, contractVersion, now, commandDigest, deviceKey) =>
-      store.consume(
-        token,
-        actionId,
-        bind(params),
-        packId,
-        contractVersion,
-        now,
-        commandDigest,
-        deviceKey,
-      ),
-  };
-}
-
 /** 执行器需要的依赖（**接到指名目标上** ✓ —— 计划 5 的 A17） */
 function executorDeps(ctx: StepContext, profileId: string, actionId: string, timeoutMs?: number) {
   const profile = ctx.deps.profileFor(profileId);
@@ -1035,11 +953,10 @@ function executorDeps(ctx: StepContext, profileId: string, actionId: string, tim
     granted: () => ({
       actions: {
         // **这次运行被人启用了 → 这个动作算已授权**（ADR-D31 R2 的信任模型 ✓）
-        // ——但**命中危险地板仍要单次确认**（地板的规矩不让步 ✓）
+        // —— **不再有「命中地板要单次确认」** ✓（ADR-D48 ✓ —— **地板是校验与显示用的** ✓）
         [actionId]: undefined,
       },
     }),
-    confirmations: confirmationsFor(ctx),
     audit: (row: AuditRow) =>
       ctx.deps.audit({ ...row, actor: row.actor === 'unknown' ? `workflow:${ctx.pack.id}` : row.actor }),
     actor: `workflow:${ctx.pack.id}`,

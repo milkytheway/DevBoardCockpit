@@ -11,13 +11,14 @@ import {
 /**
  * **统一权限区**（设置页的那张表 ✓ · ADR-D47 ✓）。
  *
- * ── 三条判据 ──
+ * ── 四条判据 ──
  *
  * | # | 判据 | 为什么 |
  * |---|---|---|
  * | 1 | **卡片写板子：默认禁止** ✓ | **这堵住 C2** ✓ —— **宿主分不出「人点了按钮」与「卡片自己调的」** ✗ → **默认不给** ✓ |
- * | 2 | **卡片触发流程：默认允许** ✓ | **流程包的批准账才是那道闸** ✓ —— 「编译上板」那张卡**点一下就执行** ✓ |
- * | 3 | **agent：默认允许** ✓ | **它另有人的确认** ✓（destructive ✓ · `confirm_action` ✓）—— **别把它也关了** ✗ |
+ * | 2 | **卡片触发流程：默认允许** ✓ | **流程包存在即说明** ✓ —— 「编译上板」那张卡**点一下就执行** ✓ |
+ * | 3 | **agent：默认允许** ✓ | —— **别把它也关了** ✗ |
+ * | 4 | **危险的动作：默认禁止** ✓（**两个执行者都是** ✓） | **「开启权限默认知道危险性」** ✓ —— **打开它就是那一下知情** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓） |
  */
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), 'perm-')), 'permissions.json');
@@ -101,6 +102,48 @@ describe('统一权限区', () => {
     expect(defaultAllowed('card', 'workflow:x')).toBe(true);
     expect(defaultAllowed('card', 'host:x')).toBe(true);
     expect(defaultAllowed('agent', 'action:x')).toBe(true);
+  });
+
+  it('**危险的动作：默认禁止** ✓（**两个执行者都是** ✓ —— 「**开启权限默认知道危险性**」✓）', () => {
+    // **危险的动作默认关** ✓（**打开它就是那一下知情** ✓ —— ADR-D48 ✓）
+    expect(defaultAllowed('card', 'action:x', true)).toBe(false);
+    expect(defaultAllowed('agent', 'action:x', true)).toBe(false);
+    // **不危险的还是照旧** ✓（**这条不许被误伤** ✓）
+    expect(defaultAllowed('card', 'action:x', false)).toBe(false);
+    expect(defaultAllowed('agent', 'action:x', false)).toBe(true);
+  });
+
+  it('**危险等级从操作表里读** ✓（`setKnown` 记下等级 ✓ —— `allows` 靠它判 ✓）', () => {
+    const store = new PermissionStore(tmpFile());
+    store.setKnown([
+      { op: 'action:backlight.set', label: '设置背光亮度', kind: 'action', danger: 'reversible' },
+      { op: 'action:system.reboot', label: '重启板子', kind: 'action', danger: 'destructive' },
+      { op: 'workflow:build', label: '编译', kind: 'workflow' },
+    ]);
+    // **危险的动作：两个执行者都默认关** ✓
+    expect(store.allows('card', 'action:system.reboot')).toBe(false);
+    expect(store.allows('agent', 'action:system.reboot')).toBe(false);
+    // **不危险的动作照旧** ✓（**agent 默认开** ✓）
+    expect(store.allows('agent', 'action:backlight.set')).toBe(true);
+    // **流程不按危险等级判** ✓（**流程靠「存在即说明」** ✓）
+    expect(store.allows('card', 'workflow:build')).toBe(true);
+    // **危险等级问得出来** ✓（**设置页要写着** ✓）
+    expect(store.dangerOf('action:system.reboot')).toBe('destructive');
+    expect(store.dangerOf('action:backlight.set')).toBe('reversible');
+    expect(store.dangerOf('workflow:build')).toBeUndefined();
+  });
+
+  it('**人把危险动作打开 → 它就开** ✓（**那一下就是知情** ✓ —— **不再有弹窗** ✓）', () => {
+    const store = new PermissionStore(tmpFile());
+    store.setKnown([
+      { op: 'action:system.reboot', label: '重启板子', kind: 'action', danger: 'destructive' },
+    ]);
+    expect(store.allows('agent', 'action:system.reboot')).toBe(false);
+    // **人在设置里打开** ✓ → **显式的优先于默认** ✓
+    store.set('agent', 'action:system.reboot', true);
+    expect(store.allows('agent', 'action:system.reboot')).toBe(true);
+    // **卡片那边仍然是关** ✓（**两个执行者分开记** ✓）
+    expect(store.allows('card', 'action:system.reboot')).toBe(false);
   });
 
   it('**账是 JSON** ✓（**人看得懂** ✓）', () => {

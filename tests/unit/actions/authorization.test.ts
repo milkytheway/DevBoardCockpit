@@ -1,26 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import {
-  authorize,
-  ConfirmationStore,
-  type GrantedActions,
-} from '../../../src/main/actions/authorization';
+import { authorize, type GrantedActions } from '../../../src/main/actions/authorization';
 import type { ActionDef } from '../../../src/main/tags/schema';
-import { checkFloor } from '../../../src/main/actions/floor-check';
 
 /**
- * 授权与确认 —— 契约 `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4.1。
+ * 授权 —— 契约 `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4.1。
  *
- * ── 授权粒度 = 动作 id + 可选参数域 ──
+ * ── **只有两条判据**（**2026-11-16 砍完** ✓ · ADR-D48 ✓）──
  *
  * | 情形 | 行为 |
  * |---|---|
- * | `reversible` 且参数落在 `guard` 域内 | **直接执行**（仍记审计） |
- * | `reversible` 但参数**超出** `guard` | 走一次确认（与 destructive 同一条通道） |
- * | `destructive` | **必须有人在 GUI 里点确认** |
- * | 动作没被授权 | 拒绝 |
+ * | 动作**在授权集里** + 参数**落在 `guard` 域内** | **直接执行**（仍记审计） |
+ * | 动作**没被授权** | **拒绝** |
+ * | 参数**超出 `guard` 域** | **拒绝**（**不是「问不问」** ✓） |
+ * | `destructive` | **直接执行**（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓） |
  *
- * **超出 guard 不是拒绝**——guard 是「装卡时批准的那一档」，
- * 超出它只是**超出了批准范围**，要人再点一次。
+ * → **没有第三档了** ✓（`needs_confirmation` 那一档没了 ✓ —— ADR-D48 ✓）。
  */
 const ACTION: ActionDef = {
   id: 'backlight.set',
@@ -36,37 +30,41 @@ const GRANTED: GrantedActions = {
   actions: { 'backlight.set': { value: { min: 16, max: 255 } } },
 };
 
-describe('授权 · 四种情形', () => {
+describe('授权 · 两条判据', () => {
   it('reversible + 域内 + 已授权 → ok（直接执行）', () => {
-    const result = authorize(ACTION, { value: 100 }, GRANTED, checkFloor('echo 100 > /tmp/x'));
+    const result = authorize(ACTION, { value: 100 }, GRANTED);
     expect(result.verdict).toBe('ok');
   });
 
   it('动作**没被授权** → denied', () => {
-    const result = authorize(ACTION, { value: 100 }, { actions: {} }, checkFloor('echo 100 > /tmp/x'));
+    const result = authorize(ACTION, { value: 100 }, { actions: {} });
     expect(result.verdict).toBe('denied');
   });
 
-  it('destructive → needs_confirmation（**必须有人在 GUI 里点**）', () => {
+  it('destructive → ok（**直接执行**，不再问人 ✓ —— **危险等级只是信息** ✓）', () => {
     const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
-    const result = authorize(destructive, { value: 100 }, GRANTED, checkFloor('echo 100 > /tmp/x'));
-    expect(result.verdict).toBe('needs_confirmation');
-  });
-
-  it('reversible 但参数**超出 guard** → needs_confirmation（不是拒绝）', () => {
-    const result = authorize(ACTION, { value: 5 }, GRANTED, checkFloor('echo 5 > /tmp/x'));
-    expect(result.verdict).toBe('needs_confirmation');
-  });
-
-  it('**地板命中** → 当成 destructive（走确认，不是直接执行）', () => {
-    // 命令本身是 `reversible` 的动作，但编码后的命令命中了地板
-    const result = authorize(ACTION, { value: 100 }, GRANTED, checkFloor('rm -rf /'));
-    expect(result.verdict).toBe('needs_confirmation');
-  });
-
-  it('地板没命中 → 不影响授权（还是 ok）', () => {
-    const result = authorize(ACTION, { value: 100 }, GRANTED, checkFloor('echo 100 > /tmp/x'));
+    const result = authorize(destructive, { value: 100 }, GRANTED);
     expect(result.verdict).toBe('ok');
+  });
+
+  it('reversible 但参数**超出 guard** → denied（**不是「问人」** ✓）', () => {
+    const result = authorize(ACTION, { value: 5 }, GRANTED);
+    expect(result.verdict).toBe('denied');
+  });
+
+  it('**超出域时说得出是哪个参数** ✓（人看得懂 ✓）', () => {
+    const result = authorize(ACTION, { value: 5 }, GRANTED);
+    expect(result.param).toBe('value');
+    expect(result.detail ?? '').toContain('value');
+  });
+
+  it('**结果只有两档** ✓（`needs_confirmation` 那一档没了 ✓ —— ADR-D48 ✓）', () => {
+    const verdicts = new Set<string>();
+    verdicts.add(authorize(ACTION, { value: 100 }, GRANTED).verdict);
+    verdicts.add(authorize(ACTION, { value: 5 }, GRANTED).verdict);
+    verdicts.add(authorize(ACTION, { value: 100 }, { actions: {} }).verdict);
+    verdicts.add(authorize({ ...ACTION, danger: 'destructive' }, { value: 100 }, GRANTED).verdict);
+    expect([...verdicts].sort()).toEqual(['denied', 'ok']);
   });
 });
 
@@ -74,123 +72,32 @@ describe('授权 · 参数域的判据', () => {
   it('没有声明 guard → 用参数自己声明的域（0..255 全域）', () => {
     const noGuard: ActionDef = { ...ACTION, guard: undefined };
     const granted: GrantedActions = { actions: { 'backlight.set': undefined } };
-    const result = authorize(noGuard, { value: 5 }, granted, checkFloor('echo 5 > /tmp/x'));
+    const result = authorize(noGuard, { value: 5 }, granted);
     expect(result.verdict).toBe('ok');
   });
 
-  it('越出参数自己声明的域 → needs_confirmation（装卡时没批准过这一档）', () => {
+  it('越出参数自己声明的域 → denied（**guard 只是更窄的那一档** ✓）', () => {
     const noGuard: ActionDef = { ...ACTION, guard: undefined };
     const granted: GrantedActions = { actions: { 'backlight.set': undefined } };
-    const result = authorize(noGuard, { value: 999 }, granted, checkFloor('echo 999 > /tmp/x'));
-    expect(result.verdict).toBe('needs_confirmation');
-  });
-});
-
-describe('确认凭据 · confirm_id', () => {
-  const packId = 'rk3588-atk';
-  const contract = 'devboard/v1';
-  /** **这块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓） */
-  const device = 'atk-01';
-
-  it('**签发 ≠ 有效**：没被人点过，用不了（契约 spec/04 §2.4.1 ✓）', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    // **签发只是「递了个请求」**（契约：「没有人点，confirm_id 永远无效」✓）
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(false);
-    // **人点了之后**才可用 ✓
-    expect(store.approve(token, 1_200)).toBe(true);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(true);
+    const result = authorize(noGuard, { value: 999 }, granted);
+    expect(result.verdict).toBe('denied');
   });
 
-  it('**第二次用不行**（一次性）', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(true);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(false);
+  it('**授权集把域收得更窄** → 按更窄的那一档判 ✓（人授过的优先 ✓）', () => {
+    const granted: GrantedActions = { actions: { 'backlight.set': { value: { min: 200, max: 255 } } } };
+    expect(authorize(ACTION, { value: 100 }, granted).verdict).toBe('denied');
+    expect(authorize(ACTION, { value: 220 }, granted).verdict).toBe('ok');
   });
 
-  it('动作不同 → 不行', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    store.approve(token, 1_200);
-    expect(store.consume(token, 'other.action', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(false);
-  });
-
-  it('参数不同 → 不行（凭据绑的是**这一次**的参数）', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 200 }, packId, contract, 1_500, 'cmd-A', device)).toBe(false);
-  });
-
-  it('**最终命令不同 → 不行**（凭据要绑「这一步的最终命令」✓ —— 契约 spec/05 §7.5-3 ✓）', () => {
-    const store = new ConfirmationStore();
-    // **签发时那条命令** ✓
-    const token = store.issue(
-      'backlight.set',
-      { value: 100 },
-      packId,
-      contract,
-      1_000,
-      'sha256-of-cmd-A',
-      device,
-    );
-    store.approve(token, 1_200);
-    // **命令变了 → 那张凭据认不出来** ✓（独立评审 40 的 I-5 ✓）
-    expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'sha256-of-cmd-B', device),
-    ).toBe(false);
-    // **命令没变 → 用得了** ✓
-    expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'sha256-of-cmd-A', device),
-    ).toBe(true);
-  });
-
-  it('板型包或契约版本不同 → 不行', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    store.approve(token, 1_200);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, 'other-pack', contract, 1_500, 'cmd-A', device)).toBe(false);
-    expect(store.consume(token, 'backlight.set', { value: 100 }, packId, 'devboard/v2', 1_500, 'cmd-A', device)).toBe(false);
-  });
-
-  it('**设备不同 → 不行** ✓（凭据要绑「这块板」✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）', () => {
-    const store = new ConfirmationStore();
-    // **为 A 板签的** ✓
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', 'atk-01');
-    store.approve(token, 1_200);
-    // **换到 B 板消费** ✗ → **那张凭据认不出来** ✓（**那是「静默地动另一块板」** ✗）
-    expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', 'atk-02'),
-    ).toBe(false);
-    // **同一块板 → 用得了** ✓
-    expect(
-      store.consume(token, 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', 'atk-01'),
-    ).toBe(true);
-  });
-
-  it('超过 5 分钟 → 不行', () => {
-    const store = new ConfirmationStore();
-    const token = store.issue('backlight.set', { value: 100 }, packId, contract, 1_000, 'cmd-A', device);
-    expect(
-      store.consume(
-        token,
-        'backlight.set',
-        { value: 100 },
-        packId,
-        contract,
-        1_000 + 5 * 60_000 + 1,
-        'cmd-A',
-        device,
-      ),
-    ).toBe(false);
-  });
-
-  it('没签发过的凭据 → 不行', () => {
-    const store = new ConfirmationStore();
-    expect(store.consume('nonsense', 'backlight.set', { value: 100 }, packId, contract, 1_500, 'cmd-A', device)).toBe(
-      false,
-    );
+  it('**字符串参数不走 min/max** ✓（套到 string 上只会得到「永远超出」这种假拒绝 ✓）', () => {
+    const note: ActionDef = {
+      ...ACTION,
+      id: 'note.set',
+      params: { text: { type: 'string', maxLength: 64 } },
+      guard: undefined,
+      command: 'echo {text} > /tmp/note',
+    };
+    const granted: GrantedActions = { actions: { 'note.set': undefined } };
+    expect(authorize(note, { text: 'x; reboot' }, granted).verdict).toBe('ok');
   });
 });

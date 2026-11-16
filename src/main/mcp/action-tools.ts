@@ -1,10 +1,7 @@
-import { createHash } from 'node:crypto';
 import { invokeAction, type ActionExecutorDeps, type ActionOutcome } from '../actions/executor';
 import { buildCommand } from '../actions/encoder';
-import { authorize, type GrantedActions } from '../actions/authorization';
-import { checkFloor } from '../actions/floor-check';
 import type { ActionDef } from '../tags/schema';
-import type { ConfirmationStore } from '../actions/authorization';
+import type { GrantedActions } from '../actions/authorization';
 
 /**
  * **agent 的动作执行**（契约 `spec/04` §2.4 / §2.4.1 ✓ · ADR-D40 ✓）。
@@ -28,8 +25,6 @@ import type { ConfirmationStore } from '../actions/authorization';
  * 2. 查授权   → denied
  * 3. 校验参数 → invalid_params
  * 4. dry_run  → 返回将执行的命令（**不执行、不回读、不写审计** ✓）
- * 5. 超 guard 域 → needs_confirmation（guard_exceeded ✓）
- * 6. destructive 且未确认 → needs_confirmation ✓
  * 7. 执行 → 8. 回读 → 9. 审计 ✓
  * ```
  *
@@ -45,7 +40,6 @@ import type { ConfirmationStore } from '../actions/authorization';
  */
 export interface AgentActionDeps extends Omit<ActionExecutorDeps, 'granted' | 'actor'> {
   /** 确认凭据的库（**与卡片侧同一份** ✓ —— 语义只有一处 ✓） */
-  confirmations: ConfirmationStore;
   /** 当前板型包里声明的动作（**agent 的授权集就是它们** ✓） */
   actions: () => ActionDef[];
   /**
@@ -94,7 +88,6 @@ export interface AgentActionResult {
   /** 失败原因（**封闭表** ✓ —— 契约 §四 ✓） */
   reason?: string;
   /** 要人点头时给的凭据 ✓ */
-  confirm_id?: string;
   /** 参数超出了 guard 域 ✓（**标志位，不是 reason 码** ✓） */
   guard_exceeded?: boolean;
   /** 期望值 / 实际值 ✓ */
@@ -119,7 +112,7 @@ export async function executeAction(
   deps: AgentActionDeps,
   actionId: string,
   params: Record<string, unknown>,
-  opts: { dryRun?: boolean; confirmId?: string; deviceKey?: string } = {},
+  opts: { dryRun?: boolean; deviceKey?: string } = {},
 ): Promise<AgentActionResult> {
   // ── **第 0 步 · 设备对不对** ✓（契约 `spec/04` §2.4 ✓ · ADR-D43 ✓）──
   //
@@ -167,7 +160,7 @@ export async function executeAction(
     // **agent 的授权集 = 包里的全部动作** ✓（契约 §2.4.1 ✓）
     granted: () => agentGrants(deps.actions()),
     actor: 'agent',
-  }, opts.confirmId === undefined ? {} : { confirmId: opts.confirmId });
+  });
 
   return projectOutcome(outcome);
 }
@@ -195,15 +188,6 @@ function checkDevice(
 
 /** **把执行器的结果投影成契约的形状** ✓ */
 function projectOutcome(outcome: ActionOutcome): AgentActionResult {
-  // **要人点头** ✓ → 带 `confirm_id` ✓（契约 §2.4.1 ✓）
-  if (outcome.needsConfirmation !== undefined) {
-    return {
-      ok: false,
-      reason: 'needs_confirmation',
-      confirm_id: outcome.needsConfirmation.confirmId,
-      detail: outcome.needsConfirmation.detail,
-    };
-  }
   const result: AgentActionResult = { ok: outcome.ok };
   if (outcome.readback !== undefined) {
     result.readback = {
@@ -231,71 +215,3 @@ function readbackTagOf(action: ActionDef): string | null {
   return readback.tag ?? null;
 }
 
-/**
- * **递一次确认请求**（契约 §2.4 的 `confirm_action` ✓）。
- *
- * → **只递请求** ✓ —— **不批准** ✓（契约 §2.4.1 ✓：「没有人点，`confirm_id` 永远无效」✓）。
- * → **绑得很死** ✓：(动作 id, 参数摘要, 包 id, 契约版本, **最终命令摘要**) ✓
- *   （契约 §2.4.1 的绑定表 ✓ —— 第五项是 v5 补的 ✓）。
- */
-export function confirmAction(
-  deps: AgentActionDeps,
-  actionId: string,
-  params: Record<string, unknown>,
-  deviceKey?: string,
-): { ok: true; confirm_id: string; expires_at: number } | { ok: false; reason: string; detail?: string } {
-  // ── **设备先对** ✓（**与 `execute_action` 同一条规矩** ✓）
-  // → **对不上 → 不签凭据** ✓（**签了也是废的** ✓ —— 而且那会**骗 agent 说「递上去了」** ✗）
-  const deviceError = checkDevice(deps, deviceKey);
-  if (deviceError !== undefined) {
-    return { ok: false, reason: deviceError.reason ?? 'not_found', detail: deviceError.detail };
-  }
-
-  const action = deps.actions().find((a) => a.id === actionId);
-  if (action === undefined) {
-    return { ok: false, reason: 'not_found', detail: `没有这个动作：${actionId}` };
-  }
-
-  // **参数先校验** ✓ —— 不合法的参数**签不出凭据** ✓（签了也是废的 ✓）
-  let command: string;
-  try {
-    command = buildCommand(action.command, action.params ?? {}, params).command;
-  } catch (err) {
-    return {
-      ok: false,
-      reason: 'invalid_params',
-      detail: err instanceof Error ? err.message : String(err),
-    };
-  }
-
-  // **这个动作现在就要人确认吗** ✓（destructive ✓ 或 超 guard 域 ✓）——
-  // **不该确认的 → 不递请求** ✓（递一个没人会批的请求是噪音 ✓）
-  const verdict = authorize(
-    action,
-    params,
-    agentGrants(deps.actions()),
-    checkFloor(command),
-  );
-  if (verdict.verdict === 'ok') {
-    return { ok: false, reason: 'invalid_params', detail: '这个动作不需要确认' };
-  }
-
-  const now = Date.now();
-  const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');
-  const confirmId = deps.confirmations.issue(
-    action.id,
-    params,
-    // **与执行器用的是同一个值** ✓（**同一处取** ✓）——
-    // 不一致 → **凭据永远消费不掉** ✗（症状是「人点了也没用」✗）
-    deps.packIdOf(),
-    deps.contractVersion,
-    now,
-    commandDigest,
-    // **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
-    deps.deviceKey(),
-  );
-  // **递进确认队列** ✓（**状态不变** ✓ —— 还是「待确认」✓ —— 没人点就永远无效 ✓）
-  deps.confirmations.request(confirmId, now);
-
-  return { ok: true, confirm_id: confirmId, expires_at: now + 5 * 60_000 };
-}

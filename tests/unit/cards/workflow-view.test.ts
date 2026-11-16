@@ -86,8 +86,10 @@ describe('卡片侧流程失败的理由码（**封闭** ✓）', () => {
     expect(workflowReasonOf(new Error('这张卡没有被授权跑流程「demo.run」'))).toBe('denied');
   });
 
-  it('**包没批准 → not_approved** ✓', () => {
-    expect(workflowReasonOf(new Error('这个流程包还没有被批准'))).toBe('not_approved');
+  it('**「没批准」那一档没了** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓ —— **流程包存在即说明** ✓）', () => {
+    // **不再有 `not_approved` 这个码** ✓ → **一律当 `failed`** ✓
+    // （**不许把原话泄给卡片** ✓ —— **也不许凭空造一个码** ✓）
+    expect(workflowReasonOf(new Error('这个流程包还没有被批准'))).toBe('failed');
   });
 
   it('**没有这个包 → not_found** ✓', () => {
@@ -101,5 +103,26 @@ describe('卡片侧流程失败的理由码（**封闭** ✓）', () => {
   it('**别的一律 failed** ✓（**不许把原话泄给卡片** ✓）', () => {
     expect(workflowReasonOf(new Error('路径 /etc/passwd 打不开'))).toBe('failed');
     expect(workflowReasonOf(new Error('路径 /etc/passwd 打不开'))).not.toContain('/etc');
+  });
+
+  it('**理由码是封闭的** ✓（**就那几个** ✓ —— **不许多出 `not_approved`** ✓）', () => {
+    const codes = new Set<string>();
+    for (const message of [
+      '这张卡没有被授权跑流程「demo.run」',
+      '这个流程包还没有被批准',
+      '没有这个流程包：demo.run',
+      '流程「demo.run」正在跑',
+      '参数不对',
+      '路径 /etc/passwd 打不开',
+    ]) {
+      codes.add(workflowReasonOf(new Error(message)));
+    }
+    expect([...codes].sort()).toEqual([
+      'busy',
+      'denied',
+      'failed',
+      'invalid_params',
+      'not_found',
+    ]);
   });
 });

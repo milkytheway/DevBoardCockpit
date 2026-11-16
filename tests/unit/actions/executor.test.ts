@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  invokeAction,
-  type ActionExecutorDeps,
-  type Confirmations,
-} from '../../../src/main/actions/executor';
-import { ConfirmationStore } from '../../../src/main/actions/authorization';
+import { invokeAction, type ActionExecutorDeps } from '../../../src/main/actions/executor';
 import type { ActionDef } from '../../../src/main/tags/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { TagReading } from '../../../src/shared/tag-reading';
@@ -14,8 +9,14 @@ import type { AuditRow } from '../../../src/main/actions/audit';
  * 动作执行器 —— 契约 `docs/spec/02-board-pack.md` §5.2 + `docs/21` §6.9 的七步链。
  *
  * ```
- * 编码 → 地板复查 → 授权 →（必要时）确认 → 执行 → 回读 → 审计
+ * 编码 → 授权 → 执行 → 回读 → 审计
  * ```
+ *
+ * ── **没有「要不要问人」那一步了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）──
+ *
+ * → **destructive 直接执行** ✓（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）；
+ * → **超 guard 域 → 拒绝** ✓（**不是「问不问」** ✓）；
+ * → **执行器不再复查危险地板** ✓（**地板是校验与显示用的** ✓ —— **闸不在这一层** ✓）。
  *
  * **执行与回读是一个不可拆分的独占事务**（ADR-D23 / SPEC-D22）：
  * 回读若被采样插队，读到的可能是**别的命令的输出**——
@@ -35,7 +36,6 @@ interface Harness {
   deps: ActionExecutorDeps;
   executed: string[];
   audits: AuditRow[];
-  confirmations: string[];
 }
 
 function harness(
@@ -45,13 +45,10 @@ function harness(
     execResult?: ExecResult;
     granted?: Record<string, unknown>;
     hasExitCode?: boolean;
-    /** 换成**真的**凭据库 ✓（默认那个是假替身 ✓ —— 它不验摘要 ✗） */
-    confirmations?: Confirmations;
   } = {},
 ): Harness {
   const executed: string[] = [];
   const audits: AuditRow[] = [];
-  const confirmations: string[] = [];
   const action = over.action ?? ACTION;
   const fakeConn = {
     exec: async (command: string): Promise<ExecResult> => {
@@ -85,31 +82,12 @@ function harness(
         [action.id]: action.guard ?? undefined,
       },
     }),
-    confirmations: over.confirmations ?? {
-      issue: (
-        _actionId: string,
-        _params: Record<string, unknown>,
-        _packId: string,
-        _contractVersion: string,
-        _now: number,
-        _commandDigest: string,
-        _deviceKey: string,
-      ): string => {
-        const token = `confirm-${confirmations.length}`;
-        confirmations.push(token);
-        return token;
-      },
-      consume: (): boolean => false,
-      approve: (): boolean => true,
-      request: (): boolean => true,
-      revoke: (): boolean => true,
-    },
     audit: (row: AuditRow): string => {
       audits.push(row);
       return `audit-${audits.length}`;
     },
   };
-  return { deps, executed, audits, confirmations };
+  return { deps, executed, audits };
 }
 
 describe('执行器 · 正常路径', () => {
@@ -215,16 +193,17 @@ describe('执行器 · 回读的验证命令也要过地板', () => {
   });
 });
 
-describe('执行器 · 授权与确认', () => {
-  it('destructive → 要人确认（**命令不执行**）', async () => {
+describe('执行器 · 授权（**只有两条判据** ✓ —— ADR-D48 ✓）', () => {
+  it('destructive → **直接执行**（**不再问人** ✓ —— **危险等级只是信息** ✓）', async () => {
     const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
     const h = harness({ action: destructive });
     const result = await invokeAction(destructive, { value: 128 }, h.deps);
-    expect(result.needsConfirmation).toBeTruthy();
-    expect(h.executed).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    // **命令真的发出去了** ✓
+    expect(h.executed.length).toBeGreaterThan(0);
   });
 
-  it('**地板命中** → 当成 destructive（要人确认，命令不执行）', async () => {
+  it('**地板命中 → 执行器不再拦**（**地板是校验与显示用的** ✓ —— **闸在设置里的统一权限区** ✓）', async () => {
     // 包里声明的是 `reversible`，但**编码后的命令**命中了地板
     const dangerous: ActionDef = {
       ...ACTION,
@@ -235,54 +214,18 @@ describe('执行器 · 授权与确认', () => {
     };
     const h = harness({ action: dangerous });
     const result = await invokeAction(dangerous, {}, h.deps);
-    expect(result.needsConfirmation).toBeTruthy();
-    expect(h.executed).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    // **命令发出去了** ✓（**执行器不再替人问「危不危险」** ✓）
+    expect(h.executed.some((c) => c.includes('rm -rf'))).toBe(true);
   });
 
-  it('参数超出批准域 → 要人确认（不是拒绝）', async () => {
+  it('参数超出 guard 域 → **denied**（**不是「问人」** ✓ —— **guard 是包作者划的界** ✓）', async () => {
     const h = harness();
     const result = await invokeAction(ACTION, { value: 5 }, h.deps);
-    expect(result.needsConfirmation).toBeTruthy();
-    expect(result.ok).toBe(false);
-  });
-
-  it('**卡片那条路（`askForConsent: false`）→ destructive 直接执行** ✓（**用户点了就是同意** ✓ —— ADR-D46 ✓）', async () => {
-    const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
-    const h = harness({ action: destructive });
-    const result = await invokeAction(destructive, { value: 128 }, {
-      ...h.deps,
-      askForConsent: false,
-    });
-    expect(result.needsConfirmation).toBeUndefined();
-    expect(result.ok).toBe(true);
-    // **命令真的发出去了** ✓
-    expect(h.executed.length).toBeGreaterThan(0);
-  });
-
-  it('**卡片那条路 → 超 guard 域 → 拒绝** ✓（**guard 是包作者划的界** ✓ —— **要么守着要么问** ✓）', async () => {
-    const h = harness({ fileContent: '5' });
-    const result = await invokeAction(ACTION, { value: 5 }, { ...h.deps, askForConsent: false });
-    expect(result.needsConfirmation).toBeUndefined();
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('denied');
     // **命令没发出去** ✓
     expect(h.executed).toHaveLength(0);
-  });
-
-  it('**地板命中 → 卡片那条路直接执行** ✓（**板型包那条路已经查过地板了** ✓ —— **这里是第二遍** ✓）', async () => {
-    const dangerous: ActionDef = {
-      ...ACTION,
-      id: 'wipe.root',
-      command: 'rm -rf /',
-      params: {},
-      readback: { kind: 'none', consequence: '删根' },
-    };
-    const h = harness({ action: dangerous });
-    const result = await invokeAction(dangerous, {}, { ...h.deps, askForConsent: false });
-    // **不再卡在「等人确认」上** ✓（**界面里没有那道闸** ✗ —— **问了就没人答** ✗）
-    expect(result.needsConfirmation).toBeUndefined();
-    expect(result.ok).toBe(true);
-    expect(h.executed.length).toBeGreaterThan(0);
   });
 
   it('没被授权的动作 → denied，命令不执行', async () => {
@@ -294,36 +237,19 @@ describe('执行器 · 授权与确认', () => {
     expect(h.executed).toHaveLength(0);
   });
 
-  it('带**对得上的** confirm_id → 直接执行', async () => {
+  it('**被拒了也要记一行审计** ✓（每一次尝试一行 ✓ —— 追责链不断 ✓）', async () => {
     const h = harness();
-    h.deps.confirmations = {
-      issue: () => 'confirm-0',
-      consume: () => true,
-      approve: () => true,
-      request: () => true,
-      revoke: () => true,
-    };
-    const result = await invokeAction(
-      { ...ACTION, danger: 'destructive' },
-      { value: 128 },
-      h.deps,
-      { confirmId: 'confirm-0' },
-    );
-    expect(result.ok).toBe(true);
-    // 执行 + 回读读文件（cat）—— 都在同一条连接上
-    expect(h.executed.length).toBeGreaterThan(0);
+    const result = await invokeAction(ACTION, { value: 5 }, h.deps);
+    expect(result.reason).toBe('denied');
+    expect(h.audits).toHaveLength(1);
+    expect(h.audits[0]?.ok).toBe(false);
   });
 
-  it('带**对不上**的 confirm_id → 还是要确认', async () => {
-    const h = harness();
-    const result = await invokeAction(
-      { ...ACTION, danger: 'destructive' },
-      { value: 128 },
-      h.deps,
-      { confirmId: 'wrong' },
-    );
-    expect(result.needsConfirmation).toBeTruthy();
-    expect(h.executed).toHaveLength(0);
+  it('**结果里没有「要人确认」那一栏** ✓（`needsConfirmation` 那一档没了 ✓ —— ADR-D48 ✓）', async () => {
+    const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
+    const h = harness({ action: destructive });
+    const result = await invokeAction(destructive, { value: 128 }, h.deps);
+    expect(Object.keys(result)).not.toContain('needsConfirmation');
   });
 });
 
@@ -338,41 +264,6 @@ describe('执行器 · 回读形式 5', () => {
     const result = await invokeAction(led, { value: 128 }, h.deps);
     expect(result.ok).toBe(true);
     expect(result.verified).toBe(false);
-  });
-});
-
-describe('确认凭据 · 绑住**这一步的最终命令**（契约 spec/05 §7.5-3 ✓）', () => {
-  it('**命令变了 → 那张凭据用不了**（→ 得重新点头 ✓ —— 独立评审 40 的 I-5 ✓）', async () => {
-    const store = new ConfirmationStore();
-    const h = harness({ confirmations: store });
-    const dangerous = { ...ACTION, danger: 'destructive' as const };
-
-    // **第一次** → 签发凭据 ✓（命令是 A ✓）
-    const first = await invokeAction(dangerous, { value: 128 }, h.deps);
-    const confirmId = first.needsConfirmation?.confirmId ?? '';
-    expect(confirmId).toBeTruthy();
-    // **人点了** ✓
-    expect(store.approve(confirmId, Date.now())).toBe(true);
-
-    // **命令变了** ✓（同一个动作、同一组参数，但命令模板不同 ✓）
-    const changed = { ...dangerous, command: 'echo {value} > /tmp/other' };
-    const second = await invokeAction(changed, { value: 128 }, h.deps, { confirmId });
-
-    // **那张凭据认不出这条命令** ✓ → 重新要一次确认 ✓
-    expect(second.reason).toBe('needs_confirmation');
-    expect(second.needsConfirmation?.confirmId).not.toBe(confirmId);
-  });
-
-  it('**命令没变 → 那张凭据用得了** ✓', async () => {
-    const store = new ConfirmationStore();
-    const h = harness({ confirmations: store });
-    const dangerous = { ...ACTION, danger: 'destructive' as const };
-    const first = await invokeAction(dangerous, { value: 128 }, h.deps);
-    const confirmId = first.needsConfirmation?.confirmId ?? '';
-    store.approve(confirmId, Date.now());
-    const second = await invokeAction(dangerous, { value: 128 }, h.deps, { confirmId });
-    // **真跑起来了** ✓（不是又要确认 ✓）
-    expect(second.ok).toBe(true);
   });
 });
 

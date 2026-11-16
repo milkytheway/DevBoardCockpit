@@ -1,5 +1,4 @@
 import { makeError } from '../../shared/errors';
-import { createHash } from 'node:crypto';
 import type { Connection, ExecResult } from '../hal/connection';
 import type { ActionDef } from '../tags/schema';
 import type { TagReading } from '../../shared/tag-reading';
@@ -24,56 +23,6 @@ import type { AuditRow } from './audit';
  * 「回读不符」就成了假阴性，驾驶舱会显示错的真实状态。
  * → 所以两者都跑在 `runTransaction` 里面（同一个队列槽位）。
  */
-export interface Confirmations {
-  /** 签发一张确认凭据（**待确认** —— 还不能用来执行 ✓） */
-  issue(
-    actionId: string,
-    params: Record<string, unknown>,
-    packId: string,
-    contractVersion: string,
-    now: number,
-    /**
-     * **这一步最终命令的摘要** ✓（契约 `spec/05` §7.5-3 ✓）。
-     *
-     * → 最终命令是**消费时现算**的 ✓，而命令里的槽与路径**不在参数摘要里** ✓
-     * → 不绑它 ✓ → **同一张凭据认得两条不同的命令** ✗
-     */
-    commandDigest: string,
-    /** **这一步动的是哪块板** ✓（契约 `spec/04` §2.4.1 的**第六项** ✓） */
-    deviceKey: string,
-  ): string;
-  /**
-   * **人点了确认** → 这张凭据才可用 ✓。
-   *
-   * → 契约 `spec/04` §2.4.1：「没有人点，`confirm_id` 永远无效」✓
-   */
-  approve(token: string, now: number): boolean;
-  /**
-   * **请求**一次确认（agent 唯一能做的事 ✓ —— 评审 37 的 V3-C1 ✓）。
-   *
-   * → **不批准任何东西** ✓：只是把请求递进 GUI 队列 ✓。
-   */
-  request(token: string, now: number): boolean;
-  /**
-   * **撤销**一张凭据（**作废** ✓ —— 不能再被批准 ✓）。
-   *
-   * → 取消一次运行时用得上 ✓（独立评审 40 的 I-8 ✓）：人**不该**再去点一个已经被取消的运行 ✗。
-   */
-  revoke(token: string): boolean;
-  /** 用掉一张（一次性） */
-  consume(
-    token: string,
-    actionId: string,
-    params: Record<string, unknown>,
-    packId: string,
-    contractVersion: string,
-    now: number,
-    /** **这一步最终命令的摘要** ✓（与签发时算的那份必须是同一个 ✓） */
-    commandDigest: string,
-    /** **这一步动的是哪块板** ✓（与签发时必须是同一个 ✓） */
-    deviceKey: string,
-  ): boolean;
-}
 
 /** 执行器需要的东西 */
 export interface ActionExecutorDeps {
@@ -96,15 +45,8 @@ export interface ActionExecutorDeps {
   readTag: (tag: string) => Promise<TagReading | undefined>;
   /** 已授权的动作（装卡时用户批准的） */
   granted: () => GrantedActions;
-  /**
-   * **destructive 动作与超 guard 域要不要停下来问人** ✓（**默认问** ✓）。
-   *
-   * → **卡片那条路传 false** ✓（**用户点了就是同意** ✓ —— `spec/03` §7.6 ✓）
-   * → **agent 那条路不传** ✓（**agent 不是人** ✓）
-   */
-  askForConsent?: boolean;
-  /** 确认凭据的存取 */
-  confirmations: Confirmations;
+  // **没有「要不要问人」这一项了** ✓（2026-11-16 ✓ · ADR-D48 ✓）——
+  // **要控制什么，去设置里的统一权限区** ✓（ADR-D47 ✓）。
   /** 审计（每次尝试一行）——**返回那一行的 id**（结果要带 `audit_id`） */
   audit: (row: AuditRow) => string;
   /** 谁触发的（卡片 id / agent / 用户） */
@@ -164,8 +106,6 @@ export interface ActionOutcome {
     /** 回读的时刻（毫秒 UTC） */
     at: number;
   };
-  /** 要人确认（带凭据：agent 带它重试） */
-  needsConfirmation?: { confirmId: string; detail: string };
   /** 为什么不成功 */
   reason?: string;
   /** 期望值（失败时给） */
@@ -194,7 +134,6 @@ export async function invokeAction(
   action: ActionDef,
   params: Record<string, unknown>,
   deps: ActionExecutorDeps,
-  opts: { confirmId?: string } = {},
 ): Promise<ActionOutcome> {
   const now = deps.now ?? (() => Date.now());
   const at = now();
@@ -239,13 +178,8 @@ export async function invokeAction(
     return outcome;
   }
 
-  // ② 地板复查（**对编码后的命令**）
-  const floor = checkFloor(command);
-
-  // ③ 授权
-  const verdict = authorize(action, params, deps.granted(), floor, {
-    askForConsent: deps.askForConsent,
-  });
+  // ② 授权（**两条判据** ✓ —— ADR-D48 ✓）
+  const verdict = authorize(action, params, deps.granted());
 
   if (verdict.verdict === 'denied') {
     const outcome: ActionOutcome = {
@@ -258,46 +192,7 @@ export async function invokeAction(
     return outcome;
   }
 
-  // ④ 确认（destructive / 超出批准域 / 命中地板）
-  if (verdict.verdict === 'needs_confirmation') {
-    // **这一步最终命令的摘要** ✓（凭据要绑它 ✓ —— 契约 `spec/05` §7.5-3 ✓）
-    const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');
-    // **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
-    const deviceKey = deps.deviceKey();
-    const consumed =
-      opts.confirmId !== undefined &&
-      deps.confirmations.consume(
-        opts.confirmId,
-        action.id,
-        params,
-        deps.packId,
-        deps.contractVersion,
-        at,
-        commandDigest,
-        deviceKey,
-      );
-    if (!consumed) {
-      const confirmId = deps.confirmations.issue(
-        action.id,
-        params,
-        deps.packId,
-        deps.contractVersion,
-        at,
-        commandDigest,
-        deviceKey,
-      );
-      const outcome: ActionOutcome = {
-        ok: false,
-        verified: false,
-        reason: 'needs_confirmation',
-        needsConfirmation: { confirmId, detail: verdict.detail ?? '这次执行要人确认' },
-      };
-      record(outcome);
-      return outcome;
-    }
-  }
-
-  // ⑤⑥ 执行 + 回读（**同一个独占事务**）
+  // ③⑥ 执行 + 回读（**同一个独占事务**）
   const { result: readback, execResult } = await deps.runTransaction(async (connection) => {
     const execResult = await connection.exec(command, {
       ...(deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs }),

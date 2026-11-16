@@ -16,7 +16,7 @@ import type { FileEntry } from '../../../src/shared/ipc-contract';
  * |---|---|
  * | 命令**发到指名的目标上** | 「客机那一步跑到了板子上」 |
  * | 输入**按类型编码** | `; reboot` 这种注入 |
- * | 危险命令**要人确认** | 流程成了「在用户机器上跑任意命令」的通道 |
+ * | **危险等级只是信息**（**不再问人** ✓ —— ADR-D48 ✓） | —— **闸在设置里的统一权限区** ✓（ADR-D47 ✓） |
  * | 判据**在指名的角色上读** | 「板子上没有产物」被判成「有」（假阳性） |
  * | **每步一行审计** | 事后追不了责 |
  */
@@ -200,7 +200,7 @@ describe('流程 · exec 步', () => {
     expect(h.byId('guest')?.commands[0]).toBe("echo 'x; reboot'");
   });
 
-  it('**命中危险地板 → 要人确认**（流程不继续）', async () => {
+  it('**命中危险地板 → 不再拦**（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -219,12 +219,11 @@ describe('流程 · exec 步', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps, { approved: true });
-    expect(result.ok).toBe(false);
-    expect(result.needsConfirmation?.stepId).toBe('reboot');
-    // **命令没执行**（确认之前不许跑 ✓）
-    expect(h.byId('board')?.commands).toEqual([]);
-    // 后面的步没跑
-    expect(h.byId('board')?.commands).not.toContain('echo after');
+    expect(result.ok).toBe(true);
+    // **命令跑了** ✓（**不再卡在「等人点头」那一步** ✓）
+    expect(h.byId('board')?.commands).toContain('reboot');
+    // **后面的步也跑了** ✓（**不再停在半路** ✓）
+    expect(h.byId('board')?.commands).toContain('echo after');
   });
 
   it('**审计行里有最终命令**（追责的第一环 ✓）', async () => {
@@ -299,7 +298,7 @@ describe('流程 · exec 步', () => {
 });
 
 describe('流程 · 危险等级与输出', () => {
-  it('**声明 destructive 的步要人确认**（凭据准备那一步 ✓ A10）', async () => {
+  it('**声明 destructive 的步 → 直接执行**（**不再问人** ✓ —— ADR-D48 ✓）', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -323,10 +322,9 @@ describe('流程 · 危险等级与输出', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps, { approved: true });
-    expect(result.ok).toBe(false);
-    expect(result.needsConfirmation?.stepId).toBe('authorize');
-    // **命令没执行**（确认之前不许跑 ✓）
-    expect(h.byId('board')?.commands).toEqual([]);
+    expect(result.ok).toBe(true);
+    // **命令真的跑了** ✓（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）
+    expect(h.byId('board')?.commands).toContain('cat >> /root/.ssh/authorized_keys');
   });
 
   it('`out` 槽 = **这条命令的输出**（下一步要用它 ✓）', async () => {
@@ -373,70 +371,6 @@ describe('流程 · 角色事实', () => {
     );
     await runWorkflow(pack, {}, h.deps, { approved: true });
     expect(h.byId('guest')?.commands[0]).toBe("ssh 'builder'@'10.0.0.2'");
-  });
-});
-
-describe('流程 · 确认凭据', () => {
-  it('**同一张凭据换一组输入 → 作废**（凭据必须绑住这一步的输入 ✓）', async () => {
-    // 一个**真的**确认凭据库（不是桩）
-    const issued = new Map<string, { actionId: string; digest: string }>();
-    const confirmations = {
-      approve: (): boolean => true,
-      request: (): boolean => true,
-      revoke: (): boolean => true,
-      issue: (actionId: string, params: Record<string, unknown>): string => {
-        const token = `cf-${issued.size}`;
-        issued.set(token, {
-          actionId,
-          digest: JSON.stringify(params),
-        });
-        return token;
-      },
-      consume: (token: string, actionId: string, params: Record<string, unknown>): boolean => {
-        const found = issued.get(token);
-        if (found === undefined) return false;
-        issued.delete(token);
-        return found.actionId === actionId && found.digest === JSON.stringify(params);
-      },
-    };
-
-    const h = harness();
-    const pack = parseWorkflow(
-      {
-        apiVersion: 'devboard/v1',
-        kind: 'Workflow',
-        id: 'w',
-        name: 'w',
-        version: '1.0.0',
-        inputs: { note: { type: 'string', maxLength: 64 } },
-        roles: ROLES,
-        steps: [
-          {
-            id: 'danger',
-            kind: 'exec',
-            role: 'target',
-            danger: 'destructive',
-            cmd: 'echo {input:note}',
-          },
-        ],
-      },
-      'w.yaml',
-    );
-    const deps = { ...h.deps, confirmations };
-
-    // 第一次 → 要确认（凭据发下来了）
-    const first = await runWorkflow(pack, { note: 'a' }, deps, { approved: true });
-    expect(first.needsConfirmation).toBeTruthy();
-    const token = first.needsConfirmation?.confirmId as string;
-
-    // **拿同一张凭据换一组输入** → 必须作废 ✓
-    const replay = await runWorkflow(pack, { note: 'b' }, deps, {
-      approved: true,
-      confirmIds: { danger: token },
-    });
-    expect(replay.needsConfirmation).toBeTruthy();
-    // **命令没执行** ✓
-    expect(h.byId('board')?.commands.some((c) => c.includes('b'))).toBe(false);
   });
 });
 

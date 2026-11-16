@@ -6,7 +6,6 @@ import { McpServer } from '../../../src/main/mcp/server';
 import { WorkflowRegistry } from '../../../src/main/workflows/registry';
 import { WorkflowService } from '../../../src/main/workflows/service';
 import { TargetRegistry } from '../../../src/main/workflows/targets';
-import { ConfirmationStore } from '../../../src/main/actions/authorization';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 
@@ -26,7 +25,7 @@ import type { Connection, ExecResult } from '../../../src/main/hal/connection';
  * - `list_workflows` **只给 id / name / 输入声明** ✓ —— **不给拓扑** ✓
  *   （哪个角色连哪台机器 → 那是未授权方不该看到的 ✗）；
  * - `workflow_status` 是**缩减投影** ✓（`03` §7.7 ✓）—— **不是**原样搬过去 ✓；
- * - `confirm_workflow` **只递请求** ✓ —— **不使凭据生效** ✓（批准是 GUI 那一侧的事 ✓）。
+ * - **没有「递一次确认请求」那个工具了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）。
  */
 
 let dir: string;
@@ -86,24 +85,19 @@ beforeEach(() => {
 
   registry = new WorkflowRegistry({
     dirs: [workflowsDir],
-    approvalFile: join(dir, 'workflows-approved.json'),
   });
   registry.scan();
-  registry.approve('demo.run');
 
   const targets = new TargetRegistry({
     profileFor: (id) => (id === 'guest' ? profile : undefined),
     createConnection: () => conn,
   });
-  const confirmations = new ConfirmationStore();
   service = new WorkflowService({
     registry,
-    confirmations,
     runDeps: {
       targets,
       profileFor: (id) => (id === 'guest' ? profile : undefined),
       audit: () => 'audit-1',
-      confirmations,
     },
   });
 });
@@ -186,7 +180,7 @@ describe('MCP · 通知（不发响应）', () => {
 });
 
 describe('MCP · tools/list', () => {
-  it('**清单里有那四个流程工具** ✓', async () => {
+  it('**清单里有那三个流程工具** ✓（**`confirm_workflow` 没了** ✓ —— ADR-D48 ✓）', async () => {
     const res = await call('tools/list');
     const tools = (res['result'] as Record<string, unknown>)['tools'] as {
       name: string;
@@ -196,7 +190,22 @@ describe('MCP · tools/list', () => {
     expect(names).toContain('list_workflows');
     expect(names).toContain('run_workflow');
     expect(names).toContain('workflow_status');
-    expect(names).toContain('confirm_workflow');
+    // **「递一次确认请求」那个工具没了** ✓（**不再有「问人」这一档** ✓）
+    expect(names).not.toContain('confirm_workflow');
+  });
+
+  it('**工具清单是 19 个** ✓（**21 → 19** ✓ —— **两个「问人」的工具没了** ✓）', async () => {
+    const res = await serverWithHost().handle({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+    });
+    const tools = (res?.['result'] as Record<string, unknown>)['tools'] as { name: string }[];
+    expect(tools).toHaveLength(19);
+    // **那两个「问人」的工具没了** ✓
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain('confirm_action');
+    expect(names).not.toContain('confirm_workflow');
   });
 
   it('**每个工具带 inputSchema** ✓（agent 要靠它填参数 ✓）', async () => {
@@ -246,7 +255,7 @@ describe('MCP · get_card_sdk_docs', () => {
   });
 });
 
-describe('MCP · 四个流程工具', () => {
+describe('MCP · 三个流程工具', () => {
   it('**每个响应都带 apiVersion** ✓（契约 §四：版本字段在每个响应里都带上 ✓）', async () => {
     const svc = server();
     const list = (await svc.callTool('list_workflows', {})) as unknown[];
@@ -295,7 +304,7 @@ describe('MCP · 四个流程工具', () => {
     expect((res as { run_id: string }).run_id).toMatch(/^wf-/);
   });
 
-  it('`run_workflow` 跑一个**没批准的**流程 → **失败**（不是偷偷跑起来 ✓）', async () => {
+  it('`run_workflow` 跑一个**没有这个包**的流程 → **失败**（不是偷偷跑起来 ✓）', async () => {
     const res = await server().callTool('run_workflow', {
       id: 'nobody.run',
       inputs: {},
@@ -322,18 +331,6 @@ describe('MCP · 四个流程工具', () => {
     expect(dumped).not.toContain('inputs');
     expect(dumped).not.toContain('"role"');
     expect(dumped).not.toContain('audit_id');
-  });
-
-  it('`confirm_workflow` → **只递请求**（**凭据不因此生效** ✓ —— 契约 §2.4 ✓）', async () => {
-    const svc = server();
-    const started = (await svc.callTool('run_workflow', {
-      id: 'demo.run',
-      inputs: { project: 'x' },
-    })) as { run_id: string };
-    // **这个流程没有 destructive 步** ✓ → 没有待确认的凭据 ✓
-    const res = await svc.callTool('confirm_workflow', { run_id: started.run_id });
-    const out = res as { ok?: boolean; reason?: string };
-    expect(out.ok).toBe(false);
   });
 });
 

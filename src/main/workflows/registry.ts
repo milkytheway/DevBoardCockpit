@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { makeError } from '../../shared/errors';
@@ -45,10 +45,6 @@ export interface RegisteredWorkflow {
   digest: string;
   /** 解析出来的包 */
   pack: WorkflowPack;
-  /** 用户批过吗（摘要对得上才算 ✓） */
-  approved: boolean;
-  /** 批准的时刻（没批过 = undefined） */
-  approvedAt?: number;
 }
 
 /**
@@ -75,7 +71,7 @@ export interface WorkflowPlan {
 }
 
 /** 摘要一个流程包 */
-export function planOf(pack: WorkflowPack, registered?: { digest: string; approved: boolean }): WorkflowPlan {
+export function planOf(pack: WorkflowPack): WorkflowPlan {
   return {
     id: pack.id,
     name: pack.name,
@@ -92,20 +88,13 @@ export function planOf(pack: WorkflowPack, registered?: { digest: string; approv
       dangerous: step.danger === 'destructive',
       ...(step.readback?.role === undefined ? {} : { readbackRole: step.readback.role }),
     })),
-    ...(registered === undefined ? {} : {}),
   };
 }
 
 /** 批准账的存盘形状 */
-interface ApprovalFile {
-  workflows: Record<string, { digest: string; at: number }>;
-}
-
 export interface WorkflowRegistryOptions {
   /** 包目录（内置的 + 用户的，**同 id 时用户优先** ✓） */
   dirs: string[];
-  /** 批准账的文件路径 */
-  approvalFile: string;
   /** 记警告的出口 */
   warn?: (message: string) => void;
   /** 现在（毫秒） */
@@ -119,18 +108,15 @@ export function digestOf(content: string): string {
 
 export class WorkflowRegistry {
   private readonly warn: (message: string) => void;
-  private readonly now: () => number;
   private packs = new Map<string, RegisteredWorkflow>();
 
   constructor(private readonly opts: WorkflowRegistryOptions) {
     this.warn = opts.warn ?? ((m: string) => console.warn(m));
-    this.now = opts.now ?? (() => Date.now());
   }
 
   /** 扫目录，重新登记（**坏包不拖垮其余** ✓ —— 与 profile 加载器同规矩 ✓） */
   scan(): void {
     this.packs = new Map();
-    const approvals = this.readApprovals();
 
     // **后扫的覆盖先扫的** → 用户目录放在后面 ✓（同 id 时用户优先 ✓）
     for (const dir of this.opts.dirs) {
@@ -159,7 +145,6 @@ export class WorkflowRegistry {
           continue;
         }
         const digest = digestOf(raw);
-        const approval = approvals[pack.id];
         this.packs.set(pack.id, {
           id: pack.id,
           name: pack.name,
@@ -167,9 +152,6 @@ export class WorkflowRegistry {
           path,
           digest,
           pack,
-          // **摘要对得上才算批准** ✓（改了内容 → 要重新批 ✓）
-          approved: approval !== undefined && approval.digest === digest,
-          ...(approval === undefined ? {} : { approvedAt: approval.at }),
         });
       }
     }
@@ -185,7 +167,7 @@ export class WorkflowRegistry {
   planOf(id: string): WorkflowPlan | undefined {
     const found = this.packs.get(id);
     if (found === undefined) return undefined;
-    return planOf(found.pack, found);
+    return planOf(found.pack);
   }
 
   /** 列全部（**含未批准的** ✓ —— 用户要看得见「有个包还没批」） */
@@ -199,11 +181,14 @@ export class WorkflowRegistry {
   }
 
   /**
-   * 按 id 取一个**已批准**的包。
+   * 按 id 取一个包。
    *
-   * @throws 没这个包 / 没批准 → `IPC_INVALID_PAYLOAD`（**说清楚是哪一种** ✓）
+   * → **不再有「已批准」那一层** ✓（2026-11-16 ✓ · ADR-D48 ✓）——
+   *   **流程包的存在本身就是说明** ✓（**权限区里那一行开关才是闸** ✓ —— ADR-D47 ✓）。
+   *
+   * @throws 没这个包 → `IPC_INVALID_PAYLOAD` ✓
    */
-  requireApproved(id: string): RegisteredWorkflow {
+  require(id: string): RegisteredWorkflow {
     const found = this.packs.get(id);
     if (found === undefined) {
       // **带上机器可读的 reason** ✓（MCP 那一层要把它回给 agent ✓ —— 契约 §四 ✓；
@@ -212,65 +197,9 @@ export class WorkflowRegistry {
         detail: { id, reason: 'not_found' },
       });
     }
-    if (!found.approved) {
-      throw makeError('IPC_INVALID_PAYLOAD', `流程包「${id}」还没有被批准`, {
-        detail: { id, digest: found.digest, reason: 'not_approved' },
-      });
-    }
     return found;
   }
 
   /**
-   * 批准一个包（**只有人能调到这里** ✓ —— 这是「点头」那一下 ✓）。
-   *
-   * → 记的是**当前内容的摘要** ✓ → 改了内容要重新批 ✓。
-   */
-  approve(id: string): RegisteredWorkflow {
-    const found = this.packs.get(id);
-    if (found === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这个流程包：${id}`, { detail: { id } });
-    }
-    const approvals = this.readApprovals();
-    approvals[id] = { digest: found.digest, at: this.now() };
-    this.writeApprovals(approvals);
-    found.approved = true;
-    found.approvedAt = approvals[id]?.at;
-    return found;
-  }
-
   /** 收回批准 */
-  revoke(id: string): void {
-    const approvals = this.readApprovals();
-    delete approvals[id];
-    this.writeApprovals(approvals);
-    const found = this.packs.get(id);
-    if (found !== undefined) {
-      found.approved = false;
-      found.approvedAt = undefined;
-    }
-  }
-
-  private readApprovals(): Record<string, { digest: string; at: number }> {
-    if (!existsSync(this.opts.approvalFile)) return {};
-    try {
-      const parsed = JSON.parse(readFileSync(this.opts.approvalFile, 'utf8')) as ApprovalFile;
-      return parsed.workflows ?? {};
-    } catch {
-      // **读不出来就当没批过**（默认拒绝 ✓ —— 比默认放行安全 ✓）
-      return {};
-    }
-  }
-
-  private writeApprovals(approvals: Record<string, { digest: string; at: number }>): void {
-    mkdirSync(join(this.opts.approvalFile, '..'), { recursive: true });
-    const tmp = `${this.opts.approvalFile}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ workflows: approvals }, null, 2), 'utf8');
-    // **改名是原子的** → 断电不会留下半个文件 ✓（与授权账同款 ✓）
-    renameSync(tmp, this.opts.approvalFile);
-  }
-}
-
-/** 批准账的文件路径（**在用户数据目录里** ✓ —— 与授权账同处 ✓） */
-export function workflowApprovalsFile(dataDir: string): string {
-  return join(dataDir, 'workflows-approved.json');
 }

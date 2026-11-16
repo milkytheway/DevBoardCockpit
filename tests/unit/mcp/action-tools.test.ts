@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { executeAction, confirmAction, agentGrants } from '../../../src/main/mcp/action-tools';
-import { ConfirmationStore } from '../../../src/main/actions/authorization';
+import { executeAction, agentGrants } from '../../../src/main/mcp/action-tools';
 import type { ActionDef } from '../../../src/main/tags/schema';
 import type { AgentActionDeps } from '../../../src/main/mcp/action-tools';
 import type { TagReading } from '../../../src/shared/tag-reading';
@@ -13,12 +12,13 @@ import type { TagReading } from '../../../src/shared/tag-reading';
  * | 判据 | 为什么 |
  * |---|---|
  * | **动作不在包里 → `not_found`**（**不是 `denied`** ✓） | 契约 §2.4 的顺序 ✓ |
- * | **`reversible` + 参数在 guard 域内 → 直接执行** ✓ | 契约 §2.4.1 那一档 ✓ |
- * | **`destructive` → `needs_confirmation` + `confirm_id`** ✓ | 契约 §2.4.1 ✓ |
- * | **超 guard 域 → `needs_confirmation`** ✓ | 契约 §2.4.1 ✓ |
- * | **`dry_run` 在确认之前** ✓ | 契约 §2.4 的行为表 ✓ —— 否则拿不到 destructive 的预览 ✓ |
+ * | **参数不合法 → `invalid_params`** ✓ | 契约 §2.4 的顺序 ✓ |
+ * | **授权集里有它 → 直接执行** ✓ | 契约 §2.4.1 ✓ |
+ * | **`destructive` → 也直接执行** ✓（**不再问人** ✓） | **危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓ |
+ * | **超 guard 域 → `denied`** ✓（**不是「要确认」** ✓） | **guard 是包作者划的界** ✓ |
  * | **`dry_run` 不执行、不写审计** ✓ | 「不是一次尝试」✓ |
- * | **`confirm_action` 只递请求** ✓ | 契约 §2.4.1 ✓ |
+ *
+ * → **`confirm_action` 那一套没了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）。
  */
 
 const BACKLIGHT: ActionDef = {
@@ -38,7 +38,7 @@ const BACKLIGHT: ActionDef = {
  * | 越过了谁 | 返回 |
  * |---|---|
  * | **动作自己声明的域**（`params.value.min/max` ✓） | `invalid_params` ✓ |
- * | **`guard`**（装卡时批准的那一档 ✓） | **`needs_confirmation`** ✓ |
+ * | **`guard`**（装卡时批准的那一档 ✓） | **`denied`** ✓ |
  */
 const DIMMER: ActionDef = {
   id: 'backlight.dim',
@@ -60,21 +60,19 @@ const REBOOT: ActionDef = {
   readback: { kind: 'verify', command: 'true' },
 };
 
-let confirmations: ConfirmationStore;
 let executed: string[];
 let audits: number;
 let deps: AgentActionDeps;
 
 beforeEach(() => {
-  confirmations = new ConfirmationStore();
   executed = [];
   audits = 0;
   deps = {
-    // **packId 是字符串** ✓（执行器要的形状 ✓）—— **签发与消费绑的必须是同一个值** ✓
+    // **packId 是字符串** ✓（执行器要的形状 ✓）
     packId: 'demo-pack',
     packIdOf: () => 'demo-pack',
     contractVersion: 'devboard/v1',
-    // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+    // **当前那块板** ✓
     deviceKey: () => 'atk-01',
     hasExitCode: true,
     runTransaction: async (fn: (c: unknown) => Promise<unknown>) =>
@@ -94,7 +92,6 @@ beforeEach(() => {
       at: 1_700_000_000_000,
       seq: 1,
     }),
-    confirmations,
     audit: () => {
       audits += 1;
       return 'audit-1';
@@ -128,7 +125,7 @@ describe('MCP · execute_action · 存在性与授权', () => {
   });
 });
 
-describe('MCP · execute_action · 三档授权', () => {
+describe('MCP · execute_action · 授权的两条判据', () => {
   it('**`reversible` + 参数在 guard 域内 → 直接执行** ✓ + 记审计 ✓', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 });
     expect(res.ok).toBe(true);
@@ -137,24 +134,31 @@ describe('MCP · execute_action · 三档授权', () => {
     expect(res.audit_id).toBe('audit-1');
   });
 
-  it('**`destructive` → `needs_confirmation` + `confirm_id`** ✓（**不执行** ✓）', async () => {
+  it('**`destructive` → 直接执行** ✓（**不再问人** ✓ —— ADR-D48 ✓）', async () => {
     const res = await executeAction(deps, 'system.reboot', {});
-    expect(res.ok).toBe(false);
-    expect(res.reason).toBe('needs_confirmation');
-    expect(res.confirm_id).toBeTruthy();
-    expect(executed.length).toBe(0);
+    expect(res.ok).toBe(true);
+    // **命令真的跑出去了** ✓（**数的是「动作命令」** ✓ —— 回读那条验证命令不算 ✓）
+    expect(executed.filter((c) => c === 'reboot').length).toBe(1);
   });
 
-  it('**参数超出 guard 域 → `needs_confirmation`** ✓（**没超出声明域** ✓）', async () => {
+  it('**参数超出 guard 域 → `denied`** ✓（**不是「要确认」** ✓ —— **guard 是包作者划的界** ✓）', async () => {
     // **声明域 0..255 ✓ · guard 16..200 ✓** → 220 在声明域内 ✓ 但超出 guard ✓
     const res = await executeAction(deps, 'backlight.dim', { value: 220 });
-    expect(res.reason).toBe('needs_confirmation');
-    expect(res.confirm_id).toBeTruthy();
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('denied');
+    // **命令没发出去** ✓
+    expect(executed.length).toBe(0);
   });
 
   it('**参数超出动作自己声明的域 → `invalid_params`** ✓（**那不是「超 guard」** ✓）', async () => {
     const res = await executeAction(deps, 'backlight.dim', { value: 999 });
     expect(res.reason).toBe('invalid_params');
+  });
+
+  it('**被拒了也要记一行审计** ✓（每一次尝试一行 ✓ —— 追责链不断 ✓）', async () => {
+    const res = await executeAction(deps, 'backlight.dim', { value: 220 });
+    expect(res.reason).toBe('denied');
+    expect(audits).toBe(1);
   });
 });
 
@@ -166,11 +170,12 @@ describe('MCP · execute_action · dry_run', () => {
     expect(res.command).toBe("echo 100 > /sys/class/backlight/backlight/brightness");
   });
 
-  it('**`destructive` 也能预览** ✓（**dry_run 在确认之前** ✓）', async () => {
+  it('**`destructive` 也能预览** ✓', async () => {
     const res = await executeAction(deps, 'system.reboot', {}, { dryRun: true });
     expect(res.ok).toBe(true);
     expect(res.command).toBe('reboot');
-    expect(res.confirm_id).toBeUndefined();
+    // **预览不执行** ✓
+    expect(executed.length).toBe(0);
   });
 
   it('**不执行** ✓ · **不写审计** ✓（「不是一次尝试」✓）', async () => {
@@ -187,66 +192,5 @@ describe('MCP · execute_action · dry_run', () => {
   it('**`readback_tag` 是这个动作要读的那个** ✓', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 }, { dryRun: true });
     expect(res.readback_tag).toBe('custom.demo.brightness');
-  });
-});
-
-describe('MCP · confirm_action', () => {
-  it('**只递请求** ✓ —— **凭据此刻无效** ✓（契约 §2.4.1 ✓）', async () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    expect(res.ok).toBe(true);
-    if (!('confirm_id' in res)) throw new Error('没有 confirm_id');
-    // **带它去执行 → 仍然要人确认** ✓（**没人点就永远无效** ✓）
-    const exec = await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    expect(exec.reason).toBe('needs_confirmation');
-    expect(executed.length).toBe(0);
-  });
-
-  it('**人点了之后才有效** ✓', async () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    if (!('confirm_id' in res)) throw new Error('没有 confirm_id');
-    // **人点头** ✓
-    expect(confirmations.approve(res.confirm_id, Date.now())).toBe(true);
-    await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    // **`system.reboot` 的回读是 `verify` 形式** ✓ → 它会**再跑一条验证命令** ✓
-    // → **数的是「动作命令」** ✓（不是总命令数 ✓ —— 那会把回读算进去 ✗）
-    expect(executed.filter((c) => c === 'reboot').length).toBe(1);
-  });
-
-  it('**凭据是一次性的** ✓ —— 用过就没了 ✓（**重放 = 绕过确认** ✗）', async () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    if (!('confirm_id' in res)) throw new Error('没有 confirm_id');
-    confirmations.approve(res.confirm_id, Date.now());
-    await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    const before = executed.filter((c) => c === 'reboot').length;
-    // **同一个凭据再来一次** ✓ → **必须被拒** ✓（契约 §2.4.1：「消费即失效」✓）
-    const again = await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    expect(again.ok).toBe(false);
-    expect(again.reason).toBe('needs_confirmation');
-    expect(executed.filter((c) => c === 'reboot').length).toBe(before);
-  });
-
-  it('**`expires_at` 是毫秒** ✓（契约 §四 ✓）', () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    if (!('expires_at' in res)) throw new Error('没有 expires_at');
-    expect(res.expires_at).toBeGreaterThan(1_700_000_000_000);
-  });
-
-  it('**动作不存在 → `not_found`** ✓', () => {
-    const res = confirmAction(deps, 'nope', {});
-    expect(res.ok).toBe(false);
-    if (res.ok) throw new Error('不该成功');
-    expect(res.reason).toBe('not_found');
-  });
-
-  it('**参数不合法 → `invalid_params`** ✓（**不签废凭据** ✓）', () => {
-    const res = confirmAction(deps, 'backlight.set', { value: 9999 });
-    expect(res.ok).toBe(false);
-    if (res.ok) throw new Error('不该成功');
-    expect(res.reason).toBe('invalid_params');
-  });
-
-  it('**不需要确认的动作 → 不递请求** ✓（**递一个没人会批的请求是噪音** ✓）', () => {
-    const res = confirmAction(deps, 'backlight.set', { value: 100 });
-    expect(res.ok).toBe(false);
   });
 });

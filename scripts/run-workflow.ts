@@ -23,18 +23,15 @@
  * ```
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import { join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { parseWorkflow, type WorkflowPack } from '../src/main/workflows/format';
 import { TargetRegistry } from '../src/main/workflows/targets';
 import { runWorkflow, type WorkflowRunDeps } from '../src/main/workflows/runner';
-import { runWorkflowInteractively } from '../src/main/workflows/interactive';
-import { WorkflowRegistry, workflowApprovalsFile } from '../src/main/workflows/registry';
+import { WorkflowRegistry } from '../src/main/workflows/registry';
 import { loadProfiles } from '../src/main/profiles/loader';
 import { createConnection } from '../src/main/hal/registry';
 import { ActionAudit } from '../src/main/actions/audit';
-import { ConfirmationStore } from '../src/main/actions/authorization';
 import { SessionLog } from '../src/main/logging/session-log';
 import { builtinWorkflowsDir, userDataDir, userWorkflowsDir } from '../src/main/util/paths';
 
@@ -44,7 +41,6 @@ interface Args {
   input: Record<string, string>;
   dryRun: boolean;
   /** 确认凭据（**人点头之后**带它重跑那一步 ✓） */
-  confirm?: string;
   /** 从第几步继续（续跑 ✓ —— 前面的步不重跑） */
   from?: number;
 }
@@ -69,10 +65,6 @@ function parseArgs(argv: string[]): Args {
     }
     if (arg === '--dry-run') {
       out.dryRun = true;
-      continue;
-    }
-    if (arg === '--confirm') {
-      out.confirm = argv[++i];
       continue;
     }
     if (arg === '--from') {
@@ -145,7 +137,6 @@ async function main(): Promise<void> {
 
   const audit = new ActionAudit(join(dataDir, 'logs', 'actions.log'));
   // **确认凭据的库**（流程层与 M6 共用一份 ✓ —— 语义只有一处 ✓）
-  const confirmations = new ConfirmationStore();
   const registry = new TargetRegistry({
     profileFor: (id) => profileById.get(id),
     createConnection: (profile) => {
@@ -163,21 +154,12 @@ async function main(): Promise<void> {
       targets: registry,
       profileFor: (id: string) => profileById.get(id),
       audit: (row) => audit.append(row),
-      confirmations,
     };
-    const result =
-      // **带了确认凭据 → 那是「人已经点了」** ✓ → 直接跑那一步 ✓
-      args.confirm !== undefined
-        ? await runWorkflow(pack, args.input, deps, {
-            // **人跑它 = 这一次点头**（ADR-D31 R2 的信任模型 ✓）
-            approved: true,
-            // **键是步骤 id** ✓（执行器按步骤查凭据 ✓）
-            confirmIds: { [confirmStepId(args.confirm)]: confirmToken(args.confirm) },
-            ...(args.from === undefined ? {} : { startAt: args.from }),
-          })
-        : // **没带凭据 → 遇到要人确认的步就**问人** ✓
-          // （**同进程** ✓ → 同 run_id ✓ · 同时间线 ✓ · 前面的步不重跑 ✓ —— 契约 §7.6 ✓）
-          await runWorkflowInteractively(pack, args.input, deps, { approved: true }, askHuman);
+    // **人跑它 = 这一次点头** ✓（ADR-D31 R2 的信任模型 ✓ —— **不再有要确认的步** ✓ · ADR-D48 ✓）
+    const result = await runWorkflow(pack, args.input, deps, {
+      approved: true,
+      ...(args.from === undefined ? {} : { startAt: args.from }),
+    });
 
     console.log(`\n运行 ${result.runId}：${result.ok ? '成功' : '未成功'}`);
     for (const stage of result.stages) {
@@ -188,12 +170,6 @@ async function main(): Promise<void> {
           `${stage.audit_id ? ` [${stage.audit_id}]` : ''}`,
       );
     }
-    if (result.needsConfirmation !== undefined) {
-      const nc = result.needsConfirmation;
-      console.log(`\n⚠ 第 ${nc.stepId} 步**要人确认**（没有点头就没跑 ✓）：${nc.detail}`);
-      console.log(`  确认凭据：${nc.confirmId}`);
-      console.log('  → 重新跑并带上凭据：--confirm ' + `${nc.stepId}=<凭据>`);
-    }
     if (Object.keys(result.outputs).length > 0) {
       console.log(`\n产出：${JSON.stringify(result.outputs)}`);
     }
@@ -201,47 +177,6 @@ async function main(): Promise<void> {
   } finally {
     await registry.closeAll();
   }
-}
-
-/**
- * **问人**：这一步要不要做 ✓（返回 true = 点头 ✓）。
- *
- * → **同进程** ✓ —— 所以契约 §7.6 的「同一个 run_id · 同一份时间线 · 从那一步继续」✓ 天然成立 ✓。
- * → **EOF（没人答）= 拒绝** ✓（安全的一边 ✓ —— 没人点头就不许做 ✓）。
- */
-async function askHuman(request: {
-  stepId: string;
-  detail: string;
-  confirmId: string;
-}): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    console.log(`\n⚠ 第 ${request.stepId} 步要人确认：${request.detail}`);
-    console.log(`  确认凭据：${request.confirmId}`);
-    const answer = await new Promise<string | null>((resolve) => {
-      rl.question('  → 点头就按 Enter（不点头直接关掉 = 拒绝）：', (line) => resolve(line));
-      // **没人答（EOF）= 拒绝** ✓
-      rl.on('close', () => resolve(null));
-    });
-    return answer !== null;
-  } finally {
-    rl.close();
-  }
-}
-
-/**
- * 确认凭据的写法：`<步骤 id>=<凭据>`（如 `deliver=cf-xxxx`）。
- *
- * → **键是步骤 id** ✓（执行器按步骤查凭据 ✓）。
- */
-function confirmStepId(spec: string): string {
-  const at = spec.indexOf('=');
-  return at <= 0 ? '' : spec.slice(0, at);
-}
-
-function confirmToken(spec: string): string {
-  const at = spec.indexOf('=');
-  return at <= 0 ? spec : spec.slice(at + 1);
 }
 
 /**
@@ -254,7 +189,6 @@ function resolvePack(args: Args): WorkflowPack {
   if (args.id !== undefined) {
     const registry = new WorkflowRegistry({
       dirs: workflowDirs(),
-      approvalFile: workflowApprovalsFile(userDataDir()),
     });
     registry.scan();
     const found = registry.get(args.id);
@@ -262,13 +196,7 @@ function resolvePack(args: Args): WorkflowPack {
       console.error(`没有这个流程包：${args.id}`);
       process.exit(2);
     }
-    if (!found.approved) {
-      console.error(
-        `流程包「${args.id}」还没有被批准。\n` +
-          `  点头：npm run workflow:approve -- ${args.id}`,
-      );
-      process.exit(2);
-    }
+    // **不再查批准** ✓（ADR-D48 ✓ —— **存在即说明** ✓）
     return found.pack;
   }
   const path = resolve(process.cwd(), args.package as string);

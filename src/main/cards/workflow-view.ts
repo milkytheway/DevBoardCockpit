@@ -51,7 +51,6 @@ export type CardWorkflowReason =
   /** 没有这个流程包 ✓ */
   | 'not_found'
   /** 这个流程包**还没被用户批准** ✓ */
-  | 'not_approved'
   /** 输入不合法 ✓ */
   | 'invalid_params'
   /** 同一条流程正在跑 ✓ */
@@ -89,7 +88,6 @@ export function projectRunStatus(status: WorkflowRunStatus): CardWorkflowStatus 
 export function workflowReasonOf(err: unknown): CardWorkflowReason {
   const message = err instanceof Error ? err.message : String(err);
   if (message.includes('没有被授权')) return 'denied';
-  if (message.includes('还没有被批准') || message.includes('没有被批准')) return 'not_approved';
   if (message.includes('没有这个流程包')) return 'not_found';
   if (message.includes('正在跑')) return 'busy';
   if (message.includes('参数') || message.includes('invalid_params')) return 'invalid_params';

@@ -25,8 +25,6 @@ export interface WorkflowSummary {
   id: string;
   name: string;
   version: string;
-  /** 用户批过吗（**没批过的卡片/agent 看不见** ✓） */
-  approved: boolean;
   /** 输入声明（卡片要按它渲染表单 ✓ —— **`default` 也要给** ✓，卡片才能自己预填 ✓） */
   inputs: Record<string, {
     type: string;
@@ -60,7 +58,7 @@ export interface WorkflowRunStatus {
    * 「等人点头」**不是失败** ✓，它是流程**停在某一步等人** ✓。
    * （v2 提案漏了这一档 → 独立评审 V2-I1 ✓）
    */
-  state: 'running' | 'awaiting_confirmation' | 'done' | 'failed' | 'cancelled';
+  state: 'running' | 'done' | 'failed' | 'cancelled';
   /** 时间线（**跑到哪一步了** ✓） */
   stages: WorkflowStage[];
   /** **当前这一步**（`null` = 没有在飞的 ✓ —— 运行已结束 ✓） */
@@ -70,7 +68,6 @@ export interface WorkflowRunStatus {
   ok?: boolean;
   reason?: string;
   /** 要人确认（危险命令 ✓） */
-  needsConfirmation?: { stepId: string; confirmId: string; detail: string };
   /**
    * **停在第几步**（索引 ✓）——续跑时**从这一步继续** ✓，
    * **前面的步不重跑** ✓（重跑 = 编译两遍 ✗）。
@@ -90,7 +87,6 @@ export interface WorkflowServiceOptions {
    * 确认凭据的库（**流程层与 M6 共用一份** ✓ ——
    * 凭据的语义只有一处 ✓：`spec/04` §2.4.1 的那套 ✓）。
    */
-  confirmations?: WorkflowRunDeps['confirmations'];
   /** 现在（毫秒） */
   now?: () => number;
   /** 一次留多少条运行记录（**别无限长** ✓） */
@@ -133,7 +129,7 @@ export class WorkflowService {
    * → **查不到就抛** ✓（带机器可读的 reason ✓ —— MCP 那层要回给 agent ✓）。
    */
   pack(id: string): WorkflowPack {
-    const found = this.opts.registry.requireApproved(id);
+    const found = this.opts.registry.require(id);
     return found.pack;
   }
 
@@ -143,12 +139,10 @@ export class WorkflowService {
   list(): WorkflowSummary[] {
     return this.opts.registry
       .list()
-      .filter((w) => w.approved)
       .map((w) => ({
         id: w.id,
         name: w.name,
         version: w.version,
-        approved: true,
         inputs: Object.fromEntries(
           Object.entries(w.pack.inputs).map(([name, def]) => [
             name,
@@ -172,12 +166,12 @@ export class WorkflowService {
   start(
     id: string,
     inputs: Record<string, unknown>,
-    opts: { confirmIds?: Record<string, string> } = {},
+    _opts: Record<string, never> = {},
   ): { runId: string } {
-    // ── **流程包必须已被用户批准** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）──
+    // ── **流程包的存在本身就是说明** ✓（ADR-D48 ✓）──
     // → 它能跑**任意命令** ✓（`exec` / `file.transfer` ✓）→ **板型包管不到** ✓
-    //   → **必须有人看过它会做哪些事** ✓（批准时会把每一步命令打出来 ✓）
-    const registered = this.opts.registry.requireApproved(id);
+    // → **闸在设置里的统一权限区** ✓（**那一行开关** ✓ —— ADR-D47 ✓）
+    const registered = this.opts.registry.require(id);
 
     // ── 并发：同一个流程包同时只允许一次运行 ✓ ──
     // → 两个流程同时抢一条串口会**串台** ✓（事实 S1 ✓）
@@ -210,7 +204,7 @@ export class WorkflowService {
     const abort = new AbortController();
     this.aborts.set(runId, abort);
 
-    void this.execute(status, registered, inputs, opts.confirmIds, 0, abort.signal);
+    void this.execute(status, registered, inputs, 0, abort.signal);
     return { runId };
   }
 
@@ -238,14 +232,6 @@ export class WorkflowService {
     status.reason = 'cancelled';
     status.finishedAt = this.now();
 
-    // **撤销那张待确认的凭据** ✓（独立评审 40 的 I-8 ✓）
-    // → 人**不该**再去点一个已经被取消的运行 ✗（队列里会挂着一条僵尸请求 ✓）
-    const pending = status.needsConfirmation?.confirmId;
-    if (pending !== undefined) {
-      this.opts.confirmations?.revoke(pending);
-      status.needsConfirmation = undefined;
-    }
-
     // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）
     this.opts.runDeps.audit({
       at: this.now(),
@@ -259,82 +245,7 @@ export class WorkflowService {
     return { runId };
   }
 
-  /**
-   * **请求**一次确认（**agent 唯一能做的事** ✓ —— 评审 37 的 V3-C1 ✓）。
-   *
-   * → 它**只是把请求递进 GUI 的确认队列** ✓，
-   * **凭据仍然无效** ✓（契约 `spec/04` §2.4.1：「没有人点，confirm_id 永远无效」✓）。
-   * → **agent 没有「自己批准」的通道** ✓ —— 这一条是安全边界 ✓。
-   *
-   * @throws 没有这次运行 / 不在等确认 → `IPC_INVALID_PAYLOAD` ✓
-   */
-  requestConfirmation(runId: string): { confirmId: string } {
-    const status = this.runs.get(runId);
-    if (status === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
-    }
-    if (status.state !== 'awaiting_confirmation' || status.needsConfirmation === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `这次运行不在等确认：${runId}`, {
-        detail: { runId, state: status.state },
-      });
-    }
-    const confirmId = status.needsConfirmation.confirmId;
-    const queued = this.opts.confirmations?.request(confirmId, this.now()) ?? false;
-    if (!queued) {
-      throw makeError('IPC_INVALID_PAYLOAD', '这张确认凭据已经过期（重新跑一次流程）', {
-        detail: { runId, confirmId },
-      });
-    }
-    return { confirmId };
-  }
-
-  /**
-   * **人点头之后继续跑**（确认链的落点 ✓ —— 评审 35 的 V2-C1 ✓）。
-   *
-   * → **只有人点的路径能调它** ✓：
-   * - GUI 的确认按钮 ✓；
-   * - 命令行 `npm run workflow:confirm -- <runId> <confirmId>` ✓。
-   * → **agent 调不到** ✓（agent 只能 `requestConfirmation` ✓ —— 评审 37 的 V3-C1 ✓）。
-   *
-   * @throws 没有这次运行 / 不在等确认 / 凭据没被批准 → `IPC_INVALID_PAYLOAD` ✓
-   */
-  approveAndResume(runId: string, confirmId: string): { runId: string } {
-    const status = this.runs.get(runId);
-    if (status === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
-    }
-    if (status.state !== 'awaiting_confirmation' || status.needsConfirmation === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `这次运行不在等确认：${runId}`, {
-        detail: { runId, state: status.state },
-      });
-    }
-    const approved = this.opts.confirmations?.approve(confirmId, this.now()) ?? false;
-    if (!approved) {
-      throw makeError('IPC_INVALID_PAYLOAD', '这张确认凭据还没被批准（或已过期）', {
-        detail: { runId, confirmId },
-      });
-    }
-    const registered = this.opts.registry.requireApproved(status.workflowId);
-    // **停住的那一步的 id**（续跑时要带上它的凭据 ✓）
-    const pausedStepId = status.needsConfirmation.stepId;
-    const pausedAt = status.pausedAtStep ?? 0;
-    status.state = 'running';
-    status.needsConfirmation = undefined;
-    status.reason = undefined;
-    const abort = new AbortController();
-    this.aborts.set(runId, abort);
-    void this.execute(
-      status,
-      registered,
-      status.inputs ?? {},
-      { [pausedStepId]: confirmId },
-      pausedAt,
-      abort.signal,
-    );
-    return { runId };
-  }
-
-  /**
+      /**
    * 跑（**后台** ✓ —— 调用方立刻拿到 runId ✓）。
    *
    * @param startAt 从第几步开始（**续跑** ✓）
@@ -343,7 +254,6 @@ export class WorkflowService {
     status: WorkflowRunStatus,
     registered: { id: string; pack: WorkflowPack },
     inputs: Record<string, unknown>,
-    confirmIds: Record<string, string> | undefined,
     startAt: number,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -354,7 +264,6 @@ export class WorkflowService {
         {
           ...this.opts.runDeps,
           now: this.now,
-          ...(this.opts.confirmations === undefined ? {} : { confirmations: this.opts.confirmations }),
           // **实时时间线** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
           timeline: {
             onStepStart: (info) => {
@@ -370,7 +279,6 @@ export class WorkflowService {
           runId: status.runId,
           startAt,
           outputs: status.outputs,
-          ...(confirmIds === undefined ? {} : { confirmIds }),
           ...(signal === undefined ? {} : { signal }),
         },
       );
@@ -382,23 +290,14 @@ export class WorkflowService {
       // → 「取消」这个状态**必须活到最后** ✓（否则界面会把「人叫停」说成「出错了」✗）
       if (status.state !== 'cancelled') {
         status.state = result.ok ? 'done' : 'failed';
-        if (result.needsConfirmation !== undefined) {
-          status.needsConfirmation = result.needsConfirmation;
-          status.reason = 'needs_confirmation';
-          // **停在第几步**（索引 ✓）→ 续跑从这儿继续 ✓
-          status.pausedAtStep = startAt + result.stages.length - 1;
-          status.state = 'awaiting_confirmation';
-        } else if (!result.ok) {
+        if (!result.ok) {
           const failed = result.stages.find((s) => !s.ok);
           status.reason = failed?.reason ?? 'failed';
         }
-        status.finishedAt = result.needsConfirmation === undefined ? this.now() : undefined;
+        status.finishedAt = this.now();
       }
       // **运行结束了 → 没有「当前」了** ✓
-      // → 除非是**停下等人点头** ✓（那一步**仍然**是「当前」✓ —— 契约 §八·B·B1 ✓）
-      if (status.state !== 'awaiting_confirmation') {
-        status.current = null;
-      }
+      status.current = null;
     } catch (err) {
       // **取消过的运行 → 状态不许被这条异常路径翻回去** ✓（独立评审 40 的 I-1 ✓）
       // → 「人叫停」必须活到最后 ✓（契约 §八·A·A2 ✓ —— 取消不是失败 ✓）

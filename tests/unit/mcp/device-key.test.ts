@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { listConnections } from '../../../src/main/mcp/read-tools';
-import { executeAction, confirmAction } from '../../../src/main/mcp/action-tools';
-import { ConfirmationStore } from '../../../src/main/actions/authorization';
+import { executeAction } from '../../../src/main/mcp/action-tools';
 import type { McpHostDeps } from '../../../src/main/mcp/host';
 import type { AgentActionDeps } from '../../../src/main/mcp/action-tools';
 import type { ActionDef } from '../../../src/main/tags/schema';
@@ -13,11 +12,13 @@ import type { TagReading } from '../../../src/shared/tag-reading';
  * ── 这组判据守什么 ──
  *
  * | 判据 | 为什么 |
- *---|---|
+ * |---|---|
  * | **`list_connections` 带 `device_key`** ✓ | agent 才知道**哪些连接是同一块板** ✓ |
  * | **`list_connections` 带 `current`** ✓ | 不然它**不知道当前那块是谁** ✓ → `device_key` 无合法值可填 ✓ |
  * | **`execute_action` 给了别的设备 → `not_found`** ✓ | **绝不静默地打当前那块** ✓（那是「静默地做另一件事」✗） |
- * | **凭据绑住设备** ✓ | 为 A 板签的凭据**不能**拿去动 B 板 ✗ |
+ *
+ * → **凭据那一层没了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）——
+ *   **设备这一道还在** ✓（**它不是「问人」** ✓ —— **它是「打对东西」** ✓）。
  */
 const BACKLIGHT: ActionDef = {
   id: 'backlight.set',
@@ -84,7 +85,6 @@ function hostDeps(over: Partial<McpHostDeps> = {}): McpHostDeps {
   };
 }
 
-let confirmations: ConfirmationStore;
 let executed: string[];
 let audits: number;
 /** **当前运行时那条连接的 `device_key`** ✓（**会变** ✓ —— 换板了 ✓） */
@@ -92,7 +92,6 @@ let currentDevice: string;
 let deps: AgentActionDeps;
 
 beforeEach(() => {
-  confirmations = new ConfirmationStore();
   executed = [];
   audits = 0;
   currentDevice = 'atk-01';
@@ -118,7 +117,6 @@ beforeEach(() => {
       at: 1_700_000_000_000,
       seq: 1,
     }),
-    confirmations,
     audit: () => {
       audits += 1;
       return 'audit-1';
@@ -180,35 +178,28 @@ describe('MCP · execute_action · device_key', () => {
   });
 });
 
-describe('MCP · confirm_action · device_key', () => {
-  it('**给了别的设备 → `not_found` + 不签凭据** ✓', () => {
-    const res = confirmAction(deps, 'system.reboot', {}, 'board-b');
+describe('MCP · execute_action · device_key 与危险动作', () => {
+  it('**destructive 给了别的设备 → `not_found`** ✓（**设备这一道与危险等级无关** ✓）', async () => {
+    const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'board-b' });
     expect(res.ok).toBe(false);
-    if (res.ok) throw new Error('不该成功');
     expect(res.reason).toBe('not_found');
-    expect('confirm_id' in res).toBe(false);
-  });
-});
-
-describe('凭据 · 绑住设备', () => {
-  it('**为 A 板签的凭据 → 换到 B 板消费不掉** ✓（**那正是要防的** ✓）', async () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    if (!('confirm_id' in res)) throw new Error('没有 confirm_id');
-    confirmations.approve(res.confirm_id, Date.now());
-    // **当前那块换成 B** ✓（**连接切了** ✓）
-    currentDevice = 'board-b';
-    const exec = await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    // **凭据消费不掉** ✓ → **仍要人确认** ✓（**不是「照做」** ✗）
-    expect(exec.reason).toBe('needs_confirmation');
+    // **一个命令都没发出去** ✓（**绝不静默地打当前那块** ✓）
     expect(executed.filter((c) => c === 'reboot').length).toBe(0);
   });
 
-  it('**同一块板换一条连接 → 凭据照样能用** ✓（**绑的是板** ✓ —— 不是连接 ✓）', async () => {
-    const res = confirmAction(deps, 'system.reboot', {});
-    if (!('confirm_id' in res)) throw new Error('没有 confirm_id');
-    confirmations.approve(res.confirm_id, Date.now());
-    const exec = await executeAction(deps, 'system.reboot', {}, { confirmId: res.confirm_id });
-    expect(exec.ok).toBe(true);
+  it('**destructive 给了当前那块 → 照做** ✓（**不再问人** ✓ —— ADR-D48 ✓）', async () => {
+    const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'atk-01' });
+    expect(res.ok).toBe(true);
     expect(executed.filter((c) => c === 'reboot').length).toBe(1);
+  });
+
+  it('**换板了 → 旧的那个 device_key 不再对得上** ✓（**当前那块变了** ✓）', async () => {
+    // **当前那块换成 B** ✓（**连接切了** ✓）
+    currentDevice = 'board-b';
+    const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'atk-01' });
+    // **认不出来 → 拒绝** ✓（**绝不静默地打新那块** ✓）
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('not_found');
+    expect(executed.filter((c) => c === 'reboot').length).toBe(0);
   });
 });

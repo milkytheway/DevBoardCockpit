@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorkflowRegistry, digestOf } from '../../../src/main/workflows/registry';
@@ -7,22 +7,17 @@ import { WorkflowRegistry, digestOf } from '../../../src/main/workflows/registry
 /**
  * 流程包**注册表** —— 「哪些流程可以跑」这本账。
  *
- * ── 这几条在防什么（两份独立评审的同一条 Critical）──
+ * ── 现在的规矩（**2026-11-16 改完** ✓ · ADR-D48 ✓）──
  *
- * **「agent 可以自写一个流程包然后跑它」** ✓——
- * 因为一个流程包就是「一组要在用户机器上执行的命令」，
- * 而当时**只认路径、不认人** ✗。
- *
- * → 现在的规矩：
- * ① **放一个文件进目录 ≠ 批准它** ✓；
- * ② **批准绑内容摘要** → 改了内容要**重新批准** ✓；
- * ③ **跑之前查批准账** ✓（`requireApproved` ✓）；
- * ④ 坏包**不拖垮其余** ✓（与 profile 加载器同规矩 ✓）。
+ * ① **只认 id，不认路径** ✓ —— 卡片与 agent **给不了路径** ✓；
+ * ② **不再有批准账** ✓ —— **流程包的存在本身就是说明** ✓
+ *    （**闸在设置里的统一权限区** ✓ —— ADR-D47 ✓）；
+ * ③ 坏包**不拖垮其余** ✓（与 profile 加载器同规矩 ✓）；
+ * ④ **内容摘要还在** ✓ —— **改了内容摘要就变** ✓（**给人看「变没变」用** ✓）。
  */
 let dir: string;
 let builtinDir: string;
 let userDir: string;
-let approvalFile: string;
 
 const PACK = {
   apiVersion: 'devboard/v1',
@@ -68,7 +63,6 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cockpit-registry-'));
   builtinDir = join(dir, 'builtin');
   userDir = join(dir, 'user');
-  approvalFile = join(dir, 'workflows-approved.json');
 });
 
 afterEach(() => {
@@ -78,20 +72,18 @@ afterEach(() => {
 function registry(warn?: (m: string) => void): WorkflowRegistry {
   return new WorkflowRegistry({
     dirs: [builtinDir, userDir],
-    approvalFile,
     ...(warn === undefined ? {} : { warn }),
   });
 }
 
 describe('流程包注册表 · 扫目录', () => {
-  it('扫到包，登记 id / 摘要 / 未批准', () => {
+  it('扫到包，登记 id / 摘要', () => {
     write(builtinDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
     const list = reg.list();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe('demo.run');
-    expect(list[0]?.approved).toBe(false);
     expect(list[0]?.digest).toHaveLength(16);
   });
 
@@ -116,71 +108,58 @@ describe('流程包注册表 · 扫目录', () => {
   });
 });
 
-describe('流程包注册表 · 批准', () => {
-  it('**放一个文件进目录 ≠ 批准它**', () => {
+describe('流程包注册表 · 取包', () => {
+  it('**放一个文件进目录 → 就能跑** ✓（**存在即说明** ✓ —— ADR-D48 ✓）', () => {
     write(userDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
-    expect(reg.get('demo.run')?.approved).toBe(false);
-    expect(() => reg.requireApproved('demo.run')).toThrow(/还没有被批准/);
-  });
-
-  it('批准之后就能跑（**那就是「点头」那一下** ✓）', () => {
-    write(userDir, 'demo.yaml', yamlOf(PACK));
-    const reg = registry();
-    reg.scan();
-    reg.approve('demo.run');
-    expect(reg.requireApproved('demo.run').approved).toBe(true);
-  });
-
-  it('**批准绑内容摘要** → 改了内容要重新批准', () => {
-    write(userDir, 'demo.yaml', yamlOf(PACK));
-    const reg = registry();
-    reg.scan();
-    reg.approve('demo.run');
-    expect(reg.get('demo.run')?.approved).toBe(true);
-
-    // **改了内容**（命令变了 ✓）
-    write(userDir, 'demo.yaml', yamlOf({ ...PACK, steps: [{ ...PACK.steps[0], cmd: 'echo bye' }] }));
-    reg.scan();
-    expect(reg.get('demo.run')?.approved).toBe(false);
-    expect(() => reg.requireApproved('demo.run')).toThrow(/还没有被批准/);
-  });
-
-  it('批准账**读不出来就当没批过**（默认拒绝 ✓）', () => {
-    write(userDir, 'demo.yaml', yamlOf(PACK));
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(approvalFile, '{ 这不是 JSON', 'utf8');
-    const reg = registry();
-    reg.scan();
-    expect(reg.get('demo.run')?.approved).toBe(false);
-  });
-
-  it('批准账**是原子写**（改名 ✓ —— 断电不会留下半个文件 ✓）', () => {
-    write(userDir, 'demo.yaml', yamlOf(PACK));
-    const reg = registry();
-    reg.scan();
-    reg.approve('demo.run');
-    const parsed = JSON.parse(readFileSync(approvalFile, 'utf8')) as {
-      workflows: Record<string, { digest: string; at: number }>;
-    };
-    expect(parsed.workflows['demo.run']?.digest).toBe(digestOf(readFileSync(join(userDir, 'demo.yaml'), 'utf8')));
-    expect(existsSync(`${approvalFile}.tmp`)).toBe(false);
-  });
-
-  it('收回批准 → 又不能跑了', () => {
-    write(userDir, 'demo.yaml', yamlOf(PACK));
-    const reg = registry();
-    reg.scan();
-    reg.approve('demo.run');
-    reg.revoke('demo.run');
-    expect(reg.get('demo.run')?.approved).toBe(false);
+    // **不再有「有没有被批准」那一问** ✓
+    expect(reg.require('demo.run').id).toBe('demo.run');
   });
 
   it('**没有这个包** → 报错（说清楚是哪一种 ✓）', () => {
     const reg = registry();
     reg.scan();
-    expect(() => reg.requireApproved('nobody')).toThrow(/没有这个流程包/);
-    expect(() => reg.approve('nobody')).toThrow(/没有这个流程包/);
+    expect(() => reg.require('nobody')).toThrow(/没有这个流程包/);
+  });
+
+  it('**列表里列出全部** ✓（**不再过滤「没批过的」** ✓ —— 用户要看得见）', () => {
+    write(userDir, 'demo.yaml', yamlOf(PACK));
+    write(userDir, 'other.yaml', yamlOf({ ...PACK, id: 'other.run' }));
+    const reg = registry();
+    reg.scan();
+    expect(reg.list().map((w) => w.id)).toEqual(['demo.run', 'other.run']);
+  });
+
+  it('**内容摘要**（16 位十六进制 ✓）—— **改了内容摘要就变** ✓', () => {
+    write(userDir, 'demo.yaml', yamlOf(PACK));
+    const reg = registry();
+    reg.scan();
+    const before = reg.get('demo.run')?.digest;
+    expect(before).toHaveLength(16);
+
+    // **改了内容**（命令变了 ✓）
+    write(userDir, 'demo.yaml', yamlOf({ ...PACK, steps: [{ ...PACK.steps[0], cmd: 'echo bye' }] }));
+    reg.scan();
+    expect(reg.get('demo.run')?.digest).not.toBe(before);
+    expect(reg.get('demo.run')?.digest).toBe(
+      digestOf(readFileSync(join(userDir, 'demo.yaml'), 'utf8')),
+    );
+  });
+
+  it('**这个包会干什么**（`planOf` ✓ —— 人过目用的 ✓）', () => {
+    write(userDir, 'demo.yaml', yamlOf(PACK));
+    const reg = registry();
+    reg.scan();
+    const plan = reg.planOf('demo.run');
+    expect(plan?.id).toBe('demo.run');
+    expect(plan?.roles.map((r) => r.role)).toEqual(['build']);
+    expect(plan?.steps.map((s) => s.id)).toEqual(['hello']);
+  });
+
+  it('**没有这个包 → `planOf` 给 undefined** ✓（**不抛** ✓）', () => {
+    const reg = registry();
+    reg.scan();
+    expect(reg.planOf('nobody')).toBeUndefined();
   });
 });

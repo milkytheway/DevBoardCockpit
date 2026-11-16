@@ -8,7 +8,6 @@ import type { WorkflowRunDeps } from '../../../src/main/workflows/runner';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { AuditRow } from '../../../src/main/actions/audit';
-import { ConfirmationStore } from '../../../src/main/actions/authorization';
 
 /**
  * 流程的**宿主服务** —— 卡片与 agent 触发流程的那一层。
@@ -16,12 +15,12 @@ import { ConfirmationStore } from '../../../src/main/actions/authorization';
  * ── 这三条是两份独立评审的 C1 / C2 / C3 ──
  *
  * 1. **只认 id，不认路径** → agent 不能自写一个包就跑 ✓；
- * 2. **跑之前查批准账** → 没批准的包跑不了 ✓；
+ * 2. **跑之前查批准账** → **那一层没了** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓）——
+ *    **流程包的存在本身就是说明** ✓ —— **闸在设置里的统一权限区** ✓（ADR-D47 ✓）；
  * 3. **长任务 = run_id + 轮询** → 编译要一分钟，同步返回不成立 ✓。
  */
 let dir: string;
 let userDir: string;
-let approvalFile: string;
 
 interface TestPack {
   apiVersion: string;
@@ -54,7 +53,7 @@ const TWO_STEP_PACK: TestPack = {
   ],
 };
 
-/** 一个带 destructive 步的流程（**要人点头** ✓） */
+/** 一个带 destructive 步的流程（**危险等级只是信息** ✓ —— **不再问人** ✓） */
 const DANGEROUS_PACK = {
   ...PACK,
   id: 'demo.danger',
@@ -104,7 +103,6 @@ function yamlOf(pack: TestPack): string {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cockpit-service-'));
   userDir = join(dir, 'workflows');
-  approvalFile = join(dir, 'workflows-approved.json');
   mkdirSync(userDir, { recursive: true });
   writeFileSync(join(userDir, 'demo.yaml'), yamlOf(PACK), 'utf8');
 });
@@ -120,7 +118,6 @@ function service(
   svc: WorkflowService;
   reg: WorkflowRegistry;
   audits: AuditRow[];
-  confirmations: ConfirmationStore;
   deps: WorkflowRunDeps;
   /** 放一条卡着的命令过去 ✓ */
   releaseOne: () => void;
@@ -131,7 +128,7 @@ function service(
 } {
   // **换一个包**（测试要能造 destructive 的那一种 ✓）
   writeFileSync(join(userDir, 'demo.yaml'), yamlOf(pack), 'utf8');
-  const reg = new WorkflowRegistry({ dirs: [userDir], approvalFile });
+  const reg = new WorkflowRegistry({ dirs: [userDir] });
   reg.scan();
   const audits: AuditRow[] = [];
   const throwOnAudit = harnessOpts.throwOnAudit === true;
@@ -174,9 +171,7 @@ function service(
       throw new Error('不开会话');
     },
   } as unknown as Connection;
-  const confirmations = new ConfirmationStore();
   const deps: WorkflowRunDeps = {
-    confirmations,
     // （连接替身：所有目标都走同一条假连接 ✓ —— 流程层的单测不测传输 ✓）
     targets: {
       connectionFor: async () => conn,
@@ -197,14 +192,12 @@ function service(
   };
   const svc = new WorkflowService({
     registry: reg,
-    confirmations,
     runDeps: deps,
   });
   return {
     svc,
     reg,
     audits,
-    confirmations,
     deps,
     releaseOne: () => waiting.shift()?.(),
     auditCount: () => auditCalls,
@@ -218,16 +211,16 @@ function service(
 }
 
 describe('流程服务 · 只认 id，不认路径', () => {
-  it('**没批准的流程跑不了**', () => {
+  it('**没批准的流程包也能跑** ✓（**存在即说明** ✓ —— ADR-D48 ✓）', () => {
     const { svc } = service();
-    expect(() => svc.start('demo.run', { project: 'x' })).toThrow(/还没有被批准/);
+    // **不再有「有没有被批准」那一问** ✓（**闸在设置里的统一权限区** ✓）
+    expect(() => svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
-  it('**批准之后能跑**，而且**列表里只列批过的**', () => {
-    const { svc, reg } = service();
-    reg.approve('demo.run');
+  it('**列表里列得出全部的包** ✓（**不再有「没批过的就不列」** ✓）', () => {
+    const { svc } = service();
     expect(svc.list().map((w) => w.id)).toEqual(['demo.run']);
-    expect(() => svc.start('demo.run', { project: 'x' })).not.toThrow();
+    expect(svc.list()[0]?.name).toBe('演示流程');
   });
 
   it('列表里的输入声明**带 default**（卡片要能自己预填 ✓ —— 独立评审 40 的 I-3 ✓）', () => {
@@ -235,14 +228,12 @@ describe('流程服务 · 只认 id，不认路径', () => {
       ...PACK,
       inputs: { project: { type: 'string', required: true, maxLength: 50 }, count: { type: 'integer', default: 5 } },
     });
-    h.reg.approve('demo.run');
     const first = h.svc.list()[0];
     expect(first?.inputs['count']).toEqual({ type: 'integer', default: 5 });
   });
 
   it('列表里带**输入声明**（卡片要按它渲染表单 ✓）', () => {
-    const { svc, reg } = service();
-    reg.approve('demo.run');
+    const { svc } = service();
     const first = svc.list()[0];
     expect(first?.inputs['project']).toEqual({
       type: 'string',
@@ -251,89 +242,40 @@ describe('流程服务 · 只认 id，不认路径', () => {
   });
 
   it('**没有这个流程** → 报错（说清楚 ✓）', () => {
-    const { svc, reg } = service();
-    reg.approve('demo.run');
+    const { svc } = service();
     expect(() => svc.start('nobody', {})).toThrow(/没有这个流程包/);
   });
 });
 
-describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () => {
-  it('destructive 步 → **停在等确认**（不是失败 ✓）', async () => {
-    const { svc, reg } = service(DANGEROUS_PACK);
-    reg.approve('demo.danger');
+describe('流程服务 · 流程包的闸（**存在即说明** ✓ —— ADR-D48 ✓）', () => {
+  it('destructive 步 → **直接跑完**（**不再停在等确认** ✓ —— **危险等级只是信息** ✓）', async () => {
+    const { svc } = service(DANGEROUS_PACK);
     const { runId } = svc.start('demo.danger', { project: 'x' });
     for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
       await new Promise((r) => setTimeout(r, 10));
     }
     const status = svc.status(runId);
-    // **这一档是「等确认」**，不是 failed ✓
-    expect(status.state).toBe('awaiting_confirmation');
-    expect(status.needsConfirmation?.stepId).toBe('danger');
-    expect(status.pausedAtStep).toBe(0);
-  });
-
-  it('**人点头之后继续跑**（前面的步**不重跑** ✓）', async () => {
-    const h = service(DANGEROUS_PACK);
-    h.reg.approve('demo.danger');
-    const { runId } = h.svc.start('demo.danger', { project: 'x' });
-    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    const token = h.svc.status(runId).needsConfirmation?.confirmId as string;
-    expect(token).toBeTruthy();
-
-    // **点头**（就是「人点了」那一下 ✓）
-    h.svc.approveAndResume(runId, token);
-    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    const status = h.svc.status(runId);
+    // **跑完了** ✓（**不是「等确认」** ✓ —— **那一档没了** ✓）
     expect(status.state).toBe('done');
     expect(status.ok).toBe(true);
+    // **那一步真的在时间线上** ✓
+    expect(status.stages.map((s) => s.stepId)).toEqual(['danger']);
   });
 
-  it('**没点头就不许继续**（凭据还在待确认 ✓）', async () => {
-    const { svc, reg } = service(DANGEROUS_PACK);
-    reg.approve('demo.danger');
-    const { runId } = svc.start('demo.danger', { project: 'x' });
-    for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    // **拿一张没被批准的凭据去续跑** → 拒绝 ✓
-    expect(() => svc.approveAndResume(runId, 'cf-fake')).toThrow(/还没被批准/);
-  });
-
-  it('**agent 只能「请求」确认，不能自己批准**（V3-C1 ✓）', async () => {
-    const h = service(DANGEROUS_PACK);
-    h.reg.approve('demo.danger');
-    const { runId } = h.svc.start('demo.danger', { project: 'x' });
-    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    // **请求** → 只是递进队列 ✓，**凭据仍然无效** ✓
-    const requested = h.svc.requestConfirmation(runId);
-    expect(requested.confirmId).toBeTruthy();
-    expect(h.confirmations.isApproved(requested.confirmId)).toBe(false);
-    // → 流程**还在等**（没被批准就跑不了 ✓）
-    expect(h.svc.status(runId).state).toBe('awaiting_confirmation');
-  });
-
-  it('**卡级授权没了**：**流程包批准了就谁都能跑** ✓（ADR-D46 ✓）', () => {
+  it('**卡级授权没了**：**流程包在目录里就谁都能跑** ✓（ADR-D46 ✓）', () => {
     const h = service();
-    h.reg.approve('demo.run');
     // **卡片触发** ✓ —— **不再有「这张卡被授过吗」那一问** ✓
     expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
-  it('**没批准的流程包 → 谁都跑不了** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）', () => {
+  it('**不再有「批准账」那一问** ✓（**流程包存在即说明** ✓ —— ADR-D48 ✓）', () => {
     const h = service();
-    // **没批准** ✓ → **拒绝** ✓
-    expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/还没有被批准/);
+    // **同一个包连着跑两次都放行** ✓（**没有「批过没批过」的差别** ✓）
+    expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
   it('**同一个流程同时只允许跑一次**（两个流程抢一条串口会串台 ✓）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     // **还在跑** → 第二次要被拒 ✓
     expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/正在跑/);
@@ -346,7 +288,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**取消**：状态变 cancelled（**不是 failed** ✓）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     // **取消** ✓
     h.svc.cancel(runId);
@@ -358,7 +299,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**取消之后它自己收尾时，不能把状态翻回去**（await 那次 unwind 之后仍然是 cancelled ✓）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     h.svc.cancel(runId);
 
@@ -377,7 +317,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**被取消的那一步，理由写 cancelled**（不是「回读不符」✓ —— 人叫停 ≠ 板子不听话 ✓）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     h.svc.cancel(runId);
     for (let i = 0; i < 50 && h.svc.status(runId).stages.length === 0; i += 1) {
@@ -391,7 +330,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**取消一个已经跑完的运行 → 状态不变**（幂等 ✓ —— 不能把 done 改成 cancelled ✗）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     // **等它跑完** ✓
     for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
@@ -409,7 +347,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     // ⚠️ **独立评审 40 的 I-1** ✓：成功路径有守卫 ✓，**catch 路径没有** ✓
     // → 取消之后只要有任何异常到达 execute ✓，界面上的「人叫停」就被说成「出错了」✗
     const h = service(PACK, { gate: true, throwOnAudit: true });
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     await h.untilWaiting(1);
 
@@ -432,29 +369,8 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(h.svc.status(runId).state).toBe('cancelled');
   });
 
-  it('**取消会撤销那张待确认的凭据**（人不该去点一个已经取消的运行 ✓）', async () => {
-    const h = service(DANGEROUS_PACK);
-    h.reg.approve('demo.danger');
-    const { runId } = h.svc.start('demo.danger', { project: 'x' });
-    // **等它停在等确认** ✓
-    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    const status = h.svc.status(runId);
-    expect(status.state).toBe('awaiting_confirmation');
-    const confirmId = status.needsConfirmation?.confirmId as string;
-
-    h.svc.cancel(runId);
-
-    // **那张凭据作废了** ✓（不撤销的话 → 它还能被人点成有效 ✗）
-    expect(h.confirmations.approve(confirmId, Date.now())).toBe(false);
-    // **而且不能再用它续跑** ✓
-    expect(() => h.svc.approveAndResume(runId, confirmId)).toThrow(/不在等确认/);
-  });
-
   it('**取消要记一行审计**（「谁叫停的」查得到 ✓）', async () => {
     const h = service();
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     h.svc.cancel(runId);
     const cancelRows = h.audits.filter((r) => r.actionId.endsWith(':cancel'));
@@ -464,7 +380,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**跑到一半，`status` 说得出「现在在第几步、从什么时候开始」**（界面不能一片死寂 ✓）', async () => {
     const h = service(TWO_STEP_PACK, { gate: true });
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     await h.untilWaiting(1);
 
@@ -485,7 +400,6 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
 
   it('**时间线边跑边填**（不是跑完才给 ✓）', async () => {
     const h = service(TWO_STEP_PACK, { gate: true });
-    h.reg.approve('demo.run');
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     await h.untilWaiting(1);
 
@@ -506,24 +420,17 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     const { svc } = service();
     expect(() => svc.cancel('wf-nope')).toThrow(/没有这次运行/);
   });
-
-  it('不是「等确认」的状态 → 不能 confirm', () => {
-    const { svc } = service();
-    expect(() => svc.approveAndResume('wf-nope', 'cf-x')).toThrow(/没有这次运行/);
-  });
 });
 
 describe('流程服务 · 长任务 = run_id + 轮询', () => {
   it('`start` **立刻给 runId**（不等跑完 ✓）', () => {
-    const { svc, reg } = service();
-    reg.approve('demo.run');
+    const { svc } = service();
     const started = svc.start('demo.run', { project: 'x' });
     expect(started.runId).toMatch(/^wf-/);
   });
 
   it('跑完之后 `status` **有完整的时间线**', async () => {
-    const { svc, reg } = service();
-    reg.approve('demo.run');
+    const { svc } = service();
     const { runId } = svc.start('demo.run', { project: 'x' });
     // **等它跑完**（测试里轮询 ✓）
     for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
@@ -542,8 +449,7 @@ describe('流程服务 · 长任务 = run_id + 轮询', () => {
   });
 
   it('每次运行**一行审计**（追责 ✓）', async () => {
-    const { svc, reg, audits } = service();
-    reg.approve('demo.run');
+    const { svc, audits } = service();
     const { runId } = svc.start('demo.run', { project: 'x' });
     for (let i = 0; i < 50 && svc.status(runId).state === 'running'; i += 1) {
       await new Promise((r) => setTimeout(r, 10));

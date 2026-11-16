@@ -3,7 +3,7 @@ import { projectRunStatusForAgent } from './view';
 import type { WorkflowService } from '../workflows/service';
 import type { McpHostDeps } from './host';
 import { withVersion, withVersionEach } from './convention';
-import { confirmAction, executeAction } from './action-tools';
+import { executeAction } from './action-tools';
 import { sdkDocs } from './sdk-docs';
 import { installCard, uninstallCard } from './card-tools';
 import { promoteCard } from './promote';
@@ -199,7 +199,6 @@ function errorCodeOf(err: unknown): number {
 export type McpReason =
   | 'denied'
   | 'not_found'
-  | 'not_approved'
   | 'invalid_params'
   | 'busy'
   | 'no_pending_confirmation'
@@ -214,7 +213,7 @@ export type McpReason =
 function reasonOf(err: unknown): McpReason {
   const detail = (err as { detail?: { reason?: string } } | undefined)?.detail;
   const raw = detail?.reason;
-  if (raw === 'not_found' || raw === 'not_approved') return raw;
+  if (raw === 'not_found') return raw;
   if (err instanceof RpcError && err.code === JSON_RPC_INVALID_PARAMS) return 'invalid_params';
   return 'failed';
 }
@@ -263,17 +262,6 @@ const TOOL_DEFS: McpToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: { run_id: { type: 'string', description: 'run_workflow 给的运行 id' } },
-      required: ['run_id'],
-    },
-  },
-  {
-    name: 'confirm_workflow',
-    title: '递一次确认请求',
-    description:
-      '**递一次确认请求**（人点了才生效 —— 这个工具**不会**让凭据生效；批准是 GUI 那一侧的事）。',
-    inputSchema: {
-      type: 'object',
-      properties: { run_id: { type: 'string', description: '运行 id' } },
       required: ['run_id'],
     },
   },
@@ -457,8 +445,8 @@ const READ_TOOL_DEFS: McpToolDef[] = [
     name: 'execute_action',
     title: '执行一个动作',
     description:
-      '执行板型包里声明的一个动作。**`reversible` 且参数在域内 → 直接执行** ✓；' +
-      '**`destructive` 或超出域 → 返回 `needs_confirmation`** ✓（带 `confirm_id` ✓ —— **人点了才生效** ✓）。' +
+      '执行板型包里声明的一个动作。**授权集里有它 → 直接执行** ✓（**destructive 也是直接执行** ✓ —— ' +
+      '**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）。' +
       '`dry_run` 只返回**将要执行的命令** ✓（不执行 ✓）。',
     inputSchema: {
       type: 'object',
@@ -466,31 +454,11 @@ const READ_TOOL_DEFS: McpToolDef[] = [
         action_id: { type: 'string', description: '板型包里声明的动作 id' },
         params: { type: 'object', description: '参数值（按动作声明给）' },
         dry_run: { type: 'boolean', description: '只预览将要执行的命令，**不执行**' },
-        confirm_id: { type: 'string', description: '人已确认的那一次执行的凭据' },
         device_key: {
           type: 'string',
           description:
             '**要动的是哪块板** ✓（`list_connections` 的 `device_key` ✓ —— **同一块板的多条连接给同一个** ✓）。' +
             '**不给 = 当前运行时那块** ✓；**给了但对不上 → `not_found`** ✓（**不会静默地打当前那块** ✓）。',
-        },
-      },
-      required: ['action_id'],
-    },
-  },
-  {
-    name: 'confirm_action',
-    title: '递一次动作确认请求',
-    description:
-      '**递一次确认请求**（把请求递到 GUI 的确认队列 ✓）。**这个工具不会让凭据生效** ✓——' +
-      '没有人点，`confirm_id` 永远无效 ✓（**批准不是 MCP 工具** ✓）。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action_id: { type: 'string', description: '板型包里声明的动作 id' },
-        params: { type: 'object', description: '参数值（按动作声明给）' },
-        device_key: {
-          type: 'string',
-          description: '**要动的是哪块板** ✓（**不给 = 当前那块** ✓；**对不上 → `not_found`** ✓）',
         },
       },
       required: ['action_id'],
@@ -633,26 +601,6 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         return withVersion(sdkDocs(topic));
       },
     ],
-    [
-      'confirm_workflow',
-      (args) => {
-        const runId = args['run_id'];
-        if (typeof runId !== 'string' || runId.length === 0) {
-          return withVersion(failure('invalid_params', 'confirm_workflow 缺 run_id'));
-        }
-        try {
-          // **只递请求** ✓ —— **不使凭据生效** ✓（契约 §2.4 ✓）
-          const { confirmId } = workflows.requestConfirmation(runId);
-          return withVersion({
-            ok: true,
-            confirm_id: confirmId,
-            expires_at: Date.now() + 5 * 60_000,
-          });
-        } catch {
-          return withVersion(failure('no_pending_confirmation', '这次运行没有待确认的步骤'));
-        }
-      },
-    ],
   ]);
   // **读侧工具** ✓（**接了宿主依赖才有** ✓）
   if (deps.host !== undefined) {
@@ -792,10 +740,6 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
         if (dryRun !== undefined && typeof dryRun !== 'boolean') {
           return withVersion(failure('invalid_params', 'dry_run 要么不给，要么给布尔'));
         }
-        const confirmId = args['confirm_id'];
-        if (confirmId !== undefined && (typeof confirmId !== 'string' || confirmId.length === 0)) {
-          return withVersion(failure('invalid_params', 'confirm_id 要么不给，要么给字符串'));
-        }
         const deviceKey = args['device_key'];
         if (deviceKey !== undefined && (typeof deviceKey !== 'string' || deviceKey.length === 0)) {
           return withVersion(failure('invalid_params', 'device_key 要么不给，要么给非空字符串'));
@@ -806,29 +750,10 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
           params,
           {
             ...(dryRun === undefined ? {} : { dryRun }),
-            ...(confirmId === undefined ? {} : { confirmId }),
             ...(deviceKey === undefined ? {} : { deviceKey }),
           },
         );
         return withVersion(result);
-      },
-    ],
-    [
-      'confirm_action',
-      (args) => {
-        const actionId = args['action_id'];
-        if (typeof actionId !== 'string' || actionId.length === 0) {
-          return withVersion(failure('invalid_params', 'confirm_action 缺 action_id'));
-        }
-        const params = (args['params'] ?? {}) as Record<string, unknown>;
-        const deviceKey = args['device_key'];
-        if (deviceKey !== undefined && (typeof deviceKey !== 'string' || deviceKey.length === 0)) {
-          return withVersion(failure('invalid_params', 'device_key 要么不给，要么给非空字符串'));
-        }
-        // **只递请求** ✓ —— **不使凭据生效** ✓（契约 §2.4.1 ✓）
-        return withVersion(
-          confirmAction(host.actions, actionId, params, ...(deviceKey === undefined ? [] : [deviceKey])),
-        );
       },
     ],
   ]);

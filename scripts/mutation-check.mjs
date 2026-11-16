@@ -2597,6 +2597,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M226 权限区：**危险的动作默认关** ✓（**「开启权限默认知道危险性」** ✓ —— ADR-D48 ✓）',
+    file: 'src/main/permissions/policy.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
+    expect: '危险',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (dangerous) return false;',
+        '  if (false) return false; // 变异：危险的动作也默认开',
+      ),
+  },
+  {
+    name: 'M227 授权：**destructive 不再问人** ✓（**直接执行** ✓ —— ADR-D48 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: 'destructive',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (!Object.prototype.hasOwnProperty.call(granted.actions, action.id)) {",
+        "  if (false && !Object.prototype.hasOwnProperty.call(granted.actions, action.id)) { // 变异：没授权也放行",
+      ),
+  },
+  {
+    name: 'M228 授权：**超 guard 域 → 拒绝** ✓（**不是「要不要问」** ✓ —— ADR-D48 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
+    expect: 'guard',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (!withinRange(params[name], range)) {",
+        "    if (false && !withinRange(params[name], range)) { // 变异：超域也放行",
+      ),
+  },
+  {
+    name: 'M229 流程：**存在即说明** ✓（**不再查批准账** ✓ —— ADR-D48 ✓）',
+    file: 'src/main/workflows/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
+    expect: 'require',
+    apply: (s) =>
+      replace(
+        s,
+        "  require(id: string): RegisteredWorkflow {",
+        "  requireApproved(id: string): RegisteredWorkflow { // 变异：又变回要批准",
+      ),
+  },
+  {
     name: 'M225 权限区：**卡片触发流程默认允许** ✓（**流程包的批准账才是那道闸** ✓）',
     file: 'src/main/permissions/policy.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],

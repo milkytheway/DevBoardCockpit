@@ -124,13 +124,6 @@ describe('两张卡片 · 同一块板子', () => {
               runTransaction: (fn) => runtime.runTransaction(fn),
               readTag: async () => undefined,
               granted: () => ({ actions: { [ACTION.id]: undefined } }),
-              confirmations: {
-                issue: () => '',
-                consume: () => false,
-                approve: () => false,
-                request: () => false,
-                revoke: () => false,
-              },
               audit: () => 'audit-1',
               actor: 'card:test',
             },

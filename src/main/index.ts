@@ -40,14 +40,13 @@ import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { createCardWiring } from './cards/wiring';
 import { ActionAudit } from './actions/audit';
 import { invokeAction } from './actions/executor';
-import { ConfirmationStore } from './actions/authorization';
 import { McpServer } from './mcp/server';
 import { buildMcpHost } from './mcp/wiring';
 import { startMcpHttp } from './mcp/http';
 import { generateToken } from './mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
 import { projectRunStatus, workflowReasonOf } from './cards/workflow-view';
-import { WorkflowRegistry, workflowApprovalsFile } from './workflows/registry';
+import { WorkflowRegistry } from './workflows/registry';
 import { WorkflowService } from './workflows/service';
 import { TargetRegistry } from './workflows/targets';
 import { cspViolationMessage } from './cards/csp-violation';
@@ -264,7 +263,6 @@ const cardRoots: CardRoot[] = [
  * - **确认凭据**（`actions/authorization.ts`）：一次性、5 分钟有效。
  * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
  */
-const confirmations = new ConfirmationStore();
 /**
  * **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓）。
  *
@@ -299,7 +297,6 @@ function grantedFor(cardId: string): { actions: Record<string, Record<string, { 
  */
 const workflowRegistry = new WorkflowRegistry({
   dirs: [builtinWorkflowsDir(app.getAppPath()), userWorkflowsDir()],
-  approvalFile: workflowApprovalsFile(userDataDir()),
 });
 workflowRegistry.scan();
 
@@ -319,16 +316,14 @@ const workflowTargets = new TargetRegistry({
 
 const workflowService = new WorkflowService({
   registry: workflowRegistry,
-  confirmations,
   runDeps: {
     targets: workflowTargets,
     profileFor: (id) => listProfiles().find((p) => p.id === id),
     // **流程的每一步也进同一本动作审计** ✓（契约 `05` §7.2 的第三本账 ✓）
     audit: (row) => actionAudit.append(row),
-    confirmations,
   },
-  /** 流程层的**授权** ✓ —— **两层** ✓（**卡级那一层 2026-11-16 删了** ✓ · ADR-D46 ✓）：
-   * 第一层是 manifest 声明 ✓，第二层是**包已被用户批准** ✓ */
+  /** 流程层的**授权** ✓ —— **只剩一层** ✓（ADR-D48 ✓）：
+   * **流程包的存在本身就是说明** ✓ —— **闸在设置里的统一权限区** ✓（ADR-D47 ✓） */
 });
 
 /**
@@ -345,12 +340,20 @@ function permissionOperations(): PermissionOperation[] {
       op: `action:${action.id}`,
       label: action.label ?? action.id,
       kind: 'action',
+      danger: action.danger === 'destructive' ? 'destructive' : 'reversible',
+      // **危险等级只是信息** ✓（**闸在开关上** ✓ —— ADR-D48 ✓）
       ...(action.danger === 'destructive' ? { hint: '破坏性动作' } : {}),
     });
   }
   for (const flow of workflowRegistry.list()) {
-    if (!flow.approved) continue;
-    operations.push({ op: `workflow:${flow.id}`, label: flow.name, kind: 'workflow' });
+    // **不再有「已批准」那一层** ✓（ADR-D48 ✓）—— **存在即说明** ✓
+    const plan = workflowRegistry.planOf(flow.id);
+    operations.push({
+      op: `workflow:${flow.id}`,
+      label: flow.name,
+      kind: 'workflow',
+      ...(plan === undefined ? {} : { hint: `${plan.steps.length} 步 · ${plan.roles.length} 台机器` }),
+    });
   }
   for (const op of HOST_OPERATIONS) {
     operations.push({ op: `host:${op}`, label: op, kind: 'host' });
@@ -402,7 +405,6 @@ async function startMcpServer(): Promise<void> {
           hasExitCode: runtime.hasExitCode,
           runTransaction: (fn) => runtime.runTransaction(fn),
           readTag: (tag) => runtime.sampleTag(tag),
-          confirmations,
           audit: (row) => actionAudit.append(row),
           actions: () => runtime.actionDefs,
         },
@@ -535,10 +537,6 @@ const cards = createCardWiring({
         runTransaction: (fn) => runtime.runTransaction(fn),
         readTag: (tag) => runtime.sampleTag(tag),
         granted: () => grantedFor(cardId),
-        // **用户点了就是同意** ✓（契约 §7.6 ✓ —— **人点**在那一下点击上 ✓）
-        // → **destructive 动作不再停下来问** ✓（**没人可问** ✗ —— 界面上没有这道闸 ✗）
-        askForConsent: false,
-        confirmations,
         audit: (row) => actionAudit.append(row),
         actor: `card:${cardId}`,
       });

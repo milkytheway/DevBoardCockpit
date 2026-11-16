@@ -41,8 +41,12 @@ export const KIND_PREFIX: Record<PermissionKind, string> = {
   host: 'host:',
 };
 
-/** **已知操作的集合**（**由宿主填** ✓ —— **每换一块板就重算** ✓） */
-const KNOWN_OPS = new Set<string>();
+/**
+ * **已知操作**（**由宿主填** ✓ —— **每换一块板就重算** ✓）。
+ *
+ * → **带危险等级** ✓ —— **默认规则要靠它** ✓（「危险的动作默认关」✓）。
+ */
+const KNOWN_OPS = new Map<string, PermissionOperation>();
 
 /** 宿主侧的操作（**固定的那几个** ✓ —— **每个都要能被关掉** ✓） */
 export const HOST_OPERATIONS = [
@@ -60,7 +64,13 @@ export const HOST_OPERATIONS = [
  * → **agent：允许** ✓（**它另有人的确认** ✓）
  * → **宿主操作：允许** ✓
  */
-export function defaultAllowed(actor: PermissionActor, op: string): boolean {
+export function defaultAllowed(
+  actor: PermissionActor,
+  op: string,
+  dangerous = false,
+): boolean {
+  // **危险的动作：默认关** ✓（**「开启权限默认知道危险性」** ✓ —— **打开它就是那一下知情** ✓）
+  if (dangerous) return false;
   if (actor === 'agent') return true;
   // **卡片**：只有「写板子」这一类是禁止的 ✓
   if (op.startsWith(KIND_PREFIX.action)) return false;
@@ -77,6 +87,8 @@ export interface PermissionOperation {
   kind: PermissionKind;
   /** 这一类里的说明（**人话** ✓） */
   hint?: string;
+  /** **这个动作有多危险** ✓（**动作才有** ✓ —— **流程靠「存在即说明」** ✓） */
+  danger?: 'reversible' | 'destructive';
 }
 
 /** 设置页要画的那张表（**一行一个开关** ✓） */
@@ -102,7 +114,7 @@ export class PermissionStore {
   /** **这张表里有哪些操作**（**宿主每次列表时更新** ✓） */
   setKnown(operations: readonly PermissionOperation[]): void {
     KNOWN_OPS.clear();
-    for (const operation of operations) KNOWN_OPS.add(operation.op);
+    for (const operation of operations) KNOWN_OPS.set(operation.op, operation);
   }
 
   private readonly policy: PolicyFile = { card: {}, agent: {} };
@@ -115,8 +127,9 @@ export class PermissionStore {
   allows(actor: PermissionActor, op: string): boolean {
     const explicit = this.policy[actor][op];
     if (explicit !== undefined) return explicit;
-    return defaultAllowed(actor, op);
+    return defaultAllowed(actor, op, this.isDangerous(op));
   }
+
 
   /** 设一个（**幂等** ✓） */
   set(actor: PermissionActor, op: string, allowed: boolean): void {
@@ -132,6 +145,16 @@ export class PermissionStore {
    */
   knows(op: string): boolean {
     return KNOWN_OPS.has(op);
+  }
+
+  /** **这个操作有多危险** ✓（**设置页要写着** ✓ —— 「开启权限默认知道危险性」✓） */
+  dangerOf(op: string): 'reversible' | 'destructive' | undefined {
+    return KNOWN_OPS.get(op)?.danger;
+  }
+
+  /** **它是不是危险动作** ✓（**默认关** ✓ —— **打开它就是那一下知情** ✓） */
+  private isDangerous(op: string): boolean {
+    return KNOWN_OPS.get(op)?.danger === 'destructive';
   }
 
   /** 全部（**给设置页看** ✓ —— 显式的与默认的合成 ✓） */

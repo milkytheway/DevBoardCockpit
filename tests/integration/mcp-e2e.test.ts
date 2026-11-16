@@ -11,7 +11,6 @@ import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from '../.
 import { WorkflowRegistry } from '../../src/main/workflows/registry';
 import { WorkflowService } from '../../src/main/workflows/service';
 import { TargetRegistry } from '../../src/main/workflows/targets';
-import { ConfirmationStore } from '../../src/main/actions/authorization';
 import type { ConnectionProfile } from '../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../src/main/hal/connection';
 
@@ -81,15 +80,11 @@ beforeEach(async () => {
 
   const registry = new WorkflowRegistry({
     dirs: [workflowsDir],
-    approvalFile: join(dir, 'workflows-approved.json'),
   });
   registry.scan();
-  registry.approve('demo.run');
 
-  const confirmations = new ConfirmationStore();
   const service = new WorkflowService({
     registry,
-    confirmations,
     runDeps: {
       targets: new TargetRegistry({
         profileFor: (id) => (id === 'guest' ? profile : undefined),
@@ -97,7 +92,6 @@ beforeEach(async () => {
       }),
       profileFor: (id) => (id === 'guest' ? profile : undefined),
       audit: () => 'audit-1',
-      confirmations,
     },
   });
 
@@ -230,7 +224,6 @@ function hostDeps(): McpHostDeps {
           }),
         } as unknown as Connection),
       readTag: async () => undefined,
-      confirmations: new ConfirmationStore(),
       audit: () => 'audit-e2e',
       actions: () => [
         {
@@ -301,10 +294,12 @@ describe('MCP · agent 的用法（端到端）', () => {
       'get_layout',
       'set_layout',
       'execute_action',
-      'confirm_action',
     ]) {
       expect(names, `少了 ${expected}`).toContain(expected);
     }
+    // **「问人」那两个工具没了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）
+    expect(names).not.toContain('confirm_action');
+    expect(names).not.toContain('confirm_workflow');
   });
 
   it('**tools/call → list_tags 真给得出东西** ✓（**真 HTTP** ✓）', async () => {
