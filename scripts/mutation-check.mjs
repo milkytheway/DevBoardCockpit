@@ -2627,7 +2627,7 @@ const MUTATIONS = [
     name: 'M218 装卡：**板型包里没有那个动作就不装** ✓（**板型包说了算** ✓ —— ADR-D46 ✓）',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '板型包里没有这些动作',
+    expect: '板型包里没有那个动作就不装',
     apply: (s) =>
       replace(
         s,
