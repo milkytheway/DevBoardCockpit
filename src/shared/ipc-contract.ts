@@ -78,7 +78,34 @@ export const IPC = {
    * 主题落在 main，卡片重挂时才会带上新的 `theme.css`。
    */
   themeSet: 'theme:set',
+  /**
+   * **统一权限区**（设置页的那张表 ✓ · ADR-D47 ✓）。
+   *
+   * → **列所有操作 + 谁能用** ✓
+   */
+  permissionsList: 'permissions:list',
+  /** **改一条**（`actor` × `op` × `allowed` ✓） */
+  permissionsSet: 'permissions:set',
 } as const;
+
+/** 谁能执行一个操作（**卡片** / **agent** ✓） */
+export type PermissionActor = 'card' | 'agent';
+
+/** 设置页权限区的一行 */
+export interface PermissionRow {
+  /** 操作的键（`action:backlight.set` ✓） */
+  op: string;
+  /** 显示名 */
+  label: string;
+  /** 这一类（`action` / `workflow` / `host` ✓） */
+  kind: 'action' | 'workflow' | 'host';
+  /** 这一类里的说明（**人话** ✓） */
+  hint?: string;
+  /** **卡片**能不能用 */
+  card: boolean;
+  /** **agent** 能不能用 */
+  agent: boolean;
+}
 
 /** 一张卡片的一个实例 */
 export interface CardInstanceInfo {
@@ -230,6 +257,15 @@ export interface CockpitApi {
   layoutGet(): Promise<LayoutState>;
   /** 存布局 */
   layoutSet(state: LayoutState): Promise<void>;
+  /**
+   * **统一权限区**（设置页 ✓ · ADR-D47 ✓）。
+   *
+   * → **一行一个操作** ✓ + **两种执行者** ✓（**卡片** ✓ / **agent** ✓）
+   * → **卡片写板子默认禁止** ✓（**C2** ✓）→ **要写板子的人在设置里打开** ✓。
+   */
+  permissionsList(): Promise<PermissionRow[]>;
+  /** 改一条（**幂等** ✓） */
+  permissionsSet(actor: PermissionActor, op: string, allowed: boolean): Promise<void>;
   /** 把外壳主题告诉 main：卡片重新加载时会拿到对应的 token */
   setTheme(theme: 'dark' | 'light'): Promise<void>;
   /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */

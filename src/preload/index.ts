@@ -57,6 +57,8 @@ export const api: CockpitApi = {
   layoutGet: () => invoke(IPC.layoutGet),
   layoutSet: (state) => invoke(IPC.layoutSet, state),
   setTheme: (theme) => invoke(IPC.themeSet, theme),
+  permissionsList: () => invoke(IPC.permissionsList),
+  permissionsSet: (actor, op, allowed) => invoke(IPC.permissionsSet, actor, op, allowed),
   onCardEvent: (cb) => {
     const handler = (_e: IpcRendererEvent, instanceId: string, payload: unknown): void =>
       cb(instanceId, payload);

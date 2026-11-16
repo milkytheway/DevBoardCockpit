@@ -2572,6 +2572,42 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M223 权限区：**卡片写板子默认禁止** ✓（**C2 的答案** ✓ —— ADR-D47 ✓）',
+    file: 'src/main/permissions/policy.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
+    expect: '卡片写板子：默认禁止',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (op.startsWith(KIND_PREFIX.action)) return false;',
+        '  if (false) return false; // 变异：卡片写板子也允许',
+      ),
+  },
+  {
+    name: 'M224 设置页：**把开关交出去** ✓（**谁 + 哪个操作 + 开还是关** ✓）',
+    file: 'src/renderer/shell/pages/SettingsPage.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/settings-permissions.test.tsx'],
+    expect: '拨开关',
+    apply: (s) =>
+      replace(
+        s,
+        "onPermission('card', row.op, e.target.checked)",
+        "onPermission('agent', row.op, e.target.checked) // 变异：串了执行者",
+      ),
+  },
+  {
+    name: 'M225 权限区：**卡片触发流程默认允许** ✓（**流程包的批准账才是那道闸** ✓）',
+    file: 'src/main/permissions/policy.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
+    expect: '卡片触发流程：默认允许',
+    apply: (s) =>
+      replace(
+        s,
+        "  if (actor === 'agent') return true;",
+        "  if (actor === 'agent' && op.startsWith(KIND_PREFIX.workflow)) return false; // 变异：卡片不许触发流程",
+      ),
+  },
+  {
     name: 'M222 执行器：**卡片那条路超 guard → 拒绝** ✓（**guard 是包作者划的界** ✓）',
     file: 'src/main/actions/authorization.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],

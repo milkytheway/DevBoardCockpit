@@ -1,5 +1,6 @@
 import type { ThemeMode } from '../theme';
 import type { ViewDensity } from '../../../shared/layout';
+import type { PermissionActor, PermissionRow } from '../../../shared/ipc-contract';
 import { PaletteIcon } from '../Icons';
 
 const SHORTCUTS: readonly { keys: string; action: string }[] = [
@@ -16,6 +17,8 @@ export function SettingsPage({
   cardsCount,
   connectionsCount,
   onRefreshCards,
+  permissions,
+  onPermission,
 }: {
   theme: ThemeMode;
   onTheme: (mode: ThemeMode) => void;
@@ -25,6 +28,10 @@ export function SettingsPage({
   cardsCount: number;
   connectionsCount: number;
   onRefreshCards: () => void;
+  /** **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓） */
+  permissions: PermissionRow[];
+  /** 改一条（**幂等** ✓） */
+  onPermission: (actor: PermissionActor, op: string, allowed: boolean) => void;
 }): JSX.Element {
   return (
     <div className="page page--settings">
@@ -117,6 +124,53 @@ export function SettingsPage({
           <button type="button" className="btn btn--ghost btn--sm" onClick={onRefreshCards}>
             重新扫描卡片目录
           </button>
+        </section>
+
+        <section className="settings-card settings-card--permissions">
+          <header className="settings-card__head">
+            <div>
+              <h2>权限</h2>
+              <p>所有能动的操作都在这儿 —— 想关哪个关哪个</p>
+            </div>
+          </header>
+          <p className="settings-note">
+            一个地方，一个开关，不再弹窗。<strong>卡片</strong>是界面上的卡，
+            <strong>agent</strong>是 MCP 那条路。默认：卡片不许写板子（触发流程可以），
+            agent 照常（它那边本来就有人的确认）。
+          </p>
+          {permissions.length === 0 ? (
+            <p className="settings-note dim">没有可设的操作 —— 先接上一块板。</p>
+          ) : (
+            <ul className="perm-list">
+              {permissions.map((row) => (
+                <li key={row.op} className="perm-row">
+                  <div className="perm-row__text">
+                    <span className="perm-row__label">{row.label}</span>
+                    <span className="perm-row__op mono">{row.op}</span>
+                    {row.hint ? <span className="perm-row__hint">{row.hint}</span> : null}
+                  </div>
+                  <div className="perm-row__switches">
+                    <label className="perm-switch">
+                      <input
+                        type="checkbox"
+                        checked={row.card}
+                        onChange={(e) => onPermission('card', row.op, e.target.checked)}
+                      />
+                      <span>卡片</span>
+                    </label>
+                    <label className="perm-switch">
+                      <input
+                        type="checkbox"
+                        checked={row.agent}
+                        onChange={(e) => onPermission('agent', row.op, e.target.checked)}
+                      />
+                      <span>agent</span>
+                    </label>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="settings-card settings-card--about">

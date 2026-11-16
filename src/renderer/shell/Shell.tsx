@@ -19,6 +19,7 @@ import {
   useCards,
   useConnections,
   useLayout,
+  usePermissions,
   useRuntime,
   useTagStream,
 } from './data';
@@ -115,6 +116,7 @@ export function Shell(): JSX.Element {
   const { connections, refresh: refreshConnections } = useConnections(reportError);
   const runtime = useRuntime();
   const { cards, refresh } = useCards(reportError);
+  const { rows: permissionRows, set: setPermission } = usePermissions(reportError);
   const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
   const broker = useBroker();
   const terminal = useTerminal(connections, reportError, log);
@@ -495,6 +497,8 @@ export function Shell(): JSX.Element {
                 cardsCount={cards.length}
                 connectionsCount={connections.length}
                 onRefreshCards={refresh}
+                permissions={permissionRows}
+                onPermission={setPermission}
               />
             ) : null}
           </div>

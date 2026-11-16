@@ -190,6 +190,19 @@ export class TagRuntime {
   }
 
   /** 当前板型包的 id（**确认凭据要绑它**） */
+  /**
+   * **动作清单**（**给设置页的权限区用** ✓ —— ADR-D47 ✓）。
+   *
+   * → **只要 id 与 label** ✓ —— **参数与命令不给** ✓（同 `pack-view` 的那条 ✓）
+   */
+  get actionSummaries(): { id: string; label?: string; danger: string }[] {
+    return (this.pack?.actions ?? []).map((action) => ({
+      id: action.id,
+      ...(action.label === undefined ? {} : { label: action.label }),
+      danger: action.danger,
+    }));
+  }
+
   get packId(): string | undefined {
     return this.pack?.id;
   }

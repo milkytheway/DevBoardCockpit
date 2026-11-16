@@ -1,3 +1,4 @@
+import type { PermissionStore } from '../permissions/policy';
 import { cardState, type CardState } from '../cards/state';
 import { validateCardAt } from '../cards/validate-at';
 import type { McpCardEntry, McpHostDeps, McpValidateResult } from '../mcp/host';
@@ -49,6 +50,8 @@ export interface McpHostWiring {
   /** 同意队列（**待人批的** ✓） */
   /** 内置卡 id（**内置卡不许删** ✓） */
   builtinCardIds?: string[];
+  /** **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓） */
+  permissions?: PermissionStore;
 }
 
 /** 拼出 MCP 层的宿主依赖 ✓ */

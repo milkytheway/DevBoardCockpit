@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchApp, writeCard, currentCardFrame, placeCard, APP_NAME } from './harness';
@@ -69,14 +69,19 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
   const root = mkdtempSync(join(tmpdir(), 'cockpit-action-e2e-'));
   try {
     /**
-     * ── **不用再写授权账了** ──
+     * ── **得先把权限打开** ──
      *
-     * 以前要写 `grants.json`（卡级授权账 ✓）—— 那是「有效写权限 = 声明 ∩ 授过」那套 ✓。
-     * → **2026-11-16 起没有授权账了** ✓（ADR-D46 ✓ —— 用户：「这个也要同意那个也要同意不累吗」✓）
-     * → **有效写权限 = 卡片的 manifest 声明** ✓ → **声明之外的一律 denied** ✓。
+     * → **卡片写板子默认禁止** ✓（**ADR-D47** ✓ —— **设置里的统一权限区** ✓）
+     *   → 理由：**宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓ → **要写板子的人在设置里打开** ✓
+     * → 这份账就是**设置里那个开关存下来的东西** ✓（`permissions.json` ✓）
      */
     const userDataDir = join(root, APP_NAME);
     mkdirSync(userDataDir, { recursive: true });
+    writeFileSync(
+      join(userDataDir, 'permissions.json'),
+      JSON.stringify({ card: { 'action:backlight.set': true }, agent: {} }, null, 2),
+      'utf8',
+    );
 
     // **只有假设备**（真板子不在这台机器上）
     const app = await launchApp({ userDataDir: root, env: { COCKPIT_FAKE: 'only' } });
@@ -169,6 +174,71 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
       // 回读值是**文本**（file_equals 比的是文件内容）→ 审计行里是带引号的
       expect(lines[0]).toContain('value="200"');
       expect(lines[0]).toContain('verified=true');
+    } finally {
+      await app.close();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * **默认：卡片不许写板子** ✓（**ADR-D47** ✓ · **C2** ✓）。
+ *
+ * → **宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓
+ * → **要写板子的人在设置里打开那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）
+ */
+test('卡片写板子：默认被拒（**设置里没打开** ✓）', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cockpit-perm-e2e-'));
+  try {
+    // **不写 permissions.json** ✓ → **走默认** ✓（**卡片写板子：禁止** ✓）
+    const app = await launchApp({ userDataDir: root, env: { COCKPIT_FAKE: 'only' } });
+    try {
+      const hasFake = await app.window.evaluate(async () => {
+        const list = await (
+          window as unknown as { cockpit: { connectionsList(): Promise<{ id: string }[]> } }
+        ).cockpit.connectionsList();
+        return list.some((c) => c.id === 'fake-board');
+      });
+      test.skip(
+        !hasFake,
+        '这条判据要**带假设备的构建**（`npm run build:fake`）——生产构建里没有假设备（ADR-D30）',
+      );
+
+      await expect
+        .poll(
+          async () =>
+            app.window.evaluate(() =>
+              (
+                window as unknown as { cockpit: { tagsReadings(): Promise<unknown[]> } }
+              ).cockpit.tagsReadings(),
+            ),
+          { timeout: 20_000 },
+        )
+        .not.toHaveLength(0);
+
+      await writeCard(app.userDataDir, 'action-card', ACTION_CARD);
+      await placeCard(app.window, 'action-card');
+
+      // **等它渲染出「失败」** ✓（**被拒就是失败** ✓ —— 不是「还没跑」✓）
+      await expect
+        .poll(
+          async () => {
+            const frame = await currentCardFrame(app.window, 'action-card');
+            if (frame === undefined) return '';
+            return (await frame.locator('#result').textContent().catch(() => '')) ?? '';
+          },
+          { timeout: 30_000 },
+        )
+        .toContain('"ok":false');
+
+      const frame = await currentCardFrame(app.window, 'action-card');
+      if (frame === undefined) throw new Error('卡片 action-card 的 iframe 不见了');
+      const raw = (await frame.locator('#result').textContent()) ?? '{}';
+      const rendered = JSON.parse(raw) as { ok: boolean; value: string | null };
+      expect(rendered.ok, `卡片看到的结果：${raw}`).toBe(false);
+      // **板子上没有那个数** ✓（**动作根本没跑** ✓ —— 不是「跑了但回读失败」✓）
+      expect(rendered.value).toBeNull();
     } finally {
       await app.close();
     }

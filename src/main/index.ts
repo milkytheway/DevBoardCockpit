@@ -7,6 +7,7 @@ import {
   type CardRequest,
   type IpcChannel,
   type IpcResult,
+  type PermissionActor,
 } from '../shared/ipc-contract';
 import type { LayoutState } from '../shared/layout';
 import { makeError, toAppErrorPayload } from '../shared/errors';
@@ -18,6 +19,11 @@ import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
 import { selectDevice } from './profiles/device-select';
+import {
+  HOST_OPERATIONS,
+  PermissionStore,
+  type PermissionOperation,
+} from './permissions/policy';
 import {
   builtinCardsDir,
   builtinProfilesDir,
@@ -259,6 +265,13 @@ const cardRoots: CardRoot[] = [
  * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
  */
 const confirmations = new ConfirmationStore();
+/**
+ * **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓）。
+ *
+ * → **一个地方** ✓：**想关就关** ✓ —— **不再有弹窗** ✓。
+ * → **卡片写板子默认禁止** ✓（**C2** ✓）→ **要写板子的人在设置里打开** ✓。
+ */
+const permissions = new PermissionStore(join(userDataDir(), 'permissions.json'));
 const actionAudit = new ActionAudit(join(userDataDir(), 'logs', 'actions.log'));
 
 /**
@@ -317,6 +330,33 @@ const workflowService = new WorkflowService({
   /** 流程层的**授权** ✓ —— **两层** ✓（**卡级那一层 2026-11-16 删了** ✓ · ADR-D46 ✓）：
    * 第一层是 manifest 声明 ✓，第二层是**包已被用户批准** ✓ */
 });
+
+/**
+ * **设置页权限区的那张表**（**一行一个操作** ✓ · ADR-D47 ✓）。
+ *
+ * → **当前这块板的动作** ✓（**板型包说了算** ✓）
+ * → **已批准的流程** ✓（**只有批过的才列** ✓ —— 没批过的流程**卡片看不见** ✓）
+ * → **宿主那三个操作** ✓（装卡 / 卸卡 / 提为全屏 ✓）
+ */
+function permissionOperations(): PermissionOperation[] {
+  const operations: PermissionOperation[] = [];
+  for (const action of runtime.actionSummaries) {
+    operations.push({
+      op: `action:${action.id}`,
+      label: action.label ?? action.id,
+      kind: 'action',
+      ...(action.danger === 'destructive' ? { hint: '破坏性动作' } : {}),
+    });
+  }
+  for (const flow of workflowRegistry.list()) {
+    if (!flow.approved) continue;
+    operations.push({ op: `workflow:${flow.id}`, label: flow.name, kind: 'workflow' });
+  }
+  for (const op of HOST_OPERATIONS) {
+    operations.push({ op: `host:${op}`, label: op, kind: 'host' });
+  }
+  return operations;
+}
 
 /**
  * **MCP server**（契约 `spec/04` §7.1 ✓ · ADR-D2：与 GUI **同进程** ✓）。
@@ -442,7 +482,12 @@ const cards = createCardWiring({
     list: () => workflowService.list(),
     run: (id: string, inputs: Record<string, unknown>) => {
       try {
-        // **三层授权**（契约 §3.3 ✓）：会话层查了「卡级」✓，
+        // **权限区**（ADR-D47 ✓）：**设置里那一个开关** ✓
+        // → **卡片触发流程默认允许** ✓（**流程包的批准账才是那道闸** ✓）
+        if (!permissions.allows('card', `workflow:${id}`)) {
+          return { ok: false, reason: 'denied' };
+        }
+        // **流程包的批准**（契约 §3.3 ✓）：会话层查了「卡级」✓，
         // 这里 `start` 还会查「**包已批准**」✓（`requireApproved` ✓）。
         const { runId } = workflowService.start(id, inputs);
         return { ok: true, runId };
@@ -474,6 +519,11 @@ const cards = createCardWiring({
       const action = runtime.actionDef(actionId);
       if (action === undefined) {
         return { ok: false, reason: 'not_found', actionId };
+      }
+      // **权限区**（ADR-D47 ✓）：**卡片写板子默认禁止** ✓
+      // → **要写板子的人在设置里打开那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）
+      if (!permissions.allows('card', `action:${actionId}`)) {
+        return { ok: false, reason: 'denied', actionId };
       }
       return invokeAction(action, params, {
         packId: runtime.packId ?? '',
@@ -527,6 +577,26 @@ handle(IPC.layoutSet, (state) => {
   cards.layoutSet(state as LayoutState);
   return undefined;
 });
+/**
+ * **统一权限区**（设置页 ✓ · ADR-D47 ✓）。
+ *
+ * → **列所有操作 + 谁能用** ✓
+ * → **改一条** ✓（**幂等** ✓）
+ */
+handle(IPC.permissionsList, () => {
+  const operations = permissionOperations();
+  permissions.setKnown(operations);
+  return permissions.rows(operations);
+});
+handle(IPC.permissionsSet, (actor, op, allowed) => {
+  const key = String(op);
+  // **不存在的操作不许设** ✓（**否则账里会攒下一堆没人看得见的垃圾键** ✓）
+  if (!permissions.knows(key)) {
+    throw makeError('IPC_INVALID_PAYLOAD', `没有这个操作：${key}`);
+  }
+  permissions.set(String(actor) as PermissionActor, key, Boolean(allowed));
+});
+
 handle(IPC.themeSet, (theme) => {
   // The renderer remounts the card frames after switching, so the next
   // `cockpit://` response carries the new tokens (contract §6.2).

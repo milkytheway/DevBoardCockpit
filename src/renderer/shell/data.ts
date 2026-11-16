@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
+import type {
+  CardInstanceInfo,
+  ConnectionInfo,
+  PermissionActor,
+  PermissionRow,
+} from '../../shared/ipc-contract';
 import type { LayoutState, LayoutUnit, ViewDensity } from '../../shared/layout';
 import { defaultUnit, withDensity, withUnits } from '../../shared/layout';
 import type { RuntimeStatus } from '../../shared/runtime-status';
@@ -67,6 +72,51 @@ export function useConnections(reportError: ReportError): {
 }
 
 /** Runtime status: once at boot, then polled (the host has no push for it). */
+/**
+ * **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓）。
+ *
+ * → **一次读** ✓（**设置页打开时读** ✓ —— **不是轮询** ✓ —— **它很少变** ✓）
+ * → **改一条就重读** ✓（**改完立刻看到** ✓）。
+ */
+export function usePermissions(reportError: ReportError): {
+  rows: PermissionRow[];
+  set: (actor: PermissionActor, op: string, allowed: boolean) => void;
+} {
+  const [rows, setRows] = useState<PermissionRow[]>([]);
+  const report = useLatest(reportError);
+
+  const refresh = useCallback(() => {
+    const api = window.cockpit;
+    if (!api) return;
+    void api
+      .permissionsList()
+      .then((list) => setRows(list))
+      .catch((cause: unknown) =>
+        report.current(cause instanceof Error ? cause.message : String(cause)),
+      );
+  }, [report]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const set = useCallback(
+    (actor: PermissionActor, op: string, allowed: boolean) => {
+      const api = window.cockpit;
+      if (!api) return;
+      void api
+        .permissionsSet(actor, op, allowed)
+        .then(refresh)
+        .catch((cause: unknown) =>
+          report.current(cause instanceof Error ? cause.message : String(cause)),
+        );
+    },
+    [refresh, report],
+  );
+
+  return { rows, set };
+}
+
 export function useRuntime(pollMs = 3000): RuntimeStatus {
   const [runtime, setRuntime] = useState<RuntimeStatus>({ state: 'idle' });
   useEffect(() => {
