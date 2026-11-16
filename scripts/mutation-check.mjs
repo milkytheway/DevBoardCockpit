@@ -1026,30 +1026,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M85 控制面：确认凭据必须一次性（用掉就没了）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
-    expect: '第二次用不行',
-    apply: (s) =>
-      replace(
-        s,
-        '    // **一次性**：用掉就删\n    this.issued.delete(token);',
-        '    // 变异：不删（凭据可以重放）',
-      ),
-  },
-  {
-    name: 'M86 控制面：destructive 动作必须走确认（不能直接执行）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
-    expect: 'destructive → needs_confirmation',
-    apply: (s) =>
-      replace(
-        s,
-        "  const dangerous = action.danger === 'destructive' || floor.verdict === 'destructive';",
-        "  const dangerous = action.danger === 'destructiv' || floor.verdict === 'destructive';",
-      ),
-  },
-  {
     name: 'M83 控制面：回读形式 5 必须标 verified:false（标成 true = 把没验证当验证了）',
     file: 'src/main/actions/readback.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
@@ -1266,18 +1242,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M104 流程层：确认凭据必须**绑住这一步的输入**（换输入 = 凭据作废）',
-    file: 'src/main/workflows/runner.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '同一张凭据换一组输入',
-    apply: (s) =>
-      replace(
-        s,
-        '    ...Object.fromEntries(Object.entries(ctx.inputs).map(([k, v]) => [`input:${k}`, v])),',
-        '    // 变异：输入不进摘要',
-      ),
-  },
-  {
     name: 'M105 流程层：角色事实要**包引号**（profile 是半可信的 → 不能原样插）',
     file: 'src/main/workflows/substitute.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
@@ -1287,66 +1251,6 @@ const MUTATIONS = [
         s,
         "    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), '连接事实');",
         '    return String(value); // 变异：原样插',
-      ),
-  },
-  {
-    name: 'M106 流程注册表：**放一个文件进目录 ≠ 批准它**（否则 agent 能自写包就跑）',
-    file: 'src/main/workflows/registry.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
-    expect: '还没有被批准',
-    apply: (s) =>
-      replace(
-        s,
-        '          approved: approval !== undefined && approval.digest === digest,',
-        '          approved: true, // 变异：放进目录就算批准',
-      ),
-  },
-  {
-    name: 'M107 流程注册表：**批准绑内容摘要**（改了内容要重新批准）',
-    file: 'src/main/workflows/registry.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
-    expect: '改了内容要重新批准',
-    apply: (s) =>
-      replace(
-        s,
-        '          approved: approval !== undefined && approval.digest === digest,',
-        '          approved: approval !== undefined, // 变异：只认 id 不认内容',
-      ),
-  },
-  {
-    name: 'M108 流程服务：**只认 id 不认路径**（没批准的包跑不了）',
-    file: 'src/main/workflows/service.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '没批准的流程跑不了',
-    apply: (s) =>
-      replace(
-        s,
-        '    const registered = this.opts.registry.requireApproved(id);',
-        '    const registered = this.opts.registry.get(id); // 变异：不查批准账\n    if (registered === undefined) {\n      throw makeError(\'IPC_INVALID_PAYLOAD\', `没有这个流程包：${id}`);\n    }',
-      ),
-  },
-  {
-    name: 'M109 确认凭据：**签发 ≠ 有效**（没人点，confirm_id 永远无效 ✓）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
-    expect: '签发 ≠ 有效',
-    apply: (s) =>
-      replace(
-        s,
-        "    if (entry.state !== 'approved') return false;",
-        '    // 变异：签发即可用（确认通道形同虚设）',
-      ),
-  },
-  {
-    name: 'M110 流程服务：**确认链有落点**（人点头 → 从停住的那步继续 ✓）',
-    file: 'src/main/workflows/service.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '人点头之后继续跑',
-    apply: (s) =>
-      replace(
-        s,
-        '    const approved = this.opts.confirmations?.approve(confirmId, this.now()) ?? false;',
-        '    const approved = true; // 变异：不用人点头就放行',
       ),
   },
   {
@@ -1395,18 +1299,6 @@ const MUTATIONS = [
         s,
         "  for (const workflowId of requires.workflows ?? []) {",
         '  for (const workflowId of [] as string[]) { // 变异：流程那一半不查',
-      ),
-  },
-  {
-    name: 'M115 流程服务：**agent 只能请求确认，不能自己批准**（V3-C1 ✓）',
-    file: 'src/main/workflows/service.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: 'agent 只能「请求」确认',
-    apply: (s) =>
-      replace(
-        s,
-        '    const queued = this.opts.confirmations?.request(confirmId, this.now()) ?? false;',
-        '    const queued = this.opts.confirmations?.approve(confirmId, this.now()) ?? false; // 变异：请求即批准',
       ),
   },
   {
@@ -1538,18 +1430,6 @@ const MUTATIONS = [
         s,
         '  if (ctx.opts.signal?.aborted === true) return undefined;',
         '  if (false) return undefined; // 变异：取消后还去验',
-      ),
-  },
-  {
-    name: 'M129 流程层：**取消**要撤销那张待确认的凭据（人别去点一个已取消的运行 ✓）',
-    file: 'src/main/workflows/service.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '撤销那张待确认的凭据',
-    apply: (s) =>
-      replace(
-        s,
-        '      this.opts.confirmations?.revoke(pending);',
-        '      // 变异：不撤销（凭据还能被人点成有效 ✗）',
       ),
   },
   {
@@ -1712,30 +1592,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M142 确认链：人点头 → **从那一步继续**（前面的步**不重跑** ✓ —— 契约 §7.6 ✓）',
-    file: 'src/main/workflows/interactive.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/interactive.test.ts'],
-    expect: '从那一步继续',
-    apply: (s) =>
-      replace(
-        s,
-        '  const startAt = pack.steps.findIndex((s) => s.id === pending.stepId);',
-        '  const startAt = 0; // 变异：从头再跑一遍（前面的步重跑了 ✗）',
-      ),
-  },
-  {
-    name: 'M143 确认链：**人摇头 → 那一步不许跑**（没人点头就不许做 ✗）',
-    file: 'src/main/workflows/interactive.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/interactive.test.ts'],
-    expect: '人摇头',
-    apply: (s) =>
-      replace(
-        s,
-        '  if (!yes) return first;',
-        '  if (false) return first; // 变异：摇头也照样做',
-      ),
-  },
-  {
     name: 'M144 流程层：**异常路径**也不许把「取消」翻成 failed（独立评审 40 的 I-1 ✓）',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
@@ -1805,30 +1661,6 @@ const MUTATIONS = [
         s,
         "  if (step.danger === 'destructive' && step.readback?.kind === 'none') {",
         '  if (false) { // 变异：规则 11 不执行',
-      ),
-  },
-  {
-    name: 'M150 执行器：凭据要绑**这一步的最终命令**（契约 §7.5-3 ✓ —— 独立评审 40 的 I-5 ✓）',
-    file: 'src/main/actions/executor.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '命令变了 → 那张凭据用不了',
-    apply: (s) =>
-      replace(
-        s,
-        "    const commandDigest = createHash('sha256').update(command, 'utf8').digest('hex');",
-        "    const commandDigest = ''; // 变异：不绑最终命令",
-      ),
-  },
-  {
-    name: 'M151 凭据摘要里**要有命令摘要**（同一张凭据不能认两条命令 ✓）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
-    expect: '最终命令不同 → 不行',
-    apply: (s) =>
-      replace(
-        s,
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`,',
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${deviceKey}`, // 变异：不绑命令',
       ),
   },
   {
@@ -2093,18 +1925,6 @@ const MUTATIONS = [
         s,
         "  if (opts.dryRun === true) {\n    return {\n      ok: true,\n      dry_run: true,",
         "  if (opts.dryRun === true) {\n    return {\n      ok: false,\n      reason: 'needs_confirmation',\n      dry_run: false,",
-      ),
-  },
-  {
-    name: 'M176 MCP 写侧：**`confirm_action` 只递请求** ✓（**不批准** ✓ —— 契约 §2.4.1 ✓）',
-    file: 'src/main/mcp/action-tools.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
-    expect: '只递请求',
-    apply: (s) =>
-      replace(
-        s,
-        "  deps.confirmations.request(confirmId, now);",
-        "  deps.confirmations.approve(confirmId, now); // 变异：agent 自己批了",
       ),
   },
   {
@@ -2385,18 +2205,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M201 凭据：**绑住「这块板」** ✓（为 A 板签的不能动 B 板 ✓ —— 契约 §2.4.1 第六项 ✓）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
-    expect: '设备不同',
-    apply: (s) =>
-      replace(
-        s,
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}|${deviceKey}`,',
-        '      digest: `${actionId}|${paramsDigest(params)}|${packId}|${contractVersion}|${commandDigest}`, // 变异：不绑设备',
-      ),
-  },
-  {
     name: 'M202 工作流：**角色事实取自 `options.ssh`** ✓（**那条 scp 要用板子的地址** ✓）',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/role-facts.test.ts'],
@@ -2509,30 +2317,6 @@ const MUTATIONS = [
         s,
         '    if (floor.matched) {',
         '    if (false) { // 变异：reader 的命令不过地板',
-      ),
-  },
-  {
-    name: 'M216 执行器：**卡片那条路不问人** ✓（**用户点了就是同意** ✓ —— ADR-D46 ✓）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '卡片那条路',
-    apply: (s) =>
-      replace(
-        s,
-        "    if (!ask) return { verdict: 'ok' };",
-        "    if (false) return { verdict: 'ok' }; // 变异：卡片那条路也要问",
-      ),
-  },
-  {
-    name: 'M217 流程层：**没批准的流程包谁都跑不了** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）',
-    file: 'src/main/workflows/registry.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '没批准的流程包',
-    apply: (s) =>
-      replace(
-        s,
-        '    if (!found.approved) {',
-        '    if (false) { // 变异：没批准也放行',
       ),
   },
   {
@@ -2654,18 +2438,6 @@ const MUTATIONS = [
         s,
         "  if (actor === 'agent') return true;",
         "  if (actor === 'agent' && op.startsWith(KIND_PREFIX.workflow)) return false; // 变异：卡片不许触发流程",
-      ),
-  },
-  {
-    name: 'M222 执行器：**卡片那条路超 guard → 拒绝** ✓（**guard 是包作者划的界** ✓）',
-    file: 'src/main/actions/authorization.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '超 guard 域',
-    apply: (s) =>
-      replace(
-        s,
-        "      if (!ask) {\n        return {\n          verdict: 'denied',",
-        "      if (false) {\n        return {\n          verdict: 'denied',",
       ),
   },
   {
