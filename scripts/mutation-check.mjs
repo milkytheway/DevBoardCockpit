@@ -2592,7 +2592,8 @@ const MUTATIONS = [
       replace(
         s,
         "onPermission('card', row.op, e.target.checked)",
-        "onPermission('agent', row.op, e.target.checked) // 变异：串了执行者",
+        // **变异里不能带行内注释** ✓ —— **JSX 里那会把闭合括号吃掉** ✗（语法错 ✗ —— **那不算守住** ✓）
+        "onPermission('agent', row.op, e.target.checked)",
       ),
   },
   {
