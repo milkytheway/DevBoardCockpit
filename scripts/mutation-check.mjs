@@ -2150,8 +2150,10 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    const candidates = readdirSync(downloads)',
-        '    const candidates: string[] = []; // 变异：不扫 Downloads 了\n    void readdirSync;',
+        `    const candidates = readdirSync(downloads)
+      .filter((name) => name.startsWith('platform-tools'))
+      .map((name) => join(downloads, name, 'platform-tools', 'adb.exe'));`,
+        '    const candidates: string[] = []; // 变异：不扫 Downloads 了',
       ),
   },
   {

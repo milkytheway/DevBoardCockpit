@@ -107,7 +107,9 @@ describe('宿主设置 · 建连接的入口不许漏掉 adb 路径', () => {
     // **「应用里是好的、CLI 里是坏的」= 两份真相** ✓ → 收进唯一的入口 ✓
     // → 这里守着「入口不许退回 `undefined`」✓
     const src = readFileSync(join(process.cwd(), 'src', 'main', 'hal', 'registry.ts'), 'utf8');
-    expect(src).toContain('resolveAdbPath');
-    expect(src).toContain('loadSettings');
+    // **带括号** ✓ —— 只查名字的话，**import 那行也算命中** ✓
+    // → 变异把调用删了而 import 还在 ✓ → 断言照样绿 ✓ → **守卫形同虚设** ✓。
+    expect(src).toContain('resolveAdbPath(');
+    expect(src).toContain('loadSettings(');
   });
 });
