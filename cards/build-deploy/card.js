@@ -107,8 +107,14 @@ function renderSteps(status) {
     const li = document.createElement('li');
     const ok = stage.ok === true;
     const verified = stage.verified === true;
-    const tone = !ok ? 'bad' : verified ? 'ok' : 'warn';
-    li.className = `deck__step deck__step--${tone}`;
+    li.className = 'deck__step';
+    if (!ok) {
+      li.classList.add('deck__step--bad');
+    } else if (verified) {
+      li.classList.add('deck__step--ok');
+    } else {
+      li.classList.add('deck__step--warn');
+    }
     const id = document.createElement('span');
     id.className = 'flow__step-id';
     id.textContent = stage.stepId ?? '';
