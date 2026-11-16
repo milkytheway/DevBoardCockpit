@@ -282,8 +282,8 @@ const TOOL_DEFS: McpToolDef[] = [
     title: '装一张卡',
     description:
       '把一个卡片目录装到卡片根（**复制 + 热重载** ✓）。' +
-      '**要新的写权限 → 不装** ✓，返回 `needs_consent` 与待批清单 ✓ —— ' +
-      '**用户交互发生在 GUI 里，agent 只是重试** ✓。',
+      '**要写的动作板型包里没有 → 不装** ✓（**板型包说了算** ✓）。' +
+      '**装卡不再要「同意」** ✓ —— **卡片的 manifest 就是它的权限** ✓（ADR-D46 ✓）。',
     inputSchema: {
       type: 'object',
       properties: { path: { type: 'string', description: '卡片目录的绝对路径' } },

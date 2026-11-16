@@ -1,9 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { ConsentQueue, dirSnapshot } from '../cards/consent';
 import { parseManifest } from '../cards/manifest';
 import type { CardRegistry } from '../cards/registry';
-import type { GrantStore } from '../cards/grants';
 /** 动作的**最小视图**（**只要装卡要用的那几项** ✓ —— 不给整份定义 ✓） */
 export interface PackActionView {
   id: string;
@@ -20,22 +18,19 @@ export interface PackActionView {
  * → **复制到用户卡片根** ✓（**不是内置目录** ✓ —— 内置在应用目录里 ✓ 是只读的 ✓）。
  * → **同 id 重复安装 = 替换** ✓（契约 §2.3 ✓ —— **不是新增** ✓）。
  *
- * ── 授权要重新征求的两种情况（契约 §2.3 ✓）──
+ * ── **装卡不再要「同意」** ✓（契约 §2.3 · ADR-D46 ✓）──
  *
- * | 情况 | 处置 |
- * |---|---|
- * | 这张卡**要写**的动作**人还没授过** ✓ | **不装** ✓ → `needs_consent` ✓ |
- * | 装的是**已装过**的卡、但 `permissions.write` **不同** ✓ | **同样要重新征求** ✓（**两条路在授权上没有区别** ✓ —— 否则「换个方式就绕过授权」了 ✓） |
+ * → **板型包说了算** ✓：**板上能做什么由板型包声明** ✓；
+ *   **这张卡能做什么由它的 manifest 声明** ✓ —— **会话层守着** ✓
+ *   （**声明之外的一律 denied** ✓ —— **卡片说一套做一套是不行的** ✓）。
+ * → **用户点一下就是同意** ✓ → **不再有第二道「你授过这张卡吗」** ✓。
+ * → **危险的那一步仍然要问** ✓（**destructive 动作由人点** ✓ —— 那是 agent 与人的分界 ✓）。
  */
 export interface CardToolDeps {
   /** 用户卡片根（**装到这里** ✓） */
   cardsRoot: string;
   /** 卡片注册表（**重载** ✓） */
   registry: CardRegistry;
-  /** 授权账（**记批准 / 清授权** ✓） */
-  grants?: GrantStore;
-  /** 同意队列（**待人批的** ✓） */
-  pending?: ConsentQueue;
   /** 当前板型包声明的动作（**判断「这个动作存不存在」** ✓） */
   packActions?: () => PackActionView[];
   /** 内置卡 id（**内置卡不许删** ✓） */
@@ -49,13 +44,7 @@ export interface InstallCardResult {
   card_id?: string;
   degraded?: boolean;
   missing?: string[];
-  /** 要人授权 ✓ */
-  needs_consent?: boolean;
-  consent_id?: string;
-  pending?: Array<{ action: string; danger: 'reversible' | 'destructive'; label?: string; guard?: unknown }>;
-  /** 人拒绝了 ✓ */
-  denied?: Array<{ action: string; danger: 'reversible' | 'destructive'; label?: string; guard?: unknown }>;
-  reason?: 'invalid_params' | 'not_found' | 'invalid' | 'needs_consent' | 'denied' | 'failed';
+  reason?: 'invalid_params' | 'not_found' | 'invalid' | 'failed';
   detail?: string;
 }
 
@@ -94,49 +83,17 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   const cardId = manifest.id;
   const target = join(deps.cardsRoot, cardId);
 
-  // ── 这个动作存不存在 ──
-  const declaredWrite = manifest.permissions.write;
-
-  // ── 要人授权的动作 = 「要写的」减「人已授过的」✓ ──
-  const granted = new Set(deps.grants?.actionIds(cardId) ?? []);
-  const needConsent = declaredWrite.filter((id) => !granted.has(id));
-
-  // ── 同意队列有货吗 ──
-  const snapshot = dirSnapshot(path);
-  const queue = deps.pending;
-
-  if (needConsent.length > 0) {
-    // **已经批过、且快照对得上** ✓ → **直接装** ✓
-    if (queue !== undefined) {
-      for (const req of queue.forCard(cardId)) {
-        if (queue.consume(req.id, snapshot)) {
-          // **批过了 → 记进授权账** ✓（**这一步不能省** ✓ —— 否则装上了也没权限 ✗）
-          for (const item of req.pending) {
-            deps.grants?.grant(cardId, item.action, undefined);
-          }
-          return doInstall(deps, path, target, cardId);
-        }
-      }
-    }
-    // **没批过 → 先问人** ✓（**不装** ✓）
-    const pendingItems = needConsent.map((id) => {
-      const action = (deps.packActions?.() ?? []).find((a) => a.id === id);
-      return {
-        action: id,
-        danger: action?.danger ?? ('destructive' as const),
-        ...(action?.label === undefined ? {} : { label: action.label }),
-        ...(action?.guard === undefined ? {} : { guard: action.guard }),
-      };
-    });
-    const req = queue?.request(cardId, snapshot, pendingItems);
+  // ── **这张卡要写的动作是不是真的存在** ✓（**板型包说了算** ✓）──
+  // → **不存在 → 装不了** ✓（**不装一张一半是空的卡** ✓ —— 契约 §2.3 ✓）
+  const known = new Set((deps.packActions?.() ?? []).map((a) => a.id));
+  const missing = manifest.permissions.write.filter((id) => !known.has(id));
+  if (missing.length > 0) {
     return {
       ok: false,
       installed: false,
       card_id: cardId,
-      reason: 'needs_consent',
-      needs_consent: true,
-      ...(req === undefined ? {} : { consent_id: req.id }),
-      pending: pendingItems,
+      reason: 'invalid',
+      detail: `板型包里没有这些动作：${missing.join('、')}`,
     };
   }
 
@@ -186,8 +143,6 @@ export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCard
   }
   try {
     rmSync(dir, { recursive: true, force: true });
-    // **授权账一并清** ✓（动作 + 流程两个维度 ✓ —— 整张清 ✓ 不漏 ✓）
-    deps.grants?.revokeAll(cardId);
     deps.registry.refresh();
     return { ok: true };
   } catch (err) {

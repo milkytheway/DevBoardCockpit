@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  permissionCovers,
-  requiresSatisfied,
-  effectiveWrite,
-  effectiveWorkflows,
-  type CardPermissions,
-} from '../../../src/main/cards/permissions';
+import { permissionCovers, requiresSatisfied } from '../../../src/main/cards/permissions';
 
 /**
  * 卡片的权限集。
@@ -55,28 +49,11 @@ describe('requires 与 permissions 的关系', () => {
   });
 });
 
-describe('有效流程权限（契约 §3.3 的第二维）', () => {
-  it('是 permissions.workflows 与已授权的交集', () => {
-    const perms: CardPermissions = { read: [], write: [], workflows: ['a.run', 'b.run'] };
-    expect(effectiveWorkflows(perms, ['a.run'])).toEqual(['a.run']);
-  });
-
-  it('没被授过的流程不生效（**声明了不算数** ✓）', () => {
-    expect(effectiveWorkflows({ read: [], write: [], workflows: ['a.run'] }, [])).toEqual([]);
-  });
-
-  it('**没声明流程的卡 → 有效权限是空的** ✓（不是「全部放行」✗）', () => {
-    expect(effectiveWorkflows({ read: [], write: [] }, ['a.run'])).toEqual([]);
-  });
-});
-
-describe('有效写权限（契约 §2.4）', () => {
-  it('是 permissions.write 与已授权的交集', () => {
-    const perms: CardPermissions = { read: [], write: ['a.set', 'b.set'] };
-    expect(effectiveWrite(perms, ['a.set'])).toEqual(['a.set']);
-  });
-
-  it('没授权的写权限不生效', () => {
-    expect(effectiveWrite({ read: [], write: ['a.set'] }, [])).toEqual([]);
-  });
-});
+/**
+ * **「有效权限 = 声明」** ✓（契约 §2.4 ✓ · **ADR-D46** ✓）。
+ *
+ * → **不再有第二份「谁授过」** ✓（**同一件事记两遍** ✗ —— **迟早对不上** ✗）。
+ * → **板型包说了算** ✓：**板上能做什么由板型包声明** ✓；
+ *   **这张卡能做什么由它的 manifest 声明** ✓ —— **会话层守着** ✓
+ *   （**声明之外的一律 denied** ✓ —— 见 `tests/unit/cards/session.test.ts` ✓）。
+ */

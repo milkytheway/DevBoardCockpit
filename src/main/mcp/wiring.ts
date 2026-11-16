@@ -10,8 +10,6 @@ import type { TerminalManager } from '../terminal/manager';
 import type { LayoutState } from '../../shared/layout';
 import { capabilitiesFor } from '../hal/capabilities';
 import type { AgentActionDeps } from './action-tools';
-import type { GrantStore } from '../cards/grants';
-import type { ConsentQueue } from '../cards/consent';
 
 /**
  * **把宿主拼成 MCP 层要的形状**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
@@ -48,9 +46,7 @@ export interface McpHostWiring {
   /** 用户卡片根（**装卡到这里** ✓） */
   cardsRoot?: string;
   /** 授权账 */
-  grants?: GrantStore;
   /** 同意队列（**待人批的** ✓） */
-  consents?: ConsentQueue;
   /** 内置卡 id（**内置卡不许删** ✓） */
   builtinCardIds?: string[];
 }
@@ -128,8 +124,6 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
           cardTools: {
             cardsRoot: wiring.cardsRoot,
             registry: cards,
-            ...(wiring.grants === undefined ? {} : { grants: wiring.grants }),
-            ...(wiring.consents === undefined ? {} : { pending: wiring.consents }),
             packActions: () => runtime.actionDefs,
             ...(wiring.builtinCardIds === undefined ? {} : { builtinIds: wiring.builtinCardIds }),
           },

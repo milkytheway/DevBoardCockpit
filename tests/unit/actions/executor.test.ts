@@ -246,6 +246,41 @@ describe('执行器 · 授权与确认', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('**卡片那条路（`askForConsent: false`）→ destructive 直接执行** ✓（**用户点了就是同意** ✓ —— ADR-D46 ✓）', async () => {
+    const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
+    const h = harness({ action: destructive });
+    const result = await invokeAction(destructive, { value: 128 }, {
+      ...h.deps,
+      askForConsent: false,
+    });
+    expect(result.needsConfirmation).toBeUndefined();
+    expect(result.ok).toBe(true);
+    // **命令真的发出去了** ✓
+    expect(h.executed.length).toBeGreaterThan(0);
+  });
+
+  it('**卡片那条路 → 超 guard 域也不问** ✓（**guard 的本意是「问人」** ✓ —— 没人可问就不收窄 ✓）', async () => {
+    // **回读答得上** ✓（**判的是「有没有问人」** ✓ —— 不是「回读过没过」 ✓）
+    const h = harness({ fileContent: '5' });
+    const result = await invokeAction(ACTION, { value: 5 }, { ...h.deps, askForConsent: false });
+    expect(result.needsConfirmation).toBeUndefined();
+    expect(result.ok).toBe(true);
+  });
+
+  it('**地板命中 → 卡片那条路也要问** ✓（**那是命令本身危险** ✓ —— **与谁点的无关** ✓）', async () => {
+    const dangerous: ActionDef = {
+      ...ACTION,
+      id: 'wipe.root',
+      command: 'rm -rf /',
+      params: {},
+      readback: { kind: 'none', consequence: '删根' },
+    };
+    const h = harness({ action: dangerous });
+    const result = await invokeAction(dangerous, {}, { ...h.deps, askForConsent: false });
+    expect(result.needsConfirmation).toBeTruthy();
+    expect(h.executed).toHaveLength(0);
+  });
+
   it('没被授权的动作 → denied，命令不执行', async () => {
     const h = harness();
     h.deps.granted = () => ({ actions: {} });

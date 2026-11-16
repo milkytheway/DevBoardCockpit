@@ -96,6 +96,13 @@ export interface ActionExecutorDeps {
   readTag: (tag: string) => Promise<TagReading | undefined>;
   /** 已授权的动作（装卡时用户批准的） */
   granted: () => GrantedActions;
+  /**
+   * **destructive 动作与超 guard 域要不要停下来问人** ✓（**默认问** ✓）。
+   *
+   * → **卡片那条路传 false** ✓（**用户点了就是同意** ✓ —— `spec/03` §7.6 ✓）
+   * → **agent 那条路不传** ✓（**agent 不是人** ✓）
+   */
+  askForConsent?: boolean;
   /** 确认凭据的存取 */
   confirmations: Confirmations;
   /** 审计（每次尝试一行）——**返回那一行的 id**（结果要带 `audit_id`） */
@@ -236,7 +243,9 @@ export async function invokeAction(
   const floor = checkFloor(command);
 
   // ③ 授权
-  const verdict = authorize(action, params, deps.granted(), floor);
+  const verdict = authorize(action, params, deps.granted(), floor, {
+    askForConsent: deps.askForConsent,
+  });
 
   if (verdict.verdict === 'denied') {
     const outcome: ActionOutcome = {

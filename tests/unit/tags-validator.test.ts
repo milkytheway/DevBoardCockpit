@@ -4,7 +4,7 @@ import { parseBoardPack } from '../../src/main/tags/pack';
 import type { ActionDef, BoardPack, ReaderDef } from '../../src/main/tags/schema';
 
 /**
- * 27 条校验规则。
+ * 28 条校验规则。
  *
  * ── 测法：每个合成包**只违反一条规则** ──
  *
@@ -548,6 +548,28 @@ describe('规则 19 · exec_regex / script 存在时打印警告', () => {
     const warns = issues.filter((i) => i.severity === 'warning');
     expect(warns.some((w) => w.rule === 19)).toBe(true);
     expect(errors(issues)).toEqual([]);
+  });
+});
+
+describe('规则 28 · reader 的取数命令不许命中危险地板', () => {
+  it('**exec_regex 的命令命中地板 → 报错** ✓（**板型包直接生效** ✓ —— **这里必须拦住** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'wipe',
+      kind: 'exec_regex',
+      args: { command: 'rm -rf /', pattern: '^x' },
+      provides: [{ tag: 'custom.tiny.wipe', sample: 'value' }],
+    });
+    expectOnlyRule(pack, 28);
+  });
+
+  it('**命令不危险 → 不报** ✓（**逃生门还得能用** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'up',
+      kind: 'exec_regex',
+      args: { command: 'cat /proc/uptime', pattern: '^([0-9.]+)' },
+      provides: [{ tag: 'custom.tiny.uptime', sample: 'value' }],
+    });
+    expect(errors(validatePack(pack))).toEqual([]);
   });
 });
 

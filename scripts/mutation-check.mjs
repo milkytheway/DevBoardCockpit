@@ -2588,6 +2588,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M215 校验器：**reader 的命令过危险地板** ✓（**规则 28** ✓ —— 板型包直接生效 ✓）',
+    file: 'src/main/tags/validator.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 28',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (floor.matched) {',
+        '    if (false) { // 变异：reader 的命令不过地板',
+      ),
+  },
+  {
+    name: 'M216 执行器：**卡片那条路不问人** ✓（**用户点了就是同意** ✓ —— ADR-D46 ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '卡片那条路',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (!ask) return { verdict: 'ok' };",
+        "    if (false) return { verdict: 'ok' }; // 变异：卡片那条路也要问",
+      ),
+  },
+  {
+    name: 'M217 流程层：**没批准的流程包谁都跑不了** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）',
+    file: 'src/main/workflows/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: '没批准的流程包',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (!found.approved) {',
+        '    if (false) { // 变异：没批准也放行',
+      ),
+  },
+  {
+    name: 'M218 装卡：**板型包里没有那个动作就不装** ✓（**板型包说了算** ✓ —— ADR-D46 ✓）',
+    file: 'src/main/mcp/card-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: '板型包里没有这些动作',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (missing.length > 0) {',
+        '  if (false) { // 变异：动作不在板型包里也装',
+      ),
+  },
+  {
     name: 'M214 卡片：**「读不到」不是 0** ✓（**没数与零是两件事** ✓）',
     file: 'cards/board-hardware/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/board-hardware-card.test.tsx'],

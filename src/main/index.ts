@@ -35,11 +35,8 @@ import { createCardWiring } from './cards/wiring';
 import { ActionAudit } from './actions/audit';
 import { invokeAction } from './actions/executor';
 import { ConfirmationStore } from './actions/authorization';
-import { GrantStore } from './cards/grants';
-import { effectiveWrite, effectiveWorkflows } from './cards/permissions';
 import { McpServer } from './mcp/server';
 import { buildMcpHost } from './mcp/wiring';
-import { ConsentQueue } from './cards/consent';
 import { startMcpHttp } from './mcp/http';
 import { generateToken } from './mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
@@ -255,28 +252,26 @@ const cardRoots: CardRoot[] = [
 /**
  * 控制面（M6 · 契约 §五）。
  *
- * - **授权账**（`cards/grants.ts`）：**人授过**的动作。
- *   有效写权限 = manifest 声明的 ∩ 人授过的（契约 §2.4）——
- *   只看一边就会漏（只看声明 → 用户没点头的动作也能写）。
+ * - **没有授权账** ✓ —— **有效权限 = 声明** ✓（契约 §2.4 ✓ · ADR-D46 ✓）：
+ *   **板型包说了算** ✓；**卡片的 manifest 就是它的权限** ✓；
+ *   **用户点了就是同意** ✓ → **不再有第二份「谁授过」** ✓。
  * - **确认凭据**（`actions/authorization.ts`）：一次性、5 分钟有效。
  * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
  */
-const grants = new GrantStore(join(userDataDir(), 'grants.json'));
-/**
- * **装卡的同意队列** ✓（契约 §2.3 ✓）。
- *
- * → **在内存里** ✓（重启即失 ✓ —— 那是**安全的一边** ✓）：
- *   「人点过头」的记录消失 ✓ → agent 得**重新求** ✓。
- */
-const consents = new ConsentQueue();
 const confirmations = new ConfirmationStore();
 const actionAudit = new ActionAudit(join(userDataDir(), 'logs', 'actions.log'));
 
-/** 这张卡**人授过**的动作（按参数域） */
+/**
+ * **这张卡能做的动作** ✓ —— **就是它声明的那些** ✓（契约 §2.4 ✓ · ADR-D46 ✓）。
+ *
+ * → **不再有「人授过」的第二份账** ✓（**同一件事记两遍** ✗ —— **迟早对不上** ✗）。
+ * → **域不收窄** ✓（`{}` ✓）—— **guard 的收窄是「问人」用的** ✓（卡片那条路不问 ✓）。
+ */
 function grantedFor(cardId: string): { actions: Record<string, Record<string, { min?: number; max?: number }> | undefined> } {
+  const card = cards.registry.cards().find((c) => c.cardId === cardId);
   const actions: Record<string, Record<string, { min?: number; max?: number }> | undefined> = {};
-  for (const grant of grants.forCard(cardId)) {
-    actions[grant.actionId] = grant.domains ?? {};
+  for (const id of card?.manifest.permissions.write ?? []) {
+    actions[id] = {};
   }
   return { actions };
 }
@@ -320,7 +315,6 @@ const workflowService = new WorkflowService({
     confirmations,
   },
   /** 卡级授权（**第二层** ✓ —— 第一层是 manifest 声明 ✓，第三层是包已批准 ✓） */
-  grantedWorkflows: (cardId) => grants.workflowIds(cardId),
 });
 
 /**
@@ -350,8 +344,6 @@ async function startMcpServer(): Promise<void> {
         layoutSet: (state) => cards.layoutSet(state),
         // **装卡与卸卡** ✓（契约 §2.3 ✓）
         cardsRoot: cardRootsDir(),
-        grants,
-        consents: consents,
         // **内置卡 id** ✓ —— **只从内置目录取** ✓
         // （用户目录的卡**可以卸** ✓ —— 那才是「用户装的东西」✓）
         builtinCardIds: listCardDirs([{ dir: builtinCardsDir(app.getAppPath()), kind: 'builtin' }]).map(
@@ -431,12 +423,12 @@ const cards = createCardWiring({
       write: card?.manifest.permissions.write ?? [],
       workflows: card?.manifest.permissions.workflows ?? [],
     };
-    // **有效写权限 = 声明 ∩ 人授过的**（契约 §2.4）
-    // **有效流程权限 = 声明 ∩ 人授过的**（契约 §3.3 —— 流程**不是动作** ✓）
+    // **有效权限 = 声明** ✓（契约 §2.4 ✓ · ADR-D46 ✓）
+    // → **不再有第二份「谁授过」** ✓（**板型包说了算** ✓ · **点一下就是同意** ✓）
     return {
       read: declared.read,
-      write: effectiveWrite(declared, grants.actionIds(cardId)),
-      workflows: effectiveWorkflows(declared, grants.workflowIds(cardId)),
+      write: declared.write,
+      workflows: declared.workflows ?? [],
     };
   },
   /**
@@ -463,16 +455,10 @@ const cards = createCardWiring({
         const status = workflowService.status(runId);
         // **归属校验** ✓：这张卡有没有**这个流程**的权限 ✓
         // （契约 §7.7：「同上」= `permissions.workflows` 里有这个 id ✓）
-        const allowed = effectiveWorkflows(
-          {
-            read: [],
-            write: [],
-            workflows: cards.registry
-              .cards()
-              .find((c) => c.cardId === cardId)?.manifest.permissions.workflows ?? [],
-          },
-          grants.workflowIds(cardId),
-        );
+        const allowed =
+          cards.registry
+            .cards()
+            .find((c) => c.cardId === cardId)?.manifest.permissions.workflows ?? [];
         if (!allowed.includes(status.workflowId)) {
           return { ok: false, reason: 'denied' };
         }
@@ -498,6 +484,9 @@ const cards = createCardWiring({
         runTransaction: (fn) => runtime.runTransaction(fn),
         readTag: (tag) => runtime.sampleTag(tag),
         granted: () => grantedFor(cardId),
+        // **用户点了就是同意** ✓（契约 §7.6 ✓ —— **人点**在那一下点击上 ✓）
+        // → **destructive 动作不再停下来问** ✓（**没人可问** ✗ —— 界面上没有这道闸 ✗）
+        askForConsent: false,
         confirmations,
         audit: (row) => actionAudit.append(row),
         actor: `card:${cardId}`,

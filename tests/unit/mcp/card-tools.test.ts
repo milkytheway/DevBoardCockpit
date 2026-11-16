@@ -2,10 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ConsentQueue } from '../../../src/main/cards/consent';
 import { installCard, uninstallCard } from '../../../src/main/mcp/card-tools';
 import type { CardRegistry } from '../../../src/main/cards/registry';
-import type { GrantStore } from '../../../src/main/cards/grants';
 
 /**
  * **装卡与卸卡**（契约 `spec/04` §2.3 ✓ · ADR-D40 ✓）。
@@ -87,7 +85,7 @@ describe('MCP · install_card', () => {
   it('**复制到用户卡片根** ✓（**不是内置目录** ✓ —— 内置是只读的 ✓）', () => {
     writeCard(srcDir);
     const result = installCard(
-      { cardsRoot: cardsDir, registry: fakeRegistry([]), grants: fakeGrants() },
+      { cardsRoot: cardsDir, registry: fakeRegistry([]) },
       srcDir,
     );
     expect(result.installed).toBe(true);
@@ -97,7 +95,7 @@ describe('MCP · install_card', () => {
   it('**目录里没有 manifest → `invalid`** ✓（**不装** ✓）', () => {
     mkdirSync(srcDir, { recursive: true });
     const result = installCard(
-      { cardsRoot: cardsDir, registry: fakeRegistry([]), grants: fakeGrants() },
+      { cardsRoot: cardsDir, registry: fakeRegistry([]) },
       srcDir,
     );
     expect(result.installed).toBe(false);
@@ -106,97 +104,35 @@ describe('MCP · install_card', () => {
     expect(readdirSync(cardsDir)).toEqual([]);
   });
 
-  it('**要新授权 → `needs_consent` + consent_id + 待批清单** ✓（**不装** ✓）', () => {
+  it('**要写的动作板型包里没有 → 不装** ✓（**板型包说了算** ✓ —— ADR-D46 ✓）', () => {
     writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot'] } });
     const result = installCard(
       {
         cardsRoot: cardsDir,
         registry: fakeRegistry([]),
-        grants: fakeGrants(),
-        pending: new ConsentQueue(),
-        packActions: () => [{ id: 'system.reboot', danger: 'destructive' as const, label: '重启板子' }],
+        packActions: () => [{ id: 'backlight.set', danger: 'reversible' as const }],
       },
       srcDir,
     );
     expect(result.installed).toBe(false);
-    expect(result.needs_consent).toBe(true);
-    expect(result.consent_id).toBeTruthy();
-    expect(result.pending?.length).toBe(1);
-    expect(result.pending?.[0]?.action).toBe('system.reboot');
-    expect(result.pending?.[0]?.danger).toBe('destructive');
+    expect(result.reason).toBe('invalid');
+    expect(result.detail).toContain('system.reboot');
     // **没装** ✓
     expect(existsSync(join(cardsDir, 'demo'))).toBe(false);
   });
 
-  it('**人批了 → 同一个 consent_id 能装上** ✓（**一次性** ✓ —— 用过就作废 ✓）', () => {
+  it('**声明的动作都在 → 直接装** ✓（**装卡不再要「同意」** ✓ —— ADR-D46 ✓）', () => {
     writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot'] } });
-    const pending = new ConsentQueue();
-    const deps = {
-      cardsRoot: cardsDir,
-      registry: fakeRegistry([]),
-      grants: fakeGrants(),
-      pending,
-      packActions: () => [{ id: 'system.reboot', danger: 'destructive' as const, label: '重启板子' }],
-    };
-    const first = installCard(deps, srcDir);
-    expect(first.needs_consent).toBe(true);
-    // **人点头** ✓
-    expect(pending.approve(first.consent_id as string)).toBe(true);
-    const second = installCard(deps, srcDir);
-    expect(second.installed).toBe(true);
-    // **凭据一次性** ✓ —— 再用同一个就不算了 ✓
-    const third = installCard(deps, srcDir);
-    expect(third.needs_consent).toBe(true);
-  });
-
-  it('**文件在批与装之间变了 → 同意作废** ✓（**这是绑哈希的全部理由** ✓）', () => {
-    writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot'] } });
-    const pending = new ConsentQueue();
-    const deps = {
-      cardsRoot: cardsDir,
-      registry: fakeRegistry([]),
-      grants: fakeGrants(),
-      pending,
-      packActions: () => [{ id: 'system.reboot', danger: 'destructive' as const, label: '重启板子' }],
-    };
-    const first = installCard(deps, srcDir);
-    pending.approve(first.consent_id as string);
-    // **另一个进程把 manifest 换了** ✓
-    writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot', 'backlight.set'] } });
-    const second = installCard(deps, srcDir);
-    // **旧的批准不算数** ✓ → **重新征求** ✓
-    expect(second.needs_consent).toBe(true);
-    expect(second.installed).toBe(false);
-  });
-});
-
-describe('MCP · 同意队列 · 签发 ≠ 批准', () => {
-  it('**签发之后、批准之前 → 消费不掉** ✓（**同确认凭据那套** ✓）', () => {
-    const queue = new ConsentQueue();
-    const req = queue.request('demo', 'snap-1', [
-      { action: 'system.reboot', danger: 'destructive' },
-    ]);
-    // **没批 → 消费不掉** ✓
-    expect(queue.consume(req.id, 'snap-1')).toBe(false);
-    // **批了 → 消费得掉** ✓
-    expect(queue.approve(req.id)).toBe(true);
-    expect(queue.consume(req.id, 'snap-1')).toBe(true);
-  });
-
-  it('**消费之后就没了** ✓（**一次性** ✓）', () => {
-    const queue = new ConsentQueue();
-    const req = queue.request('demo', 'snap-1', []);
-    queue.approve(req.id);
-    expect(queue.consume(req.id, 'snap-1')).toBe(true);
-    expect(queue.consume(req.id, 'snap-1')).toBe(false);
-  });
-
-  it('**快照对不上 → 消费不掉** ✓（**文件在批与装之间变了** ✓）', () => {
-    const queue = new ConsentQueue();
-    const req = queue.request('demo', 'snap-1', []);
-    queue.approve(req.id);
-    // **快照变了** ✓
-    expect(queue.consume(req.id, 'snap-2')).toBe(false);
+    const result = installCard(
+      {
+        cardsRoot: cardsDir,
+        registry: fakeRegistry([]),
+        packActions: () => [{ id: 'system.reboot', danger: 'destructive' as const }],
+      },
+      srcDir,
+    );
+    expect(result.installed).toBe(true);
+    expect(existsSync(join(cardsDir, 'demo', 'manifest.json'))).toBe(true);
   });
 });
 
@@ -206,24 +142,16 @@ describe('MCP · uninstall_card', () => {
     const target = join(cardsDir, 'demo');
     writeCard(target);
     const result = uninstallCard(
-      { cardsRoot: cardsDir, registry: fakeRegistry([target]), grants: fakeGrants() },
+      { cardsRoot: cardsDir, registry: fakeRegistry([target]) },
       'demo',
     );
     expect(result.ok).toBe(true);
     expect(existsSync(target)).toBe(false);
   });
 
-  it('**授权账一并清掉** ✓（**否则装回来就带着旧的授权** ✗）', () => {
-    const grants = fakeGrants();
-    const target = join(cardsDir, 'demo');
-    writeCard(target);
-    uninstallCard({ cardsRoot: cardsDir, registry: fakeRegistry([target]), grants }, 'demo');
-    expect(grants.revoked).toContain('demo');
-  });
-
   it('**卡不存在 → `not_found`** ✓', () => {
     const result = uninstallCard(
-      { cardsRoot: cardsDir, registry: fakeRegistry([]), grants: fakeGrants() },
+      { cardsRoot: cardsDir, registry: fakeRegistry([]) },
       'nope',
     );
     expect(result.ok).toBe(false);
@@ -232,30 +160,10 @@ describe('MCP · uninstall_card', () => {
 
   it('**内置卡删不掉** ✓（**`denied`** ✓ —— 它在应用目录里 ✓）', () => {
     const result = uninstallCard(
-      { cardsRoot: cardsDir, registry: fakeRegistry([]), grants: fakeGrants(), builtinIds: ['cpu-usage'] },
+      { cardsRoot: cardsDir, registry: fakeRegistry([]), builtinIds: ['cpu-usage'] },
       'cpu-usage',
     );
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('denied');
   });
 });
-
-/** 假授权账（**记下谁被撤了** ✓ —— 判据要看这个 ✓） */
-function fakeGrants(): GrantStore & { revoked: string[] } {
-  const revoked: string[] = [];
-  return {
-    revoked,
-    forCard: () => [],
-    actionIds: () => [],
-    workflowIds: () => [],
-    grant: () => undefined,
-    revoke: (cardId: string) => {
-      revoked.push(cardId);
-    },
-    revokeAll: (cardId: string) => {
-      revoked.push(cardId);
-    },
-    revokeWorkflow: () => undefined,
-    grantWorkflow: () => undefined,
-  } as unknown as GrantStore & { revoked: string[] };
-}

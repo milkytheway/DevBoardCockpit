@@ -59,12 +59,27 @@ function withinRange(value: unknown, range: { min?: number; max?: number } | und
  * @param granted 装卡时用户批准的动作集合
  * @param floor 危险地板的复查结果（命中 → 按 destructive 处理）
  */
+export interface AuthorizeOptions {
+  /**
+   * **destructive 动作与超 guard 域要不要停下来问人** ✓（**默认问** ✓）。
+   *
+   * → **卡片那条路不问** ✓（**用户点了就是同意** ✓ —— 契约 `spec/03` §7.6 的「人点」
+   *   在这一步**就是那一下点击** ✓ —— **卡片不许自己给自己放行** ✓ ≠ **点击就是人** ✓）。
+   * → **agent 那条路问** ✓（**agent 不是人** ✓ —— 它必须求人点头 ✓）。
+   * → **地板命中永远要人点头** ✓（**那是命令本身危险** ✓ —— **与谁点的无关** ✓）。
+   */
+  askForConsent?: boolean;
+}
+
 export function authorize(
   action: ActionDef,
   params: Record<string, unknown>,
   granted: GrantedActions,
   floor: FloorVerdict,
+  opts: AuthorizeOptions = {},
 ): AuthorizationResult {
+  // **这条路上要不要问人** ✓（默认问 ✓）
+  const ask = opts.askForConsent !== false;
   // 1) 授权集合里有没有这个动作
   if (!Object.prototype.hasOwnProperty.call(granted.actions, action.id)) {
     return { verdict: 'denied', detail: `动作「${action.id}」没有获得授权` };
@@ -73,12 +88,18 @@ export function authorize(
   // 2) 危险等级：包声明的 **或** 地板命中的（取更严的）
   const dangerous = action.danger === 'destructive' || floor.verdict === 'destructive';
   if (dangerous) {
+    // **地板命中 → 永远要人点头** ✓（**那是命令本身危险** ✓ —— **与谁点的无关** ✓）
+    if (floor.verdict === 'destructive') {
+      return {
+        verdict: 'needs_confirmation',
+        detail: `命令命中了危险地板（${floor.why ?? '危险命令'}），按破坏性处理，要人确认`,
+      };
+    }
+    // **卡片那条路不问** ✓（**用户点了就是同意** ✓）
+    if (!ask) return { verdict: 'ok' };
     return {
       verdict: 'needs_confirmation',
-      detail:
-        action.danger === 'destructive'
-          ? `动作「${action.id}」是破坏性的，要人确认`
-          : `命令命中了危险地板（${floor.why ?? '危险命令'}），按破坏性处理，要人确认`,
+      detail: `动作「${action.id}」是破坏性的，要人确认`,
     };
   }
 
@@ -96,6 +117,9 @@ export function authorize(
     const range =
       grantedDomain?.[name] ?? guard[name] ?? { min: paramSpec.min, max: paramSpec.max };
     if (!withinRange(params[name], range)) {
+      // **卡片那条路不问** ✓ → **guard 的收窄不生效** ✓
+      // （**guard 的本意是「这一档要问人」** ✓ —— **没人可问就不收窄** ✓）
+      if (!ask) continue;
       return {
         verdict: 'needs_confirmation',
         param: name,

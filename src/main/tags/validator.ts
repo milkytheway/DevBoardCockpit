@@ -392,6 +392,33 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
+  // ── 规则 28 · reader 的取数命令不许命中危险地板 ──
+  //
+  // → **板型包直接生效**（用户 2026-11-16：「**板子描述文件说了算**」✓ · ADR-D46 ✓）
+  //   → **「启用前要人确认」那道门没了** ✓ → **这条规则就是替代它的那道** ✓
+  // → **`exec_regex` 的命令原样上板** ✓ → **它必须自己过地板** ✓
+  //   （**reader 不是动作** ✓ —— 它不过执行器 ✓ —— **所以这里判** ✓）
+  for (const { reader, path } of readers) {
+    const kind = getKind(reader.kind);
+    if (kind === undefined) continue;
+    let fragment: string;
+    try {
+      fragment = kind.fetch(reader.args ?? {});
+    } catch {
+      // **参数不对** ✓ → **规则 8 / 9 已经报过了** ✓ → **这里不重复报** ✓
+      continue;
+    }
+    const floor = matchDangerFloor(fragment);
+    if (floor.matched) {
+      err(
+        28,
+        path,
+        `这个 reader 的取数命令命中了危险地板（${floor.why ?? '危险命令'}）——` +
+          '板型包直接生效，所以这里必须拦住',
+      );
+    }
+  }
+
   // ── 规则 24 · danger_floor_version 必须是已知版本 ──
   if (pack.danger_floor_version !== undefined && pack.danger_floor_version !== DANGER_FLOOR_VERSION) {
     err(

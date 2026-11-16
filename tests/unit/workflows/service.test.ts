@@ -318,25 +318,19 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     expect(h.svc.status(runId).state).toBe('awaiting_confirmation');
   });
 
-  it('**卡级授权**：这张卡没被授过这个流程 → 跑不了（V3-I9 ✓）', () => {
+  it('**卡级授权没了**：**流程包批准了就谁都能跑** ✓（ADR-D46 ✓）', () => {
     const h = service();
     h.reg.approve('demo.run');
-    // **这张卡只被授过别的流程** ✓ → 跑这个流程要被拒 ✓
-    const svc = new WorkflowService({
-      registry: h.reg,
-      confirmations: h.confirmations,
-      grantedWorkflows: () => ['other.flow'],
-      runDeps: h.deps,
-    });
-    expect(() => svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).toThrow(/没有被授权/);
-    // **授过了就放行** ✓
-    const granted = new WorkflowService({
-      registry: h.reg,
-      confirmations: h.confirmations,
-      grantedWorkflows: () => ['demo.run'],
-      runDeps: h.deps,
-    });
-    expect(() => granted.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).not.toThrow();
+    // **卡片触发** ✓ —— **不再有「这张卡被授过吗」那一问** ✓
+    expect(() => h.svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).not.toThrow();
+  });
+
+  it('**没批准的流程包 → 谁都跑不了** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）', () => {
+    const h = service();
+    // **没批准** ✓ → **拒绝** ✓（卡片也一样 ✓）
+    expect(() => h.svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).toThrow(
+      /还没有被批准/,
+    );
   });
 
   it('**同一个流程同时只允许跑一次**（两个流程抢一条串口会串台 ✓）', async () => {

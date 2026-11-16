@@ -87,16 +87,6 @@ export interface WorkflowServiceOptions {
   /** 跑一条流程要什么（连接、审计……） */
   runDeps: WorkflowRunDeps;
   /**
-   * **这张卡被授过哪些流程**（**卡级授权** ✓ —— 评审 37 的 V3-I9 ✓）。
-   *
-   * → 流程的授权有**两层** ✓（与动作同形 ✓）：
-   * ① **流程包本身已批准**（宿主侧 ✓ —— 「谁批准了这个包」✓）；
-   * ② **这张卡被授过这个流程**（卡级 ✓ —— 「这张卡能不能用它」✓）。
-   *
-   * → **两层都要过** ✓ → 少一层就是「一张卡声明了就能跑」✗。
-   */
-  grantedWorkflows?: (cardId: string) => string[];
-  /**
    * 确认凭据的库（**流程层与 M6 共用一份** ✓ ——
    * 凭据的语义只有一处 ✓：`spec/04` §2.4.1 的那套 ✓）。
    */
@@ -184,18 +174,10 @@ export class WorkflowService {
     inputs: Record<string, unknown>,
     opts: { confirmIds?: Record<string, string>; cardId?: string } = {},
   ): { runId: string } {
+    // ── **流程包必须已被用户批准** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）──
+    // → 它能跑**任意命令** ✓（`exec` / `file.transfer` ✓）→ **板型包管不到** ✓
+    //   → **必须有人看过它会做哪些事** ✓（批准时会把每一步命令打出来 ✓）
     const registered = this.opts.registry.requireApproved(id);
-
-    // ── 卡级授权（第二层 ✓）──
-    // → 卡片触发时：**这张卡被授过这个流程吗** ✓
-    if (opts.cardId !== undefined) {
-      const granted = this.opts.grantedWorkflows?.(opts.cardId) ?? [];
-      if (!granted.includes(id)) {
-        throw makeError('IPC_INVALID_PAYLOAD', `这张卡没有被授权跑流程「${id}」`, {
-          detail: { cardId: opts.cardId, workflowId: id },
-        });
-      }
-    }
 
     // ── 并发：同一个流程包同时只允许一次运行 ✓ ──
     // → 两个流程同时抢一条串口会**串台** ✓（事实 S1 ✓）

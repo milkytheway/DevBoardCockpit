@@ -361,38 +361,30 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
 
 把卡片目录放进卡片根目录，触发热重载。
 
-**如果这张卡需要新的授权**，`install_card` **不会**直接装上，而是返回：
+**如果这张卡要写的动作板型包里没有**，`install_card` **不会**装上，而是返回：
 
 ```
-→ { ok: false, reason: "needs_consent",
-    card_id, installed: false, needs_consent: true,
-    consent_id: "c-123",
-    pending: [
-      { action: "backlight.set", danger: "reversible", label: "设置背光亮度",
-        guard: { value: { min: 16, max: 255 } } },
-      { action: "system.reboot", danger: "destructive", label: "重启板子" }
-    ] }
+→ { ok: false, reason: "invalid", card_id, installed: false,
+    detail: "板型包里没有这些动作：system.reboot" }
 ```
 
-**三个返回形状**（封闭）：
+> **2026-11-16 改**（**ADR-D46** ✓ · 用户原话：「**板子描述文件说了算**」✓）：
+> **装卡不再要「同意」** ✓ —— **有效权限 = 卡片的 manifest 声明** ✓（`03` §2.4 ✓）。
+> → **「要新的授权 → 不装」那道闸没有了** ✓（**同一件事不记两遍** ✓）。
+> → **它要写什么，manifest 里写着** ✓ —— **那是可查的事实** ✓。
+
+**两个返回形状**（封闭）：
 
 | 情形 | 返回 |
 |---|---|
 | 装上了 | `{ ok: true, card_id, installed: true, degraded, missing }` |
-| 要人授权 | `{ ok: false, reason: "needs_consent", card_id, installed: false, needs_consent: true, consent_id, pending }` |
-| 用户拒绝了全部 | `{ ok: false, reason: "denied", card_id, installed: false, denied: [...] }` |
-
-**`pending[]` 与 `denied[]` 同形**：每条是
-`{ action, danger, label, guard? }`（`guard` 可省 ✓）。
-
-> `reason: "denied"` 是**「人拒绝了」**；
-> `denied[]` 是**被拒绝的那几条**——**同名，两种角色** ✓。
+| 要写的动作板型包里没有 | `{ ok: false, reason: "invalid", card_id, installed: false, detail }` |
 
 `degraded` 与 `missing` 的口径**同 `list_cards`**（`missing` = 缺失的 tag 名清单）。
 
 **这不会让 agent 的回路卡死。** 流程是：
 
-1. agent 调 `install_card` → 拿到 `consent_id` 和待授权动作清单
+1. agent 调 `install_card` → 装上了（**或者**板型包里没有那个动作 → 报错 ✓）
 2. **GUI 弹出确认框**，列出这些动作，**显示参数域**（`guard`），让用户逐个批准或拒绝
 3. 用户点完，GUI 把结果写进授权存储
 4. agent 再调一次 `install_card`（同一个 path）→ 这次装上了
@@ -425,7 +417,7 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
 | **`install_card`** | 装一张**新**卡，或从别处拷进来 | 等价于「复制目录 + 重载」，幂等：同一个 id 重复安装是**替换** |
 
 如果 agent 用 `install_card` 装一张已经装过的、但 `permissions.write` 不同的卡，
-**同样要重新征求授权**。两条路在授权上没有区别——否则「换个方式就绕过授权」了。
+**直接替换** ✓（**权限跟着 manifest 走** ✓ —— **不需要再征求一次** ✓）。
 
 **直接写文件这条路也要过同一道校验**：文件监听触发热重载时，
 运行时必须重新校验 manifest（§`03` §九 的 13 条）与重新计算权限集，
@@ -435,7 +427,6 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
 
 ```
 validate_card(path) → 改 → validate_card(path) → install_card(path)
-    → (若 needs_consent: 用户在 GUI 里点，agent 重试)
     → get_card_runtime_log(cardId) → 看错 → 改 → install_card(path) → …
 ```
 
@@ -600,8 +591,8 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 5. 用户点完后，agent **再调一次** `execute_action`，这次带上 `confirm_id`
 6. 这次才真的执行
 
-也就是说：**人机交互发生在 GUI 里，agent 只是重试。** 和 `install_card` 的
-`needs_consent` 是同一个模式。
+也就是说：**人机交互发生在 GUI 里，agent 只是重试。**
+（**卡片那条路不一样** ✓ —— **用户点按钮就是那一下人点** ✓，`03` §2.4 ✓ · ADR-D46 ✓。）
 
 **为什么不让 agent 自己确认**：agent 是概率性的，它可能误解意图。
 重启板子这种动作不可逆，值得多一次确认——而「多一次确认」只有在**人**参与时才有意义。
@@ -617,21 +608,27 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 
 #### 2.4.2 板型包的信任
 
-**包一律生效**——但「生效」的前提是**人确认过这个包**。
+**包一律生效** —— **写好就生效** ✓（**板子描述文件说了算** ✓）。
 
 | 谁写的 | 能不能直接生效 |
 |---|---|
 | 用户自己写的、内置的 | 能 |
-| agent 起草的 | **不能**：写文件可以（那是 agent 的本职工作），**装包要人点头** |
+| agent 起草的 | **也能** ✓（**但它写的东西照样过校验** ✓ —— `02` §七 **28 条规则** ✓） |
 
-**为什么加这一条**：板型包里的 reader 可以执行任意命令
-（`exec_regex` / `script`），而**危险地板只管动作**（`02-board-pack.md` §5.2）。
-「包一律生效 + agent 可以写包」合起来就是一条绕过确认的通道——
-这与 §1.3「不准有裸 send_command」是同一个东西换了入口。
+> **2026-11-16 改**（**ADR-D46** ✓ · 用户原话：「**板子描述文件说了算**」
+> 「**加一个板加啥就执行啥**」✓）—— **原来这里有一道「装包要人点头」** ✓。
 
-所以：**卡片的创作面是 agent 的，设备的权限面是人的。**
-agent 可以起草包，但启用它需要用户在 GUI 里确认——确认界面必须展示
-这个包会执行哪些命令、声明哪些动作、每个动作多危险（`02-board-pack.md` §5.6）。
+**替代它的那道门在包自己身上** ✓：
+- **reader 的取数命令过危险地板** ✓（`02` §七 **规则 28** ✓）——
+  这是 reader **唯一能越界的地方** ✓（它不是动作 ✓ —— 它不过执行器 ✓）；
+- **动作一直过危险地板与 `danger` 等级** ✓（`02` §5.2 ✓）——
+  **destructive 动作由 agent 调时仍要人点头** ✓（§2.4.1 ✓ —— **agent 不是人** ✓）；
+- **卡片的权限 = 它的 manifest 声明** ✓（`03` §2.4 ✓）——
+  **声明之外的一律 denied** ✓ —— **卡片说一套做一套是不行的** ✓。
+
+**所以**：**卡片的创作面是 agent 的，设备的权限面也是 agent 起草的** ✓；
+**但两边都过同一套机器可查的规矩** ✓（**校验规则** ✓ + **危险地板** ✓）——
+**不再靠「每装一次都要人点头」** ✓。
 
 **为什么这样选**：这个产品的核心价值就是「AI 照着手册批量制造仪表和开关」。
 如果 agent 写的每一张**卡**都要人批准，协作回路就断了——
