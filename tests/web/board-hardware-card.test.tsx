@@ -49,7 +49,7 @@ function mountCard(): void {
   document.body.innerHTML = (body?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
 }
 
-let loaded: Promise<void> | null = null;
+let loaded: Promise<unknown> | null = null;
 async function loadCard(): Promise<void> {
   if (loaded === null) loaded = import('../../cards/board-hardware/card.js');
   await loaded;

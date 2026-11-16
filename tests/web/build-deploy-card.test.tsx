@@ -46,7 +46,7 @@ function mountCard(): void {
 }
 
 /** 卡片模块**只装一次** ✓（模块级状态 ✓ —— 每次 import 同一个实例 ✓） */
-let loaded: Promise<void> | null = null;
+let loaded: Promise<unknown> | null = null;
 async function loadCard(): Promise<void> {
   if (loaded === null) loaded = import('../../cards/build-deploy/card.js');
   await loaded;
