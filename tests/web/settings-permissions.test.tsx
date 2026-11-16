@@ -16,8 +16,31 @@ import type { PermissionRow } from '../../src/shared/ipc-contract';
  * | 4 | **默认卡片不许写板子** ✓ | **C2** ✓ —— **宿主验不了「人点了按钮」** ✗ → **默认不给** ✓ |
  */
 const ROWS: PermissionRow[] = [
-  { op: 'action:backlight.set', label: '设置背光亮度', kind: 'action', card: false, agent: true },
-  { op: 'action:system.reboot', label: '重启板子', kind: 'action', card: false, agent: true, hint: '破坏性动作' },
+  {
+    op: 'action:backlight.set',
+    label: '设置背光亮度',
+    kind: 'action',
+    card: false,
+    agent: true,
+    danger: 'reversible',
+  },
+  {
+    op: 'action:led.set',
+    label: '点亮 LED',
+    kind: 'action',
+    card: true,
+    agent: true,
+    danger: 'reversible',
+  },
+  {
+    op: 'action:system.reboot',
+    label: '重启板子',
+    kind: 'action',
+    card: false,
+    agent: true,
+    danger: 'destructive',
+    hint: '破坏性动作',
+  },
   { op: 'workflow:hello-kernel.build-run', label: '编译内核模块', kind: 'workflow', card: true, agent: true },
   { op: 'host:install_card', label: 'install_card', kind: 'host', card: true, agent: true },
 ];
@@ -94,5 +117,17 @@ describe('设置页 · 权限区', () => {
   it('**破坏性动作标出来** ✓（**人得看得见** ✓）', () => {
     renderPage();
     expect(screen.getByText('破坏性动作')).toBeTruthy();
+  });
+
+  it('**总开关只放非破坏性动作** ✓（危险动作逐条打开 ✓）', () => {
+    const onPermission = renderPage();
+    // 两条可批量（背光、LED），一条危险（重启）不跟着走
+    expect(screen.getByText('1 / 2 条对卡片开放')).toBeTruthy();
+    const master = screen.getByRole('switch', { name: '为卡片打开元操作授权' }) as HTMLInputElement;
+    expect(master.checked).toBe(false);
+    fireEvent.click(master);
+    expect(onPermission).toHaveBeenCalledWith('card', 'action:backlight.set', true);
+    expect(onPermission).toHaveBeenCalledWith('card', 'action:led.set', true);
+    expect(onPermission).not.toHaveBeenCalledWith('card', 'action:system.reboot', true);
   });
 });

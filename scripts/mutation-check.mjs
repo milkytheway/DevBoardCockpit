@@ -1170,18 +1170,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M98 流程层：步声明 destructive 时必须**要人确认**（凭据准备那一步 ✓）',
-    file: 'src/main/workflows/runner.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '声明 destructive 的步要人确认',
-    apply: (s) =>
-      replace(
-        s,
-        "    danger: step.danger ?? 'reversible',",
-        "    danger: 'reversible', // 变异：步自己声明的 danger 被丢掉",
-      ),
-  },
-  {
     name: 'M99 流程层：命令的输出必须**进槽**（下一步要靠它 ✓）',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
@@ -2418,6 +2406,18 @@ const MUTATIONS = [
         "onPermission('card', row.op, e.target.checked)",
         // **变异里不能带行内注释** ✓ —— **JSX 里那会把闭合括号吃掉** ✗（语法错 ✗ —— **那不算守住** ✓）
         "onPermission('agent', row.op, e.target.checked)",
+      ),
+  },
+  {
+    name: 'M233 设置页：**总开关不含危险动作** ✓（**重启不能跟着整类开** ✓）',
+    file: 'src/renderer/shell/pages/SettingsPage.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/settings-permissions.test.tsx'],
+    expect: '总开关',
+    apply: (s) =>
+      replace(
+        s,
+        "  const bulkActions = permissions.filter(\n    (row) => row.kind === 'action' && row.danger !== 'destructive',\n  );",
+        "  const bulkActions = permissions.filter((row) => row.kind === 'action'); // 变异：危险动作也进总开关",
       ),
   },
   {
