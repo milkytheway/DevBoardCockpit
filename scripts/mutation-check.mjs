@@ -2429,7 +2429,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M225 权限区：**卡片触发流程默认允许** ✓（**流程包的批准账才是那道闸** ✓）',
+    name: 'M225 权限区：**卡片触发流程默认允许** ✓（**「点了他就执行了」** ✓ —— ADR-D47 ✓）',
     file: 'src/main/permissions/policy.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
     expect: '卡片触发流程：默认允许',
