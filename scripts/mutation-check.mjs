@@ -2129,6 +2129,44 @@ const MUTATIONS = [
       ),
   },
 
+  // ── 元操作与流程（ADR-D49）────────────────────────────────
+  {
+    name: 'M230 action 步：**参数必须按动作声明的类型转**（`"1"` → `1` ✓ —— 不转就调不动带类型的动作 ✓）',
+    file: 'src/main/workflows/runner.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
+    expect: '整型参数按动作声明的类型转',
+    apply: (s) =>
+      replace(
+        s,
+        '    values[key] = spec === undefined ? value : coerceParam(value, spec.type);',
+        '    values[key] = value; // 变异：不按声明的类型转',
+      ),
+  },
+  {
+    name: 'M231 adb 路径：**必须找得到带版本号的 `platform-tools_*`** ✓（这台机器的 adb 就在那儿 ✓）',
+    file: 'src/main/util/settings.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/util/settings.test.ts'],
+    expect: '找得到带版本号的',
+    apply: (s) =>
+      replace(
+        s,
+        '    const candidates = readdirSync(downloads)',
+        '    const candidates: string[] = []; // 变异：不扫 Downloads 了\n    void readdirSync;',
+      ),
+  },
+  {
+    name: 'M232 建连接：**入口必须自己解析 adb 路径** ✓（CLI 与应用不许各找各的 ✓）',
+    file: 'src/main/hal/registry.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/util/settings.test.ts'],
+    expect: '自己解析 adb 路径',
+    apply: (s) =>
+      replace(
+        s,
+        '  const adbPath = opts.adbPath ?? resolveAdbPath(loadSettings(settingsPath()));',
+        '  const adbPath = opts.adbPath ?? "adb"; // 变异：入口不解析了',
+      ),
+  },
+
   // ── 色彩纪律（ADR-D41）────────────────────────────────────
   {
     name: 'M181 材质层：**不许进卡片**（卡片一旦能造第二套材质，统一皮肤当场就破）',
