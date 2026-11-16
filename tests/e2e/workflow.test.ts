@@ -100,12 +100,8 @@ function prepare(userDataDir: string, cardId: string, flowId: string): void {
     }),
     'utf8',
   );
-  // **卡级授权**（人点过的那一下 ✓）
-  writeFileSync(
-    join(userDataDir, 'grants.json'),
-    JSON.stringify({ cards: {}, workflows: { [cardId]: [flowId] } }),
-    'utf8',
-  );
+  // **不用再写卡级授权了** ✓（2026-11-16 起没有那一层 ✓ —— ADR-D46 ✓）
+  // → **流程包批准就是唯一那道闸** ✓（**它能跑任意命令** ✓ —— 板型包管不到 ✓）
 }
 
 test.describe('卡片触发流程', () => {

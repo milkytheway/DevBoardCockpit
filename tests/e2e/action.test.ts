@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchApp, writeCard, currentCardFrame, placeCard, APP_NAME } from './harness';
@@ -69,23 +69,14 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
   const root = mkdtempSync(join(tmpdir(), 'cockpit-action-e2e-'));
   try {
     /**
-     * ── 授权账必须在**应用起来之前**写好 ──
+     * ── **不用再写授权账了** ──
      *
-     * 授权账是 `GrantStore` **启动时读一次**（`cards/grants.ts` 的构造函数）——
-     * 应用起来之后再写，它**看不见** → 有效写权限 = 声明 ∩ 授过的 = 空
-     * → 动作被拒（`denied`）。
+     * 以前要写 `grants.json`（卡级授权账 ✓）—— 那是「有效写权限 = 声明 ∩ 授过」那套 ✓。
+     * → **2026-11-16 起没有授权账了** ✓（ADR-D46 ✓ —— 用户：「这个也要同意那个也要同意不累吗」✓）
+     * → **有效写权限 = 卡片的 manifest 声明** ✓ → **声明之外的一律 denied** ✓。
      */
     const userDataDir = join(root, APP_NAME);
     mkdirSync(userDataDir, { recursive: true });
-    writeFileSync(
-      join(userDataDir, 'grants.json'),
-      JSON.stringify(
-        { cards: { 'action-card': [{ actionId: 'backlight.set', at: 1_700_000_000_000 }] } },
-        null,
-        2,
-      ),
-      'utf8',
-    );
 
     // **只有假设备**（真板子不在这台机器上）
     const app = await launchApp({ userDataDir: root, env: { COCKPIT_FAKE: 'only' } });
