@@ -24,7 +24,8 @@ export interface PackActionView {
  *   **这张卡能做什么由它的 manifest 声明** ✓ —— **会话层守着** ✓
  *   （**声明之外的一律 denied** ✓ —— **卡片说一套做一套是不行的** ✓）。
  * → **用户点一下就是同意** ✓ → **不再有第二道「你授过这张卡吗」** ✓。
- * → **危险的那一步仍然要问** ✓（**destructive 动作由人点** ✓ —— 那是 agent 与人的分界 ✓）。
+ * → **卡片那条路没有「问」** ✓（**点一下就是同意** ✓ —— ADR-D46 ✓）；
+ *   **agent 那条路仍然要问** ✓（**agent 不是人** ✓）。
  */
 export interface CardToolDeps {
   /** 用户卡片根（**装到这里** ✓） */
@@ -143,6 +144,7 @@ export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCard
   }
   try {
     rmSync(dir, { recursive: true, force: true });
+    // **没有授权账要清** ✓（**2026-11-16 删了** ✓ —— ADR-D46 ✓）
     deps.registry.refresh();
     return { ok: true };
   } catch (err) {

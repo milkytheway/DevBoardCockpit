@@ -172,7 +172,7 @@ export class WorkflowService {
   start(
     id: string,
     inputs: Record<string, unknown>,
-    opts: { confirmIds?: Record<string, string>; cardId?: string } = {},
+    opts: { confirmIds?: Record<string, string> } = {},
   ): { runId: string } {
     // ── **流程包必须已被用户批准** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）──
     // → 它能跑**任意命令** ✓（`exec` / `file.transfer` ✓）→ **板型包管不到** ✓

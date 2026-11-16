@@ -314,7 +314,8 @@ const workflowService = new WorkflowService({
     audit: (row) => actionAudit.append(row),
     confirmations,
   },
-  /** 卡级授权（**第二层** ✓ —— 第一层是 manifest 声明 ✓，第三层是包已批准 ✓） */
+  /** 流程层的**授权** ✓ —— **两层** ✓（**卡级那一层 2026-11-16 删了** ✓ · ADR-D46 ✓）：
+   * 第一层是 manifest 声明 ✓，第二层是**包已被用户批准** ✓ */
 });
 
 /**
@@ -443,7 +444,7 @@ const cards = createCardWiring({
       try {
         // **三层授权**（契约 §3.3 ✓）：会话层查了「卡级」✓，
         // 这里 `start` 还会查「**包已批准**」✓（`requireApproved` ✓）。
-        const { runId } = workflowService.start(id, inputs, { cardId });
+        const { runId } = workflowService.start(id, inputs);
         return { ok: true, runId };
       } catch (err) {
         // **封闭的理由码** ✓（不能把宿主侧的话泄给卡片 —— 里面有路径 ✓）

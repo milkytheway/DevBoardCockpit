@@ -293,7 +293,7 @@ const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'uninstall_card',
     title: '卸一张卡',
-    description: '删掉一张用户卡（**授权账一并清掉** ✓ —— 装回来要重新征求 ✓）。',
+    description: '删掉一张用户卡（**没有授权账要清** ✓ —— 2026-11-16 起没有那一层了 ✓）。',
     inputSchema: {
       type: 'object',
       properties: { card_id: { type: 'string', description: '卡片 id' } },

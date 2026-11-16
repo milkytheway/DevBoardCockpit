@@ -7,11 +7,47 @@ import {
   isImplementedCapability,
   matchTagPattern,
 } from './vocabulary';
-import { DANGER_FLOOR_VERSION, matchDangerFloor } from './floor';
+import { DANGER_FLOOR_VERSION, matchDangerFloor, tokenizeCommand } from './floor';
 import { collectPlaceholders } from '../util/shell-quote';
 
 /**
- * 板型包的校验器——契约 `docs/spec/02-board-pack.md` §七 的 **27 条规则**。
+ * **shell 元字符**（**会让一段文本变成两条命令** ✓）。
+ *
+ * → **reader 的参数值会被拼进 shell** ✓ → **值里有这些就是第二条命令** ✓。
+ * → **注意不含正则的元字符** ✓（`^` `(` `)` `[` `]` `.` `+` `*` ✓）——
+ *   **正则不是 shell** ✓（`exec_regex` 的 `pattern` 是给输出用的 ✓ → 豁免 ✓）。
+ */
+const SHELL_METACHARACTERS: readonly string[] = [';', '|', '&', '`', '$', '>', '<', '\n', '\r'];
+
+/**
+ * **不进 shell 的参数**（**按 kind + 参数名** ✓ —— **封闭清单** ✓）。
+ *
+ * → `exec_regex.command` 是**一条命令** ✓（**规则 30 管它** ✓）；
+ * → `exec_regex.pattern` 是**正则** ✓（**只作用于输出** ✓）；
+ * → `script.*` 是**宿主路径** ✓（**而且 script 被规则 31 禁了** ✓）。
+ */
+const NOT_IN_SHELL: Record<string, readonly string[]> = {
+  exec_regex: ['command', 'pattern'],
+  script: ['path', 'interpreter'],
+};
+
+/**
+ * **解释器 / 下载器 / 提权器**（**包装起来就绕过了危险地板** ✓）。
+ *
+ * → 地板表匹配的是**词** ✓ —— `bash -c 'rm -rf /'` **一个词都不匹配** ✓
+ * → **所以这些词不许出现在 reader 的命令里** ✓（**任何位置** ✓）。
+ */
+const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
+  'sh', 'bash', 'zsh', 'dash', 'ksh', 'csh', 'tcsh', 'ash',
+  'env', 'xargs', 'eval', 'exec', 'source',
+  'python', 'python2', 'python3', 'perl', 'ruby', 'php', 'node', 'deno', 'bun',
+  'curl', 'wget', 'nc', 'ncat', 'netcat', 'socat', 'telnet', 'ftp',
+  'ssh', 'scp', 'rsync', 'busybox',
+  'sudo', 'su', 'doas', 'nsenter', 'unshare', 'chroot',
+]);
+
+/**
+ * 板型包的校验器——契约 `docs/spec/02-board-pack.md` §七 的 **31 条规则**。
  *
  * **「这 27 条就是契约本身」**（契约原话）：实现层必须逐条实现，
  * 缺一条都不算实现了板型包格式。
@@ -417,6 +453,62 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
           '板型包直接生效，所以这里必须拦住',
       );
     }
+  }
+
+  // ── 规则 29 · reader 的参数值不许含 shell 元字符 ──
+  //
+  // → **reader 的取数片段会被拼进一条 shell 命令** ✓（`fetch.ts` ✓）
+  //   → **包里的值带元字符 = 拼出第二条命令** ✓（**这是绕过地板的路** ✓）
+  // → 例外：**不进 shell 的参数** ✓（`exec_regex` 的 `command`/`pattern` ✓ · `script` 的路径 ✓）
+  for (const { reader, path } of readers) {
+    const exempt = NOT_IN_SHELL[reader.kind] ?? [];
+    const args = reader.args ?? {};
+    for (const [key, value] of Object.entries(args)) {
+      if (exempt.includes(key)) continue;
+      if (typeof value !== 'string') continue;
+      const hit = SHELL_METACHARACTERS.find((m) => value.includes(m));
+      if (hit !== undefined) {
+        err(
+          29,
+          `${path}.args.${key}`,
+          `这个值里有 shell 元字符「${hit}」——reader 的取数片段会被拼进 shell（` +
+            '一个元字符就是第二条命令）',
+        );
+      }
+    }
+  }
+
+  // ── 规则 30 · `exec_regex` 的命令不许是「解释器包装」 ──
+  //
+  // → **它的命令原样上板** ✓ → **地板表只有那几条词** ✓
+  //   → `bash -c 'rm -rf /'` **匹配不上地板** ✓ → **规则 28 放行** ✓ → **危险** ✓
+  // → 所以：**命令里不许出现解释器 / 下载器 / 提权器** ✓（**任何位置** ✓ ——
+  //   **包装器就是绕过地板的那条路** ✓）。
+  for (const { reader, path } of readers) {
+    if (reader.kind !== 'exec_regex') continue;
+    const command = reader.args?.['command'];
+    if (typeof command !== 'string') continue;
+    for (const token of tokenizeCommand(command)) {
+      const base = token.split('/').pop() ?? token;
+      if (!SHELL_WRAPPERS.has(base)) continue;
+      err(
+        30,
+        `${path}.args.command`,
+        `命令里有「${base}」——它是解释器 / 下载器 / 提权器，` +
+          '包装起来就绕过了危险地板（地板表匹配的是词，不是语义）',
+      );
+      break;
+    }
+  }
+
+  // ── 规则 31 · 板型包里不许用 `script` kind ──
+  //
+  // → **它执行的是脚本正文** ✓（**正文一个字都没查** ✓ → **地板看不见它** ✓）
+  // → 而且运行时**还不给它推脚本** ✓（`sampler.ts` ✓ → 它报 unavailable ✓）
+  //   → **那是一个还没开的洞** ✓ → **不许用** ✓（**别留一个「将来会开」的洞** ✓）。
+  for (const { reader, path } of readers) {
+    if (reader.kind !== 'script') continue;
+    err(31, `${path}.kind`, 'kind「script」执行的是脚本正文（地板看不见它）——板型包里不许用');
   }
 
   // ── 规则 24 · danger_floor_version 必须是已知版本 ──

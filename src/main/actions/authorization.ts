@@ -88,15 +88,19 @@ export function authorize(
   // 2) 危险等级：包声明的 **或** 地板命中的（取更严的）
   const dangerous = action.danger === 'destructive' || floor.verdict === 'destructive';
   if (dangerous) {
-    // **地板命中 → 永远要人点头** ✓（**那是命令本身危险** ✓ —— **与谁点的无关** ✓）
+    // **卡片那条路不问** ✓（**用户点了就是同意** ✓ —— **地板也归它** ✓）
+    //
+    // → **为什么地板也归它** ✓：**板型包那条路已经查过地板了** ✓
+    //   （**动作** ✓ 规则 16 ✓ · **reader** ✓ 规则 28 ✓）→ **这里是第二遍** ✓
+    // → **不归它会怎样** ✓：**卡片永远卡在「等人确认」上** ✗ —— **而界面里没有那道闸** ✗
+    //   → **问了就没人答** ✗ → **那是最坏的一种状态** ✗（**既不执行也不明说** ✗）
+    if (!ask) return { verdict: 'ok' };
     if (floor.verdict === 'destructive') {
       return {
         verdict: 'needs_confirmation',
         detail: `命令命中了危险地板（${floor.why ?? '危险命令'}），按破坏性处理，要人确认`,
       };
     }
-    // **卡片那条路不问** ✓（**用户点了就是同意** ✓）
-    if (!ask) return { verdict: 'ok' };
     return {
       verdict: 'needs_confirmation',
       detail: `动作「${action.id}」是破坏性的，要人确认`,
@@ -117,9 +121,18 @@ export function authorize(
     const range =
       grantedDomain?.[name] ?? guard[name] ?? { min: paramSpec.min, max: paramSpec.max };
     if (!withinRange(params[name], range)) {
-      // **卡片那条路不问** ✓ → **guard 的收窄不生效** ✓
-      // （**guard 的本意是「这一档要问人」** ✓ —— **没人可问就不收窄** ✓）
-      if (!ask) continue;
+      // **卡片那条路：超范围 → 拒绝** ✓（**不放行** ✓）
+      //
+      // → **guard 是包作者划的界** ✓（例：背光 0–15「太暗、看着像屏幕坏了」✓）
+      //   → **它不是「问人的触发条件」** ✓ → **要么守着，要么问** ✓
+      //   → **守着** ✓（**卡片那条路没有「问」这个动作** ✓ —— **界面上没有那道闸** ✗）
+      if (!ask) {
+        return {
+          verdict: 'denied',
+          param: name,
+          detail: `参数「${name}」超出了这个动作允许的范围（${describeRange(range)}）`,
+        };
+      }
       return {
         verdict: 'needs_confirmation',
         param: name,

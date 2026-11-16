@@ -259,15 +259,17 @@ describe('执行器 · 授权与确认', () => {
     expect(h.executed.length).toBeGreaterThan(0);
   });
 
-  it('**卡片那条路 → 超 guard 域也不问** ✓（**guard 的本意是「问人」** ✓ —— 没人可问就不收窄 ✓）', async () => {
-    // **回读答得上** ✓（**判的是「有没有问人」** ✓ —— 不是「回读过没过」 ✓）
+  it('**卡片那条路 → 超 guard 域 → 拒绝** ✓（**guard 是包作者划的界** ✓ —— **要么守着要么问** ✓）', async () => {
     const h = harness({ fileContent: '5' });
     const result = await invokeAction(ACTION, { value: 5 }, { ...h.deps, askForConsent: false });
     expect(result.needsConfirmation).toBeUndefined();
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('denied');
+    // **命令没发出去** ✓
+    expect(h.executed).toHaveLength(0);
   });
 
-  it('**地板命中 → 卡片那条路也要问** ✓（**那是命令本身危险** ✓ —— **与谁点的无关** ✓）', async () => {
+  it('**地板命中 → 卡片那条路直接执行** ✓（**板型包那条路已经查过地板了** ✓ —— **这里是第二遍** ✓）', async () => {
     const dangerous: ActionDef = {
       ...ACTION,
       id: 'wipe.root',
@@ -277,8 +279,10 @@ describe('执行器 · 授权与确认', () => {
     };
     const h = harness({ action: dangerous });
     const result = await invokeAction(dangerous, {}, { ...h.deps, askForConsent: false });
-    expect(result.needsConfirmation).toBeTruthy();
-    expect(h.executed).toHaveLength(0);
+    // **不再卡在「等人确认」上** ✓（**界面里没有那道闸** ✗ —— **问了就没人答** ✗）
+    expect(result.needsConfirmation).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(h.executed.length).toBeGreaterThan(0);
   });
 
   it('没被授权的动作 → denied，命令不执行', async () => {

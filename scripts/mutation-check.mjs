@@ -1434,22 +1434,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M118 授权账：流程的批准要**单独记**（与动作的域不同 ✓）',
-    file: 'src/main/cards/grants.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/cards/grants.test.ts'],
-    expect: '流程',
-    apply: (s) =>
-      replace(
-        s,
-        `  workflowIds(cardId: string): string[] {
-    return this.workflowGrants.get(cardId) ?? [];
-  }`,
-        `  workflowIds(cardId: string): string[] {
-    return []; // 变异：流程的授权查不到
-  }`,
-      ),
-  },
-  {
     name: 'M120 流程包：版本词汇必须与契约一致（`apiVersion`，**不是** formatVersion ✓）',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
@@ -2232,42 +2216,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M189 MCP 装卡：**同意要绑目录快照** ✓（**不绑 → 装的可能不是人批的那份** ✗）',
-    file: 'src/main/cards/consent.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '快照',
-    apply: (s) =>
-      replace(
-        s,
-        "    if (req.snapshot !== snapshot) {",
-        "    if (false) {",
-      ),
-  },
-  {
-    name: 'M190 MCP 装卡：**没批过的同意不能消费** ✓（**签发 ≠ 批准** ✓）',
-    file: 'src/main/cards/consent.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '签发',
-    apply: (s) =>
-      replace(
-        s,
-        "    if (!req.approved) return false;",
-        "    if (false) return false;",
-      ),
-  },
-  {
-    name: 'M191 MCP 装卡：**同意是一次性的** ✓（**重放 = 绕过授权** ✗）',
-    file: 'src/main/cards/consent.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '一次性',
-    apply: (s) =>
-      replace(
-        s,
-        "    // **一次性** ✓\n    this.requests.delete(id);",
-        "    // **一次性** ✓\n    // 变异：不删",
-      ),
-  },
-  {
     name: 'M192 MCP 卸卡：**授权账一并清掉** ✓（**否则装回来带着旧授权** ✗）',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
@@ -2545,18 +2493,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M209 宿主：**找出声明了某个流程的卡** ✓（**只给声明了它的** ✓）',
-    file: 'src/main/cards/flow-grants.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/cards/flow-grants.test.ts'],
-    expect: '找出声明了它的卡',
-    apply: (s) =>
-      replace(
-        s,
-        '      if (Array.isArray(ids) && ids.includes(workflowId)) found.push(card.cardId);',
-        '      if (Array.isArray(ids) && ids.length > 0) found.push(card.cardId); // 变异：不看是不是这个流程',
-      ),
-  },
-  {
     name: 'M210 卡片：**「跑过」与「成了」分得清** ✓（**`verified: false` 不是成功** ✓）',
     file: 'cards/build-deploy/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
@@ -2621,6 +2557,54 @@ const MUTATIONS = [
         s,
         '    if (!found.approved) {',
         '    if (false) { // 变异：没批准也放行',
+      ),
+  },
+  {
+    name: 'M219 校验器：**reader 的参数值不许含 shell 元字符** ✓（**规则 29** ✓）',
+    file: 'src/main/tags/validator.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 29',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (hit !== undefined) {',
+        '      if (false) { // 变异：参数值里的元字符放行',
+      ),
+  },
+  {
+    name: 'M220 校验器：**exec_regex 的命令不许是解释器包装** ✓（**规则 30** ✓）',
+    file: 'src/main/tags/validator.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 30',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (!SHELL_WRAPPERS.has(base)) continue;',
+        '      if (true) continue; // 变异：解释器包装放行',
+      ),
+  },
+  {
+    name: 'M221 校验器：**板型包里不许用 script** ✓（**规则 31** ✓）',
+    file: 'src/main/tags/validator.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
+    expect: '规则 31',
+    apply: (s) =>
+      replace(
+        s,
+        "    if (reader.kind !== 'script') continue;",
+        "    if (true) continue; // 变异：script 放行",
+      ),
+  },
+  {
+    name: 'M222 执行器：**卡片那条路超 guard → 拒绝** ✓（**guard 是包作者划的界** ✓）',
+    file: 'src/main/actions/authorization.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
+    expect: '超 guard 域',
+    apply: (s) =>
+      replace(
+        s,
+        "      if (!ask) {\n        return {\n          verdict: 'denied',",
+        "      if (false) {\n        return {\n          verdict: 'denied',",
       ),
   },
   {

@@ -322,15 +322,13 @@ describe('流程服务 · 确认链的落点（人点头 → 继续跑）', () =
     const h = service();
     h.reg.approve('demo.run');
     // **卡片触发** ✓ —— **不再有「这张卡被授过吗」那一问** ✓
-    expect(() => h.svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).not.toThrow();
+    expect(() => h.svc.start('demo.run', { project: 'x' })).not.toThrow();
   });
 
   it('**没批准的流程包 → 谁都跑不了** ✓（**唯一的那道闸** ✓ —— ADR-D46 ✓）', () => {
     const h = service();
-    // **没批准** ✓ → **拒绝** ✓（卡片也一样 ✓）
-    expect(() => h.svc.start('demo.run', { project: 'x' }, { cardId: 'card-1' })).toThrow(
-      /还没有被批准/,
-    );
+    // **没批准** ✓ → **拒绝** ✓
+    expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/还没有被批准/);
   });
 
   it('**同一个流程同时只允许跑一次**（两个流程抢一条串口会串台 ✓）', async () => {

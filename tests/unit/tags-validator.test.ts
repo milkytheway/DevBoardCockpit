@@ -4,7 +4,7 @@ import { parseBoardPack } from '../../src/main/tags/pack';
 import type { ActionDef, BoardPack, ReaderDef } from '../../src/main/tags/schema';
 
 /**
- * 28 条校验规则。
+ * 31 条校验规则。
  *
  * ── 测法：每个合成包**只违反一条规则** ──
  *
@@ -570,6 +570,62 @@ describe('规则 28 · reader 的取数命令不许命中危险地板', () => {
       provides: [{ tag: 'custom.tiny.uptime', sample: 'value' }],
     });
     expect(errors(validatePack(pack))).toEqual([]);
+  });
+});
+
+describe('规则 29 · reader 的参数值不许含 shell 元字符', () => {
+  it('**值里有 `;` → 报错** ✓（**那会拼出第二条命令** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'x',
+      kind: 'file_read',
+      args: { path: '/tmp/x; rm -rf /' },
+      provides: [{ tag: 'custom.tiny.x', sample: 'value' }],
+    });
+    expectOnlyRule(pack, 29);
+  });
+
+  it('**`exec_regex` 的 command 与 pattern 豁免** ✓（**它不是路径** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'up',
+      kind: 'exec_regex',
+      args: { command: 'cat /proc/uptime', pattern: '^([0-9.]+)' },
+      provides: [{ tag: 'custom.tiny.uptime', sample: 'value' }],
+    });
+    expect(errors(validatePack(pack))).toEqual([]);
+  });
+});
+
+describe('规则 30 · exec_regex 的命令不许是「解释器包装」', () => {
+  it('**`bash -c ...` → 报错** ✓（**包装起来就绕过了地板** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'wipe',
+      kind: 'exec_regex',
+      args: { command: "bash -c 'rm -rf /'", pattern: '^x' },
+      provides: [{ tag: 'custom.tiny.wipe', sample: 'value' }],
+    });
+    expectOnlyRule(pack, 30);
+  });
+
+  it('**普通的只读命令 → 放行** ✓', () => {
+    const pack = addReader(basePack(), {
+      id: 'up',
+      kind: 'exec_regex',
+      args: { command: 'cat /proc/uptime', pattern: '^([0-9.]+)' },
+      provides: [{ tag: 'custom.tiny.uptime', sample: 'value' }],
+    });
+    expect(errors(validatePack(pack))).toEqual([]);
+  });
+});
+
+describe('规则 31 · 板型包里不许用 script kind', () => {
+  it('**用了 script → 报错** ✓（**它执行的是正文** ✓ —— **地板看不见** ✓）', () => {
+    const pack = addReader(basePack(), {
+      id: 'sc',
+      kind: 'script',
+      args: { path: './sc.sh', interpreter: '/bin/sh' },
+      provides: [{ tag: 'custom.tiny.sc', sample: 'value' }],
+    });
+    expectOnlyRule(pack, 31);
   });
 });
 

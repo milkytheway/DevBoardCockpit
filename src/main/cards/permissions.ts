@@ -41,33 +41,3 @@ export function permissionCovers(perms: CardPermissions, tag: string): boolean {
 export function requiresSatisfied(requires: string[], perms: CardPermissions): boolean {
   return requires.every((tag) => permissionCovers(perms, tag));
 }
-
-/**
- * **有效**写权限 = `permissions.write` ∩ 已授权（契约 §2.4）。
- *
- * 两条都得有才作数：
- * - `permissions.write` 是 manifest 说的（**卡片自己声明**）
- * - `granted` 是用户点过头的（**人授的**）
- *
- * 只看一条就会漏：只看 manifest → 用户没点头的动作也能写；
- * 只看授权 → manifest 没声明的动作也能写（宿主就没这个动作）。
- *
- * **M6 用**——M5 没有写侧（没有动作可执行，也就没有「已授权」这回事）。
- */
-export function effectiveWrite(perms: CardPermissions, granted: string[]): string[] {
-  return perms.write.filter((id) => granted.includes(id));
-}
-
-/**
- * 有效**流程**权限 = **声明 ∩ 已授权** ✓（与 `effectiveWrite` 同形 ✓）。
- *
- * → 为什么要有这一维（评审 37 的 V3-I9 ✓）：
- * 流程**不是动作**（不在板型包里 ✓），但它**一样是「能在用户机器上执行命令」** ✗
- * → 它**必须**有自己的授权层 ✓，否则一张卡声明了 `permissions.workflows` 就能跑流程 ✗。
- *
- * → **与动作的差别** ✓：动作的授权域是**参数域**（`domains` ✓），
- * 流程的授权**没有域** ✓（要么能触发这个流程，要么不能 ✓）。
- */
-export function effectiveWorkflows(perms: CardPermissions, granted: string[]): string[] {
-  return (perms.workflows ?? []).filter((id) => granted.includes(id));
-}
