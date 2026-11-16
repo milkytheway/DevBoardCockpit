@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>编译上板</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="deck">
+      <header class="deck__head">
+        <select id="flow" class="deck__flow" aria-label="选一条编译流程"></select>
+        <button id="run" class="deck__run" type="button">编译上板</button>
+      </header>
+
+      <div id="inputs" class="deck__inputs"></div>
+
+      <ol id="steps" class="deck__steps"></ol>
+
+      <p id="note" class="cockpit-note">正在读流程清单…</p>
+    </main>
+    <script type="module" src="./card.js"></script>
+  </body>
+</html>

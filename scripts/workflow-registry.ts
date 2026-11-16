@@ -15,8 +15,16 @@
  * → 这一对命令是**人**用的 ✓（卡片与 agent 走 `WorkflowService` ✓，只认 id ✓）。
  */
 import { createInterface } from 'node:readline';
+import { join } from 'node:path';
 import { WorkflowRegistry, workflowApprovalsFile } from '../src/main/workflows/registry';
-import { builtinWorkflowsDir, userDataDir, userWorkflowsDir } from '../src/main/util/paths';
+import {
+  builtinCardsDir,
+  builtinWorkflowsDir,
+  userDataDir,
+  userWorkflowsDir,
+} from '../src/main/util/paths';
+import { GrantStore } from '../src/main/cards/grants';
+import { cardsDeclaringWorkflow } from '../src/main/cards/flow-grants';
 
 function workflowDirs(): string[] {
   return [builtinWorkflowsDir(process.cwd()), userWorkflowsDir()];
@@ -29,6 +37,25 @@ function registry(): WorkflowRegistry {
   });
   reg.scan();
   return reg;
+}
+
+/** 卡片的授权账（**与宿主读的是同一份** ✓ —— 同一个路径 ✓） */
+function grants(): GrantStore {
+  return new GrantStore(join(userDataDir(), 'grants.json'));
+}
+
+/**
+ * **哪些内置卡声明了这个流程** ✓（**只给声明了它的** ✓）。
+ *
+ * → 内置卡**没有「装卡」那一步** ✓ → **卡级授权从哪来** ✗
+ *   → **就是这一次点头** ✓（契约 `spec/03` §2.4 的三层 ✓：
+ *   manifest 声明 ✓ → 用户授过这张卡 ✓ → 用户批过这个包 ✓）。
+ */
+function declaringCards(workflowId: string): string[] {
+  return cardsDeclaringWorkflow(
+    [{ dir: builtinCardsDir(process.cwd()), kind: 'builtin' }],
+    workflowId,
+  );
 }
 
 /** 问人一句话，等他答（**人在终端上敲** ✓） */
@@ -91,6 +118,12 @@ switch (command) {
       if (step.command !== undefined) console.log(`      $ ${step.command}`);
       if (danger !== '') console.log(`    ${danger.trim()}`);
     }
+    // **哪些卡会用到它** ✓（**卡级授权也在这里一次点掉** ✓）
+    const cards = declaringCards(id);
+    if (cards.length > 0) {
+      console.log('\n  这些内置卡声明了它（批准即等于授权给它们）：');
+      for (const cardId of cards) console.log(`    ${cardId}`);
+    }
     console.log('\n  确认批准？（上面就是它会做的事）[y/N]');
     // **读一行**（人在终端上敲 ✓）
     const answer = (await ask('  ')).toLowerCase().trim();
@@ -101,6 +134,12 @@ switch (command) {
     const approved = reg.approve(id);
     console.log(`\n已批准：${approved.id}（${approved.name}）`);
     console.log(`  摘要 ${approved.digest} —— **改了内容要重新批准** ✓`);
+    // **卡级授权** ✓（第三层 ✓）—— 只给声明了它的卡 ✓
+    if (cards.length > 0) {
+      const store = grants();
+      for (const cardId of cards) store.grantWorkflow(cardId, id);
+      console.log(`  已授权给：${cards.join('、')} ✓`);
+    }
     break;
   }
   case 'revoke': {
@@ -109,6 +148,9 @@ switch (command) {
       process.exit(2);
     }
     registry().revoke(id);
+    // **卡级授权也收** ✓（**整张清** ✓ —— 留着就是「还能用」✗）
+    const store = grants();
+    for (const cardId of declaringCards(id)) store.revokeWorkflow(cardId, id);
     console.log(`已收回批准：${id}`);
     break;
   }

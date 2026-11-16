@@ -1,0 +1,171 @@
+/* 编译上板：一条流程、几个输入、一条时间线。
+   颜色只用 --cockpit-*（契约 §六：卡片只许用宿主注入的变量）。 */
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  padding: 12px 14px;
+  background: transparent;
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+}
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------- 头：选流程 + 跑 ---------- */
+
+.deck__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deck__flow {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--cockpit-radius);
+  border: 1px solid var(--cockpit-border-strong);
+  background: var(--cockpit-bg-elevated);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+}
+
+.deck__run {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--cockpit-radius);
+  border: 1px solid var(--cockpit-accent);
+  background: var(--cockpit-accent);
+  color: var(--cockpit-bg);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deck__run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- 输入 ---------- */
+
+.deck__inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deck__field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.deck__caption {
+  font-size: 10.5px;
+  color: var(--cockpit-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deck__input {
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: var(--cockpit-radius);
+  border: 1px solid var(--cockpit-border);
+  background: var(--cockpit-bg-elevated);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-mono);
+  font-size: 11px;
+}
+
+.deck__input:focus {
+  outline: none;
+  border-color: var(--cockpit-accent);
+}
+
+.deck__none {
+  margin: 0;
+  font-size: 11px;
+  color: var(--cockpit-text-faint);
+}
+
+/* ---------- 时间线 ---------- */
+
+.deck__steps {
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--cockpit-border);
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deck__step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--cockpit-text-dim);
+}
+
+.deck__step-name {
+  font-family: var(--cockpit-font-mono);
+  font-size: 11.5px;
+  color: var(--cockpit-text);
+}
+
+.deck__step-kind {
+  font-size: 10px;
+  color: var(--cockpit-text-faint);
+}
+
+.deck__step-why {
+  font-size: 10.5px;
+  color: var(--cockpit-danger);
+}
+
+.deck__step--ok .deck__step-name {
+  color: var(--cockpit-ok);
+}
+
+.deck__step--warn .deck__step-name {
+  color: var(--cockpit-warn);
+}
+
+.deck__step--bad .deck__step-name {
+  color: var(--cockpit-danger);
+}
+
+.deck__step--wait {
+  color: var(--cockpit-text-faint);
+}
+
+#note {
+  margin: auto 0 0;
+  font-size: 10.5px;
+  color: var(--cockpit-text-faint);
+}

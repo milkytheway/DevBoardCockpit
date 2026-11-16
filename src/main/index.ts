@@ -19,6 +19,7 @@ import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
 import { selectDevice } from './profiles/device-select';
 import {
+  builtinCardsDir,
   builtinProfilesDir,
   builtinWorkflowsDir,
   cardRootsDir,
@@ -237,7 +238,7 @@ protocol.registerSchemesAsPrivileged([
    ─────────────────────────────────────────────────────────────────── */
 
 const cardRoots: CardRoot[] = [
-  { dir: join(app.getAppPath(), 'cards'), kind: 'builtin' },
+  { dir: builtinCardsDir(app.getAppPath()), kind: 'builtin' },
   { dir: cardRootsDir(), kind: 'user' },
 ];
 
@@ -353,7 +354,7 @@ async function startMcpServer(): Promise<void> {
         consents: consents,
         // **内置卡 id** ✓ —— **只从内置目录取** ✓
         // （用户目录的卡**可以卸** ✓ —— 那才是「用户装的东西」✓）
-        builtinCardIds: listCardDirs([{ dir: join(app.getAppPath(), 'cards'), kind: 'builtin' }]).map(
+        builtinCardIds: listCardDirs([{ dir: builtinCardsDir(app.getAppPath()), kind: 'builtin' }]).map(
           (c) => c.cardId,
         ),
         // **agent 的动作执行** ✓ —— **同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）

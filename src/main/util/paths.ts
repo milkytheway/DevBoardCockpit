@@ -43,6 +43,15 @@ export function cardRootsDir(appName: string = DEFAULT_APP): string {
 }
 
 /**
+ * **内置**的卡片目录（随应用分发的那一批 ✓）。
+ *
+ * → 与 `profiles/` 那些同处一个思路 ✓：**随应用来的** ✓ —— **只读** ✓。
+ */
+export function builtinCardsDir(appRoot: string): string {
+  return join(appRoot, 'cards');
+}
+
+/**
  * 卡片存储目录。
  *
  * ── 必须是**兄弟目录**，不能塞在卡片根目录里面 ──

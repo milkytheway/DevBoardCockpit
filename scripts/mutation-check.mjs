@@ -2533,6 +2533,54 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M208 卡片：**声明的流程就是那两条** ✓（**不多不少** ✓ —— 授权面不许变大 ✗）',
+    file: 'cards/build-deploy/manifest.json',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/build-deploy-card.test.ts'],
+    expect: '声明的流程就是那两条编译流程',
+    apply: (s) =>
+      replace(
+        s,
+        '    "write": [],\n    "workflows": ["hello-kernel.build-run", "meminfo-user.build-run"]',
+        '    "write": [],\n    "workflows": ["hello-kernel.build-run", "meminfo-user.build-run", "prepare-credentials.authorize-key"]',
+      ),
+  },
+  {
+    name: 'M209 宿主：**找出声明了某个流程的卡** ✓（**只给声明了它的** ✓）',
+    file: 'src/main/cards/flow-grants.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/flow-grants.test.ts'],
+    expect: '找出声明了它的卡',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (Array.isArray(ids) && ids.includes(workflowId)) found.push(card.cardId);',
+        '      if (Array.isArray(ids) && ids.length > 0) found.push(card.cardId); // 变异：不看是不是这个流程',
+      ),
+  },
+  {
+    name: 'M210 卡片：**「跑过」与「成了」分得清** ✓（**`verified: false` 不是成功** ✓）',
+    file: 'cards/build-deploy/card.js',
+    check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
+    expect: '每一步分得清「跑过」与「成了」',
+    apply: (s) =>
+      replace(
+        s,
+        '    } else if (verified) {',
+        '    } else if (verified || ok) { // 变异：没验过的也算成了',
+      ),
+  },
+  {
+    name: 'M211 卡片：**跑的时候把输入带上** ✓（**不传空参数** ✓）',
+    file: 'cards/build-deploy/card.js',
+    check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
+    expect: '点一下就调 `workflows.run`',
+    apply: (s) =>
+      replace(
+        s,
+        '    values[name] = el.value;',
+        "    values[name] = ''; // 变异：输入不带上",
+      ),
+  },
+  {
     name: 'M207 界面：**菜单里列的是板** ✓（**不列连接** ✓ —— 用户 2026-11-16 明确 ✓）',
     file: 'src/renderer/shell/DevicePicker.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/device-picker-view.test.tsx'],
