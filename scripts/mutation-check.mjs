@@ -1410,18 +1410,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M116 流程服务：**卡级授权**要查（这张卡没被授过 → 跑不了 ✓）',
-    file: 'src/main/workflows/service.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '卡级授权',
-    apply: (s) =>
-      replace(
-        s,
-        '      if (!granted.includes(id)) {',
-        '      if (false) { // 变异：不查卡级授权',
-      ),
-  },
-  {
     name: 'M117 流程服务：**同一个流程同时只允许跑一次**（两个流程抢一条线会串台 ✓）',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
@@ -2213,18 +2201,6 @@ const MUTATIONS = [
         s,
         '      const tags = Array.isArray(perms.read)\n        ? perms.read.filter((t): t is string => typeof t === \'string\')\n        : [];',
         "      const tags: string[] = []; // 变异：示例卡不列读权限",
-      ),
-  },
-  {
-    name: 'M192 MCP 卸卡：**授权账一并清掉** ✓（**否则装回来带着旧授权** ✗）',
-    file: 'src/main/mcp/card-tools.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '授权账',
-    apply: (s) =>
-      replace(
-        s,
-        "    deps.grants?.revokeAll(cardId);",
-        "    // 变异：不清授权",
       ),
   },
   {

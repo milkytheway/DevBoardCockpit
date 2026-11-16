@@ -29,6 +29,7 @@
     "gen:theme": "tsx scripts/gen-theme.ts",
     "gen:theme:check": "tsx scripts/gen-theme.ts --check",
     "mutation:check": "node scripts/mutation-check.mjs",
+    "mutation:audit": "node scripts/audit-mutants.mjs",
     "postinstall": "node scripts/ensure-native.mjs"
   },
   "dependencies": {
