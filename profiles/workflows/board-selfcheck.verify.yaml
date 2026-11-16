@@ -1,0 +1,103 @@
+# 厂商出厂自检 —— **跑正点原子自己写的那套检查脚本**
+#
+# ── 为什么用它而不是自己重写一遍 ──
+#
+# 板子上**本来就有**一套出厂自检：`/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/`
+# （实测 ✓ · 出厂测试 App 用的就是它 ✓ · 厂商对每块板子都跑过 ✓）。
+#
+# → **不要另写一套** ✓ —— 那会变成「我们的检查」与「厂家的检查」两套口径 ✓
+# → 直接调它的脚本 ✓ —— **检查项与出厂一致** ✓。
+#
+# ── 分「必过」与「报告」两级 ──
+#
+# 脚本会**因为外设没插**而失败 ✓（实测：eth1 没插网线 → exit 1 ✓ ·
+#      没有 TF 卡 → `hdparm -t /dev/mmcblk1p1` 失败 ✓）。
+# → 那**不是板子坏了** ✓ → 用 `on_mismatch: continue` ✓
+#   （**照样在时间线上报「没通过」** ✓ —— 用户看得见 ✓）。
+#
+# ⚠️ **mic_test.sh / loudspeaker_test.sh 不在这里** ✓ ——
+#    它们是 `for i in {1..1000}` 的**死循环** ✓（实测脚本内容 ✓）→
+#    跑一次就是几十分钟 ✓ → **不列** ✓。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: board-selfcheck.verify
+name: 厂商出厂自检
+version: 1.0.0
+description: 调用板子上正点原子自带的出厂检查脚本；必过项（CPU 频率 / 有线网 / WiFi / 蓝牙）不过就报错，外设缺失的项只报告。
+
+# 这一条**没有参数** ✓ —— 它查的东西全是固定的 ✓
+# （但 `inputs` 这个键**必须在** ✓ —— 流程包的形状是封闭的 ✓）
+inputs: {}
+
+roles:
+  target:
+    purpose: 被检查的板子
+    profile: board-adb
+
+steps:
+  # ── 必过 ────────────────────────────────────────────────────
+  - id: cpufreq
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/cpufre_test.sh"
+    timeout_ms: 30000
+    readback:
+      kind: command_ok
+
+  - id: eth0
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/eth0_test.sh"
+    timeout_ms: 30000
+    readback:
+      kind: command_ok
+
+  - id: wifi
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/wifi_test.sh"
+    timeout_ms: 60000
+    readback:
+      kind: command_ok
+
+  - id: bluetooth
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/bluetooth_test.sh"
+    timeout_ms: 60000
+    readback:
+      kind: command_ok
+
+  # ── 只报告（外设没插是**事实**，不是故障）────────────────────
+  #
+  # ⚠️ **同样不用 `assert`** ✓ —— 理由同体检那条 ✓：
+  # `verify` 是「等它成立」✓，而「这个外设插了没有」是**一次性的事实** ✓。
+  # → **跑一遍，把结论写进产出槽** ✓（用户看得见是哪个外设缺席 ✓）。
+  - id: eth1
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/eth1_test.sh >/dev/null 2>&1 && echo '第二网口：有 IP' || echo '第二网口：没插网线或没拿到 IP'"
+    timeout_ms: 30000
+    out: eth1_verdict
+    readback:
+      kind: command_ok
+
+  - id: rtc
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/rtc_test.sh >/dev/null 2>&1 && echo '硬件 RTC：节点在' || echo '硬件 RTC：节点不在'"
+    timeout_ms: 30000
+    out: rtc_verdict
+    readback:
+      kind: command_ok
+
+  - id: sdcard
+    kind: exec
+    role: target
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/sdcard_test.sh >/dev/null 2>&1 && echo 'TF 卡：可读' || echo 'TF 卡：没插或读不到'"
+    timeout_ms: 60000
+    out: sdcard_verdict
+    readback:
+      kind: command_ok

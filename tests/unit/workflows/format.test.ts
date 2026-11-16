@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { parseWorkflow, type WorkflowPack } from '../../../src/main/workflows/format';
@@ -505,6 +505,25 @@ describe('流程包 · 黄金样本', () => {
       expect(pack.steps.length).toBeGreaterThan(0);
     });
   }
+
+  /**
+   * **目录里的每一个包都要能解析** ✓
+   *
+   * ── 为什么不列名单 ──
+   *
+   * 列名单的话，**新加的包不在名单里就没人管** ✓ → 写坏了要等跑的时候才发现 ✗。
+   * → **扫目录** ✓ → 新包一落地就被这条测试盯着 ✓。
+   */
+  it('**目录里的每个流程包都能解析**（新包一落地就被盯着 ✓）', () => {
+    const files = readdirSync(DIR).filter((f) => f.endsWith('.yaml'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const raw = yaml.load(readFileSync(join(DIR, file), 'utf8'));
+      const pack = parseWorkflow(raw, file);
+      expect(pack.id, `${file} 的 id 跟文件名对不上`).toBe(file.replace(/\.yaml$/, ''));
+      expect(pack.steps.length, `${file} 没有步骤`).toBeGreaterThan(0);
+    }
+  });
 
   it('内核模块那份**按名字加载，不按路径**（绝不 insmod）', () => {
     const raw = yaml.load(readFileSync(join(DIR, 'hello-kernel.build-run.yaml'), 'utf8'));

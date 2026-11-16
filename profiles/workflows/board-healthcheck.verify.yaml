@@ -1,0 +1,160 @@
+# 板子体检 —— **把「这块板现在是什么状态」一次问清楚**
+#
+# ── 为什么要有它 ──
+#
+# 新板子到手、或者板子跑着跑着不对劲时，第一个问题永远是
+# 「它现在到底怎么样」。逐条敲 adb shell 很慢，而且**容易漏**。
+#
+# → 这一条流程**把该看的都看一遍** ✓，并且**把看得到的事实留在产出槽里** ✓
+# （宿主把产出显示出来 → 用户不用自己再去板子上查一遍 ✓）。
+#
+# ── 判据的设计原则 ──
+#
+# **必过的**（不对就是板子有问题）→ `on_mismatch: fail` ✓
+# **不一定过的**（没插网线 / 没插 TF 卡 / 时间没设）→ `on_mismatch: continue` ✓
+#   → **它照样报告「没通过」** ✓（时间线上看得见 ✓）但**不把整次体检判成失败** ✓。
+#
+# ── 实测依据（2026-11-16 · 真板 ATK-DLRK3588）──
+#
+#   板子的**系统时间是 1970-01-01** ✓（无 RTC 读数 ✓ · 无 NTP ✓）→
+#   所以 `assert-clock` 在新板上**会失败** ✓ —— 那正是它要说的 ✓。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: board-healthcheck.verify
+name: 板子体检
+version: 1.0.0
+description: 一次问清板子的型号、内核、运行时间、内存、温度、调频策略、网络与时间；必过项不过就报错。
+
+inputs:
+  clock_expect:
+    type: string
+    required: false
+    maxLength: 32
+    default: "2020"
+    description: 系统时间应该大于哪一年（早于它就说明板子没对上时间）
+
+roles:
+  target:
+    purpose: 被体检的板子
+    profile: board-adb
+
+steps:
+  # ── 事实 ────────────────────────────────────────────────────
+  - id: model
+    kind: exec
+    role: target
+    # ⚠️ **`cat` 出来的型号带一个尾随 NUL** ✓（实测 2026-11-16 ✓）→
+    #   拼进命令时会被**注入防线直接拒绝** ✓（「路径里有换行或空字符」✓ —— 那是**对的** ✓）。
+    # → **取数时就去掉** ✓（`tr -d` ✓）—— 不要指望下游去容忍 ✓。
+    cmd: "tr -d '\\0' < /proc/device-tree/model"
+    out: model
+    readback:
+      kind: command_ok
+
+  - id: kernel
+    kind: exec
+    role: target
+    cmd: "uname -r"
+    out: kernel
+    readback:
+      kind: command_ok
+
+  - id: uptime
+    kind: exec
+    role: target
+    cmd: "cat /proc/uptime"
+    out: uptime
+    readback:
+      kind: command_ok
+
+  - id: memory
+    kind: exec
+    role: target
+    cmd: "grep -E 'MemTotal|MemAvailable' /proc/meminfo"
+    out: memory
+    readback:
+      kind: command_ok
+
+  - id: temperature
+    kind: exec
+    role: target
+    cmd: "cat /sys/class/thermal/thermal_zone0/temp"
+    out: temperature_millidegree
+    readback:
+      kind: command_ok
+
+  - id: governor
+    kind: exec
+    role: target
+    cmd: "cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
+    out: governor
+    readback:
+      kind: command_ok
+
+  - id: network
+    kind: exec
+    role: target
+    cmd: "ip -br addr show"
+    out: network
+    readback:
+      kind: command_ok
+
+  - id: clock
+    kind: exec
+    role: target
+    cmd: "date '+%Y-%m-%d %H:%M:%S'"
+    out: clock
+    readback:
+      kind: command_ok
+
+  - id: modules
+    kind: exec
+    role: target
+    cmd: "lsmod | wc -l"
+    out: module_count
+    readback:
+      kind: command_ok
+
+  # ── 必过的判据 ──────────────────────────────────────────────
+  - id: assert-model
+    kind: assert
+    role: target
+    readback:
+      kind: verify
+      role: target
+      command: "echo {output:model} | grep -q ATK-DLRK3588"
+      timeout_ms: 10000
+    on_mismatch: fail
+
+  - id: assert-memory
+    kind: assert
+    role: target
+    readback:
+      kind: verify
+      role: target
+      command: "grep -q 'MemTotal:[[:space:]]*[1-9]' /proc/meminfo"
+      timeout_ms: 10000
+    on_mismatch: fail
+
+  # ── 报告性的判定 ────────────────────────────────────────────
+  #
+  # ⚠️ **为什么这里不是 `assert`** ✓
+  #
+  # 契约 `spec/02` §4.5 说得很清楚：**`verify` 是「轮询验证命令直到成功或超时」** ✓
+  # → 它答的是「**这个条件什么时候会成立**」✓
+  # → 而「板子的时间现在对不对」是**一次性的静态判定** ✓
+  #   （不会「过一会儿就自己变好」✓）→
+  # → 用 `verify` 写它，等 10 秒换一句「验证命令在 10000ms 内没成功」✗
+  #   —— **那话是假的** ✗（命令**早就返回了** ✓，只是返回码不是 0 ✓）。
+  #
+  # → **改成 `exec` + 把话说出来** ✓：
+  #   事实已经在那两个槽里 ✓（`clock` ✓），这里再给一句**人话** ✓。
+  - id: clock-verdict
+    kind: exec
+    role: target
+    cmd: "if [ $(date +%Y) -gt {input:clock_expect} ]; then echo OK; else echo '板子时间没对上（先用 sysclock.set 设一次）'; fi"
+    out: clock_verdict
+    readback:
+      kind: command_ok

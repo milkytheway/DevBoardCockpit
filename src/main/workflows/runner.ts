@@ -240,6 +240,45 @@ interface StepContext {
   now: () => number;
 }
 
+/**
+ * **把流程里的字符串参数转成动作声明的那个类型** ✓。
+ *
+ * ── 为什么需要这一步 ──
+ *
+ * 流程包的 `params` 值**只能是字符串** ✓（流程包形状封闭 ✓ —— `spec/05` §4.2 ✓），
+ * 而板型包的动作参数**带类型** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
+ * `spec/02` §4.3 ✓）。**两边对不上** ✗ →
+ * 带类型的动作**在流程里调不动** ✗（实测：`invalid_params：参数「value」要 integer` ✓）。
+ *
+ * → 在这里转 ✓ —— **转完照样过授权层的 schema 校验** ✓（转不改变语义 ✓）。
+ *
+ * | 声明类型 | 转法 |
+ * |---|---|
+ * | `integer` | `Number.parseInt` ✓ —— **转不成整数就原样留着** ✓（让授权层报错 ✓ —— **不要在这儿编** ✓） |
+ * | `number` | `Number` ✓ —— 同上 ✓ |
+ * | `boolean` | `'true'` → `true` · `'false'` → `false` · **别的原样留着** ✓ |
+ * | `string` / `enum` | **不转** ✓（本来就是字符串 ✓） |
+ */
+function coerceParam(value: string, type: PackParam['type']): unknown {
+  switch (type) {
+    case 'integer': {
+      const n = Number.parseInt(value, 10);
+      return Number.isNaN(n) ? value : n;
+    }
+    case 'number': {
+      const n = Number(value);
+      return Number.isNaN(n) ? value : n;
+    }
+    case 'boolean': {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return value;
+    }
+    default:
+      return value;
+  }
+}
+
 async function runStep(step: WorkflowStep, ctx: StepContext): Promise<WorkflowStage> {
   const at = ctx.now();
   const started = at;
@@ -437,9 +476,18 @@ async function runAction(
   if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
 
   // 参数：按动作自己的 schema 校验（**不信任包的自述** ✓）
+  //
+  // ⚠️ **流程里的参数值都是字符串** ✓（流程包的形状是封闭的 ✓ —— `spec/05` §4.2 ✓），
+  // 而**动作的参数是有类型的** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
+  // `spec/02` §4.3 ✓）。**两边对不上** ✗ →
+  // 带类型的动作**在流程里调不动** ✗（实测 2026-11-16：
+  // `invalid_params：参数「value」要 integer` ✓）。
+  // → **按动作自己声明的类型转一遍** ✓（转完仍然由授权层按 schema 校验 ✓ —— 转不改变语义 ✓）。
   const values: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(step.params ?? {})) {
-    values[key] = substituteValue(raw, substitution);
+    const value = substituteValue(raw, substitution);
+    const spec = def.params?.[key];
+    values[key] = spec === undefined ? value : coerceParam(value, spec.type);
   }
   const outcome = await invokeAction(
     def,

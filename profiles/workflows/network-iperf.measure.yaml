@@ -1,0 +1,95 @@
+# 网络测速 —— **板子与客机之间跑一次 iperf3**
+#
+# ── 为什么方向是「板子做服务端」而不是反过来 ──
+#
+# 实测 2026-11-16：**客机 → 板子通** ✓（192.168.136.131 → 192.168.5.100 ✓）
+# **板子 → 客机不通** ✗（`Network is unreachable` ✗ —— 两者不在同一网段 ✓）→
+# → **服务端必须在板子上** ✓（客户端去连它 ✓）。
+#
+# ⚠️ **这条流程要客机上装了 iperf3** ✓（手册 §2.11 说要 `sudo apt-get install iperf3` ✓
+#    —— 2026-11-16 实测：客机**默认没装** ✓ → 先装 ✓）。
+#
+# ── 测的是哪一段链路 ──
+#
+# 客机 ↔ 宿主 ↔ 板子（板子是网线直连宿主网口的 ✓）→
+# 所以这个数字**是板子网口的真实能力**（受客机那一侧限速 ✓）。
+# 实测：**419 Mbits/sec** ✓（千兆口 ✓）。
+#
+# ── 服务端用 `-1`（one-off）──
+#
+# 跑完一次连接**自动退出** ✓ → 不留常驻进程 ✓（实测跑完无残留 ✓）。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: network-iperf.measure
+name: 网络测速（iperf3）
+version: 1.0.0
+description: 板子作为 iperf3 服务端、客机作为客户端，测两端之间的吞吐；服务端 one-off 跑完自退。
+
+inputs:
+  seconds:
+    type: integer
+    required: false
+    default: 5
+    description: 测多久（秒）
+
+roles:
+  target:
+    purpose: 被测的板子（iperf3 服务端）
+    profile: board-adb
+  client:
+    purpose: 发起测速的机器（iperf3 客户端）
+    profile: ubuntu-ssh
+
+steps:
+  # ① 服务端起（**one-off** ✓ —— 跑完一次连接就退 ✓）
+  - id: server
+    kind: exec
+    role: target
+    cmd: "iperf3 -s -1 -D"
+    timeout_ms: 30000
+    readback:
+      kind: command_ok
+
+  # ② 客户端测（**地址来自角色事实** ✓ —— 流程包不该知道板子的 IP ✓）
+  #
+  # ⚠️ **`| grep receiver` 不是为了好看** ✓ —— 是**必须**的 ✓：
+  # iperf3 的完整输出**是十几行** ✓ → 塞进下一步的命令里会被**注入防线拒绝** ✓
+  # （「路径里有换行或空字符」✓ —— 那是**对的** ✓）。
+  # → **只取 receiver 那一行** ✓（**单行** ✓ → 后面拼得进命令 ✓）
+  #   而那一行**就是答案** ✓（`... 424 Mbits/sec  receiver` ✓ —— 实测 ✓）。
+  - id: measure
+    kind: exec
+    role: client
+    cmd: "iperf3 -c {role:target.host} -t {input:seconds} | grep receiver"
+    timeout_ms: 300000
+    out: result
+    readback:
+      kind: command_ok
+
+  # ③ 结果里有「receiver」那一行才算测成了 ✓（**单行** ✓ → 拼得进命令 ✓）
+  - id: assert-receiver
+    kind: assert
+    role: client
+    readback:
+      kind: verify
+      role: client
+      command: "echo {output:result} | grep -q receiver"
+      timeout_ms: 10000
+    on_mismatch: fail
+
+  # ④ 收尾：万一客户端没连上，服务端还挂着 → 清掉 ✓（不留残留 ✓）
+  #
+  # ⚠️ **必须用 `-x`（精确匹配进程名）**，**不能用 `-f`** ✓
+  #   —— `pkill -f "iperf3 -s"` 匹配的是**整条命令行** ✓，
+  #   而**模式本身就出现在这条 shell 自己的命令行里** ✓ → **它把自己杀了** ✓
+  #   （实测 2026-11-16：命令**没有任何输出** ✓ + 退出码非 0 ✓ —— 典型的自杀现场 ✓）。
+  # → `-x iperf3` 只匹配**进程名** ✓ → 杀不到 shell ✓（实测 ✓）。
+  - id: cleanup
+    kind: exec
+    role: target
+    cmd: "pkill -x iperf3 || true"
+    timeout_ms: 30000
+    readback:
+      kind: command_ok

@@ -31,6 +31,8 @@ import { runWorkflow, type WorkflowRunDeps } from '../src/main/workflows/runner'
 import { WorkflowRegistry } from '../src/main/workflows/registry';
 import { loadProfiles } from '../src/main/profiles/loader';
 import { createConnection } from '../src/main/hal/registry';
+import { loadBoardPack } from '../src/main/tags/pack';
+import type { ActionDef } from '../src/main/tags/schema';
 import { ActionAudit } from '../src/main/actions/audit';
 import { SessionLog } from '../src/main/logging/session-log';
 import { builtinWorkflowsDir, userDataDir, userWorkflowsDir } from '../src/main/util/paths';
@@ -135,6 +137,34 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ── 板型包里的动作（`action` 步要用 ✓）──
+  //
+  // 之前 CLI **不给** `actionDef` ✗ → `action` 步在 CLI 里直接报
+  // 「板型包里没有这个动作」✗ → **CLI 跑不了应用能跑的包** ✗（两份真相 ✓）。
+  //
+  // → 现在按角色绑的 profile 的 `board_pack` **静态加载那份包** ✓
+  // （**应用里走运行时那条路** ✓ —— 那边按连接解析 ✓）。
+  //
+  // ⚠️ **回读形式 1（读 tag）在 CLI 里查不了** ✗ —— 流程层没有板型包的运行时 ✓
+  // → `readTag` 返回 undefined ✓ → 那种动作在 CLI 里**回读不过** ✓（诚实 ✓）。
+  const actionDefs = new Map<string, ActionDef>();
+  for (const [roleName, role] of Object.entries(pack.roles)) {
+    const profile = profileById.get(role.profile);
+    const packId = profile?.board_pack;
+    if (packId === undefined || packId === null || packId === '') continue;
+    const dir = join(process.cwd(), 'profiles', 'boards', packId);
+    if (!existsSync(dir)) continue;
+    try {
+      const loaded = loadBoardPack(dir);
+      for (const def of loaded.actions) {
+        // **同名不许有两个定义** ✗ → 先到先得 ✓（跨板时另说 ✓）
+        if (!actionDefs.has(def.id)) actionDefs.set(def.id, def);
+      }
+    } catch (err) {
+      console.error(`⚠ 角色「${roleName}」的板型包 ${packId} 读不了：${String(err)}`);
+    }
+  }
+
   const audit = new ActionAudit(join(dataDir, 'logs', 'actions.log'));
   // **确认凭据的库**（流程层与 M6 共用一份 ✓ —— 语义只有一处 ✓）
   const registry = new TargetRegistry({
@@ -154,6 +184,8 @@ async function main(): Promise<void> {
       targets: registry,
       profileFor: (id: string) => profileById.get(id),
       audit: (row) => audit.append(row),
+      // **`action` 步要的动作定义** ✓（见上面那段注释 ✓）
+      actionDef: (actionId: string) => actionDefs.get(actionId),
     };
     // **人跑它 = 这一次点头** ✓（ADR-D31 R2 的信任模型 ✓ —— **不再有要确认的步** ✓ · ADR-D48 ✓）
     const result = await runWorkflow(pack, args.input, deps, {

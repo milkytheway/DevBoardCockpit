@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runWorkflow } from '../../../src/main/workflows/runner';
+import { runWorkflow, type WorkflowRunDeps } from '../../../src/main/workflows/runner';
 import { TargetRegistry } from '../../../src/main/workflows/targets';
 import { parseWorkflow } from '../../../src/main/workflows/format';
 import type { ConnectionProfile } from '../../../src/main/profiles/schema';
@@ -141,7 +141,7 @@ function harness(
   });
 
   const audits: AuditRow[] = [];
-  const deps = {
+  const deps: WorkflowRunDeps = {
     targets: registry,
     profileFor: (id: string) => byId(id)?.profile,
     audit: (row: AuditRow): string => {
@@ -149,6 +149,8 @@ function harness(
       return `audit-${audits.length}`;
     },
     now: () => 1_700_000_000_000,
+    // **`action` 步要的动作定义** ✓（`actionDef` 是可选的 ✓ —— 没有它就调不动动作 ✓）
+    actionDef: undefined,
   };
   return { targets, byId, target, audits, deps };
 }
@@ -157,6 +159,102 @@ const ROLES = {
   build: { purpose: '客机', profile: 'guest' },
   target: { purpose: '板子', profile: 'board' },
 };
+
+describe('流程 · action 步（引用板型包里的动作）', () => {
+  /**
+   * ── 这条在防什么 ──
+   *
+   * **流程里的参数值只能是字符串** ✓（流程包形状封闭 ✓ —— `spec/05` §4.2 ✓），
+   * 而**动作的参数带类型** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
+   * `spec/02` §4.3 ✓）。**两边对不上** ✗ →
+   * 带类型的动作**在流程里调不动** ✗（实测 2026-11-16：
+   * `invalid_params：参数「value」要 integer` ✓）。
+   *
+   * → 流程层**按动作自己声明的类型转一遍** ✓。
+   */
+  it('**整型参数按动作声明的类型转**（`"1"` → `1` ✓）', async () => {
+    const h = harness();
+    h.deps.actionDef = () => ({
+      id: 'led.set',
+      danger: 'reversible',
+      params: { value: { type: 'integer' } },
+      command: 'echo {value} > /sys/class/leds/work/brightness',
+      readback: { kind: 'command_ok' },
+    });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [
+          { id: 'led', kind: 'action', role: 'target', action: 'led.set', params: { value: '1' } },
+        ],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(result.ok).toBe(true);
+    // **命令里是 `1`，不是 `'1'`** ✓ —— 编码器按**数字**处理 ✓（不引号 ✓）
+    expect(h.byId('board')?.commands).toEqual(['echo 1 > /sys/class/leds/work/brightness']);
+  });
+
+  it('**布尔参数也转**（`"true"` → `true` ✓）', async () => {
+    const h = harness();
+    h.deps.actionDef = () => ({
+      id: 'x.set',
+      danger: 'reversible',
+      params: { on: { type: 'boolean' } },
+      command: 'toggle {on}',
+      readback: { kind: 'command_ok' },
+    });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [{ id: 'x', kind: 'action', role: 'target', action: 'x.set', params: { on: 'true' } }],
+      },
+      'w.yaml',
+    );
+    await runWorkflow(pack, {}, h.deps, { approved: true });
+    expect(h.byId('board')?.commands).toEqual(['toggle true']);
+  });
+
+  it('**转不成就不转**（`"abc"` 不是整数 → 原样留着 → 授权层去报错 ✓ —— **不在这儿编** ✓）', async () => {
+    const h = harness();
+    h.deps.actionDef = () => ({
+      id: 'x.set',
+      danger: 'reversible',
+      params: { n: { type: 'integer' } },
+      command: 'set {n}',
+      readback: { kind: 'command_ok' },
+    });
+    const pack = parseWorkflow(
+      {
+        apiVersion: 'devboard/v1',
+        kind: 'Workflow',
+        id: 'w',
+        name: 'w',
+        version: '1.0.0',
+        inputs: {},
+        roles: ROLES,
+        steps: [{ id: 'x', kind: 'action', role: 'target', action: 'x.set', params: { n: 'abc' } }],
+      },
+      'w.yaml',
+    );
+    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    // **动作失败了** ✓（授权层说「要 integer」✓）—— **流程层没有悄悄把它变成 0** ✓
+    expect(result.ok).toBe(false);
+  });
+});
 
 describe('流程 · exec 步', () => {
   it('命令**发到指名的目标上**', async () => {

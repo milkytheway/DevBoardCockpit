@@ -54,7 +54,43 @@ describe('loadBoardPack · 真实包', () => {
     expect(pack.kind).toBe('BoardPack');
     expect(pack.readers).toHaveLength(7);
     expect(pack.custom).toHaveLength(4);
-    expect(pack.actions).toHaveLength(3);
+    // **动作的个数会长** ✓（2026-11-16 扩充了 12 条 ✓）→
+    // **不要把个数写死** ✗（一加动作这条测试就红 ✓ —— 而「红」不代表哪里错了 ✓）。
+    // → 判据换成**性质** ✓（「每一条都有回读」「id 不重名」✓ —— 那才是契约的要求 ✓）。
+    expect(pack.actions.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('**每个动作都有回读**（规则 27 ✓ —— 少了它闭环就静默断了 ✓）', () => {
+    const pack = loadBoardPack(REAL_PACK_DIR);
+    for (const action of pack.actions) {
+      expect(action.readback, `${action.id} 没写 readback`).toBeDefined();
+      // **`none` 必须带后果说明** ✓（规则 27 ✓）
+      if (action.readback?.kind === 'none') {
+        expect(action.readback.consequence, `${action.id} 的 none 没写后果`).toBeTruthy();
+      }
+    }
+  });
+
+  it('动作的 id 不重名（重名 = 权限区里两行同名开关 ✓）', () => {
+    const pack = loadBoardPack(REAL_PACK_DIR);
+    const ids = pack.actions.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('**每个动作的参数都被用到**（规则 14：死参数 = 白写的授权面 ✓）', () => {
+    const pack = loadBoardPack(REAL_PACK_DIR);
+    for (const action of pack.actions) {
+      const names = Object.keys(action.params ?? {});
+      const blob = [
+        action.command,
+        action.readback?.path ?? '',
+        action.readback?.expect === undefined ? '' : String(action.readback.expect),
+        action.readback?.command ?? '',
+      ].join(' ');
+      for (const name of names) {
+        expect(blob, `${action.id} 的参数 ${name} 没被任何地方用到`).toContain(`{${name}}`);
+      }
+    }
   });
 
   it('requires.capabilities 不含 stream（规则 26：声明了也给不出来）', () => {

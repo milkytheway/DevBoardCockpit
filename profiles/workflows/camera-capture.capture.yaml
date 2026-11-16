@@ -1,0 +1,86 @@
+# 相机抓帧 —— **MIPI CSI 摄像头拍一张，留在板上**
+#
+# ── 节点怎么选 ──
+#
+# 手册 §2.8 给了**丝印 ↔ /dev/videoX** 的对照 ✓（实测四个节点的 name 都是
+# `rkisp_mainpath` ✓ → **型号认不出来** ✓ → **只能靠丝印对照认** ✓）：
+#
+#   MIPI CSI1 → /dev/video62
+#   MIPI CSI2 → /dev/video71
+#   MIPI CSI3 → /dev/video44
+#   MIPI CSI4 → /dev/video53
+#
+# → 流程**列一遍可用节点** ✓（`v4l2-ctl --list-devices` ✓ 板上有 ✓）→
+#   让用户**先看见有哪些** ✓，再决定抓哪个 ✓。
+#
+# ── 没接相机会怎样 ──
+#
+# **诚实地失败** ✓（实测 2026-11-16：没接相机时 gst 报 `not-negotiated (-4)` ✓）
+# → 判据「文件非空」**不通过** ✓ → 这一步是红的 ✓
+# → **不假装拍到了** ✓。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: camera-capture.capture
+name: 相机抓帧
+version: 1.0.0
+description: 列出可用的 MIPI CSI 节点，用 gst-launch 抓一帧 jpg 存到板上，并确认文件非空。
+
+inputs:
+  device:
+    type: string
+    required: false
+    maxLength: 40
+    default: /dev/video62
+    description: 相机节点（MIPI CSI1=video62 / CSI2=video71 / CSI3=video44 / CSI4=video53）
+  path:
+    type: string
+    required: false
+    maxLength: 200
+    default: /userdata/snapshot.jpg
+    description: 抓到的图存哪
+
+roles:
+  target:
+    purpose: 被拍的板子
+    profile: board-adb
+
+steps:
+  # ① 先列一遍（**让人看见有哪些** ✓ —— 认不出型号是这块板的事实 ✓）
+  #
+  # ⚠️ **不用 `v4l2-ctl --list-devices`** ✓ —— 它会**去打开每一个设备节点** ✓
+  #   → 没插相机的节点会让它**整体失败** ✓（实测 2026-11-16：
+  #   `Failed to open /dev/video0: No such device` ✓ → 退出码非 0 ✓）。
+  # → **读 sysfs** ✓（**不碰设备节点** ✓ → 一定有输出 ✓）。
+  #
+  # 只挑 `rkisp*` 的那些 ✓ —— 那是**真正的采集节点** ✓
+  # （其余是 CIF 流 / 缩放 / 工具节点 ✓ —— 抓帧用不上 ✓）。
+  - id: list-devices
+    kind: exec
+    role: target
+    cmd: "for d in /sys/class/video4linux/video*; do n=$(cat $d/name 2>/dev/null); case $n in rkisp*) echo $(basename $d) $n;; esac; done"
+    timeout_ms: 30000
+    out: devices
+    readback:
+      kind: command_ok
+
+  # ② 抓一帧
+  - id: capture
+    kind: exec
+    role: target
+    cmd: "gst-launch-1.0 v4l2src device={input:device} ! video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! videoconvert ! jpegenc ! multifilesink location={input:path}"
+    timeout_ms: 120000
+    readback:
+      kind: command_ok
+
+  # ③ 文件真的非空 ✓（**没接相机就红** ✓ —— 诚实 ✓）
+  - id: assert-image
+    kind: assert
+    role: target
+    readback:
+      kind: verify
+      role: target
+      command: "test -s {input:path}"
+      timeout_ms: 30000
+    on_mismatch: fail

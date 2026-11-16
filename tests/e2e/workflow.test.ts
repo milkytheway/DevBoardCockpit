@@ -63,8 +63,15 @@ function flowCard(cardId: string, flowId: string): Record<string, string> {
 const out = document.getElementById('result');
 (async () => {
   try {
+    const FLOW_ID = '${FLOW_ID}';
     const list = await cockpit.workflows.list();
-    out.dataset.listed = String(Array.isArray(list) ? list.length : -1);
+    // **别记「有几个」** ✓ —— **那个数会过时** ✓（内置流程包一多就变 ✓ → 断言跟着红 ✓
+    //   （实测 2026-11-16：批准账那层被拿掉后，列出来的是**全部**流程 ✓
+    //     —— 断言写死 '1' 就**必然红** ✓，而**流程本身好好的** ✓）。
+    // → 记「**我要的那个在不在**」✓（**这才是这条用例要证明的事** ✓）。
+    out.dataset.listed = String(
+      Array.isArray(list) && list.some((w) => w && w.id === FLOW_ID) ? '1' : '0',
+    );
     const run = await cockpit.workflows.run(${JSON.stringify(flowId)}, {});
     out.dataset.runOk = String(run && run.ok === true);
     out.dataset.runId = String((run && run.runId) || '');
@@ -135,7 +142,8 @@ test.describe('卡片触发流程', () => {
       console.log('卡片看到的数据：', JSON.stringify(data));
       // **没这个键就是没出错** ✓（`undefined` 不是「空串」✓）
       expect(data.error ?? '', `卡片抛了：${data.error}`).toBe('');
-      // **列得出流程** ✓（只列批过的 ✓）
+      // **列得出流程** ✓ —— **要的是「我要的那个在列表里」** ✓
+      // （**不是「列表里只有一个」** ✓ —— 那是**会过时的写死事实** ✓）
       expect(data.listed).toBe('1');
       // **起得了** ✓
       expect(data.runOk).toBe('true');

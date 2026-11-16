@@ -3,6 +3,7 @@ import { LocalConnection, localCapabilities } from './local';
 import { SerialConnection, serialCapabilities } from './serial';
 import { SshConnection, sshCapabilities } from './ssh';
 import { capabilitiesFor } from './capabilities';
+import { loadSettings, resolveAdbPath, settingsPath } from '../util/settings';
 import type { ConnectionCapabilities, Connection } from './connection';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { SessionLog } from '../logging/session-log';
@@ -29,17 +30,31 @@ import type { SessionLog } from '../logging/session-log';
 /** 按 profile 算能力位（唯一实现，见 `./capabilities`） */
 export { capabilitiesFor };
 
-/** 按 profile 造一个连接 */
+/**
+ * 按 profile 造一个连接。
+ *
+ * ── `adbPath` 的默认值：**在这里解析** ✓ ──
+ *
+ * 之前只有应用传 `adbPath` ✓，CLI 不传 ✗ → 回落成 `'adb'` ✗
+ * → **宿主 adb 不在 PATH** ✗ → `spawn adb ENOENT` ✗
+ * → 「编译上板」那条流程**在 CLI 里跑不起来** ✗（**应用里却是好的** ✗）。
+ * → **两份真相** ✓ ——本工程栽过好几次的同款坑 ✓。
+ *
+ * → **谁来建连接，谁就按同一条路拿 adb 路径** ✓
+ * （`profiles/settings.json` → `hostTools.adb` → PATH → 常见位置 ✓）。
+ * 显式传 `adbPath` 仍然优先 ✓（应用知道自己的 app 根在哪 ✓）。
+ */
 export function createConnection(
   profile: ConnectionProfile,
   log: SessionLog,
   opts: { adbPath?: string } = {},
 ): Connection {
+  const adbPath = opts.adbPath ?? resolveAdbPath(loadSettings(settingsPath()));
   switch (profile.transport) {
     case 'serial':
       return new SerialConnection(profile, log);
     case 'adb':
-      return new AdbConnection(profile, log, { adbPath: opts.adbPath });
+      return new AdbConnection(profile, log, { adbPath });
     case 'ssh':
       return new SshConnection(profile, log);
     case 'local':
