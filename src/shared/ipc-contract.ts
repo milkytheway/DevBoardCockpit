@@ -22,12 +22,13 @@ export const IPC = {
   filesPull: 'files:pull',
   connectionsList: 'connections:list',
   /**
-   * **切换当前运行时连哪条连接** ✓（界面「选设备」✓）。
+   * **切到某块板** ✓（界面「选板子」✓ —— 板实物与连接是两层 ✓）。
    *
-   * → **v1 是单连接** ✓（`O11` / `O18` ✓）→ **「选板子」= 换一条连接** ✓
+   * → **界面只列板** ✓ → **哪条连接由宿主挑** ✓（**用户点的是板** ✓）。
+   * → **v1 是单连接** ✓（`O11` / `O18` ✓）→ **「选板子」= 换一块板** ✓
    * → **不是「同时看多块板」** ✓（那是 M8 ✓ —— **另说** ✓）。
    */
-  connectionsSelect: 'connections:select',
+  devicesSelect: 'devices:select',
   /**
    * tag 读数的**当前快照**。
    *
@@ -194,11 +195,12 @@ export interface CockpitApi {
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
   connectionsList(): Promise<ConnectionInfo[]>;
   /**
-   * **切换当前运行时连哪条连接** ✓（界面「选设备」✓）。
+   * **切到某块板** ✓（界面「选板子」✓）。
    *
-   * → **连不上就报错** ✓（**不静默地换一条** ✗ —— 那就是「静默地做另一件事」✗）。
+   * → **连不上就报错** ✓（**不静默地换一块板** ✗ —— 那就是「静默地做另一件事」✗）。
+   * → **交出去的是板的身份** ✓（`device_key` ✓）—— **不是连接 id** ✓。
    */
-  connectionsSelect(profileId: string): Promise<void>;
+  devicesSelect(deviceKey: string): Promise<void>;
   /**
    * 当前全部 tag 读数的快照。
    *

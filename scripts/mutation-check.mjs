@@ -2485,15 +2485,63 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M203 界面：**按设备分组** ✓（**同一块板的几条连接归一组** ✓ —— 板实物与连接是两层 ✓）',
+    name: 'M203 界面：**按板归并** ✓（**同一块板的几条连接归一块板** ✓ —— 板实物与连接是两层 ✓）',
     file: 'src/renderer/shell/devices.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/device-picker.test.ts'],
-    expect: '同一块板的多条连接归到一组',
+    expect: '同一块板的多条连接归成一块板',
     apply: (s) =>
       replace(
         s,
-        '    const list = byKey.get(connection.deviceKey);\n    if (list === undefined) byKey.set(connection.deviceKey, [connection]);\n    else list.push(connection);',
-        '    const list = byKey.get(connection.id);\n    if (list === undefined) byKey.set(connection.id, [connection]);\n    else list.push(connection); // 变异：按连接分组，不按设备',
+        '      byKey.set(connection.deviceKey, {',
+        '      byKey.set(connection.id, { // 变异：按连接分组，不按板',
+      ),
+  },
+  {
+    name: 'M204 界面：**没绑板型包的连接不是板** ✓（**本机 / 客机不是板** ✓）',
+    file: 'src/renderer/shell/devices.ts',
+    check: ['npx', 'vitest', 'run', 'tests/web/device-picker.test.ts'],
+    expect: '没绑板型包的连接不是板子',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (connection.boardPack === null) continue;',
+        '    if (connection.boardPack === undefined) continue; // 变异：不按板型包过滤',
+      ),
+  },
+  {
+    name: 'M205 宿主：**按板挑连接** ✓（**用户点的是板** ✓ —— **不是某条连接** ✓）',
+    file: 'src/main/profiles/device-select.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/profiles/device-select.test.ts'],
+    expect: '板子 → 宿主挑它的第一条连接',
+    apply: (s) =>
+      replace(
+        s,
+        '  const candidates = profiles.filter((profile) => deviceKeyOf(profile) === deviceKey);',
+        '  const candidates = profiles.filter((profile) => profile.id === deviceKey); // 变异：按连接挑，不按板',
+      ),
+  },
+  {
+    name: 'M206 宿主：**已经在那块板上就不重连** ✓（**白连一次会掉读数** ✗）',
+    file: 'src/main/profiles/device-select.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/profiles/device-select.test.ts'],
+    expect: '已经在那块板上 → 不重连',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (already !== undefined) return { ok: true, profileId: already.id, reused: true };',
+        '    // 变异：不再判断「已经在这块板上」，一律重连',
+      ),
+  },
+  {
+    name: 'M207 界面：**菜单里列的是板** ✓（**不列连接** ✓ —— 用户 2026-11-16 明确 ✓）',
+    file: 'src/renderer/shell/DevicePicker.tsx',
+    check: ['npx', 'vitest', 'run', 'tests/web/device-picker-view.test.tsx'],
+    expect: '菜单里列的是板卡',
+    apply: (s) =>
+      replace(
+        s,
+        '          {boards.map((board) => (',
+        '          {connections.filter((c) => c.boardPack !== null).map((board) => ( // 变异：列连接，不列板',
       ),
   },
 ];

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import { CommandPalette, type Command } from './CommandPalette';
 import { DetailPanel } from './detail/DetailPanel';
+import { DevicePicker } from './DevicePicker';
 import { ErrorBar } from './ErrorBar';
 import { FilesPage } from './pages/FilesPage';
 import { LibraryPage } from './pages/LibraryPage';
@@ -182,22 +183,23 @@ export function Shell(): JSX.Element {
   }, []);
 
   /**
-   * **换一条连接**（界面「选设备」✓ —— 板实物与连接是两层 ✓）。
+   * **换一块板**（界面「选板子」✓ —— 板实物与连接是两层 ✓）。
    *
    * → **宿主去切** ✓（**界面不自己连** ✓ —— 那是宿主的活 ✓）
-   * → **连不上要说出来** ✓ —— **不静默地换一条** ✗
+   * → **交出去的是板的身份** ✓（**不是连接 id** ✓ —— **界面不暴露连接** ✓）
+   * → **连不上要说出来** ✓ —— **不静默地换一块** ✗
    *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）
    * → **切完刷新连接清单** ✓（「当前」变了 ✓）。
    */
   const [selecting, setSelecting] = useState(false);
-  const selectConnection = useCallback(
-    (profileId: string) => {
+  const selectDevice = useCallback(
+    (deviceKey: string) => {
       setSelecting(true);
       void window.cockpit
-        .connectionsSelect(profileId)
+        .devicesSelect(deviceKey)
         .then(() => {
           refreshConnections();
-          log('info', `已切到连接：${profileId}`);
+          log('info', `已切到板子：${deviceKey}`);
         })
         .catch((cause: unknown) => {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -365,8 +367,16 @@ export function Shell(): JSX.Element {
   return (
     <div className="app-shell">
       {/* The native title bar is hidden; this strip is the window's drag
-          handle and the native min/max/close buttons float over it. */}
-      <div className="window-drag" aria-hidden />
+          handle and the native min/max/close buttons float over it.
+          **选板子在这里** ✓ —— 它是界面最顶端的一行 ✓
+          （**「我在这块板上」得一直在** ✓ —— 页面头会跟着页面换位置 ✗）。*/}
+      <div className="window-drag">
+        <DevicePicker
+          connections={connections}
+          onSelect={selectDevice}
+          busy={selecting}
+        />
+      </div>
 
       <div className="app-body">
         <Rail page={page} onPage={goPage} onOpenPalette={() => setPaletteOpen(true)} />
@@ -400,9 +410,6 @@ export function Shell(): JSX.Element {
                 broker={broker}
                 theme={cardTheme}
                 density={density}
-                connections={connections}
-                selecting={selecting}
-                onSelectConnection={selectConnection}
                 selectedInstanceId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}
                 onOpenDetail={openDetail}

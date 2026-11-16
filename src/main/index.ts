@@ -17,6 +17,7 @@ import { fakeRouteFor, profilesWithFake } from './hal/fake/wiring';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
 import { loadProfiles } from './profiles/loader';
+import { selectDevice } from './profiles/device-select';
 import {
   builtinProfilesDir,
   builtinWorkflowsDir,
@@ -655,27 +656,25 @@ handle(IPC.connectionsList, () =>
 );
 
 /**
- * **切换当前运行时连哪条连接** ✓（界面「选设备」✓ —— 契约 `spec/02` §10.2 ✓）。
+ * **切到某块板** ✓（界面「选板子」✓ —— 契约 `spec/02` §10.2 ✓）。
  *
- * → **连不上就报错** ✓ —— **不静默地换一条** ✗
+ * → **界面只列板** ✓ → **哪条连接由宿主挑** ✓（`profiles/device-select.ts` ✓）
+ * → **连不上就报错** ✓ —— **不静默地换一块板** ✗
  *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）。
- * → **不试别的候选** ✓ —— 启动时那套「挨个试」是给**开机**用的 ✓
- *   （**用户明确指名的就不该被替换** ✓）。
+ * → **已经在那块板上 → 不重连** ✓（**白连一次会掉读数** ✗）。
  */
-handle(IPC.connectionsSelect, async (profileId) => {
-  const id = String(profileId);
-  const profile = listProfiles().find((p) => p.id === id);
-  if (profile === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `没有这个连接：${id}`);
-  }
-  const status = await runtime.start(profile);
-  if (status.state !== 'running') {
-    throw makeError(
-      'CONN_OPEN_FAILED',
-      status.detail ?? `连不上 ${profile.label}`,
-      { detail: { profileId: id, state: status.state } },
-    );
-  }
+handle(IPC.devicesSelect, async (deviceKey) => {
+  const key = String(deviceKey);
+  const result = await selectDevice(listProfiles(), key, {
+    start: (profile) => runtime.start(profile),
+    currentProfileId: () => runtime.status.profileId ?? null,
+  });
+  if (result.ok) return;
+  throw makeError(
+    result.reason === 'not_found' ? 'IPC_INVALID_PAYLOAD' : 'CONN_OPEN_FAILED',
+    result.detail,
+    { detail: { deviceKey: key } },
+  );
 });
 
 handle(IPC.filesList, (connectionId, remotePath) =>

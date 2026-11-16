@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConnectionInfo } from '../../shared/ipc-contract';
-import { groupByDevice } from './devices';
+import { boardsOf } from './devices';
 import { ChevronIcon } from './Icons';
 
 /**
- * **选设备**（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+ * **选板子**（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
  *
- * ── 为什么是「设备」而不是「连接」 ──
+ * ── 为什么是「板」而不是「连接」 ──
  *
- * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **它们是同一块板** ✓
- * → 界面要让用户按**板**去想 ✓ —— 不是按**通道** ✓。
- * → **`device_key` 就是那块板的身份** ✓。
+ * → 用户 2026-11-16 明确：「**设备要放在界面最顶端，仅支持板卡选择，
+ *   当前有 fake 和 3588 的真版，不要把连接这些放进去**」✓
+ * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **界面只列板** ✓
+ * → **哪条连接能用宿主才知道** ✓ → **宿主挑** ✓ → **界面不暴露连接** ✓。
+ *
+ * ── 位置 ──
+ *
+ * → **界面最顶端** ✓（**标题条上** ✓ —— 那是这个窗口的第一行 ✓）
+ * → **不是页面头** ✓ —— 页面头会跟着页面换位置 ✗ → 「我在这块板上」**得一直在** ✓。
  *
  * ── v1 的形状（**单连接** ✓）──
  *
- * → **一次只连一块板** ✓（`O11` / `O18` ✓）→ 「选设备」= **换一条连接** ✓。
- * → **不是「同时看多块板」** ✓（那是 M8 ✓ —— **另说** ✓）。
- * → **所以每一项点的是连接** ✓ —— **连接才是能选的东西** ✓。
+ * → **一次只连一块板** ✓（`O11` / `O18` ✓）→ 「选板」= **宿主换一块板** ✓。
  */
 export function DevicePicker({
   connections,
@@ -25,17 +29,15 @@ export function DevicePicker({
 }: {
   /** 宿主给的连接清单（**带 `deviceKey` 与 `current`** ✓） */
   connections: ConnectionInfo[];
-  /** 选中一条连接（**宿主去切** ✓） */
-  onSelect: (profileId: string) => void;
+  /** 选中一块板（**交出的是板的身份** ✓ —— **宿主去挑连接** ✓） */
+  onSelect: (deviceKey: string) => void;
   /** 切换中（**别让用户连点** ✓） */
   busy: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const groups = groupByDevice(connections);
-  const currentGroup = groups.find((group) => group.currentProfileId !== null) ?? null;
-  const currentConnection =
-    currentGroup?.connections.find((c) => c.id === currentGroup.currentProfileId) ?? null;
+  const boards = boardsOf(connections);
+  const currentBoard = boards.find((board) => board.current) ?? null;
 
   // ── 点外面就关掉 · Esc 也关掉 ──
   useEffect(() => {
@@ -58,59 +60,44 @@ export function DevicePicker({
     <div className="device-picker" ref={rootRef}>
       <button
         type="button"
-        className="btn btn--ghost btn--sm device-picker__trigger"
+        className="device-picker__trigger"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        title="选择要操作的设备"
+        title="选择要操作的板子"
         disabled={busy}
       >
-        <span className="device-picker__label">设备</span>
-        {currentGroup === null ? (
-          <span className="dim">未连接</span>
+        <span className="device-picker__label">板子</span>
+        {boards.length === 0 ? (
+          <span className="device-picker__value dim">没有板</span>
+        ) : currentBoard === null ? (
+          <span className="device-picker__value dim">未连接</span>
         ) : (
-          <>
-            <span className="chip chip--sm mono">{currentGroup.deviceKey}</span>
-            <span className="ellipsis">{currentConnection?.label ?? currentGroup.deviceKey}</span>
-          </>
+          <span className="device-picker__value mono">{currentBoard.deviceKey}</span>
         )}
         <ChevronIcon size={13} />
       </button>
 
       {open ? (
-        <div className="device-picker__menu" role="listbox" aria-label="设备">
-          {groups.length === 0 ? <p className="empty-note">没有可用的连接</p> : null}
-          {groups.map((group) => (
-            <section key={group.deviceKey} className="device-picker__group">
-              <p className="eyebrow device-picker__group-name">
-                <span className="mono">{group.deviceKey}</span>
-                <span className="dim">
-                  {group.connections.length} 条连接
-                </span>
-              </p>
-              {group.connections.map((connection) => {
-                const isCurrent = connection.id === group.currentProfileId;
-                return (
-                  <button
-                    key={connection.id}
-                    type="button"
-                    role="option"
-                    aria-selected={isCurrent}
-                    className={`device-picker__item${isCurrent ? ' is-current' : ''}`}
-                    onClick={() => {
-                      setOpen(false);
-                      if (!isCurrent) onSelect(connection.id);
-                    }}
-                    title={connection.label}
-                  >
-                    <span className={`dot ${isCurrent ? 'dot--ok' : 'dot--muted'}`} aria-hidden />
-                    <span className="ellipsis">{connection.label}</span>
-                    <span className="dim mono">{connection.transport}</span>
-                    {isCurrent ? <span className="chip chip--sm">当前</span> : null}
-                  </button>
-                );
-              })}
-            </section>
+        <div className="device-picker__menu" role="listbox" aria-label="板子">
+          {boards.length === 0 ? <p className="device-picker__empty">没有可用的板</p> : null}
+          {boards.map((board) => (
+            <button
+              key={board.deviceKey}
+              type="button"
+              role="option"
+              aria-selected={board.current}
+              className={`device-picker__item${board.current ? ' is-current' : ''}`}
+              onClick={() => {
+                setOpen(false);
+                if (!board.current) onSelect(board.deviceKey);
+              }}
+              title={board.deviceKey}
+            >
+              <span className={`dot ${board.current ? 'dot--ok' : 'dot--muted'}`} aria-hidden />
+              <span className="device-picker__key mono">{board.deviceKey}</span>
+              {board.current ? <span className="device-picker__now">当前</span> : null}
+            </button>
           ))}
         </div>
       ) : null}
