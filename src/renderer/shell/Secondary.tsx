@@ -8,7 +8,9 @@ import {
   ListIcon,
   TerminalIcon,
 } from './Icons';
-import type { SecondaryGroup } from './nav';
+import { CardGlyph } from './CardGlyph';
+import { cardToneVar } from './cards';
+import type { SecondaryGroup, SecondaryItem } from './nav';
 
 const STORAGE_KEY = 'devboard.collapsedSections';
 
@@ -162,18 +164,30 @@ export function Secondary({
                             type="button"
                             className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
                               item.tone === 'muted' ? ' is-muted' : ''
-                            }`}
+                            }${item.cardId !== undefined ? ' is-card' : ''}`}
                             // **稳定的 e2e 钩子**（不认 class 名 —— 外壳的 DOM 可以整个换掉）
                             data-cockpit-card-id={item.cardId}
                             data-cockpit-session-id={item.sessionId}
                             onClick={item.onSelect}
+                            style={cardToneStyle(item)}
                           >
                             <span className="secondary__row-icon" aria-hidden>
-                              {iconFor(group.id)}
+                              {item.cardIcon ? (
+                                <CardGlyph icon={item.cardIcon} size={14} />
+                              ) : (
+                                iconFor(group.id)
+                              )}
                             </span>
                             <span className="secondary__text">
-                              <span className="secondary__label">{item.label}</span>
-                              {item.hint ? <span className="secondary__hint">{item.hint}</span> : null}
+                              <span className="secondary__label-row">
+                                <span className="secondary__label">{item.label}</span>
+                              </span>
+                              {item.hint ? (
+                                <span className="secondary__hint">
+                                  {item.placed ? <span className="secondary__placed">主区</span> : null}
+                                  {item.hint}
+                                </span>
+                              ) : null}
                             </span>
                             {item.badge ? <span className="secondary__badge">{item.badge}</span> : null}
                           </button>
@@ -256,4 +270,10 @@ function iconFor(groupId: string): JSX.Element {
     default:
       return <GridIcon size={14} />;
   }
+}
+
+/** Give a card row its family tint; non-card rows get no inline variable. */
+function cardToneStyle(item: SecondaryItem): React.CSSProperties | undefined {
+  if (item.cardTone === undefined) return undefined;
+  return { '--card-tone': cardToneVar(item.cardTone) } as React.CSSProperties;
 }

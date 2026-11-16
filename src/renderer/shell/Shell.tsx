@@ -182,6 +182,9 @@ export function Shell(): JSX.Element {
   const goPage = useCallback((target: PageId) => {
     setPage(target);
     setDetail(null);
+    // A page switch starts at the top; keeping the previous scroll offset
+    // lands the user halfway down a page they have never seen.
+    document.querySelector('.app-scroll')?.scrollTo({ top: 0 });
   }, []);
 
   /**

@@ -1,0 +1,18 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "board-actions",
+  "name": "板级操作",
+  "version": "1.0.0",
+  "description": "LED、背光、调频；每次执行都回读",
+  "entry": "index.html",
+  "requires": {
+    "tags": ["cpu.governor", "custom.rk3588-atk.backlight.brightness"]
+  },
+  "layout": { "w": 4, "h": 4, "min_w": 3, "min_h": 3 },
+  "permissions": {
+    "read": ["cpu.governor", "custom.rk3588-atk.backlight.brightness"],
+    "write": ["led.set", "backlight.set", "cpu.governor.set"]
+  },
+  "actions": []
+}

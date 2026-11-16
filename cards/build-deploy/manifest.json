@@ -3,13 +3,13 @@
   "kind": "Card",
   "id": "build-deploy",
   "name": "编译上板",
-  "version": "1.0.0",
-  "description": "在客机上编译，直传到板子，跑起来 —— 每一步都有判据；流程包要先被人批准",
+  "version": "1.1.0",
+  "description": "选择流程、填参数、运行；每一步都有判据",
   "entry": "index.html",
   "requires": {
     "workflows": ["hello-kernel.build-run", "meminfo-user.build-run"]
   },
-  "layout": { "w": 4, "h": 4, "min_w": 3, "min_h": 3 },
+  "layout": { "w": 4, "h": 3, "min_w": 3, "min_h": 2 },
   "permissions": {
     "read": [],
     "write": [],

@@ -19,7 +19,7 @@ export interface CardLook {
   /** One line: what the card is for. */
   note: string;
   /** Icon family drawn by the shell. */
-  icon: 'cpu' | 'gpu' | 'memory' | 'thermal' | 'board' | 'activity';
+  icon: 'cpu' | 'gpu' | 'memory' | 'thermal' | 'board' | 'activity' | 'bolt';
   /** Accent used for the icon tile and the card's left edge. */
   tone: CardTone;
   /** Which sidebar bucket the card belongs to. */
@@ -78,17 +78,43 @@ const LOOKS: Record<string, CardLook> = {
   },
   'board-identity': {
     name: '板卡身份',
-    note: '型号 · 调频 · 背光',
+    note: '型号 · 调频 · 频率',
     icon: 'board',
     tone: 'rose',
     group: '系统',
-    tags: [
-      'board.model',
-      'cpu.governor',
-      'gpu.freq_hz',
-      'custom.rk3588-atk.backlight.brightness',
-      'custom.rk3588-atk.backlight1.brightness',
-    ],
+    tags: ['board.model', 'cpu.governor', 'gpu.freq_hz'],
+  },
+  'build-deploy': {
+    name: '编译上板',
+    note: '流程 · 编译 → 上板',
+    icon: 'activity',
+    tone: 'blue',
+    group: '系统',
+    tags: [],
+  },
+  workflows: {
+    name: '流程',
+    note: '体检 · 自检 · 抓帧 · 测速',
+    icon: 'activity',
+    tone: 'cyan',
+    group: '系统',
+    tags: [],
+  },
+  'board-hardware': {
+    name: '板卡硬件',
+    note: '手册清单 · 参考',
+    icon: 'board',
+    tone: 'slate',
+    group: '系统',
+    tags: ['board.model'],
+  },
+  'board-actions': {
+    name: '板级操作',
+    note: 'LED · 背光 · 调频',
+    icon: 'bolt',
+    tone: 'amber',
+    group: '系统',
+    tags: ['cpu.governor', 'custom.rk3588-atk.backlight.brightness'],
   },
 };
 

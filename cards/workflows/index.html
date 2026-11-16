@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>流程</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="flow">
+      <div class="flow__pick">
+        <select id="flow" class="flow__select" aria-label="流程"></select>
+      </div>
+      <div id="inputs" class="flow__form"></div>
+      <div class="flow__actions">
+        <button id="run" class="flow__run" type="button">运行</button>
+        <span id="note" class="flow__note">正在读流程…</span>
+      </div>
+      <ol id="steps" class="flow__steps"></ol>
+    </main>
+    <script type="module" src="./card.js"></script>
+  </body>
+</html>

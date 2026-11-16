@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>板级操作</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="ops">
+      <div class="ops__row">
+        <div class="ops__head">
+          <span class="ops__label">板载 LED</span>
+          <button id="led" class="ops__switch" type="button" role="switch" aria-checked="false">
+            <span class="ops__track"><span class="ops__thumb"></span></span>
+            <span id="led-text" class="ops__value">关</span>
+          </button>
+        </div>
+        <span id="led-note" class="ops__note">执行后回读</span>
+      </div>
+
+      <div class="ops__row">
+        <div class="ops__head">
+          <span class="ops__label">背光</span>
+          <span id="bl-text" class="ops__value">—</span>
+        </div>
+        <div class="ops__controls">
+          <input id="bl" class="ops__range" type="range" min="16" max="255" step="1" value="128" aria-label="背光亮度" />
+          <button id="bl-apply" class="ops__apply" type="button">应用</button>
+        </div>
+        <span id="bl-note" class="ops__note">16–255</span>
+      </div>
+
+      <div class="ops__row">
+        <div class="ops__head">
+          <span class="ops__label">调频策略</span>
+          <span id="gov-text" class="ops__value">—</span>
+        </div>
+        <div class="ops__controls">
+          <select id="gov" class="ops__select" aria-label="调频策略">
+            <option value="schedutil">schedutil</option>
+            <option value="performance">performance</option>
+            <option value="powersave">powersave</option>
+            <option value="ondemand">ondemand</option>
+          </select>
+          <button id="gov-apply" class="ops__apply" type="button">应用</button>
+        </div>
+        <span id="gov-note" class="ops__note">一次写入全部集群</span>
+      </div>
+    </main>
+    <script type="module" src="./card.js"></script>
+  </body>
+</html>

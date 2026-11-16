@@ -3670,3 +3670,184 @@ html[data-theme='light'] .cockpit-card {
   accent-color: var(--cockpit-accent);
   margin: 0;
 }
+
+/* ─────────────────────────────────────────────── v0.10 sidebar cards ──
+   The catalogue rows now read like the cards themselves: a family glyph in
+   a soft tinted tile, the name as the primary line, the card id underneath,
+   and a small "主区" chip when it is on the canvas. Everything else stays
+   neutral; the tint is a hint, not a status colour. */
+
+.secondary__item.is-card {
+  gap: 9px;
+  padding: 7px 30px 7px 8px;
+  border-radius: 10px;
+}
+
+.secondary__item.is-card .secondary__row-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--card-tone, var(--cockpit-border)) 24%, transparent);
+  background: color-mix(in oklab, var(--card-tone, var(--cockpit-text)) 10%, transparent);
+  color: color-mix(in oklab, var(--card-tone, var(--cockpit-text-dim)) 78%, var(--cockpit-text));
+}
+
+.secondary__item.is-card:hover .secondary__row-icon,
+.secondary__item.is-card.is-active .secondary__row-icon {
+  border-color: color-mix(in oklab, var(--card-tone, var(--cockpit-text)) 40%, transparent);
+  background: color-mix(in oklab, var(--card-tone, var(--cockpit-text)) 16%, transparent);
+}
+
+.secondary__label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.secondary__item.is-card .secondary__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.secondary__placed {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--ui-hairline);
+  color: var(--ui-dim);
+  font-size: 9px;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+}
+
+.secondary__item.is-card .secondary__hint {
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  letter-spacing: -0.01em;
+}
+
+.secondary__item.is-card .secondary__hint {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary__item.is-card .secondary__placed {
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+/* ───────────────────────────────────────────── master consent switches ──
+   One switch per class (元操作 / 流程). Off = the card cannot use anything
+   in that class; on = every non-destructive row is granted. The per-row
+   checkboxes below stay authoritative. */
+
+.perm-master {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ui-hairline);
+  background: color-mix(in oklab, var(--cockpit-surface) 40%, transparent);
+}
+
+.perm-master__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.perm-master__row:hover {
+  background: color-mix(in oklab, var(--cockpit-surface-active) 30%, transparent);
+}
+
+.perm-master__row.is-disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.perm-master__text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.perm-master__text b {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.perm-master__text small {
+  font-size: 10.5px;
+  color: var(--ui-dim);
+}
+
+.perm-master__switch {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.perm-master__switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.perm-master__track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-hairline);
+  background: color-mix(in oklab, var(--cockpit-text) 14%, transparent);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.perm-master__thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border-radius: 999px;
+  background: var(--cockpit-text-dim);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.perm-master__row.is-on .perm-master__track {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
+  background: color-mix(in oklab, var(--cockpit-accent) 72%, var(--cockpit-surface));
+}
+
+.perm-master__row.is-on .perm-master__thumb {
+  transform: translateX(16px);
+  background: var(--ui-highlight);
+}
+
+.perm-master__switch input:focus-visible + .perm-master__track {
+  outline: 2px solid color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+.perm-master__note {
+  margin: 2px 8px 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ui-faint);
+}

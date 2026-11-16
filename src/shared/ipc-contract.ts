@@ -101,6 +101,8 @@ export interface PermissionRow {
   kind: 'action' | 'workflow' | 'host';
   /** 这一类里的说明（**人话** ✓） */
   hint?: string;
+  /** 危险级别：`destructive` 不进整类授权（必须逐条打开） */
+  danger?: 'reversible' | 'destructive';
   /** **卡片**能不能用 */
   card: boolean;
   /** **agent** 能不能用 */

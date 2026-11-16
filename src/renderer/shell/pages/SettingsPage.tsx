@@ -33,6 +33,20 @@ export function SettingsPage({
   /** 改一条（**幂等** ✓） */
   onPermission: (actor: PermissionActor, op: string, allowed: boolean) => void;
 }): JSX.Element {
+  // The master switches only touch **card** grants: the agent side keeps its
+  // own row. Destructive actions stay out of the bulk grant — one switch must
+  // not hand a card the power to reboot the board.
+  const bulkActions = permissions.filter(
+    (row) => row.kind === 'action' && row.danger !== 'destructive',
+  );
+  const bulkWorkflows = permissions.filter((row) => row.kind === 'workflow');
+  const destructive = permissions.filter(
+    (row) => row.kind === 'action' && row.danger === 'destructive',
+  );
+  const setAll = (rows: PermissionRow[], allowed: boolean): void => {
+    for (const row of rows) onPermission('card', row.op, allowed);
+  };
+
   return (
     <div className="page page--settings">
       <header className="page-head">
@@ -134,15 +148,49 @@ export function SettingsPage({
             </div>
           </header>
           <p className="settings-note">
-            一个地方，一个开关，不再弹窗。<strong>卡片</strong>是界面上的卡，
-            <strong>agent</strong>是 MCP 那条路。默认：卡片不许写板子（触发流程可以），
-            agent 照常（它那边本来就有人的确认）。
+            一个地方，一个开关。打开的类目，卡片就能用；危险动作不跟着整类开关走，
+            必须逐条打开。
           </p>
           {permissions.length === 0 ? (
             <p className="settings-note dim">没有可设的操作 —— 先接上一块板。</p>
           ) : (
-            <ul className="perm-list">
-              {permissions.map((row) => (
+            <>
+              <div className="perm-master">
+                <MasterToggle
+                  label="元操作"
+                  detail={
+                    bulkActions.length === 0
+                      ? '这块板没有可比授权的动作'
+                      : `${bulkActions.filter((row) => row.card).length} / ${bulkActions.length} 条对卡片开放`
+                  }
+                  checked={
+                    bulkActions.length > 0 && bulkActions.every((row) => row.card)
+                  }
+                  disabled={bulkActions.length === 0}
+                  onChange={(allowed) => setAll(bulkActions, allowed)}
+                />
+                <MasterToggle
+                  label="流程"
+                  detail={
+                    bulkWorkflows.length === 0
+                      ? '还没有安装流程包'
+                      : `${bulkWorkflows.filter((row) => row.card).length} / ${bulkWorkflows.length} 条对卡片开放`
+                  }
+                  checked={
+                    bulkWorkflows.length > 0 && bulkWorkflows.every((row) => row.card)
+                  }
+                  disabled={bulkWorkflows.length === 0}
+                  onChange={(allowed) => setAll(bulkWorkflows, allowed)}
+                />
+                {destructive.length > 0 ? (
+                  <p className="perm-master__note">
+                    危险动作需逐条打开：
+                    {destructive.map((row) => row.label).join('、')}
+                  </p>
+                ) : null}
+              </div>
+              <ul className="perm-list">
+                {permissions.map((row) => (
                 <li key={row.op} className="perm-row">
                   <div className="perm-row__text">
                     <span className="perm-row__label">{row.label}</span>
@@ -169,7 +217,8 @@ export function SettingsPage({
                   </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </>
           )}
         </section>
 
@@ -177,7 +226,7 @@ export function SettingsPage({
           <header className="settings-card__head">
             <div>
               <h2>关于</h2>
-              <p>DevBoard Cockpit · 外壳 v0.5（M5b）</p>
+              <p>DevBoard Cockpit · 外壳 v0.10</p>
             </div>
           </header>
           <p className="settings-note">
@@ -189,5 +238,48 @@ export function SettingsPage({
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * A class-wide consent switch.
+ *
+ * It writes every row of its kind through `onPermission`, so the row list
+ * below is the single source of truth — the switch is a shortcut, not a
+ * second permission store.
+ */
+function MasterToggle({
+  label,
+  detail,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (allowed: boolean) => void;
+}): JSX.Element {
+  return (
+    <label className={`perm-master__row${checked ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`}>
+      <span className="perm-master__text">
+        <b>{label}</b>
+        <small>{detail}</small>
+      </span>
+      <span className="perm-master__switch">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          disabled={disabled}
+          aria-label={`为卡片打开${label}授权`}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span className="perm-master__track" aria-hidden>
+          <span className="perm-master__thumb" />
+        </span>
+      </span>
+    </label>
   );
 }

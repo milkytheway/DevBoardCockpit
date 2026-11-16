@@ -1,6 +1,6 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
-import { cardLook, CARD_GROUPS } from './cards';
+import { cardLook, CARD_GROUPS, type CardLook } from './cards';
 import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
 
@@ -42,6 +42,11 @@ export interface SecondaryItem {
   onClose?: () => void;
   /** The card id — the stable e2e hook (`data-cockpit-card-id`). */
   cardId?: string;
+  /** Card family tone/icon: the catalogue draws the same pictogram as the card. */
+  cardTone?: CardLook['tone'];
+  cardIcon?: CardLook['icon'];
+  /** Whether this card is currently placed in the main area. */
+  placed?: boolean;
   /** The session id — the stable e2e hook (`data-cockpit-session-id`). */
   sessionId?: string;
   /**
@@ -110,6 +115,9 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
       hint: `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
       tone: isPlaced ? 'active' : 'default',
       cardId: card.cardId,
+      cardTone: look.tone,
+      cardIcon: look.icon,
+      placed: isPlaced,
       section: isPinned ? 'Pinned' : look.group,
       pinned: isPinned,
       onPin: ctx.onTogglePin ? () => ctx.onTogglePin?.(card.cardId) : undefined,

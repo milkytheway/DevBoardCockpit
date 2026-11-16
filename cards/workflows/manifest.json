@@ -1,0 +1,33 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "workflows",
+  "name": "流程",
+  "version": "1.0.0",
+  "description": "真板流程：体检、自检、抓帧、测速；运行后看每一步判据",
+  "entry": "index.html",
+  "requires": {
+    "workflows": [
+      "board-healthcheck.verify",
+      "board-selfcheck.verify",
+      "camera-capture.capture",
+      "network-iperf.measure",
+      "prepare-credentials.authorize-key",
+      "storage-benchmark.measure"
+    ]
+  },
+  "layout": { "w": 4, "h": 4, "min_w": 3, "min_h": 3 },
+  "permissions": {
+    "read": [],
+    "write": [],
+    "workflows": [
+      "board-healthcheck.verify",
+      "board-selfcheck.verify",
+      "camera-capture.capture",
+      "network-iperf.measure",
+      "prepare-credentials.authorize-key",
+      "storage-benchmark.measure"
+    ]
+  },
+  "actions": []
+}

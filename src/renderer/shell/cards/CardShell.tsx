@@ -4,14 +4,7 @@ import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { UserCard } from '../../cards/user-card';
 import { cardLook } from '../cards';
-import {
-  ActivityIcon,
-  BoardIcon,
-  CpuIcon,
-  GaugeIcon,
-  MemoryIcon,
-  ThermometerIcon,
-} from '../Icons';
+import { CardGlyph } from '../CardGlyph';
 
 
 /**
@@ -55,7 +48,6 @@ export function CardShell({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const downRef = useRef<{ x: number; y: number } | null>(null);
   const look = cardLook(info.cardId);
-  const Icon = iconFor(look.icon);
 
   // Close the menu when the pointer goes down anywhere else. `pointerdown`
   // (not `mousedown`) also covers touch and pen on Windows.
@@ -101,7 +93,7 @@ export function CardShell({
             ⋮⋮
           </span>
           <span className="cockpit-card__icon" aria-hidden>
-            <Icon size={16} />
+            <CardGlyph icon={look.icon} size={16} />
           </span>
           <span className="cockpit-card__titles">
             <span className="cockpit-card__title">{look.name}</span>
@@ -167,21 +159,4 @@ export function CardShell({
       </div>
     </section>
   );
-}
-
-function iconFor(kind: ReturnType<typeof cardLook>['icon']): (props: { size?: number }) => JSX.Element {
-  switch (kind) {
-    case 'cpu':
-      return CpuIcon;
-    case 'gpu':
-      return GaugeIcon;
-    case 'memory':
-      return MemoryIcon;
-    case 'thermal':
-      return ThermometerIcon;
-    case 'board':
-      return BoardIcon;
-    default:
-      return ActivityIcon;
-  }
 }

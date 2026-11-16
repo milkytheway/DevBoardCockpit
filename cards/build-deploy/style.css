@@ -1,5 +1,4 @@
-/* 编译上板：一条流程、几个输入、一条时间线。
-   颜色只用 --cockpit-*（契约 §六：卡片只许用宿主注入的变量）。 */
+/* Build/deploy: pick a flow, fill its inputs, run, watch the stages. */
 
 * { box-sizing: border-box; }
 
@@ -10,162 +9,148 @@ body {
 }
 
 body {
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: transparent;
   color: var(--cockpit-text);
   font-family: var(--cockpit-font-ui);
   font-size: 12px;
 }
 
-.deck {
+.flow {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
   min-height: 0;
 }
 
-/* ---------- 头：选流程 + 跑 ---------- */
-
-.deck__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.deck__flow {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: var(--cockpit-radius);
-  border: 1px solid var(--cockpit-border-strong);
+.flow__select {
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--cockpit-border);
   background: var(--cockpit-bg-elevated);
   color: var(--cockpit-text);
-  font-family: var(--cockpit-font-ui);
-  font-size: 12px;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
 }
 
-.deck__run {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--cockpit-radius);
-  border: 1px solid var(--cockpit-accent);
-  background: var(--cockpit-accent);
-  color: var(--cockpit-bg);
-  font-family: var(--cockpit-font-ui);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.deck__run:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* ---------- 输入 ---------- */
-
-.deck__inputs {
+.flow__form {
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+
+.flow__field {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
   gap: 6px;
 }
 
-.deck__field {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-
-.deck__caption {
+.flow__label {
   font-size: 10.5px;
-  color: var(--cockpit-text-dim);
+  color: var(--cockpit-text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.deck__input {
+.flow__input {
   min-width: 0;
-  height: 24px;
-  padding: 0 7px;
-  border-radius: var(--cockpit-radius);
+  height: 23px;
+  padding: 0 6px;
+  border-radius: 6px;
   border: 1px solid var(--cockpit-border);
-  background: var(--cockpit-bg-elevated);
+  background: color-mix(in oklab, var(--cockpit-bg-elevated) 70%, transparent);
   color: var(--cockpit-text);
   font-family: var(--cockpit-font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
-.deck__input:focus {
+.flow__input:focus {
   outline: none;
   border-color: var(--cockpit-accent);
 }
 
-.deck__none {
-  margin: 0;
-  font-size: 11px;
-  color: var(--cockpit-text-faint);
+.flow__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* ---------- 时间线 ---------- */
+.flow__run {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
+  background: color-mix(in oklab, var(--cockpit-accent) 82%, transparent);
+  color: var(--cockpit-bg);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
 
-.deck__steps {
+.flow__run:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.flow__note {
+  min-width: 0;
+  color: var(--cockpit-text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow__steps {
+  flex: 1;
+  min-height: 0;
   margin: 0;
-  padding: 8px 0 0;
+  padding: 6px 0 0;
   border-top: 1px solid var(--cockpit-border);
   list-style: none;
   overflow-y: auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .deck__step {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  font-size: 11.5px;
+  gap: 6px;
+  font-size: 11px;
   color: var(--cockpit-text-dim);
 }
 
-.deck__step-name {
-  font-family: var(--cockpit-font-mono);
-  font-size: 11.5px;
-  color: var(--cockpit-text);
-}
-
-.deck__step-kind {
+.deck__step::before {
+  content: '○';
   font-size: 10px;
   color: var(--cockpit-text-faint);
 }
 
-.deck__step-why {
+.deck__step--ok::before { content: '✓'; color: var(--cockpit-ok); }
+.deck__step--warn::before { content: '○'; color: var(--cockpit-warn); }
+.deck__step--bad::before { content: '✕'; color: var(--cockpit-danger); }
+
+.flow__step-id {
+  font-family: var(--cockpit-font-mono);
   font-size: 10.5px;
-  color: var(--cockpit-danger);
+  color: var(--cockpit-text);
 }
 
-.deck__step--ok .deck__step-name {
-  color: var(--cockpit-ok);
-}
+.deck__step--ok .flow__step-id { color: var(--cockpit-ok); }
+.deck__step--warn .flow__step-id { color: var(--cockpit-warn); }
+.deck__step--bad .flow__step-id { color: var(--cockpit-danger); }
 
-.deck__step--warn .deck__step-name {
-  color: var(--cockpit-warn);
-}
-
-.deck__step--bad .deck__step-name {
-  color: var(--cockpit-danger);
-}
-
-.deck__step--wait {
-  color: var(--cockpit-text-faint);
-}
-
-#note {
-  margin: auto 0 0;
-  font-size: 10.5px;
+.flow__empty {
+  margin: 0;
+  font-size: 11px;
   color: var(--cockpit-text-faint);
 }

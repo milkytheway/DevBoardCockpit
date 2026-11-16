@@ -1,0 +1,150 @@
+/* Workflows: one select, the inputs that flow declares, one run button. */
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+}
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.flow__select {
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--cockpit-border);
+  background: var(--cockpit-bg-elevated);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+}
+
+.flow__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow__field {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.flow__label {
+  font-size: 10.5px;
+  color: var(--cockpit-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow__input {
+  min-width: 0;
+  height: 23px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--cockpit-border);
+  background: color-mix(in oklab, var(--cockpit-bg-elevated) 70%, transparent);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+}
+
+.flow__input:focus {
+  outline: none;
+  border-color: var(--cockpit-accent);
+}
+
+.flow__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow__run {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
+  background: color-mix(in oklab, var(--cockpit-accent) 82%, transparent);
+  color: var(--cockpit-bg);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.flow__run:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.flow__note {
+  min-width: 0;
+  color: var(--cockpit-text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow__steps {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--cockpit-border);
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow__step {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--cockpit-text-dim);
+}
+
+.flow__step::before {
+  content: '○';
+  font-size: 10px;
+  color: var(--cockpit-text-faint);
+}
+
+.flow__step.is-ok::before { content: '✓'; color: var(--cockpit-ok); }
+.flow__step.is-warn::before { content: '○'; color: var(--cockpit-warn); }
+.flow__step.is-bad::before { content: '✕'; color: var(--cockpit-danger); }
+
+.flow__step-id {
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+  color: var(--cockpit-text);
+}
+
+.flow__step.is-ok .flow__step-id { color: var(--cockpit-ok); }
+.flow__step.is-warn .flow__step-id { color: var(--cockpit-warn); }
+.flow__step.is-bad .flow__step-id { color: var(--cockpit-danger); }
