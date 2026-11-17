@@ -1,0 +1,59 @@
+# 编译上板 · 第二步：只上传（要求编译产物已经存在）。
+#
+# 先按规则发现 *.ko，再直传到板子的内核模块目录，最后在板子上 test -f。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: hello-kernel.upload
+name: 上传内核模块
+version: 1.0.0
+description: 把构建机上的内核模块直传到板子的模块目录，并在板子上确认文件存在。
+
+inputs:
+  build_dir:
+    type: path
+    required: false
+    default: /home/alientek/kernel-build
+    maxLength: 200
+    description: 构建机上的工程根目录
+  project:
+    type: string
+    required: false
+    default: 01-hello
+    maxLength: 200
+    description: 项目目录名（相对 build_dir）
+
+roles:
+  build:
+    purpose: 编译所在（客机）
+    profile: ubuntu-ssh
+  target:
+    purpose: 板子
+    profile: board-adb
+
+steps:
+  - id: artifacts
+    kind: discover
+    role: build
+    dir: "{input:build_dir}/{input:project}"
+    pattern: "*.ko"
+    exclude: ["*.o", "*.mod", "*.mod.c", "*.cmd", "*.order", "*.tmp", ".tmp_*"]
+    out: artifacts
+
+  - id: deliver
+    kind: file.transfer
+    from:
+      role: build
+      path: "{output:artifacts}"
+    to:
+      role: target
+      placement: kernel-module
+    cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
+    timeout_ms: 1800000
+    out: dest
+    readback:
+      kind: verify
+      role: target
+      command: "test -f {to.path}"
+      timeout_ms: 30000

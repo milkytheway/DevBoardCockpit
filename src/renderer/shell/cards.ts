@@ -86,7 +86,7 @@ const LOOKS: Record<string, CardLook> = {
   },
   'build-deploy': {
     name: '编译上板',
-    note: '流程 · 编译 → 上板',
+    note: '流程 · 编译 / 上传 / 运行',
     icon: 'activity',
     tone: 'blue',
     group: '系统',

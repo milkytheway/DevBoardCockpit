@@ -1,0 +1,43 @@
+# 编译上板 · 第三步：只加载（要求模块已经上传到板子）。
+#
+# depmod -a 后按名字 modprobe；不按路径 insmod（放置规范 §4 硬规矩 2）。
+# 最后在板子上用 lsmod 确认它真的加载了。
+
+apiVersion: devboard/v1
+kind: Workflow
+
+id: hello-kernel.load
+name: 加载内核模块
+version: 1.0.0
+description: 在板子上 depmod 后按名字加载模块，并用 lsmod 确认加载成功。
+
+inputs:
+  module:
+    type: string
+    required: false
+    default: hello
+    maxLength: 100
+    description: 模块名（不带 .ko）
+
+roles:
+  target:
+    purpose: 板子
+    profile: board-adb
+
+steps:
+  - id: load
+    kind: exec
+    role: target
+    cmd: "depmod -a && modprobe {input:module}"
+    timeout_ms: 120000
+    readback:
+      kind: command_ok
+
+  - id: assert-loaded
+    kind: assert
+    readback:
+      kind: verify
+      role: target
+      command: "lsmod | grep -q {input:module}"
+      timeout_ms: 30000
+    on_mismatch: fail

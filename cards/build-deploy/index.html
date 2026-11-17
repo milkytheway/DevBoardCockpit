@@ -6,16 +6,58 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main class="flow">
-      <div class="flow__pick">
-        <select id="flow" class="flow__select" aria-label="流程"></select>
+    <main class="bd">
+      <ol class="bd__steps" aria-label="编译上板流程">
+        <li class="bd__step is-active" data-phase="compile">
+          <button type="button" class="bd__step-btn" id="phase-compile">
+            <span class="bd__step-dot" aria-hidden>1</span>
+            <span class="bd__step-text">
+              <b>编译</b>
+              <small>只编译</small>
+            </span>
+          </button>
+        </li>
+        <li class="bd__step" data-phase="upload">
+          <button type="button" class="bd__step-btn" id="phase-upload">
+            <span class="bd__step-dot" aria-hidden>2</span>
+            <span class="bd__step-text">
+              <b>上传</b>
+              <small>传到板子</small>
+            </span>
+          </button>
+        </li>
+        <li class="bd__step" data-phase="run">
+          <button type="button" class="bd__step-btn" id="phase-run">
+            <span class="bd__step-dot" aria-hidden>3</span>
+            <span class="bd__step-text">
+              <b>运行</b>
+              <small>加载模块</small>
+            </span>
+          </button>
+        </li>
+      </ol>
+
+      <div class="bd__form">
+        <label class="bd__field">
+          <span>构建目录</span>
+          <input id="build-dir" type="text" placeholder="/home/alientek/kernel-build" />
+        </label>
+        <label class="bd__field">
+          <span>项目</span>
+          <input id="project" type="text" placeholder="01-hello" />
+        </label>
+        <label class="bd__field">
+          <span>模块名</span>
+          <input id="module" type="text" placeholder="hello" />
+        </label>
       </div>
-      <div id="inputs" class="flow__form"></div>
-      <div class="flow__actions">
-        <button id="run" class="flow__run" type="button">运行</button>
-        <span id="note" class="flow__note">正在读流程…</span>
+
+      <div class="bd__bar">
+        <span id="note" class="bd__note">选择一步开始；留空用默认值</span>
+        <span id="state" class="bd__state" hidden>运行中</span>
       </div>
-      <ol id="steps" class="flow__steps"></ol>
+
+      <ol id="steps" class="bd__run" aria-label="本次运行的阶段"></ol>
     </main>
     <script type="module" src="./card.js"></script>
   </body>

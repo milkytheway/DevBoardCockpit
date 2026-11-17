@@ -2293,15 +2293,15 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M208 卡片：**声明的流程就是那两条** ✓（**不多不少** ✓ —— 授权面不许变大 ✗）',
+    name: 'M208 卡片：**声明的流程就是那三条** ✓（**不多不少** ✓ —— 授权面不许变大 ✗）',
     file: 'cards/build-deploy/manifest.json',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/build-deploy-card.test.ts'],
-    expect: '声明的流程就是那两条编译流程',
+    expect: '声明的流程就是那三条',
     apply: (s) =>
       replace(
         s,
-        '    "write": [],\n    "workflows": ["hello-kernel.build-run", "meminfo-user.build-run"]',
-        '    "write": [],\n    "workflows": ["hello-kernel.build-run", "meminfo-user.build-run", "prepare-credentials.authorize-key"]',
+        '    "workflows": [\n      "hello-kernel.compile",\n      "hello-kernel.upload",\n      "hello-kernel.load"\n    ]',
+        '    "workflows": [\n      "hello-kernel.compile",\n      "hello-kernel.upload",\n      "hello-kernel.load",\n      "prepare-credentials.authorize-key"\n    ]',
       ),
   },
   {
@@ -2312,8 +2312,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    } else if (verified) {',
-        '    } else if (verified || ok) { // 变异：没验过的也算成了',
+        "    if (!ok) li.classList.add('is-bad');\n    else if (stage.verified === true) li.classList.add('is-ok');\n    else li.classList.add('is-warn');",
+        "    if (!ok) li.classList.add('is-bad');\n    else li.classList.add('is-ok'); // 变异：没验过的也算成了",
       ),
   },
   {
@@ -2403,9 +2403,9 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "onPermission('card', row.op, e.target.checked)",
-        // **变异里不能带行内注释** ✓ —— **JSX 里那会把闭合括号吃掉** ✗（语法错 ✗ —— **那不算守住** ✓）
-        "onPermission('agent', row.op, e.target.checked)",
+        "onChange={(next) => onPermission('card', row.op, next)}",
+        // 变异里不能带行内注释 —— JSX 里那会把闭合括号吃掉（语法错不算守住）
+        "onChange={(next) => onPermission('agent', row.op, next)}",
       ),
   },
   {

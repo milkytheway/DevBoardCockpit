@@ -46,6 +46,18 @@ export function SettingsPage({
   const setAll = (rows: PermissionRow[], allowed: boolean): void => {
     for (const row of rows) onPermission('card', row.op, allowed);
   };
+  const groups = (
+    [
+      { kind: 'action', label: '元操作', note: '板子上的原子动作' },
+      { kind: 'workflow', label: '流程', note: '编译、体检、抓帧这类多步流程' },
+      { kind: 'host', label: '宿主', note: '不碰板子的宿主能力' },
+    ] as const
+  )
+    .map((group) => ({
+      ...group,
+      rows: permissions.filter((row) => row.kind === group.kind),
+    }))
+    .filter((group) => group.rows.length > 0);
 
   return (
     <div className="page page--settings">
@@ -189,35 +201,51 @@ export function SettingsPage({
                   </p>
                 ) : null}
               </div>
-              <ul className="perm-list">
-                {permissions.map((row) => (
-                <li key={row.op} className="perm-row">
-                  <div className="perm-row__text">
-                    <span className="perm-row__label">{row.label}</span>
-                    <span className="perm-row__op mono">{row.op}</span>
-                    {row.hint ? <span className="perm-row__hint">{row.hint}</span> : null}
-                  </div>
-                  <div className="perm-row__switches">
-                    <label className="perm-switch">
-                      <input
-                        type="checkbox"
-                        checked={row.card}
-                        onChange={(e) => onPermission('card', row.op, e.target.checked)}
-                      />
-                      <span>卡片</span>
-                    </label>
-                    <label className="perm-switch">
-                      <input
-                        type="checkbox"
-                        checked={row.agent}
-                        onChange={(e) => onPermission('agent', row.op, e.target.checked)}
-                      />
-                      <span>agent</span>
-                    </label>
-                  </div>
-                </li>
-              ))}
-              </ul>
+              <div className="perm-groups">
+                {groups.map((group) => (
+                  <section key={group.kind} className="perm-group">
+                    <header className="perm-group__head">
+                      <h3>{group.label}</h3>
+                      <span className="perm-group__count">{group.rows.length}</span>
+                      <span className="perm-group__note">{group.note}</span>
+                    </header>
+                    <ul className="perm-list">
+                      {group.rows.map((row) => (
+                        <li key={row.op} className="perm-row">
+                          <div className="perm-row__text">
+                            <span className="perm-row__label">
+                              {row.label}
+                              {row.danger === 'destructive' ? (
+                                <span className="perm-row__danger">危险</span>
+                              ) : null}
+                            </span>
+                            <span className="perm-row__op mono">{row.op}</span>
+                            {row.hint ? <span className="perm-row__hint">{row.hint}</span> : null}
+                          </div>
+                          <div className="perm-row__switches">
+                            <div className="perm-row__switch">
+                              <span className="perm-row__switch-label">卡片</span>
+                              <Switch
+                                checked={row.card}
+                                label={`${row.label} · 卡片授权`}
+                                onChange={(next) => onPermission('card', row.op, next)}
+                              />
+                            </div>
+                            <div className="perm-row__switch">
+                              <span className="perm-row__switch-label">agent</span>
+                              <Switch
+                                checked={row.agent}
+                                label={`${row.label} · agent 授权`}
+                                onChange={(next) => onPermission('agent', row.op, next)}
+                              />
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
             </>
           )}
         </section>
@@ -226,7 +254,7 @@ export function SettingsPage({
           <header className="settings-card__head">
             <div>
               <h2>关于</h2>
-              <p>DevBoard Cockpit · 外壳 v0.10</p>
+              <p>DevBoard Cockpit · 外壳 v0.11</p>
             </div>
           </header>
           <p className="settings-note">
@@ -262,24 +290,49 @@ function MasterToggle({
   onChange: (allowed: boolean) => void;
 }): JSX.Element {
   return (
-    <label className={`perm-master__row${checked ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`}>
+    <div className={`perm-master__row${checked ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`}>
       <span className="perm-master__text">
         <b>{label}</b>
         <small>{detail}</small>
       </span>
-      <span className="perm-master__switch">
-        <input
-          type="checkbox"
-          role="switch"
-          checked={checked}
-          disabled={disabled}
-          aria-label={`为卡片打开${label}授权`}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span className="perm-master__track" aria-hidden>
-          <span className="perm-master__thumb" />
-        </span>
-      </span>
-    </label>
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        label={`为卡片打开${label}授权`}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+/**
+ * One Ant-Design-style switch.
+ *
+ * It is a button with `role="switch"` rather than a styled checkbox so the
+ * whole control is one hit target and the accessibility state is explicit.
+ */
+function Switch({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`switch${checked ? ' is-on' : ''}`}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch__thumb" aria-hidden />
+    </button>
   );
 }

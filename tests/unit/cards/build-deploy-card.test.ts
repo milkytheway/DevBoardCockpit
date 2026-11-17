@@ -21,13 +21,17 @@ import { validateCard } from '../../../src/main/cards/validate';
  * | 2 | **校验规则全过** ✓ | 规则 3（requires ⊆ permissions ✓）· 规则 14（流程 id 精确 ✓） |
  * | 3 | **脚本在独立文件里** ✓ | 契约 §6.1 的 `script-src 'self'` ✓ —— 内联脚本会被 CSP 挡掉 ✓ |
  * | 4 | **样式只用 `--cockpit-*`** ✓ | 换皮才成立 ✓ |
- * | 5 | **它声明的流程就是那两条编译流程** ✓ | **不多不少** ✓ —— 多一条 = 授权面变大 ✗ |
+ * | 5 | **它声明的流程就是那三条编译/上传/运行流程** ✓ | **不多不少** ✓ —— 多一条 = 授权面变大 ✗ |
  */
 const REPO_ROOT = resolve(__dirname, '../../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'build-deploy');
 
 /** 这张卡**要**的流程（**精确 id** ✓ —— 契约 `spec/03` 规则 14 ✓） */
-const WANTED = ['hello-kernel.build-run', 'meminfo-user.build-run'];
+const WANTED = [
+  'hello-kernel.compile',
+  'hello-kernel.upload',
+  'hello-kernel.load',
+];
 
 describe('「编译上板」那张卡', () => {
   it('**在 `cards/` 下**（契约 §八 的位置，也就是内置根）', () => {
@@ -55,7 +59,7 @@ describe('「编译上板」那张卡', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('**声明的流程就是那两条编译流程** ✓（**不多不少** ✓）', () => {
+  it('**声明的流程就是那三条编译/上传/运行流程** ✓（**不多不少** ✓）', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/build-deploy');
     expect(manifest.permissions.workflows).toEqual(WANTED);

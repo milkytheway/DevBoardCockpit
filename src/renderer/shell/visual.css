@@ -3851,3 +3851,137 @@ html[data-theme='light'] .cockpit-card {
   line-height: 1.5;
   color: var(--ui-faint);
 }
+
+/* ───────────────────────────────────── v0.11 permission groups & switches ──
+   Rows are grouped by kind the way Ant Design groups a settings page: a
+   quiet section heading, then one dense list. The switch is the AntD
+   pattern — a rounded track with a white thumb — but drawn with our tokens
+   so it follows both themes. */
+
+.perm-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.perm-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.perm-group__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.perm-group__head h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.perm-group__count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-hairline);
+  font-family: var(--cockpit-font-mono);
+  font-size: 9.5px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--ui-dim);
+}
+
+.perm-group__note {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ui-faint);
+}
+
+.perm-group .perm-list {
+  margin-top: 0;
+}
+
+.perm-row__switches {
+  gap: 16px;
+}
+
+.perm-row__switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.perm-row__switch-label {
+  font-size: 10.5px;
+  color: var(--ui-dim);
+}
+
+.perm-row__danger {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 15px;
+  color: var(--cockpit-danger);
+  background: color-mix(in oklab, var(--cockpit-danger) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--cockpit-danger) 28%, transparent);
+}
+
+/* AntD-style switch: 36 × 20 track, 14px thumb, accent when on. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cockpit-text) 16%, transparent);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ui-highlight);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--cockpit-bg) 45%, transparent);
+  transition: transform 160ms ease;
+}
+
+.switch.is-on {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 70%, transparent);
+  background: var(--cockpit-accent);
+}
+
+.switch.is-on .switch__thumb {
+  transform: translateX(16px);
+}
+
+.switch:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--cockpit-accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.perm-master__row {
+  cursor: default;
+}
+
+.perm-master__row:hover {
+  background: transparent;
+}
