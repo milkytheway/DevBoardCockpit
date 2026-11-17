@@ -2508,12 +2508,12 @@ const MUTATIONS = [
     name: 'M211 卡片：**跑的时候把输入带上** ✓（**不传空参数** ✓）',
     file: 'cards/build-deploy/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
-    expect: '点一下就调 `workflows.run`',
+    expect: '点「编译」就调编译流程',
     apply: (s) =>
       replace(
         s,
-        '    values[name] = el.value;',
-        "    values[name] = ''; // 变异：输入不带上",
+        'if (editable.build_dir) inputs.build_dir = editable.build_dir;',
+        "if (editable.build_dir) inputs.build_dir = ''; // 变异：输入不带上",
       ),
   },
   {
