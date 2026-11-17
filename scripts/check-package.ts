@@ -30,6 +30,23 @@ interface Check {
   detail: string;
 }
 
+/**
+ * **asar 里的内置卡与 `cards/` 对不对得上** ✓（**纯函数** ✓ —— 好测 ✓）。
+ *
+ * → 判据 = **两边一模一样** ✓（**不是「至少有一张」** ✓ ——
+ *   「≥1」**检不出陈旧的 asar** ✓：今天 10 张 · 旧 asar 6 张 → 照样「有卡」✓ ✗）。
+ * → **比的是集合** ✓ —— 顺序无关 ✓。
+ * → **期望为空 → 不过** ✓（「`cards/` 一张卡都没有」本身就是不对 ✓）。
+ */
+export function compareCards(
+  expected: string[],
+  inAsar: string[],
+): { ok: boolean; missing: string[]; extra: string[] } {
+  const missing = expected.filter((c) => !inAsar.includes(c));
+  const extra = inAsar.filter((c) => !expected.includes(c));
+  return { ok: expected.length > 0 && missing.length === 0 && extra.length === 0, missing, extra };
+}
+
 /** asar 的头：文件清单（路径 → {size, offset, ...} ✓） */
 interface AsarHeader {
   files: Record<string, { size: number; offset: string; files?: Record<string, unknown> }>;
@@ -134,14 +151,31 @@ function main(): void {
   }
 
   // ── **内置卡**在吗（打包后最常见的一条 ✓）────────────────────────
+  //
+  // → **判据是「asar 里的卡与 `cards/` 一模一样」✓**，**不是「至少有一张」** ✓
+  //   —— 「≥1」**检不出陈旧的 asar** ✓（今天 10 张 · 旧 asar 6 张 → 照样「有卡」✓ ✗）。
+  // → **期望值来自源码目录** ✓ —— **不写死数字** ✓（写死会随卡片增减而腐烂 ✓）。
   const cardManifests = paths.filter((p) => /^cards\/[^/]+\/manifest\.json$/.test(p));
+  const inAsar = cardManifests.map((p) => p.split('/')[1]).sort();
+  const sourceCardsDir = join(root, 'cards');
+  const expectedCards = existsSync(sourceCardsDir)
+    ? readdirSync(sourceCardsDir)
+        .filter((d) => statSync(join(sourceCardsDir, d)).isDirectory())
+        .filter((d) => existsSync(join(sourceCardsDir, d, 'manifest.json')))
+        .sort()
+    : [];
+  const { ok: cardsOk, missing, extra } = compareCards(expectedCards, inAsar);
   checks.push({
-    what: 'asar 里有内置卡（cards/*/manifest.json）',
-    ok: cardManifests.length > 0,
+    what: `asar 里的内置卡与 cards/ 一致（${expectedCards.length} 张）`,
+    ok: cardsOk,
     detail:
-      cardManifests.length > 0
-        ? `${cardManifests.length} 张：${cardManifests.map((p) => p.split('/')[1]).join('、')}`
-        : '一张都没有 —— `files` 里少了 `cards/**/*`',
+      expectedCards.length === 0
+        ? 'cards/ 目录里一张卡都没有 —— 这不对'
+        : missing.length > 0 || extra.length > 0
+          ? `对不上 ✓ —— **少 ${missing.length} 张**（${missing.join('、') || '无'}）` +
+            ` · **多 ${extra.length} 张**（${extra.join('、') || '无'}）` +
+            ` → **asar 是陈旧的？重打一次** ✓`
+          : `${inAsar.length} 张全对：${inAsar.join('、')}`,
   });
 
   // ── **随应用分发的数据**在吗 ────────────────────────────────────
@@ -219,4 +253,7 @@ function main(): void {
   );
 }
 
-main();
+// 直接运行时才执行 CLI；被 import 时只导出函数（`gen-vocabulary.ts` 同款规矩 ✓）
+if (process.argv[1] && process.argv[1].endsWith('check-package.ts')) {
+  main();
+}

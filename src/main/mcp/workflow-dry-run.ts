@@ -85,7 +85,7 @@ export function dryRunWorkflow(
   // → **dry_run 不连任何机器** ✓（**建连接就是「做」了** ✓ —— 哪怕只是握手 ✓）
   // → 所以**「这个 profile 存不存在」这件事，dry_run 答不了** ✓
   //   → **不猜** ✓ → **不报一个自己验不了的错** ✓。
-  // → **真的跑之前**（`run_workflow` 不带 dry_run ✓）**流程层会查** ✓（`requireApproved` ✓ + 目标登记处 ✓）。
+  // → **真的跑之前**（`run_workflow` 不带 dry_run ✓）**流程层会查** ✓（**注册表里有这个包** ✓ + 目标登记处 ✓）。
 
   // ── 输入按类型编码（命令模式用**编码片段** ✓ —— 同 runner ✓）──
   const encoded: Record<string, string> = {};

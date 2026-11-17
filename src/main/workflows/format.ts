@@ -269,6 +269,29 @@ interface Ctx {
   path: string;
 }
 
+/**
+ * **契约 `05` §九 规则 4** ✓：`id` 的格式是「名字.名字」✓。
+ *
+ * → **两段** ✓ · **每段是小写字母与数字** ✓ · **段内可以用连字符** ✓
+ *   （`hello-kernel.build-run` ✓ · `prepare-credentials.authorize-key` ✓）。
+ * → **为什么卡它** ✓：`id` 是**权限键**（`workflow:<id>` ✓）· **文件名键** ✓ ·
+ *   **agent 看得见的标识** ✓ → **它得是一个不可注入的记号** ✓。
+ *   → **所以大写、下划线、空格、多一个点都不行** ✓。
+ */
+const WORKFLOW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function workflowId(value: unknown, ctx: Ctx): string {
+  const id = nonEmptyString(value, 'id', ctx);
+  if (!WORKFLOW_ID_PATTERN.test(id)) {
+    fail(
+      `id 必须是「名字.名字」（两段 · 小写字母数字 · 段内可带连字符 —— 例如 hello-kernel.build-run）✓ —— 收到「${id}」`,
+      ctx.source,
+      { path: ctx.path },
+    );
+  }
+  return id;
+}
+
 function nonEmptyString(value: unknown, what: string, ctx: Ctx): string {
   if (typeof value !== 'string' || value.length === 0) {
     fail(`${what} 必须是非空字符串`, ctx.source, { path: ctx.path });
@@ -346,7 +369,7 @@ export function parseWorkflow(raw: unknown, source: string): WorkflowPack {
   const pack: WorkflowPack = {
     apiVersion: KNOWN_API_VERSION,
     kind: 'Workflow',
-    id: nonEmptyString(raw['id'], 'id', ctx),
+    id: workflowId(raw['id'], ctx),
     name: nonEmptyString(raw['name'], 'name', ctx),
     version: nonEmptyString(raw['version'], 'version', ctx),
     ...(raw['description'] === undefined
@@ -568,7 +591,7 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
 
   // ── **规则 11**（契约 §九 ✓）：`danger: destructive` 的步不许用 `readback.kind: none` ✓
   // → 与 `02` §4.4.1 同款 ✓（板型包的规则 15 就是它 ✓ —— 那边有 ✓，这边**一直缺着** ✗）
-  // → 不拦的后果 ✓：不可逆的步可以声明「不验证」✗ → 人点头后照样执行 ✓
+  // → 不拦的后果 ✓：不可逆的步可以声明「不验证」✗ → **照样执行** ✓（**今天不再问人** ✓）
   //   → 时间线报 `ok:true / verified:false` ✓ → 界面把「根本没验证」说成「成功了」✗
   if (step.danger === 'destructive' && step.readback?.kind === 'none') {
     fail('destructive 的步不许用 readback.kind: none（不可逆动作不能「不验证」✓ —— 同 02 §4.4.1 ✓）', ctx.source);

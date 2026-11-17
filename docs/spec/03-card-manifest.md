@@ -109,10 +109,10 @@ permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
 有效流程权限 = permissions.workflows
 ```
 
-→ **但流程还多一道** ✓：**流程包本身必须已被用户批准** ✓（`05` §7.2 的批准账 ✓）。
-→ **为什么流程要多这一道**（`05` §7.1 ✓）：流程**不是动作**（它不在板型包里 ✓），
-但它**能跑任意命令**（`exec` / `file.transfer` ✓）→ **板型包管不到它** ✓
-→ **必须有人看过它会做哪些事** ✓（批准时会把每一步命令打出来 ✓）。
+→ **流程没有第二道** ✓（**2026-11-16 砍掉** ✓ · ADR-D48 ✓）：
+**流程包的存在本身就是说明** ✓（**用户原话**：「**流程存在本身即说明了**」✓）
+→ **闸在设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）：**流程那一行开关** ✓
+→ **那一行会把每一步命令都打出来** ✓（`05` §7.4 ✓ —— **开关不只是「开一个文件名」** ✓）。
 
 **装卡不再要「同意」** ✓（`04` §2.3 ✓ · ADR-D46 ✓）：
 → **要写的动作板型包里没有 → 不装** ✓（**板型包说了算** ✓）；
@@ -120,7 +120,7 @@ permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
 
 **但「谁能写板子」由设置里那一张表决定** ✓（**统一权限区** ✓ · ADR-D47 ✓）：
 → **卡片写板子：默认禁止** ✓（**宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓）
-→ **卡片触发流程：默认允许** ✓（**流程包的批准账才是那道闸** ✓）
+→ **卡片触发流程：默认允许** ✓（**闸在设置里那行开关** ✓ —— **流程包的存在本身就是说明** ✓）
 → **agent：默认允许** ✓（**它那边本来就有人的确认** ✓）
 → **想改就在设置里改那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）。
 
@@ -554,8 +554,8 @@ const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 | `cockpit.degradation()` | 读 | 无（只返回本卡的降级信息） |
 | `cockpit.capabilities()` | 读 | 无（只返回本宿主的信息） |
 | `cockpit.actions.invoke(id, params)` | 写 | `permissions.write` |
-| `cockpit.workflows.list()` | 读 | 无（只列**用户批过的**流程 ✓） |
-| `cockpit.workflows.run(id, inputs)` | 写 | `permissions.workflows` 里有这个 id ✓ **且**它已批准 ✓ |
+| `cockpit.workflows.list()` | 读 | 无（只列**注册表里有的**流程 ✓ —— **不再有「用户批过的」那层** ✓） |
+| `cockpit.workflows.run(id, inputs)` | 写 | `permissions.workflows` 里有这个 id ✓ **且**权限区里那行开着 ✓ |
 | `cockpit.workflows.status(runId)` | 读 | 同上（**卡片侧是缩减投影** ✓ —— `05` §八·B·B5 ✓） |
 | `cockpit.storage.get/set/remove/keys/clear` | 存储 | 无（限于本卡命名空间） |
 | `cockpit.log(level, message)` | 日志 | 无 |

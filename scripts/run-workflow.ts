@@ -5,19 +5,20 @@
  * > 卡片 API 与 MCP 工具**首版不动契约** → 首版的触发方式就是**人在宿主上跑它** ✓
  * > （「卡片让用户选本机还是客机」那一条，是**后续的契约增量**——待裁决 D7。）
  *
- * ── 两条路，**权限不同** ──
+ * ── 两条路，**取包的方式不同** ──
  *
- * | 写法 | 走批准账吗 | 谁在用 |
+ * | 写法 | 从哪儿取包 | 谁在用 |
  * |---|---|---|
- * | `--id <id>` | **要**（没批准跑不了 ✓） | 人与将来的卡片/agent ✓ |
- * | `--package <路径>` | **不走** | **开发/一次性**：人自己敲的路径 = 那一次点头 ✓ |
+ * | `--id <id>` | **注册表**（只认注册表里的 id ✓） | 人与将来的卡片/agent ✓ |
+ * | `--package <路径>` | **一个文件**（路径就是那一次许可 ✓） | **开发/一次性** ✓ |
  *
  * → **卡片与 agent 只能走 `--id` 那条**（`WorkflowService` 只认 id ✓）。
+ * → **两边都不再要「批准」** ✓（**2026-11-16 砍掉** ✓ · ADR-D48 ✓）——
+ *   **能不能跑看设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）。
  *
  * 用法：
  * ```powershell
- * npm run workflow:list                                   # 看有哪些、批过没有
- * npm run workflow:approve -- hello-kernel.build-run       # 点头（人做这一下）
+ * npm run workflow:list                                   # 看有哪些
  * npm run workflow:run -- --id hello-kernel.build-run --input project=01-hello
  * npm run workflow:run -- --package profiles/workflows/hello-kernel.build-run.yaml --input project=01-hello
  * ```
@@ -78,16 +79,15 @@ function parseArgs(argv: string[]): Args {
         [
           '用法：npm run workflow:run -- (--id <流程 id> | --package <流程包.yaml>) [--input 名字=值]...',
           '',
-          '  --id        走**批准账**（没批准跑不了 ✓）—— 人与将来的卡片/agent 走这条',
-          '  --package   直接跑一个文件（**开发/一次性**：人自己敲的路径 = 那一次点头 ✓）',
+          '  --id        走**注册表**（只认注册表里的 id ✓）—— 人与将来的卡片/agent 走这条',
+          '  --package   直接跑一个文件（**开发/一次性**：人自己敲的路径 = 那一次许可 ✓）',
           '',
           '例子：',
           '  npm run workflow:run -- --id hello-kernel.build-run --input project=01-hello',
           '  npm run workflow:run -- --package profiles/workflows/hello-kernel.build-run.yaml --input project=01-hello',
           '',
           '配套：',
-          '  npm run workflow:list                              看有哪些、批过没有',
-          '  npm run workflow:approve -- <流程 id>              点头',
+          '  npm run workflow:list                              看有哪些',
         ].join('\n'),
       );
       process.exit(0);
@@ -189,7 +189,6 @@ async function main(): Promise<void> {
     };
     // **人跑它 = 这一次点头** ✓（ADR-D31 R2 的信任模型 ✓ —— **不再有要确认的步** ✓ · ADR-D48 ✓）
     const result = await runWorkflow(pack, args.input, deps, {
-      approved: true,
       ...(args.from === undefined ? {} : { startAt: args.from }),
     });
 

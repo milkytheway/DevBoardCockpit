@@ -198,12 +198,12 @@ describe('会话 · 动作的**结果**不被塌成信封失败', () => {
    * ── 为什么这条重要 ──
    *
    * 契约 `spec/04` §2.4 的动作结果**自己就有 `ok` 与 `reason`**：
-   * `{ ok:false, reason:'needs_confirmation', needsConfirmation:{confirmId} }`。
+   * `{ ok:false, reason:'denied', detail:'…' }` ✓（**封闭理由码** ✓）。
    *
    * 而会话层有一条通用规矩：「方法自己返回的失败要提到信封上」——
    * 对 `tags.subscribe`（回 `{ok:false, reason:'too_many_subscriptions'}`）是对的，
    * 对**动作结果**却是错的：
-   * **塌掉之后 `confirm_id` 丢了** → 卡片永远没法完成确认 → 确认通道形同虚设。
+   * **塌掉之后动作自己的原因码没了** → 卡片分不清是「没权限」还是「参数不对」✗。
    *
    * → 结果**形状**的方法（动作）**不塌**：信封说「方法跑完了」，
    * 结果（成功与否）由卡片自己读 `value.ok`（契约就是这么写的）。

@@ -14,23 +14,24 @@ import { parseWorkflow, type WorkflowPack } from './format';
  * → 原因很直白：**一个流程包就是「一组要在用户机器上执行的命令」**，
  * 而 `npm run workflow:run -- --package <任意路径>` **只认路径，不认人**。
  *
- * → 于是「谁批准了这个包」这件事**根本没有地方记** ✗。
+ * → 于是「谁批准了这个包」这件事**根本没有地方记** ✗ ——
+ * **今天这道闸在设置里的统一权限区** ✓（ADR-D47 ✓ —— 不在本模块 ✓）。
  *
  * ── 这本账怎么记 ──
  *
  * | 账 | 记什么 | 谁能改 |
  * |---|---|---|
  * | **注册表** | 目录里有哪些包（id → 包 + **内容摘要**） | 放文件进目录 |
- * | **批准账** | 哪些包**被用户批准过**（id → 摘要 + 时刻） | **只有人能改**（`npm run workflow:approve`） |
+ * | ~~**批准账**~~ | ⛔ **没了** ✓（2026-11-16 ✓ · ADR-D48 ✓） | —— |
  *
- * → **放一个文件进目录 ≠ 批准它** ✓（否则「能写文件」就等于「能执行命令」✗）。
- * → **批准绑内容摘要** ✓：改了内容 → 摘要变了 → **要重新批准** ✓
- * （否则「批准 A 版、跑 B 版」✗）。
+ * → **放一个文件进目录 ≠ 它就能跑** ✓（否则「能写文件」就等于「能执行命令」✗）
+ * → **闸在设置里的统一权限区** ✓（ADR-D47 ✓）—— **那一行还列着每一步命令** ✓
+ * → **内容摘要照记** ✓：改了内容 → 摘要变了 → **追责链断得开** ✓。
  *
  * ── 与卡片那一套同形 ──
  *
- * 卡片那边是「**卡片在目录里** + **授权账（grants.json）说用户批过哪些动作**」✓；
- * 这边是「**流程包在目录里** + **批准账说用户批过哪些包**」✓ → 一个模型 ✓。
+ * 卡片那边是「**卡片在目录里** + **它的 manifest 说它能做什么**」✓；
+ * 这边是「**流程包在目录里** + **权限区那一行说它能不能跑**」✓ → 一个模型 ✓。
  */
 export interface RegisteredWorkflow {
   /** 包里的 id */
@@ -41,7 +42,7 @@ export interface RegisteredWorkflow {
   version: string;
   /** 文件在哪 */
   path: string;
-  /** **内容摘要**（批准绑它 ✓） */
+  /** **内容摘要**（**追责链的第一环** ✓ —— 改了内容摘要就变 ✓） */
   digest: string;
   /** 解析出来的包 */
   pack: WorkflowPack;
@@ -61,9 +62,9 @@ export interface WorkflowPlan {
     kind: string;
     /** 执行角色（判据步是「在哪个角色上读」✓） */
     role?: string;
-    /** 命令**模板**（**还没替换输入** ✓ —— 批准时不知道输入值 ✓） */
+    /** 命令**模板**（**还没替换输入** ✓ —— **权限区那一行展示的就是它** ✓） */
     command?: string;
-    /** 这一步危险吗（destructive → **运行期还要再确认一次** ✓） */
+    /** 这一步危险吗（destructive → **只是信息** ✓ —— **闸在权限区** ✓ · ADR-D48 ✓） */
     dangerous: boolean;
     /** 判据读在哪个角色上（跨目标读 = 「板子上真的有那个文件吗」✓） */
     readbackRole?: string;
@@ -91,7 +92,7 @@ export function planOf(pack: WorkflowPack): WorkflowPlan {
   };
 }
 
-/** 批准账的存盘形状 */
+/** 注册表的构造参数 */
 export interface WorkflowRegistryOptions {
   /** 包目录（内置的 + 用户的，**同 id 时用户优先** ✓） */
   dirs: string[];
@@ -158,11 +159,11 @@ export class WorkflowRegistry {
   }
 
   /**
-   * 这个包**会干什么**（**给人过目的** ✓）。
+   * 这个包**会干什么**（**给权限区那一行看的** ✓）。
    *
-   * → 「点一下批准」之前，人必须知道**会在哪些机器上跑哪些命令** ✓
+   * → **开那个开关之前**，人必须知道**会在哪些机器上跑哪些命令** ✓
    *   （评审 35 的 32-C1 建议第 2 条 ✓）。
-   * → 没有这一条，批准就只是「批准一个文件名」✓ → **等于没看** ✗。
+   * → 没有这一条，那个开关就只是「开一个文件名」✓ → **等于没看** ✗。
    */
   planOf(id: string): WorkflowPlan | undefined {
     const found = this.packs.get(id);
@@ -170,12 +171,12 @@ export class WorkflowRegistry {
     return planOf(found.pack);
   }
 
-  /** 列全部（**含未批准的** ✓ —— 用户要看得见「有个包还没批」） */
+  /** 列全部（**注册表里有的全列** ✓ —— **不再有「批过没有」那一列** ✓） */
   list(): RegisteredWorkflow[] {
     return [...this.packs.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  /** 按 id 取一个包（**不检查批准** ✓ —— 调用方自己决定要不要查 ✓） */
+  /** 按 id 取一个包（**不检查别的** ✓ —— 调用方自己决定要不要查 ✓） */
   get(id: string): RegisteredWorkflow | undefined {
     return this.packs.get(id);
   }
@@ -200,6 +201,4 @@ export class WorkflowRegistry {
     return found;
   }
 
-  /**
-  /** 收回批准 */
-}
+ }

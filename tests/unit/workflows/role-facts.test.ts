@@ -87,7 +87,7 @@ function transferPack() {
     {
       apiVersion: 'devboard/v1',
       kind: 'Workflow',
-      id: 'w',
+      id: 'w.flow',
       name: 'w',
       version: '1.0.0',
       inputs: {},
@@ -112,7 +112,7 @@ function transferPack() {
 describe('流程 · 角色事实的来源', () => {
   it('**adb 的板子 → 事实取自 `options.ssh`** ✓（**那条 scp 要用板子的地址** ✓）', async () => {
     const h = harness({ serial: 'x', ssh: { host: '192.168.5.100', port: 22, username: 'root' } });
-    await runWorkflow(transferPack(), {}, h.deps, { approved: true });
+    await runWorkflow(transferPack(), {}, h.deps);
     const scp = h.byId('guest')?.commands.find((c) => c.startsWith('scp '));
     // **命令里有板子的地址** ✓（**不是空串** ✓）
     expect(scp).toContain('192.168.5.100');
@@ -127,7 +127,7 @@ describe('流程 · 角色事实的来源', () => {
         {
           apiVersion: 'devboard/v1',
           kind: 'Workflow',
-          id: 'w',
+          id: 'w.flow',
           name: 'w',
           version: '1.0.0',
           inputs: {},
@@ -148,7 +148,6 @@ describe('流程 · 角色事实的来源', () => {
       ),
       {},
       h.deps,
-      { approved: true },
     );
     const cmd = h.byId('guest')?.commands[0];
     expect(cmd).toContain('-p 2222');
@@ -161,7 +160,7 @@ describe('流程 · 角色事实的来源', () => {
         {
           apiVersion: 'devboard/v1',
           kind: 'Workflow',
-          id: 'w',
+          id: 'w.flow',
           name: 'w',
           version: '1.0.0',
           inputs: {},
@@ -182,14 +181,13 @@ describe('流程 · 角色事实的来源', () => {
       ),
       {},
       h.deps,
-      { approved: true },
     );
     expect(h.byId('guest')?.commands[0]).toBe("ssh 'builder'@'10.0.0.2'");
   });
 
   it('**板子没声明 `options.ssh` → 地址留空** ✓（**不猜** ✓ —— **不编一个地址出来** ✓）', async () => {
     const h = harness({ serial: 'x' });
-    await runWorkflow(transferPack(), {}, h.deps, { approved: true });
+    await runWorkflow(transferPack(), {}, h.deps);
     const scp = h.byId('guest')?.commands.find((c) => c.startsWith('scp '));
     // **没有编出地址** ✓
     expect(scp).not.toContain('192.168');

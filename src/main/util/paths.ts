@@ -77,10 +77,10 @@ export function builtinWorkflowsDir(appRoot: string): string {
 }
 
 /**
- * 用户自己的流程包目录（**放这儿 ≠ 批准** ✓ —— 批准是另一本账 ✓）。
+ * 用户自己的流程包目录（**放这儿 ≠ 能跑** ✓ —— 能不能跑看**权限区** ✓）。
  *
  * → 与卡片目录同一个道理：**「放在那儿」只是「候选」**，
- * 能不能跑看**批准账**（`workflows-approved.json` ✓）。
+ * 闸在设置里的统一权限区（`03` §2.4 ✓ · ADR-D47 ✓）。
  */
 export function userWorkflowsDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'workflows');

@@ -201,7 +201,6 @@ export type McpReason =
   | 'not_found'
   | 'invalid_params'
   | 'busy'
-  | 'no_pending_confirmation'
   | 'failed';
 
 /**
@@ -235,7 +234,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'list_workflows',
     title: '列出可跑的流程',
     description:
-      '列出**用户批过**的流程（只有 id / 名称 / 输入声明 —— 不给拓扑：哪个角色连哪台机器是未授权方不该看的）。',
+      '列出**注册表里有的**流程（只有 id / 名称 / 输入声明 —— 不给拓扑：哪个角色连哪台机器是未授权方不该看的）。',
     inputSchema: { type: 'object', properties: {} },
   },
   {

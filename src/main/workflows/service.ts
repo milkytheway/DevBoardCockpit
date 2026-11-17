@@ -12,14 +12,14 @@ import type { WorkflowPack } from './format';
  * | # | 事 | 为什么 |
  * |---|---|---|
  * | 1 | **只认 id，不认路径** | 「放一个文件进目录」不等于「批准它」✓；卡片/agent **给不了路径** ✓ → 否则 agent 能自写一个包就跑 ✗（评审 32-C1 ✓） |
- * | 2 | **跑之前查批准账** | `requireApproved(id)` ✓ → 没批准的包**跑不了** ✓ |
+ * | 2 | **跑之前查注册表** | `require(id)` ✓ → 没有这个包**跑不了** ✓（**不再有「批准」那一层** ✓） |
  * | 3 | **长任务 = run_id + 轮询** | 编译实测 58.9s / 98.5s（评审 31-C3 ✓）→ **同步返回时间线是不成立的** ✗ → `start()` 立刻给 `runId`，`status()` 取进度 ✓ |
  *
- * ── 「谁批准的」由谁点头 ──
+ * ── 「谁能跑」由谁点头 ──
  *
- * → **装卡时**（卡片声明 `requires.workflows` → 装它的界面要人点头 ✓），
- * 或 → **命令行 `npm run workflow:approve -- <id>`** ✓（那是人自己敲的 ✓）。
- * → 两条路都落在**同一本批准账**里 ✓（`workflows-approved.json` ✓）。
+ * → **设置里的统一权限区** ✓（ADR-D47 ✓）：**流程那一行开关** ✓
+ * → **卡片触发流程默认允许** ✓ · **agent 默认允许** ✓（**危险的那类默认关** ✓）
+ * → **流程包的存在本身就是说明** ✓（**批准账 2026-11-16 砍掉** ✓ · ADR-D48 ✓）。
  */
 export interface WorkflowSummary {
   id: string;
@@ -54,9 +54,9 @@ export interface WorkflowRunStatus {
   /**
    * 运行状态。
    *
-   * → **`awaiting_confirmation` 是一档**（不是 `failed` ✓）：
-   * 「等人点头」**不是失败** ✓，它是流程**停在某一步等人** ✓。
-   * （v2 提案漏了这一档 → 独立评审 V2-I1 ✓）
+   * → **四档**（`running` / `done` / `failed` / `cancelled` ✓）——
+   * **「等人点头」那档 2026-11-16 没了** ✓（**确认链整体砍掉** ✓ · ADR-D48 ✓）。
+   * → 停在某一步**只会是 `running`** ✓ · **取消是 `cancelled`** ✓ —— **不是 `failed`** ✓。
    */
   state: 'running' | 'done' | 'failed' | 'cancelled';
   /** 时间线（**跑到哪一步了** ✓） */
@@ -122,11 +122,11 @@ export class WorkflowService {
   }
 
   /**
-   * **按 id 取一个已批准的流程包**（**给 dry_run 用** ✓）。
+   * **按 id 取一个流程包**（**给 dry_run 用** ✓）。
    *
-   * → **只给已批准的** ✓ —— **没批过的 agent 连预览都不给** ✓
-   *   （预览会泄出「这个包会干什么」✓ —— 那是**没授权方不该知道的** ✗）。
-   * → **查不到就抛** ✓（带机器可读的 reason ✓ —— MCP 那层要回给 agent ✓）。
+   * → **注册表里没有就抛** ✓（带机器可读的 reason ✓ —— MCP 那层要回给 agent ✓）。
+   * → **预览会泄出「这个包会干什么」** ✓ —— **能不能看由权限区说了算** ✓
+   *   （**今天不给它单独加一道** ✓ —— ADR-D48 ✓）。
    */
   pack(id: string): WorkflowPack {
     const found = this.opts.registry.require(id);
@@ -161,7 +161,7 @@ export class WorkflowService {
   /**
    * **开始**跑一条流程（**立刻返回 `runId`** ✓ —— 编译要一分钟，不能同步等 ✓）。
    *
-   * @throws 这个 id 没批准 / 没有这个包 → `IPC_INVALID_PAYLOAD`（**说清楚** ✓）
+   * @throws 没有这个包 → `IPC_INVALID_PAYLOAD`（**说清楚** ✓）
    */
   start(
     id: string,
@@ -275,7 +275,6 @@ export class WorkflowService {
           },
         },
         {
-          approved: true,
           runId: status.runId,
           startAt,
           outputs: status.outputs,

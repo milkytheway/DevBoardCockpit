@@ -126,7 +126,6 @@ function harness(): {
         audit: (row) => audit.append(row),
         now: () => 1_700_000_000_000,
       },
-      { approved: true },
     );
   })();
 

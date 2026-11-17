@@ -11,12 +11,13 @@ import type { GrantedActions } from '../actions/authorization';
  * | | 卡片 | agent |
  * |---|---|---|
  * | 授权集 | **当前板型包声明的全部动作** ✓（**卡片与 agent 同一套** ✓ —— ADR-D46 ✓） | **当前板型包声明的全部动作** ✓ |
- * | 参数域 | 人授过的（**可能更窄** ✓） | **动作自己的 `guard`** ✓ |
+ * | 参数域 | **动作自己的 `guard`** ✓（**没有人授过的更窄域** ✓ —— ADR-D46 ✓） | **动作自己的 `guard`** ✓ |
  *
  * → 契约 §2.4.1：「agent 不是卡片，它有一套自己的授权」✓
  *   「agent 可以直接调任何动作，**不需要先装一张卡**」✓。
  *
- * → **但 `destructive` 仍然要人点头** ✓（契约 §2.4.1 ✓ —— 那不是授权问题 ✓）。
+ * → **`destructive` 不再逐次问人** ✓（**2026-11-16** ✓ · ADR-D48 ✓）→
+ *   **闸在设置里的统一权限区** ✓（ADR-D47 ✓ —— **那类动作默认关** ✓）。
  *
  * ── `dry_run` 的位置（**契约 §2.4 的行为表** ✓）──
  *
@@ -39,7 +40,6 @@ import type { GrantedActions } from '../actions/authorization';
  *   两边不一致 → **凭据永远消费不掉** ✗（那是**最隐蔽的一种坏** ✓ —— 症状是「人点了也没用」✓）。
  */
 export interface AgentActionDeps extends Omit<ActionExecutorDeps, 'granted' | 'actor'> {
-  /** 确认凭据的库（**与卡片侧同一份** ✓ —— 语义只有一处 ✓） */
   /** 当前板型包里声明的动作（**agent 的授权集就是它们** ✓） */
   actions: () => ActionDef[];
   /**
@@ -81,7 +81,7 @@ export interface AgentActionResult {
   ok: boolean;
   /** 回读到的真实状态 */
   readback?: { value?: unknown; unit?: string; status?: string; at: number };
-  /** **确认**板子真的进入目标状态了吗 ✓（`verified: false` ≠ 失败 ✓ —— 契约 §2.4 ✓） */
+  /** 板子真的进入目标状态了吗 ✓（`verified: false` ≠ 失败 ✓ —— 契约 §2.4 ✓） */
   verified?: boolean;
   /** 追责单位 ✓ */
   audit_id?: string;
@@ -143,7 +143,7 @@ export async function executeAction(
     };
   }
 
-  // **④ dry_run** ✓ —— **在确认之前** ✓（契约 §2.4 的行为表 ✓）
+  // **④ dry_run** ✓ —— **在执行之前** ✓（契约 §2.4 的行为表 ✓）
   if (opts.dryRun === true) {
     return {
       ok: true,

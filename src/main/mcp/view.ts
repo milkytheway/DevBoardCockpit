@@ -23,7 +23,7 @@ export function projectRunStatusForAgent(status: WorkflowRunStatus): Record<stri
     runId: status.runId,
     workflowId: status.workflowId,
     state: status.state,
-    // **当前这一步** ✓（契约 §2.4 ✓：正在跑 **或** 停下等人点头 ✓）
+    // **当前这一步** ✓（契约 §2.4 ✓：**正在跑的那一步** ✓）
     current:
       status.current === null
         ? null

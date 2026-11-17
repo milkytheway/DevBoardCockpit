@@ -185,7 +185,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -196,7 +196,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **命令里是 `1`，不是 `'1'`** ✓ —— 编码器按**数字**处理 ✓（不引号 ✓）
     expect(h.byId('board')?.commands).toEqual(['echo 1 > /sys/class/leds/work/brightness']);
@@ -215,7 +215,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -224,7 +224,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true });
+    await runWorkflow(pack, {}, h.deps);
     expect(h.byId('board')?.commands).toEqual(['toggle true']);
   });
 
@@ -241,7 +241,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -250,7 +250,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     // **动作失败了** ✓（授权层说「要 integer」✓）—— **流程层没有悄悄把它变成 0** ✓
     expect(result.ok).toBe(false);
   });
@@ -263,7 +263,7 @@ describe('流程 · exec 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -272,7 +272,7 @@ describe('流程 · exec 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     expect(h.byId('guest')?.commands).toEqual(['make']);
     // **板子上一个命令都没有**（不串台 ✓）
@@ -285,7 +285,7 @@ describe('流程 · exec 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: { note: { type: 'string', maxLength: 64 } },
@@ -294,7 +294,7 @@ describe('流程 · exec 步', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, { note: 'x; reboot' }, h.deps, { approved: true });
+    await runWorkflow(pack, { note: 'x; reboot' }, h.deps);
     expect(h.byId('guest')?.commands[0]).toBe("echo 'x; reboot'");
   });
 
@@ -304,7 +304,7 @@ describe('流程 · exec 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -316,7 +316,7 @@ describe('流程 · exec 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **命令跑了** ✓（**不再卡在「等人点头」那一步** ✓）
     expect(h.byId('board')?.commands).toContain('reboot');
@@ -331,7 +331,7 @@ describe('流程 · exec 步', () => {
         {
           apiVersion: 'devboard/v1',
           kind: 'Workflow',
-          id: 'w',
+          id: 'w.flow',
           name: 'w',
           version: '1.0.0',
           inputs: { value: { type: 'integer', min: 0, max: 255 } },
@@ -342,7 +342,6 @@ describe('流程 · exec 步', () => {
       ),
       { value: 128 },
       h.deps,
-      { approved: true },
     );
     // **命令是编码过的** ✓（整数不带引号 ✓）
     expect(h.audits[0]?.command).toBe('echo 128 > /tmp/v');
@@ -354,7 +353,7 @@ describe('流程 · exec 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: { project: { type: 'string', maxLength: 50 } },
@@ -363,7 +362,7 @@ describe('流程 · exec 步', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, { project: '01-hello' }, h.deps, { approved: true });
+    await runWorkflow(pack, { project: '01-hello' }, h.deps);
     expect(h.audits[0]?.inputs).toEqual({ project: '01-hello' });
     expect(h.audits[0]?.command).toBe("make '01-hello'");
   });
@@ -374,7 +373,7 @@ describe('流程 · exec 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -386,12 +385,12 @@ describe('流程 · exec 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(h.audits).toHaveLength(2);
     expect(result.stages[0]?.audit_id).toBe('audit-1');
     expect(result.stages[1]?.audit_id).toBe('audit-2');
     // 审计的 actor 是这个流程
-    expect(h.audits[0]?.actor).toBe('workflow:w');
+    expect(h.audits[0]?.actor).toBe('workflow:w.flow');
   });
 });
 
@@ -402,7 +401,7 @@ describe('流程 · 危险等级与输出', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -419,7 +418,7 @@ describe('流程 · 危险等级与输出', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **命令真的跑了** ✓（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）
     expect(h.byId('board')?.commands).toContain('cat >> /root/.ssh/authorized_keys');
@@ -431,7 +430,7 @@ describe('流程 · 危险等级与输出', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -442,7 +441,7 @@ describe('流程 · 危险等级与输出', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **槽里就是那条命令的输出** ✓（下一步要用它 ✓）
     expect(result.outputs['pubkey']).toBe('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test claude-sandbox');
@@ -456,7 +455,7 @@ describe('流程 · 角色事实', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -467,7 +466,7 @@ describe('流程 · 角色事实', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true });
+    await runWorkflow(pack, {}, h.deps);
     expect(h.byId('guest')?.commands[0]).toBe("ssh 'builder'@'10.0.0.2'");
   });
 });
@@ -479,7 +478,7 @@ describe('流程 · 续跑', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -491,7 +490,7 @@ describe('流程 · 续跑', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true, startAt: 1 });
+    await runWorkflow(pack, {}, h.deps, { startAt: 1 });
     // **第一步没跑** ✓
     expect(h.byId('guest')?.commands).toEqual(['echo second']);
   });
@@ -502,7 +501,7 @@ describe('流程 · 续跑', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -515,7 +514,6 @@ describe('流程 · 续跑', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps, {
-      approved: true,
       startAt: 1,
       outputs: { artifacts: 'build/hello.ko' },
     });
@@ -530,7 +528,7 @@ describe('流程 · 续跑', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -539,7 +537,7 @@ describe('流程 · 续跑', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true, runId: 'wf-fixed' });
+    const result = await runWorkflow(pack, {}, h.deps, { runId: 'wf-fixed' });
     expect(result.runId).toBe('wf-fixed');
   });
 });
@@ -551,7 +549,7 @@ describe('流程 · 输入的 default', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: { project: { type: 'string', maxLength: 50, default: '01-hello' } },
@@ -560,7 +558,7 @@ describe('流程 · 输入的 default', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true });
+    await runWorkflow(pack, {}, h.deps);
     // **命令里用的是默认值** ✓
     expect(h.byId('guest')?.commands[0]).toBe("make '01-hello'");
   });
@@ -571,7 +569,7 @@ describe('流程 · 输入的 default', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: { project: { type: 'string', maxLength: 50, pattern: '^[a-z0-9-]+$' } },
@@ -580,7 +578,7 @@ describe('流程 · 输入的 default', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, { project: 'BAD; rm -rf /' }, h.deps, { approved: true });
+    const result = await runWorkflow(pack, { project: 'BAD; rm -rf /' }, h.deps);
     // **不合规的输入 → 不成功** ✓（契约 §7.7：方法不抛异常，返回失败 ✓）
     expect(result.ok).toBe(false);
     expect(result.stages[0]?.reason).toBe('invalid_params');
@@ -603,7 +601,7 @@ describe('流程 · discover 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -622,7 +620,7 @@ describe('流程 · discover 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     expect(result.outputs['artifacts']).toBe('build/hello.ko');
   });
@@ -633,7 +631,7 @@ describe('流程 · discover 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -642,7 +640,7 @@ describe('流程 · discover 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
     expect(result.stages[0]?.reason).toBe('not_found');
   });
@@ -660,7 +658,7 @@ describe('流程 · file.transfer 步（直传）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -680,7 +678,7 @@ describe('流程 · file.transfer 步（直传）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **命令在客机上跑**（源目标 ✓）
     expect(h.byId('guest')?.commands.some((c) => c.startsWith('scp '))).toBe(true);
@@ -699,7 +697,7 @@ describe('流程 · file.transfer 步（直传）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -719,7 +717,7 @@ describe('流程 · file.transfer 步（直传）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     // **验证命令跑在板子上**（不在客机上 ✓）
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(true);
@@ -731,7 +729,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
   const TRANSFER_PACK = {
     apiVersion: 'devboard/v1',
     kind: 'Workflow',
-    id: 'w',
+    id: 'w.flow',
     name: 'w',
     version: '1.0.0',
     inputs: {},
@@ -758,7 +756,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
       },
     });
     const pack = parseWorkflow(TRANSFER_PACK, 'w.yaml');
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
 
     // **板子上那条 `rm -f` 跑了** ✓
@@ -793,7 +791,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
 
     // **一条 `rm -f` 都不许有** ✓（文件可能是好的 ✓ —— 删掉它比留半截更坏 ✓）
@@ -824,7 +822,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true });
+    await runWorkflow(pack, {}, h.deps);
     const rm = h.byId('board')?.commands.filter((c) => c.includes('rm -f')) ?? [];
     expect(rm).toHaveLength(1);
     // **路径被包在引号里** ✓（`; reboot` 不是第二条命令 ✓）
@@ -848,7 +846,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
       },
     });
     const pack = parseWorkflow(TRANSFER_PACK, 'w.yaml');
-    await runWorkflow(pack, {}, h.deps, { approved: true });
+    await runWorkflow(pack, {}, h.deps);
     // **一条 `rm -f` 都不许有** ✓（那是用户自己的文件 ✓）
     expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
   });
@@ -862,7 +860,7 @@ describe('流程 · inputs.default（契约 §二）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         // **调用方不给 count** ✓ → 用默认值 ✓
@@ -881,7 +879,7 @@ describe('流程 · inputs.default（契约 §二）', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     // **回读对上了** ✓（默认值真的进了值模式 ✓）
     expect(result.ok).toBe(true);
     expect(result.stages[0]?.verified).toBe(true);
@@ -896,7 +894,7 @@ describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -914,7 +912,7 @@ describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓
       'w.yaml',
     );
     // **不该整个抛出去** ✓（抛出去 → 时间线上一行都没有 ✗ → 用户看不出是哪一步 ✗）
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
     // **时间线上有那一行** ✓
     expect(result.stages).toHaveLength(1);
@@ -936,7 +934,7 @@ describe('流程 · 取消（人叫停）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -949,7 +947,6 @@ describe('流程 · 取消（人叫停）', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps, {
-      approved: true,
       signal: controller.signal,
     });
     // **第一步跑了** ✓
@@ -975,7 +972,7 @@ describe('流程 · 取消（人叫停）', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -995,7 +992,7 @@ describe('流程 · 取消（人叫停）', () => {
       },
       'w.yaml',
     );
-    await runWorkflow(pack, {}, h.deps, { approved: true, signal: controller.signal });
+    await runWorkflow(pack, {}, h.deps, { signal: controller.signal });
     // **板子上那条 `test -f` 不该跑** ✓（东西都没传完，验它没有意义 ✗）
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(false);
   });
@@ -1008,7 +1005,7 @@ describe('流程 · assert 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -1023,7 +1020,7 @@ describe('流程 · assert 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
     expect(result.stages[0]?.reason).toBe('not_found');
   });
@@ -1034,7 +1031,7 @@ describe('流程 · assert 步', () => {
       {
         apiVersion: 'devboard/v1',
         kind: 'Workflow',
-        id: 'w',
+        id: 'w.flow',
         name: 'w',
         version: '1.0.0',
         inputs: {},
@@ -1051,7 +1048,7 @@ describe('流程 · assert 步', () => {
       },
       'w.yaml',
     );
-    const result = await runWorkflow(pack, {}, h.deps, { approved: true });
+    const result = await runWorkflow(pack, {}, h.deps);
     expect(result.stages).toHaveLength(2);
     expect(h.byId('guest')?.commands).toEqual(['echo after']);
     // **整体仍然不算成功**（那一步确实没成 ✓）

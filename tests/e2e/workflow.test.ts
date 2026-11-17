@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchApp, cardFrameFor, placeCard, writeCard } from './harness';
-import { digestOf } from '../../src/main/workflows/registry';
 
 /**
  * **卡片触发流程**（计划 7 · 契约 `spec/03` §7.7 的三行 ✓）。
@@ -94,21 +93,13 @@ const out = document.getElementById('result');
   };
 }
 
-/** 把流程包 · 批准账 · 授权账写进 userData（**必须在应用启动前** ✓） */
+/** 把流程包写进 userData（**必须在应用启动前** ✓） */
 function prepare(userDataDir: string, cardId: string, flowId: string): void {
   const workflowsDir = join(userDataDir, 'workflows');
   mkdirSync(workflowsDir, { recursive: true });
   writeFileSync(join(workflowsDir, `${flowId}.yaml`), FLOW_YAML, 'utf8');
-  // **批准账**（放一个文件进目录 ≠ 批准它 ✓ —— 摘要对得上才算 ✓）
-  writeFileSync(
-    join(userDataDir, 'workflows-approved.json'),
-    JSON.stringify({
-      workflows: { [flowId]: { digest: digestOf(FLOW_YAML), at: Date.now() } },
-    }),
-    'utf8',
-  );
-  // **不用再写卡级授权了** ✓（2026-11-16 起没有那一层 ✓ —— ADR-D46 ✓）
-  // → **流程包批准就是唯一那道闸** ✓（**它能跑任意命令** ✓ —— 板型包管不到 ✓）
+  // **不用再写批准账** ✓（2026-11-16 起没有那一层 ✓ —— ADR-D48 ✓）
+  // → **闸在设置里的统一权限区** ✓（**卡片触发流程默认允许** ✓ · ADR-D47 ✓）
 }
 
 test.describe('卡片触发流程', () => {

@@ -102,8 +102,7 @@ export async function launchApp(
      * **应用启动之前**往 userData 里写东西 ✓。
      *
      * → 为什么需要它 ✓：**流程注册表在应用启动时扫一次目录** ✓
-     *   → 流程包与批准账**必须在启动前就位** ✓（晚一步就找不到 ✓）。
-     * → 授权账（`grants.json` ✓）同理 ✓。
+     *   → 流程包**必须在启动前就位** ✓（晚一步就找不到 ✓）。
      */
     prepare?: (userDataDir: string) => void;
   } = {},
@@ -133,7 +132,7 @@ export async function launchApp(
   const root = opts.userDataDir ?? mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
   const userDataDir = join(root, APP_NAME);
   mkdirSync(userDataDir, { recursive: true });
-  // **启动前把该写的写了** ✓（流程包 · 批准账 · 授权账 ✓）
+  // **启动前把该写的写了** ✓（流程包 ✓）
   opts.prepare?.(userDataDir);
   const env: NodeJS.ProcessEnv = { ...process.env, ...(opts.env ?? {}) };
   if (process.platform === 'win32') {

@@ -292,8 +292,8 @@ function grantedFor(cardId: string): { actions: Record<string, Record<string, { 
  *
  * → **注册表**扫两个目录：随应用分发的（`profiles/workflows/` ✓）+ 用户自己的 ✓
  *   （用户目录优先 ✓ —— 与卡片目录同规矩 ✓）。
- * → **批准账**在用户数据目录 ✓（`workflows-approved.json` ✓）——
- *   「放一个文件进目录 ≠ 批准它」✓（契约 `05` §7.3 的 T1 ✓）。
+ * → **闸不在这里** ✓ —— **流程包的存在本身就是说明** ✓（ADR-D48 ✓）
+ *   → **能不能跑看设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）。
  */
 const workflowRegistry = new WorkflowRegistry({
   dirs: [builtinWorkflowsDir(app.getAppPath()), userWorkflowsDir()],
@@ -485,12 +485,12 @@ const cards = createCardWiring({
     run: (id: string, inputs: Record<string, unknown>) => {
       try {
         // **权限区**（ADR-D47 ✓）：**设置里那一个开关** ✓
-        // → **卡片触发流程默认允许** ✓（**流程包的批准账才是那道闸** ✓）
+        // → **卡片触发流程默认允许** ✓（**闸就是这行开关** ✓）
         if (!permissions.allows('card', `workflow:${id}`)) {
           return { ok: false, reason: 'denied' };
         }
-        // **流程包的批准**（契约 §3.3 ✓）：会话层查了「卡级」✓，
-        // 这里 `start` 还会查「**包已批准**」✓（`requireApproved` ✓）。
+        // → **这里就是全部的闸了** ✓（会话层查的是「卡级声明」✓；
+        // **没有第二本批准账** ✓ —— 流程包存在即说明 ✓ · ADR-D48 ✓）。
         const { runId } = workflowService.start(id, inputs);
         return { ok: true, runId };
       } catch (err) {

@@ -1,18 +1,16 @@
 /**
- * 流程包的**账** —— 看有哪些、批过没有、点头。
+ * 流程包的**账** —— 看有哪些。
  *
- * ── 为什么要有这一对命令 ──
+ * ── 为什么只有这一条命令 ──
  *
- * 「**放一个文件进目录 ≠ 批准它**」（`workflows/registry.ts` ✓）——
- * 那么「批准」这个动作**总得有人来做** ✓，而且**看得见** ✓：
+ * 「**放一个文件进目录 ≠ 它就能跑**」（`workflows/registry.ts` ✓）——
+ * 那道闸**不在命令行** ✓，**在设置里的统一权限区** ✓（ADR-D47 ✓ · ADR-D48 ✓）：
  *
  * | 命令 | 干什么 |
  * |---|---|
- * | `npm run workflow:list` | 列注册表里的包 + **批过没有** ✓ |
- * | `npm run workflow:approve -- <id>` | **点头**（记进批准账 ✓，绑内容摘要 ✓） |
- * | `npm run workflow:revoke -- <id>` | 收回批准 ✓ |
+ * | `npm run workflow:list` | 列注册表里的包 ✓（**id / 名字 / 版本** ✓） |
  *
- * → 这一对命令是**人**用的 ✓（卡片与 agent 走 `WorkflowService` ✓，只认 id ✓）。
+ * → **「批过没有」那一列没了** ✓（2026-11-16 ✓ · ADR-D48 ✓）。
  */
 import { WorkflowRegistry } from '../src/main/workflows/registry';
 import { builtinWorkflowsDir, userWorkflowsDir } from '../src/main/util/paths';
@@ -38,7 +36,7 @@ switch (command) {
     const list = registry().list();
     if (list.length === 0) {
       console.log('还没有流程包。');
-      console.log(`  放到 ${userWorkflowsDir()} 里（放进去 ≠ 批准 ✓）。`);
+      console.log(`  放到 ${userWorkflowsDir()} 里（放进去 ≠ 能跑 ✓ —— 闸在设置里的权限区 ✓）。`);
       break;
     }
     console.log('流程包：');

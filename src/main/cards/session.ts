@@ -263,10 +263,10 @@ export class CardSessionManager {
  * ── 例外：**动作的结果对象** ──
  *
  * 契约 `spec/04` §2.4 的动作结果**自己就有 `ok` 与 `reason`**：
- * `{ ok:false, reason:'needs_confirmation', needsConfirmation:{confirmId} }`。
+ * `{ ok:false, reason:'denied', detail:'…' }` ✓（**契约 §2.4.1 的封闭理由码** ✓）。
  *
- * 把它塌成信封失败 → **`confirm_id` 没了** → 卡片永远完成不了确认
- * → 确认通道形同虚设。
+ * 把它塌成信封失败 → **动作自己的原因码就没了** ✓ →
+ * 卡片只看见一个笼统的「方法失败」✗ → **分不清是「没权限」还是「参数不对」** ✗。
  *
  * → **带 `verified` 的值是「结果」，不是「方法级失败」**：
  * 契约的结果形状里 `verified` 是**必有**的字段（成功与失败都有）✓，

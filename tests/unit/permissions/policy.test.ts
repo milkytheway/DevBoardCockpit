@@ -38,7 +38,7 @@ describe('统一权限区', () => {
     expect(store.allows('card', 'action:system.reboot')).toBe(false);
   });
 
-  it('**卡片触发流程：默认允许** ✓（**流程包的批准账才是那道闸** ✓）', () => {
+  it('**卡片触发流程：默认允许** ✓（**闸就是这行开关** ✓）', () => {
     const store = new PermissionStore(tmpFile());
     expect(store.allows('card', 'workflow:hello-kernel.build-run')).toBe(true);
   });

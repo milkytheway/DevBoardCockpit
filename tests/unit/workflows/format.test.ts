@@ -81,6 +81,15 @@ describe('流程包 · 解析', () => {
     expectInvalid({ ...MINIMAL, name: 42 }, /name/);
   });
 
+  it('**id 必须是「名字.名字」** ✓（契约 `05` §九 规则 4 ✓ —— **两段 ✓ · 小写字母数字 ✓ · 段内可带连字符** ✓）', () => {
+    expectInvalid({ ...MINIMAL, id: 'nodot' }, /id/);
+    expectInvalid({ ...MINIMAL, id: 'demo.' }, /id/);
+    expectInvalid({ ...MINIMAL, id: '.run' }, /id/);
+    expectInvalid({ ...MINIMAL, id: 'a.b.c' }, /id/);
+    expectInvalid({ ...MINIMAL, id: 'Demo.Run' }, /id/);
+    expectInvalid({ ...MINIMAL, id: 'demo_run' }, /id/);
+  });
+
   it('**steps 不能是空的**（没有步骤的流程包没有意义）', () => {
     expectInvalid({ ...MINIMAL, steps: [] }, /steps/);
   });

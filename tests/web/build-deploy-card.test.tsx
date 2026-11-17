@@ -54,9 +54,9 @@ async function flush(times = 6): Promise<void> {
 }
 
 const FLOWS = [
-  { id: 'hello-kernel.compile', name: '编译', version: '1.0.0', approved: true, inputs: {} },
-  { id: 'hello-kernel.upload', name: '上传', version: '1.0.0', approved: true, inputs: {} },
-  { id: 'hello-kernel.load', name: '运行', version: '1.0.0', approved: true, inputs: {} },
+  { id: 'hello-kernel.compile', name: '编译', version: '1.0.0', inputs: {} },
+  { id: 'hello-kernel.upload', name: '上传', version: '1.0.0', inputs: {} },
+  { id: 'hello-kernel.load', name: '运行', version: '1.0.0', inputs: {} },
 ];
 
 beforeEach(() => {
