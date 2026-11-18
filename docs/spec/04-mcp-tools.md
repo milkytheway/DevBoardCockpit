@@ -191,13 +191,15 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 | `thermal_zone` | `glob`, `type_map` | — |
 | `file_read` | `path`, `glob`, `format`, `strip_trailing_null` | — |
 | `exec_regex` | `pattern`, `format` | **`command`** |
-| `script` | **（空）** | **`path`, `interpreter`, `format`** |
+| ⛔ `script` | **（空）** | ~~`path`, `interpreter`, `format`~~ **（已封存** ✓ · 规则 31 ✓）** |
 
 > **为什么不能按参数名单独筛**：`path` 在 `file_read` 是**板上路径**（可给），
 > 在 `script` 是**宿主文件系统上的路径**（不可给——泄漏本机目录结构，
 > 且 `interpreter + path` 拼起来就是一条命令）。
 > **不在表里的参数一律不给**（封闭表，不是「先给再筛」）。
-> `script` 的 `args_summary` **恒为空对象**——agent 只知道「这个量来自一个脚本」。
+>
+> ⚠️ **`script` 已封存** ✓（`02` 规则 31 ✓ · §三.3 ✓）→ **上表那一行永远不会命中** ✓
+> —— **留着是因为封闭表要完整** ✓，**不是它还能用** ✓。
 
 **`history`** = 最近的样本，形状与 `sample_tag` 完全一致：`[{ value, unit, status, at }]`。
 `at` 是**本次采样完成的时刻**（毫秒 UTC）。

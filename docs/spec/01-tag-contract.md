@@ -232,7 +232,7 @@ temp.soc
 |---|---|---|
 | `not_found` | **你问的那个东西不存在**（当前板型包不提供这个 tag、动作 id 不存在……） | 静态可判，装卡时就能算出。**与 `04` §2.4 动作侧的 `not_found` 同名同义**——不给 AI 两套要互相翻译的方言（ADR-D27） |
 | `device_absent` | 资源此刻不在：路径不存在、设备被拔、挂载丢失 | reader 段缺失、文件不可读 |
-| `service_down` | 依赖的服务 / 进程没在跑 | `exec_regex` 的命令失败、`script` 推送失败 |
+| `service_down` | 依赖的服务 / 进程没在跑 | `exec_regex` 的命令失败 |
 | `link_busy_terminal` | 链路被终端占用，采样暂停 | ADR-D23 |
 | `parse_error` | 读到了但解析不出来 | 格式不匹配 |
 | `out_of_domain` | 读到了但值越界 | 取值域校验失败 |
