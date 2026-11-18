@@ -221,6 +221,52 @@ describe('采样器', () => {
     expect(after.value).toBe(good);
   });
 
+  it('**通配 tag 的实例在刷新失败时 → 标 stale** ✓（C27 ✓ —— 契约 §2.3：「刷新停了 → stale」✓）', async () => {
+    // ── 这一条在防什么 ──
+    //
+    // 一个 `cpu` reader 整个挂了 → **通配实例**（`cpu.core.0.usage` ✓）
+    // 之前**不会被标 stale** ✓ → 读数还是 `ok` + 旧值 ✓
+    // → **依赖它的卡片不会被判 degraded** ✓ → **陈旧数据被当成新的** ✓
+    //
+    // → 修法：**标「已经读到过的那些实例」** ✓（**不猜** ✓ —— 用读过的 ✓）
+    const store = new TagStore();
+    const conn = new FakeConnection();
+    conn.bodies['/proc/stat'] = [
+      `${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`,
+      `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`,
+    ];
+    const sampler = new TagSampler(PACK, conn, store);
+
+    await sampler.sampleGroup('fast');
+    await sampler.sampleGroup('fast');
+    // **通配实例已经存在** ✓（它是具体的 tag ✓）
+    expect(store.get('cpu.core.0.usage')!.status).toBe('ok');
+    const good = store.get('cpu.core.0.usage')!.value;
+
+    // 接下来这次往返断了
+    conn.failWith = new Error('传输断了');
+    await sampler.sampleGroup('fast');
+
+    const after = store.get('cpu.core.0.usage')!;
+    expect(after.status).toBe('stale');
+    // **旧值保留** ✓（契约 §2.1 ✓ —— 一次抖动不该让仪表整片消失 ✓）
+    expect(after.value).toBe(good);
+  });
+
+  it('**首读就失败 → 通配实例一个都没有** ✓（**不猜** ✓ —— 不编一个出来 ✓）', async () => {
+    const store = new TagStore();
+    const conn = new FakeConnection();
+    conn.failWith = new Error('传输断了');
+    const sampler = new TagSampler(PACK, conn, store);
+
+    await sampler.sampleGroup('fast');
+
+    // **没有编造任何具体实例** ✓
+    expect(store.get('cpu.core.0.usage')).toBeUndefined();
+    // **不带通配符的那个照常报** ✓
+    expect(store.get('cpu.usage')!.status).toBe('error');
+  });
+
   it('**超时**归一到 reason=timeout（事实 G1：统一 124）', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();

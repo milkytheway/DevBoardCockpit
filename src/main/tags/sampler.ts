@@ -1,7 +1,7 @@
 import type { BoardPack, ReaderDef } from './schema';
 import { getKind, type ReaderContext } from './kinds';
 import { buildGroupCommand, splitSections } from './fetch';
-import { bindSampleToTag, unitForTag } from './vocabulary';
+import { bindSampleToTag, matchTagPattern, unitForTag } from './vocabulary';
 import { makeError, AppError } from '../../shared/errors';
 import type { TagStore } from './store';
 import type { ExecResult } from '../hal/connection';
@@ -201,7 +201,20 @@ export class TagSampler {
     }
   }
 
-  /** 这个 reader 不可用/出错：它那些**不带通配符**的 tag 全部报同一个状态 */
+  /**
+   * 这个 reader 不可用/出错：它那些 tag 全部报同一个状态。
+   *
+   * ── 通配 tag 怎么办（**C27 的那条洞** ✓）──
+   *
+   * → **首读**时通配 tag 的具体名字**还不知道** ✓ → **跳过** ✓（**不猜** ✓）
+   * → 但**读过之后**具体名字**已经知道了** ✓ → **这时跳过就是漏洞** ✓
+   *   （一个 `cpu` reader 整个挂了 → `cpu.core.3.usage` 还是 `ok` + 旧值 ✓
+   *    → **依赖它的卡片不会被判 degraded** ✓ → **陈旧数据被当成新的** ✓）
+   *
+   * → **修法**：标**已经读到过的那些实例** ✓（**用已知的** ✓ —— **不是编一个出来** ✓ ✓）
+   * → 契约 §2.3 本来就说「**刷新停了 → stale**」✓ → **这是实现层的洞** ✓，
+   *   **不需要新的契约概念** ✓（族级状态？不需要 ✓ —— 族里的每个成员各标各的 ✓ 就够了 ✓）
+   */
   private reportStatus(
     reader: ReaderDef,
     status: 'unavailable' | 'error',
@@ -209,8 +222,21 @@ export class TagSampler {
     detail: string,
   ): void {
     for (const p of reader.provides) {
-      // 带通配符的 tag 现在还不知道具体名字——**不猜**（契约 §十：「不猜」）
-      if (p.tag.includes('*')) continue;
+      if (p.tag.includes('*')) {
+        // **标已知的那些实例** ✓（**不猜** ✓ —— 用读过的 ✓）
+        for (const tag of this.knownInstancesOf(p.tag)) {
+          this.store.put({
+            tag,
+            value: null,
+            unit: unitForTag(tag),
+            status,
+            reason,
+            detail,
+            at: this.now(),
+          });
+        }
+        continue;
+      }
       this.store.put({
         tag: p.tag,
         value: null,
@@ -224,6 +250,19 @@ export class TagSampler {
   }
 
   /**
+   * 这个通配模式**已经读到过的那些具体 tag** ✓。
+   *
+   * → **不猜** ✓（契约 §十 ✓）—— 只用**读到过的** ✓，**不编一个出来** ✓
+   * → 一个都没有 → **空数组** ✓（那就是「还没读出来过」✓ → 首读那一档 ✓）
+   */
+  private knownInstancesOf(tagPattern: string): string[] {
+    return this.store
+      .all()
+      .filter((reading) => matchTagPattern(tagPattern, reading.tag))
+      .map((reading) => reading.tag);
+  }
+
+  /**
    * 一次**往返失败**（超时、传输断了）：该组的 tag 报 stale 或 error。
    *
    * 契约 §2.1：「ok → stale = 本次刷新失败，但**保留上一次的值**」——
@@ -231,7 +270,23 @@ export class TagSampler {
    */
   private reportRoundTripFailure(reader: ReaderDef, reason: ReasonCode, detail: string): void {
     for (const p of reader.provides) {
-      if (p.tag.includes('*')) continue;
+      if (p.tag.includes('*')) {
+        // **通配 tag：标已知的那些实例** ✓（**C27** ✓ —— 契约 §2.3：「刷新停了 → stale」✓）
+        // → **不猜** ✓（用读到过的 ✓）→ **陈旧数据不再被当成新的** ✓
+        for (const tag of this.knownInstancesOf(p.tag)) {
+          const status = this.store.failureStatusFor(tag);
+          this.store.put({
+            tag,
+            value: null,
+            unit: unitForTag(tag),
+            status,
+            reason,
+            detail,
+            at: this.now(),
+          });
+        }
+        continue;
+      }
       const status = this.store.failureStatusFor(p.tag);
       this.store.put({
         tag: p.tag,
