@@ -116,7 +116,30 @@ function main(): void {
         .filter((d) => d.endsWith('-unpacked'))
         .map((d) => join(releaseDir, d))
     : [];
-  const unpackedDir = unpackedDirs[0] ?? join(releaseDir, 'win-unpacked');
+
+  // **验哪个** —— **必须验「本次构建的那个」** ✓（2026-11-19 修 ✓）
+  //
+  // → 原来取的是 `unpackedDirs[0]` ✗ —— 那是 **`readdirSync` 的顺序** ✗
+  //   （字母序 ✓ → **`linux-unpacked` 排在 `win-unpacked` 前面** ✓）
+  // → 于是**在 Windows 上打包时，它验的是上一次在 Linux 沙箱里留下的旧包** ✗
+  //   → 旧包 6 张卡 ✓ / 今天的 10 张 ✓ → 报「**少 4 张**」✗
+  //   → 而**这次的 Windows 包里 10 张全在** ✓ → **自检把对的判成错的** ✗
+  //   → **用户会被引到错的方向** ✗（去查 `files` 配置 ✓ —— 而它没问题 ✓）
+  //
+  // → **优先当前平台的** ✓ → 没有就取**最新修改的**那个 ✓（那才是最近构建的 ✓）
+  const platformTag =
+    process.platform === 'win32'
+      ? 'win-'
+      : process.platform === 'darwin'
+        ? 'mac-'
+        : 'linux-';
+  const samePlatform = unpackedDirs.filter((d) => d.includes(platformTag));
+  const unpackedDir =
+    samePlatform[0] ??
+    unpackedDirs
+      .slice()
+      .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ??
+    join(releaseDir, 'win-unpacked');
   const asarPath = join(unpackedDir, 'resources', 'app.asar');
   const hasUnpacked = existsSync(unpackedDir);
   const hasAsar = existsSync(asarPath);

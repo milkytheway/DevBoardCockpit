@@ -99,6 +99,6 @@
       "createDesktopShortcut": true,
       "shortcutName": "DevBoardCockpit"
     },
-    "npmRebuild": true
+    "npmRebuild": false
   }
 }
