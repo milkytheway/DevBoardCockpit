@@ -3985,3 +3985,63 @@ html[data-theme='light'] .cockpit-card {
 .perm-master__row:hover {
   background: transparent;
 }
+
+/* ── 运行中的流程（宿主唯一的「停」入口 ✓ · 契约 05 §八·A A4 ✓）────────────
+ *
+ * → **只在有东西在跑时出现** ✓（没有常驻的行 ✓ —— 顶条不能变挤 ✓）
+ * → 颜色**只走语义层** ✓（`--cockpit-*` ✓ · **零颜色字面量** ✓ · ADR-D41 ✓）
+ * → **不用 accent** ✓（accent 是「选中」✓ —— 「在跑」是**状态** ✓ → 用 warn ✓）
+ */
+.runs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  /* **拖拽区里的按钮不能当拖拽把手** ✓ */
+  -webkit-app-region: no-drag;
+}
+
+.runs__chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px 3px 9px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-warn) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cockpit-warn) 12%, transparent);
+  font-size: 11px;
+  color: var(--cockpit-text-dim);
+  white-space: nowrap;
+}
+
+.runs__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cockpit-warn);
+}
+
+.runs__name {
+  font-family: var(--cockpit-font-mono);
+  color: var(--cockpit-text);
+}
+
+.runs__step {
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  color: var(--cockpit-text-faint);
+}
+
+.runs__stop {
+  border: 1px solid color-mix(in oklab, var(--cockpit-danger) 42%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cockpit-danger);
+  font-size: 10px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.runs__stop:hover {
+  background: color-mix(in oklab, var(--cockpit-danger) 16%, transparent);
+}

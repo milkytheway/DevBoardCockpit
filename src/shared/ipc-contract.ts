@@ -84,9 +84,47 @@ export const IPC = {
    * → **列所有操作 + 谁能用** ✓
    */
   permissionsList: 'permissions:list',
+
   /** **改一条**（`actor` × `op` × `allowed` ✓） */
   permissionsSet: 'permissions:set',
+
+  /**
+   * **最近的流程运行**（**含还在跑的** ✓ —— 外壳据此显示「运行中」✓）。
+   *
+   * → **宿主侧专有** ✓（契约 `05` §八·A **A4** ✓：「**只有宿主能取消**」✓）
+   * → 卡片与 agent **都拿不到这一份** ✓（卡片看到的是**缩减投影** ✓）
+   */
+  workflowsRecent: 'workflows:recent',
+  /**
+   * **取消**一次流程运行。
+   *
+   * → **只有宿主能取消** ✓（**卡片与 agent 都没有这个接口** ✓ —— 契约 A4 ✓：
+   *   「行不行」不给 agent ✓，「停不停」也不给 ✓ —— 否则 agent 就有了
+   *   「**自己决定不干**」的通道 ✓ → 「人点头」那条链多了一个旁路 ✗）
+   * → **幂等** ✓（取消一个**已经结束**的运行**状态一个字都不改** ✓ —— 契约 A5 ✓）
+   * → **不承诺进程一定死** ✓（契约 A1 ✓ —— 那取决于传输与远端 ✓）
+   */
+  workflowsCancel: 'workflows:cancel',
 } as const;
+
+/**
+ * 宿主看到的一次流程运行（**宿主是可信的** ✓ —— 它看得到完整的那一份 ✓）。
+ *
+ * → **这个形状必须声明在契约层** ✓ —— preload **不许 import main 的模块** ✓
+ *   （分层 ✓ · AGENTS.md §5 ✓）→ 所以它不能是 `main/workflows/service.ts` 里的类型 ✓
+ */
+export interface HostWorkflowRun {
+  runId: string;
+  workflowId: string;
+  /** 四档（`running` / `done` / `failed` / `cancelled` ✓ —— 契约 A2 ✓） */
+  state: 'running' | 'done' | 'failed' | 'cancelled';
+  /** 当前这一步（**没有在飞就是 null** ✓ —— 契约 B1 ✓） */
+  current: { stepId: string; kind: string; at: number } | null;
+  /** 开始的时刻（毫秒 UTC ✓） */
+  startedAt: number;
+  /** 产出的槽 */
+  outputs: Record<string, string>;
+}
 
 /** 谁能执行一个操作（**卡片** / **agent** ✓） */
 export type PermissionActor = 'card' | 'agent';
@@ -268,6 +306,19 @@ export interface CockpitApi {
   permissionsList(): Promise<PermissionRow[]>;
   /** 改一条（**幂等** ✓） */
   permissionsSet(actor: PermissionActor, op: string, allowed: boolean): Promise<void>;
+  /**
+   * **最近的流程运行**（**含还在跑的** ✓）。
+   *
+   * → **宿主侧专有** ✓（契约 `05` §八·A **A4** ✓）→ 卡片与 agent 拿不到 ✓。
+   */
+  workflowsRecent(): Promise<HostWorkflowRun[]>;
+  /**
+   * **取消**一次流程运行（契约 `05` §八·A ✓）。
+   *
+   * → **幂等** ✓（取消一个已结束的运行**状态一个字都不改** ✓ —— A5 ✓）。
+   * → **不承诺进程一定死** ✓（A1 ✓）—— 传输说了算 ✓。
+   */
+  workflowsCancel(runId: string): Promise<{ runId: string }>;
   /** 把外壳主题告诉 main：卡片重新加载时会拿到对应的 token */
   setTheme(theme: 'dark' | 'light'): Promise<void>;
   /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */

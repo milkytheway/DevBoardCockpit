@@ -12,6 +12,7 @@ import { TerminalPage } from './pages/TerminalPage';
 import { WorkbenchPage } from './pages/WorkbenchPage';
 import { ChevronIcon } from './Icons';
 import { Rail } from './Rail';
+import { WorkflowRuns } from './WorkflowRuns';
 import { Secondary } from './Secondary';
 import {
   useActivity,
@@ -381,6 +382,10 @@ export function Shell(): JSX.Element {
           onSelect={selectDevice}
           busy={selecting}
         />
+        {/* **运行中的流程 + 唯一的「停」** ✓ —— 契约 `05` §八·A **A4** ✓：
+            **只有宿主能取消** ✓ → **卡片里没有这个按钮** ✓ → 它只能在这儿 ✓。
+            顶条**一直在** ✓ —— 编译要几分钟 ✓，中途切到别的页面也得找得着「停」✓。*/}
+        <WorkflowRuns />
       </div>
 
       <div className="app-body">

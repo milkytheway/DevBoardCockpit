@@ -229,7 +229,13 @@ function failure(reason: McpReason, detail?: string): McpFailure {
 }
 
 /** 四个流程工具的声明（**契约 `spec/04` §2.4** ✓） */
-const TOOL_DEFS: McpToolDef[] = [
+/**
+ * 工具的声明（**契约 `spec/04` §2.4** ✓）。
+ *
+ * → **导出来** ✓ —— 为了让「**这里没有 cancel**」这条**契约边界**能被**测到** ✓
+ *   （契约 A4 ✓：**agent 不给「停不停」** ✓ —— 那条边界**值得守着** ✓）。
+ */
+export const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'list_workflows',
     title: '列出可跑的流程',
@@ -330,7 +336,7 @@ const TOOL_DEFS: McpToolDef[] = [
  * → **单独一份** ✓ —— 不与流程工具混在一张表里 ✓（那一张是「流程那一组」✓）。
  * → **接了宿主依赖才有** ✓（`host` 没传就不列 ✓ —— **不列一个调不通的工具** ✓）。
  */
-const READ_TOOL_DEFS: McpToolDef[] = [
+export const READ_TOOL_DEFS: McpToolDef[] = [
   {
     name: 'list_connections',
     title: '列出连着的配置',

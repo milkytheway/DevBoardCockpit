@@ -10,6 +10,7 @@ import {
   type PermissionActor,
 } from '../shared/ipc-contract';
 import type { LayoutState } from '../shared/layout';
+import type { HostWorkflowRun } from '../shared/ipc-contract';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
@@ -47,7 +48,7 @@ import { generateToken } from './mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from './mcp/discovery';
 import { projectRunStatus, workflowReasonOf } from './cards/workflow-view';
 import { WorkflowRegistry } from './workflows/registry';
-import { WorkflowService } from './workflows/service';
+import { WorkflowService, type WorkflowRunStatus } from './workflows/service';
 import { TargetRegistry } from './workflows/targets';
 import { cspViolationMessage } from './cards/csp-violation';
 import { SHELL_CSP } from './shell-csp';
@@ -333,6 +334,27 @@ const workflowService = new WorkflowService({
  * → **已批准的流程** ✓（**只有批过的才列** ✓ —— 没批过的流程**卡片看不见** ✓）
  * → **宿主那三个操作** ✓（装卡 / 卸卡 / 提为全屏 ✓）
  */
+/**
+ * 宿主侧的一次流程运行 → **共享契约里的形状** ✓。
+ *
+ * → preload **不许 import main 的模块** ✓（分层 ✓ · AGENTS.md §5 ✓）→
+ *   所以这个形状**必须**声明在 `shared/` ✓ → 这里只做**裁剪** ✓
+ *   （去掉 main 内部的字段 ✓）—— **不是脱敏** ✓（宿主是可信的 ✓）。
+ */
+function toHostRun(status: WorkflowRunStatus): HostWorkflowRun {
+  return {
+    runId: status.runId,
+    workflowId: status.workflowId,
+    state: status.state,
+    current:
+      status.current === null
+        ? null
+        : { stepId: status.current.stepId, kind: status.current.kind, at: status.current.at },
+    startedAt: status.startedAt,
+    outputs: status.outputs,
+  };
+}
+
 function permissionOperations(): PermissionOperation[] {
   const operations: PermissionOperation[] = [];
   for (const action of runtime.actionSummaries) {
@@ -581,6 +603,16 @@ handle(IPC.layoutSet, (state) => {
  * → **列所有操作 + 谁能用** ✓
  * → **改一条** ✓（**幂等** ✓）
  */
+/**
+ * **宿主侧的流程运行**（契约 `05` §八·A ✓）。
+ *
+ * → **只有宿主能取消** ✓（A4 ✓）→ 所以这一对通道**只在宿主这一侧** ✓
+ *   （**卡片 API 里没有 `workflows.cancel`** ✓ · **MCP 里也没有** ✓）
+ * → 卡片看到的是**缩减投影** ✓（`cards/workflow-view.ts` ✓）
+ */
+handle(IPC.workflowsRecent, () => workflowService.recent().map(toHostRun));
+handle(IPC.workflowsCancel, (runId) => workflowService.cancel(String(runId)));
+
 handle(IPC.permissionsList, () => {
   const operations = permissionOperations();
   permissions.setKnown(operations);
