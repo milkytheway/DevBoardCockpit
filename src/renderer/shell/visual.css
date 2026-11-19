@@ -4045,3 +4045,475 @@ html[data-theme='light'] .cockpit-card {
 .runs__stop:hover {
   background: color-mix(in oklab, var(--cockpit-danger) 16%, transparent);
 }
+
+/* ═══════════════════════════════════════════════ wizard (v0.12) ═══
+ *
+ * One page, one job: name the board, pick the wire, press once.
+ * The host runs the whole chain and reports only the end; the rail below
+ * therefore describes stages, never a percentage.
+ */
+
+.page--wizard {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.app-shell.is-wizard .secondary,
+.app-shell.is-wizard .secondary-reopen {
+  display: none;
+}
+
+.wizard-wrap {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wizard-card {
+  container-type: inline-size;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: var(--ui-radius-panel);
+  background:
+    linear-gradient(180deg, var(--ui-highlight), transparent 7%),
+    color-mix(in oklab, var(--cockpit-surface) 72%, transparent);
+  box-shadow: var(--ui-shadow-card);
+}
+
+/* ── the five-segment rail: state, not progress ── */
+
+.wizard-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--ui-hairline-soft);
+}
+
+.wizard-track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.wizard-track__seg {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ui-hairline);
+}
+
+.wizard-track__seg.is-done {
+  background: color-mix(in oklab, var(--cockpit-text) 38%, transparent);
+}
+
+.wizard-track__seg.is-current {
+  background: var(--cockpit-accent);
+}
+
+.wizard-track__seg.is-failed {
+  background: var(--cockpit-danger);
+}
+
+.wizard-stage {
+  margin: 0;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  color: var(--ui-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard-stage.is-failed {
+  color: var(--cockpit-danger);
+}
+
+/* ── form: three fields, nothing advanced ── */
+
+.wizard-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 15px;
+}
+
+.wizard-channel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wizard-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-dim);
+  letter-spacing: 0.02em;
+}
+
+.wizard-channel__note {
+  font-size: 10.5px;
+  color: var(--ui-faint);
+}
+
+.wizard-segmented {
+  padding: 2px;
+}
+
+.wizard-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.wizard-field input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: var(--ui-radius-control);
+  background: color-mix(in oklab, var(--cockpit-bg) 46%, transparent);
+  color: var(--ui-text);
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.wizard-field input[name='port'],
+.wizard-field input[name='baudrate'] {
+  font-family: var(--cockpit-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard-field input::placeholder {
+  color: var(--ui-faint);
+}
+
+.wizard-field input:focus {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 52%, var(--ui-hairline));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--cockpit-accent) 13%, transparent);
+}
+
+.wizard-field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wizard-hint {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--ui-faint);
+}
+
+.wizard-hint.is-warn {
+  color: var(--cockpit-warn);
+}
+
+.wizard-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.wizard-start {
+  min-width: 116px;
+}
+
+.wizard-note {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ui-faint);
+}
+
+/* ── waiting: a stage sentence, not a spinner ── */
+
+.wizard-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+  padding: 14px 15px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--cockpit-bg) 30%, transparent);
+}
+
+.wizard-wait__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-wait__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cockpit-accent);
+  animation: wizard-pulse 1.6s ease-in-out infinite;
+}
+
+.wizard-wait__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.wizard-wait__elapsed {
+  margin-left: auto;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10.5px;
+  color: var(--ui-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard-wait__detail {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ui-dim);
+}
+
+.wizard-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wizard-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ui-faint);
+}
+
+.wizard-steps__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ui-hairline);
+}
+
+.wizard-steps li.is-done {
+  color: var(--ui-dim);
+}
+
+.wizard-steps li.is-done .wizard-steps__dot {
+  background: color-mix(in oklab, var(--cockpit-text) 44%, transparent);
+}
+
+.wizard-steps li.is-active {
+  color: var(--ui-text);
+}
+
+.wizard-steps li.is-active .wizard-steps__dot {
+  background: var(--cockpit-accent);
+}
+
+/* ── result: one fact, one caveat, two actions ── */
+
+.wizard-result {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding-top: 16px;
+}
+
+.wizard-result > .state-chip {
+  align-self: flex-start;
+}
+
+.wizard-result__title {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--ui-text);
+}
+
+.wizard-result__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ui-dim);
+}
+
+.wizard-result__summary strong {
+  font-size: 16px;
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.wizard-dot {
+  color: var(--ui-faint);
+}
+
+.wizard-result__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ui-dim);
+}
+
+.wizard-result__warn svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cockpit-warn);
+}
+
+.wizard-failure__detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ui-dim);
+  overflow-wrap: anywhere;
+}
+
+.wizard-installed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--cockpit-bg) 32%, transparent);
+}
+
+.wizard-installed__label {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-faint);
+}
+
+.wizard-installed code {
+  flex: 1 1 300px;
+  min-width: 0;
+  font-family: var(--cockpit-font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+
+.wizard-installed .btn {
+  height: 25px;
+  padding: 0 9px;
+  font-size: 10.5px;
+}
+
+.wizard-result__id {
+  margin: 0;
+  font-family: var(--cockpit-font-mono);
+  font-size: 10px;
+  color: var(--ui-faint);
+}
+
+.wizard-caveat {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid color-mix(in oklab, var(--cockpit-warn) 52%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in oklab, var(--cockpit-warn) 7%, transparent);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--ui-dim);
+}
+
+.wizard-caveat svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cockpit-warn);
+}
+
+.wizard-hints {
+  padding: 11px 13px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--cockpit-bg) 26%, transparent);
+}
+
+.wizard-hints h3 {
+  margin: 0 0 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.wizard-hints ol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 17px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ui-dim);
+}
+
+.wizard-hints li::marker {
+  color: var(--ui-faint);
+}
+
+.wizard-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1px;
+}
+
+@keyframes wizard-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@container (max-width: 560px) {
+  .wizard-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wizard-card {
+    padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wizard-wait__dot {
+    animation: none;
+  }
+}

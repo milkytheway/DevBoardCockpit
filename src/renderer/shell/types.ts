@@ -9,7 +9,7 @@ import type { CardInstanceInfo } from '../../shared/ipc-contract';
  * the main area. There is no second level of navigation hidden behind a
  * bottom panel any more — clicking "Terminal" takes you to the terminal.
  */
-export type PageId = 'workbench' | 'terminal' | 'files' | 'logs' | 'library' | 'settings';
+export type PageId = 'workbench' | 'terminal' | 'files' | 'logs' | 'library' | 'wizard' | 'settings';
 
 /** The pages, in rail order. */
 export const PAGE_IDS: readonly PageId[] = [
@@ -18,6 +18,7 @@ export const PAGE_IDS: readonly PageId[] = [
   'files',
   'logs',
   'library',
+  'wizard',
   'settings',
 ];
 

@@ -9,6 +9,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TerminalPage } from './pages/TerminalPage';
+import { WizardPage } from './pages/WizardPage';
 import { WorkbenchPage } from './pages/WorkbenchPage';
 import { ChevronIcon } from './Icons';
 import { Rail } from './Rail';
@@ -65,6 +66,7 @@ const PAGE_TITLE: Record<PageId, string> = {
   files: '文件传输',
   logs: '运行日志',
   library: '卡片库',
+  wizard: '向导',
   settings: '设置',
 };
 
@@ -293,6 +295,7 @@ export function Shell(): JSX.Element {
       { id: 'page-files', label: '打开文件', run: go('files') },
       { id: 'page-logs', label: '打开日志', run: go('logs') },
       { id: 'page-library', label: '打开卡片库', run: go('library') },
+      { id: 'page-wizard', label: '打开接板向导', run: go('wizard') },
       { id: 'page-settings', label: '打开设置', run: go('settings') },
       {
         id: 'toggle-theme',
@@ -371,7 +374,7 @@ export function Shell(): JSX.Element {
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${page === 'wizard' ? ' is-wizard' : ''}`}>
       {/* The native title bar is hidden; this strip is the window's drag
           handle and the native min/max/close buttons float over it.
           **选板子在这里** ✓ —— 它是界面最顶端的一行 ✓
@@ -492,6 +495,17 @@ export function Shell(): JSX.Element {
                 onPlaceOnWorkbench={(card) => {
                   handlePlace(card);
                   setPage('workbench');
+                }}
+              />
+            ) : null}
+
+            {page === 'wizard' ? (
+              <WizardPage
+                run={(input) => window.cockpit.wizardRun(input)}
+                onInstalled={() => {
+                  refreshConnections();
+                  refresh();
+                  log('info', '接板向导生成了一个新包');
                 }}
               />
             ) : null}

@@ -3,6 +3,7 @@ import {
   GearIcon,
   GridIcon,
   LayersIcon,
+  LinkIcon,
   ListIcon,
   SearchIcon,
   TerminalIcon,
@@ -12,7 +13,7 @@ import type { PageId } from './types';
 /**
  * The rail: the app's primary navigation.
  *
- * Six destinations, one icon each. The glyphs are real inline SVG (not font
+ * Seven destinations, one icon each. The glyphs are real inline SVG (not font
  * characters) so they render identically on every Windows box and inherit
  * the current text colour.
  */
@@ -22,6 +23,7 @@ const ENTRIES: { id: PageId; label: string; icon: (props: { size?: number }) => 
   { id: 'files', label: '文件', icon: FolderIcon },
   { id: 'logs', label: '日志', icon: ListIcon },
   { id: 'library', label: '卡片库', icon: LayersIcon },
+  { id: 'wizard', label: '向导', icon: LinkIcon },
   { id: 'settings', label: '设置', icon: GearIcon },
 ];
 
