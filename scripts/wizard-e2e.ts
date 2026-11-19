@@ -39,8 +39,8 @@ async function main(): Promise<void> {
   console.log('\n=== 2. 实例化 ===');
   const result = instantiatePack({
     source: generic,
-    targetId: 'atk-01',
-    targetName: 'ATK-DLRK3588（真板）',
+    targetId: '我的板子',
+    targetName: 'ATK-DLRK3588（真板 · 中文名）',
     outcomes: outcomesOf(report.readers),
     connection: { transport: profile.transport },
   });
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     boardsRoot: root,
   });
   console.log(`  落在：${yamlPath}`);
-  const back = loadBoardPack(join(root, 'atk-01'));
+  const back = loadBoardPack(join(root, '我的板子'));
   const backErrs = errorsOf(validatePack(back));
   console.log(`  读回来的 id：${back.id}`);
   console.log(`  读回来的 reader 数：${back.readers.length}`);
