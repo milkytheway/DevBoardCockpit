@@ -7,23 +7,30 @@
  * card library. An unknown card falls back to its raw id, so a card the AI
  * just wrote still looks intentional.
  */
+import type { Localised } from './i18n';
+
 export type CardTone = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose' | 'slate';
 
 /** The sidebar buckets, in display order. */
-export const CARD_GROUPS = ['性能', '内存与温度', '系统', '自定义'] as const;
-export type CardGroup = (typeof CARD_GROUPS)[number];
+export const CARD_GROUPS = [
+  { 'zh-Hans': '性能', en: 'Performance' },
+  { 'zh-Hans': '内存与温度', en: 'Memory and temperature' },
+  { 'zh-Hans': '系统', en: 'System' },
+  { 'zh-Hans': '自定义', en: 'Custom' },
+] as const satisfies readonly Localised[];
+export type CardGroup = Localised;
 
 export interface CardLook {
   /** Human name shown in the card chrome. */
-  name: string;
+  name: Localised;
   /** One line: what the card is for. */
-  note: string;
+  note: Localised;
   /** Icon family drawn by the shell. */
   icon: 'cpu' | 'gpu' | 'memory' | 'thermal' | 'board' | 'activity' | 'bolt';
   /** Accent used for the icon tile and the card's left edge. */
   tone: CardTone;
   /** Which sidebar bucket the card belongs to. */
-  group: CardGroup;
+  group: Localised;
   /**
    * The tags this card is expected to read.
    *
@@ -37,98 +44,111 @@ export interface CardLook {
 
 const LOOKS: Record<string, CardLook> = {
   'cpu-usage': {
-    name: 'CPU 占用',
-    note: '总占用 · 8 核分布',
+    name: { 'zh-Hans': 'CPU 占用', en: 'CPU usage' },
+    note: { 'zh-Hans': '总占用 · 8 核分布', en: 'Total usage · across 8 cores' },
     icon: 'cpu',
     tone: 'blue',
-    group: '性能',
+    group: { 'zh-Hans': '性能', en: 'Performance' },
     tags: ['cpu.usage', 'cpu.governor'],
   },
   'core-load': {
-    name: '核心负载',
-    note: 'A55 / A76 逐核负载',
+    name: { 'zh-Hans': '核心负载', en: 'Core load' },
+    note: { 'zh-Hans': 'A55 / A76 逐核负载', en: 'Per-core load on A55 / A76' },
     icon: 'activity',
     tone: 'cyan',
-    group: '性能',
+    group: { 'zh-Hans': '性能', en: 'Performance' },
     tags: ['cpu.usage', 'cpu.core.*.usage', 'cpu.core.*.cluster'],
   },
   'gpu-npu': {
-    name: 'GPU / NPU',
-    note: '负载 · 频率 · 温度',
+    name: { 'zh-Hans': 'GPU / NPU', en: 'GPU / NPU' },
+    note: { 'zh-Hans': '负载 · 频率 · 温度', en: 'Load · frequency · temperature' },
     icon: 'gpu',
     tone: 'violet',
-    group: '性能',
+    group: { 'zh-Hans': '性能', en: 'Performance' },
     tags: ['gpu.usage', 'gpu.freq_hz', 'npu.usage', 'temp.gpu', 'temp.npu'],
   },
   memory: {
-    name: '内存',
-    note: '已用 / 可用 · 采样趋势',
+    name: { 'zh-Hans': '内存', en: 'Memory' },
+    note: { 'zh-Hans': '已用 / 可用 · 采样趋势', en: 'Used / available · sampled over time' },
     icon: 'memory',
     tone: 'green',
-    group: '内存与温度',
+    group: { 'zh-Hans': '内存与温度', en: 'Memory and temperature' },
     tags: ['mem.usage', 'mem.used_bytes', 'mem.total_bytes', 'mem.available_bytes'],
   },
   thermal: {
-    name: '温度',
-    note: 'SoC / GPU / NPU 温区',
+    name: { 'zh-Hans': '温度', en: 'Temperature' },
+    note: { 'zh-Hans': 'SoC / GPU / NPU 温区', en: 'SoC / GPU / NPU zones' },
     icon: 'thermal',
     tone: 'amber',
-    group: '内存与温度',
+    group: { 'zh-Hans': '内存与温度', en: 'Memory and temperature' },
     tags: ['temp.soc', 'temp.gpu', 'temp.npu'],
   },
   'board-identity': {
-    name: '板卡身份',
-    note: '型号 · 调频 · 频率',
+    name: { 'zh-Hans': '板卡身份', en: 'Board identity' },
+    note: { 'zh-Hans': '型号 · 调频 · 频率', en: 'Model · governor · frequency' },
     icon: 'board',
     tone: 'rose',
-    group: '系统',
+    group: { 'zh-Hans': '系统', en: 'System' },
     tags: ['board.model', 'cpu.governor', 'gpu.freq_hz'],
   },
   'build-deploy': {
-    name: '编译上板',
-    note: '流程 · 编译 / 上传 / 运行',
+    name: { 'zh-Hans': '编译上板', en: 'Build and deploy' },
+    note: { 'zh-Hans': '流程 · 编译 / 上传 / 运行', en: 'Workflow · compile / upload / run' },
     icon: 'activity',
     tone: 'blue',
-    group: '系统',
+    group: { 'zh-Hans': '系统', en: 'System' },
     tags: [],
   },
   workflows: {
-    name: '流程',
-    note: '体检 · 自检 · 抓帧 · 测速',
+    name: { 'zh-Hans': '流程', en: 'Workflows' },
+    note: { 'zh-Hans': '体检 · 自检 · 抓帧 · 测速', en: 'Health check · self test · capture · benchmark' },
     icon: 'activity',
     tone: 'cyan',
-    group: '系统',
+    group: { 'zh-Hans': '系统', en: 'System' },
     tags: [],
   },
   'board-hardware': {
-    name: '板卡硬件',
-    note: '手册清单 · 参考',
+    name: { 'zh-Hans': '板卡硬件', en: 'Board hardware' },
+    note: { 'zh-Hans': '手册清单 · 参考', en: 'Manual inventory · reference' },
     icon: 'board',
     tone: 'slate',
-    group: '系统',
+    group: { 'zh-Hans': '系统', en: 'System' },
     tags: ['board.model'],
   },
   'board-actions': {
-    name: '板级操作',
-    note: 'LED · 背光 · 调频',
+    name: { 'zh-Hans': '板级操作', en: 'Board actions' },
+    note: { 'zh-Hans': 'LED · 背光 · 调频', en: 'LED · backlight · governor' },
     icon: 'bolt',
     tone: 'amber',
-    group: '系统',
+    group: { 'zh-Hans': '系统', en: 'System' },
     tags: ['cpu.governor', 'custom.rk3588-atk.backlight.brightness'],
   },
 };
 
 const FALLBACK: CardLook = {
-  name: '自定义卡片',
-  note: 'AI 生成 · 宿主隔离',
+  name: { 'zh-Hans': '自定义卡片', en: 'Custom card' },
+  note: { 'zh-Hans': 'AI 生成 · 宿主隔离', en: 'AI generated · isolated by the host' },
   icon: 'activity',
   tone: 'slate',
-  group: '自定义',
+  group: { 'zh-Hans': '自定义', en: 'Custom' },
   tags: [],
 };
 
+/**
+ * The display metadata for a card.
+ *
+ * An unknown card falls back to its raw id, so a card the AI just wrote
+ * still looks intentional.
+ *
+ * The text is returned in both languages. The caller picks, because the
+ * component knows the active locale.
+ */
 export function cardLook(cardId: string): CardLook {
-  return LOOKS[cardId] ?? { ...FALLBACK, name: cardId };
+  const look = LOOKS[cardId];
+  if (look === undefined) {
+    return { ...FALLBACK, name: { 'zh-Hans': cardId, en: cardId } };
+  }
+  return look;
 }
 
 /** CSS custom property value for the card's accent. */

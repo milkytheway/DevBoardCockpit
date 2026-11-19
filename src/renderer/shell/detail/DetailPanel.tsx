@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import type { TagReading } from '../../../shared/tag-reading';
 import { cardLook } from '../cards';
+import { pick, useLocale } from '../i18n';
 import { CloseIcon, CopyIcon } from '../Icons';
 import type { ActivityEntry, DetailTarget } from '../types';
 
@@ -67,6 +68,7 @@ export function DetailPanel({
 
   const isCard = target.kind === 'card';
   const look = isCard ? cardLook(target.card.cardId) : null;
+  const locale = useLocale();
 
   return (
     <aside className="detail" style={{ width }} aria-label="详情">
@@ -75,7 +77,7 @@ export function DetailPanel({
         <div className="detail__heading">
           <span className="detail__eyebrow">{isCard ? 'CARD INSTANCE' : 'TERMINAL SESSION'}</span>
           <h2 className="detail__title">
-            {isCard ? look?.name : `终端 · ${target.session.label}`}
+            {isCard ? pick(look?.name, locale) : `终端 · ${target.session.label}`}
           </h2>
           <p className="detail__sub">
             {isCard ? target.card.cardId : target.session.sessionId.slice(0, 8)}
@@ -176,6 +178,7 @@ function CardDetail({
   activity: ActivityEntry[];
 }): JSX.Element {
   const look = cardLook(card.cardId);
+  const locale = useLocale();
   const latest = useMemo(() => {
     const map = new Map<string, TagReading>();
     for (const reading of readings) map.set(reading.tag, reading);
@@ -200,7 +203,7 @@ function CardDetail({
       <section className="detail__hero">
         <span className="detail__hero-dot" aria-hidden />
         <div>
-          <p className="detail__hero-title">{look.note}</p>
+          <p className="detail__hero-title">{pick(look.note, locale)}</p>
           <p className="detail__hero-sub">
             {card.connectionId ? `采样来自 ${card.connectionId}` : '当前连接未就绪'} ·
             {' '}

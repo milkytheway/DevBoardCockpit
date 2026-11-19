@@ -1,13 +1,111 @@
 import type { ThemeMode } from '../theme';
-import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n';
+import { LOCALES, LOCALE_NAMES, useT, type Locale, type Localised } from '../i18n';
 import type { ViewDensity } from '../../../shared/layout';
 import type { PermissionActor, PermissionRow } from '../../../shared/ipc-contract';
 import { PaletteIcon } from '../Icons';
 
-const SHORTCUTS: readonly { keys: string; action: string }[] = [
-  { keys: 'Ctrl + K', action: '命令面板' },
-  { keys: 'Ctrl + `', action: '去 / 回终端页' },
-  { keys: 'Esc', action: '关闭详情 / 命令面板' },
+/**
+ * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ *
+ * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ */
+const strings = {
+  // ── 快捷键 ──
+  shortcutPalette: { 'zh-Hans': '命令面板', en: 'Command palette' },
+  shortcutTerminal: { 'zh-Hans': '去 / 回终端页', en: 'Go to / back from the terminal page' },
+  shortcutDismiss: { 'zh-Hans': '关闭详情 / 命令面板', en: 'Close the detail pane / command palette' },
+
+  // ── 页面头 ──
+  title: { 'zh-Hans': '设置', en: 'Settings' },
+  subtitle: {
+    'zh-Hans': '外壳只管呈现；连接、卡片与权限都在 main',
+    en: 'The shell only presents; connections, cards and permissions live in main',
+  },
+
+  // ── 外观 ──
+  appearance: { 'zh-Hans': '外观', en: 'Appearance' },
+  appearanceHead: {
+    'zh-Hans': '主题走 token 三层：改种子，不重写组件',
+    en: 'The theme runs on three token layers: change the seed, not the components',
+  },
+  themeGroup: { 'zh-Hans': '主题', en: 'Theme' },
+  dark: { 'zh-Hans': '深色', en: 'Dark' },
+  light: { 'zh-Hans': '浅色', en: 'Light' },
+  appearanceNote: {
+    'zh-Hans': '主题走 token 三层：改种子，不重写组件。切主题时外壳与卡片一起换——卡片宿主把主题推给 main，重新加载 iframe 时取同一套 token。',
+    en: 'The theme runs on three token layers: change the seed, not the components. Switching the theme swaps the shell and the cards together — the card host pushes the theme to main, and the reloaded iframe picks up the same set of tokens.',
+  },
+  cardDensity: { 'zh-Hans': '卡片密度', en: 'Card density' },
+  densityGroup: { 'zh-Hans': '密度', en: 'Density' },
+  comfortable: { 'zh-Hans': '舒适', en: 'Comfortable' },
+  compact: { 'zh-Hans': '紧凑', en: 'Compact' },
+  interfaceLanguage: { 'zh-Hans': '界面语言', en: 'Interface language' },
+  languageGroup: { 'zh-Hans': '语言', en: 'Language' },
+  languageNote: { 'zh-Hans': '选择立即生效，无需重启。', en: 'The choice takes effect at once; no restart needed.' },
+
+  // ── 键盘 ──
+  keyboard: { 'zh-Hans': '键盘', en: 'Keyboard' },
+  keyboardNote: { 'zh-Hans': '全部操作都有命令行入口', en: 'Every action has a command line entry' },
+
+  // ── 运行面 ──
+  runtime: { 'zh-Hans': '运行面', en: 'Runtime' },
+  runtimeNote: { 'zh-Hans': '宿主能力与通道', en: 'Host capabilities and channels' },
+  connections: { 'zh-Hans': '连接', en: 'Connections' },
+  profilesCount: { 'zh-Hans': '个 profile', en: 'profiles' },
+  cards: { 'zh-Hans': '卡片', en: 'Cards' },
+  cardsCount: { 'zh-Hans': '张（内置 + 用户目录）', en: 'cards (built in + user directory)' },
+  cardChannels: { 'zh-Hans': '卡片通道', en: 'Card channels' },
+  dataChannels: { 'zh-Hans': '数据通道', en: 'Data channels' },
+  rescanCards: { 'zh-Hans': '重新扫描卡片目录', en: 'Rescan the card directories' },
+
+  // ── 权限 ──
+  permissions: { 'zh-Hans': '权限', en: 'Permissions' },
+  permissionsHead: {
+    'zh-Hans': '所有能动的操作都在这儿 —— 想关哪个关哪个',
+    en: 'Every action that can move something is here — switch off whatever you like',
+  },
+  permissionsNote: {
+    'zh-Hans': '一个地方，一个开关。打开的类目，卡片就能用；危险动作不跟着整类开关走，必须逐条打开。',
+    en: 'One place, one switch. A category that is on is available to cards; destructive actions do not follow the category switch and have to be enabled one by one.',
+  },
+  noPermissions: { 'zh-Hans': '没有可设的操作 —— 先接上一块板。', en: 'Nothing to configure — connect a board first.' },
+  groupActions: { 'zh-Hans': '元操作', en: 'Meta operations' },
+  groupActionsNote: { 'zh-Hans': '板子上的原子动作', en: 'Atomic actions on the board' },
+  groupWorkflows: { 'zh-Hans': '流程', en: 'Workflows' },
+  groupWorkflowsNote: {
+    'zh-Hans': '编译、体检、抓帧这类多步流程',
+    en: 'Multi-step workflows such as build, health check and frame capture',
+  },
+  groupHost: { 'zh-Hans': '宿主', en: 'Host' },
+  groupHostNote: { 'zh-Hans': '不碰板子的宿主能力', en: 'Host capabilities that do not touch the board' },
+  noComparableActions: { 'zh-Hans': '这块板没有可比授权的动作', en: 'This board has no actions to authorise' },
+  noWorkflowPack: { 'zh-Hans': '还没有安装流程包', en: 'No workflow pack is installed yet' },
+  openToCards: { 'zh-Hans': '条对卡片开放', en: 'open to cards' },
+  destructiveNote: { 'zh-Hans': '危险动作需逐条打开：', en: 'Destructive actions have to be enabled one by one: ' },
+  dangerBadge: { 'zh-Hans': '危险', en: 'Dangerous' },
+  switchLabelCard: { 'zh-Hans': '卡片', en: 'Card' },
+  cardGrant: { 'zh-Hans': '卡片授权', en: 'card access' },
+  agentGrant: { 'zh-Hans': 'agent 授权', en: 'agent access' },
+  grantPrefix: { 'zh-Hans': '为卡片打开', en: 'Grant ' },
+  grantSuffix: { 'zh-Hans': '授权', en: ' to cards' },
+
+  // ── 关于 ──
+  about: { 'zh-Hans': '关于', en: 'About' },
+  aboutVersion: { 'zh-Hans': 'DevBoard Cockpit · 外壳 v0.11', en: 'DevBoard Cockpit · shell v0.11' },
+  aboutNote: {
+    'zh-Hans': '卡片宿主、沙箱与 CSP 是 main 的职责；这个外壳只画，不判权限，不碰设备。',
+    en: 'The card host, the sandbox and the CSP belong to main; this shell only draws, it neither judges permissions nor touches the device.',
+  },
+  aboutDesign: {
+    'zh-Hans': '设计依据 docs/UI设计/01-UI设计总纲.md · 机制基线 docs/21 · 边界 docs/UI设计/05-外壳施工图.md',
+    en: 'Design basis docs/UI设计/01-UI设计总纲.md · mechanism baseline docs/21 · boundaries docs/UI设计/05-外壳施工图.md',
+  },
+} satisfies Record<string, Localised>;
+
+const SHORTCUTS: readonly { keys: string; action: Localised }[] = [
+  { keys: 'Ctrl + K', action: strings.shortcutPalette },
+  { keys: 'Ctrl + `', action: strings.shortcutTerminal },
+  { keys: 'Esc', action: strings.shortcutDismiss },
 ];
 
 export function SettingsPage({
@@ -40,6 +138,7 @@ export function SettingsPage({
   /** Change it. */
   onLocale: (locale: Locale) => void;
 }): JSX.Element {
+  const t = useT();
   // The master switches only touch **card** grants: the agent side keeps its
   // own row. Destructive actions stay out of the bulk grant — one switch must
   // not hand a card the power to reboot the board.
@@ -55,9 +154,9 @@ export function SettingsPage({
   };
   const groups = (
     [
-      { kind: 'action', label: '元操作', note: '板子上的原子动作' },
-      { kind: 'workflow', label: '流程', note: '编译、体检、抓帧这类多步流程' },
-      { kind: 'host', label: '宿主', note: '不碰板子的宿主能力' },
+      { kind: 'action', label: t(strings.groupActions), note: t(strings.groupActionsNote) },
+      { kind: 'workflow', label: t(strings.groupWorkflows), note: t(strings.groupWorkflowsNote) },
+      { kind: 'host', label: t(strings.groupHost), note: t(strings.groupHostNote) },
     ] as const
   )
     .map((group) => ({
@@ -71,8 +170,8 @@ export function SettingsPage({
       <header className="page-head">
         <div className="page-head__text">
           <span className="page-head__eyebrow">SETTINGS</span>
-          <h1 className="page-head__title">设置</h1>
-          <p className="page-head__sub">外壳只管呈现；连接、卡片与权限都在 main</p>
+          <h1 className="page-head__title">{t(strings.title)}</h1>
+          <p className="page-head__sub">{t(strings.subtitle)}</p>
         </div>
       </header>
 
@@ -83,11 +182,11 @@ export function SettingsPage({
               <PaletteIcon size={16} />
             </span>
             <div>
-              <h2>外观</h2>
-              <p>主题走 token 三层：改种子，不重写组件</p>
+              <h2>{t(strings.appearance)}</h2>
+              <p>{t(strings.appearanceHead)}</p>
             </div>
           </header>
-          <div className="segmented" role="group" aria-label="主题">
+          <div className="segmented" role="group" aria-label={t(strings.themeGroup)}>
             {(['dark', 'light'] as const).map((mode) => (
               <button
                 key={mode}
@@ -96,16 +195,14 @@ export function SettingsPage({
                 aria-pressed={theme === mode}
                 onClick={() => onTheme(mode)}
               >
-                {mode === 'dark' ? '深色' : '浅色'}
+                {mode === 'dark' ? t(strings.dark) : t(strings.light)}
               </button>
             ))}
           </div>
-          <p className="settings-note">
-            主题走 token 三层：改种子，不重写组件。切主题时外壳与卡片一起换——卡片宿主把主题推给 main，重新加载 iframe 时取同一套 token。
-          </p>
+          <p className="settings-note">{t(strings.appearanceNote)}</p>
 
-          <h3 className="settings-card__sub">卡片密度</h3>
-          <div className="segmented" role="group" aria-label="密度">
+          <h3 className="settings-card__sub">{t(strings.cardDensity)}</h3>
+          <div className="segmented" role="group" aria-label={t(strings.densityGroup)}>
             {(['comfortable', 'compact'] as const).map((mode) => (
               <button
                 key={mode}
@@ -114,13 +211,13 @@ export function SettingsPage({
                 aria-pressed={density === mode}
                 onClick={() => onDensity(mode)}
               >
-                {mode === 'comfortable' ? '舒适' : '紧凑'}
+                {mode === 'comfortable' ? t(strings.comfortable) : t(strings.compact)}
               </button>
             ))}
           </div>
 
-          <h3 className="settings-card__sub">界面语言</h3>
-          <div className="segmented" role="group" aria-label="语言">
+          <h3 className="settings-card__sub">{t(strings.interfaceLanguage)}</h3>
+          <div className="segmented" role="group" aria-label={t(strings.languageGroup)}>
             {LOCALES.map((option) => (
               <button
                 key={option}
@@ -133,21 +230,21 @@ export function SettingsPage({
               </button>
             ))}
           </div>
-          <p className="settings-note">选择立即生效，无需重启。</p>
+          <p className="settings-note">{t(strings.languageNote)}</p>
         </section>
 
         <section className="settings-card">
           <header className="settings-card__head">
             <div>
-              <h2>键盘</h2>
-              <p>全部操作都有命令行入口</p>
+              <h2>{t(strings.keyboard)}</h2>
+              <p>{t(strings.keyboardNote)}</p>
             </div>
           </header>
           <ul className="shortcut-list">
             {SHORTCUTS.map((row) => (
               <li key={row.keys}>
                 <kbd>{row.keys}</kbd>
-                <span>{row.action}</span>
+                <span>{t(row.action)}</span>
               </li>
             ))}
           </ul>
@@ -156,47 +253,48 @@ export function SettingsPage({
         <section className="settings-card">
           <header className="settings-card__head">
             <div>
-              <h2>运行面</h2>
-              <p>宿主能力与通道</p>
+              <h2>{t(strings.runtime)}</h2>
+              <p>{t(strings.runtimeNote)}</p>
             </div>
           </header>
           <dl className="kv kv--compact">
-            <dt>连接</dt>
-            <dd>{connectionsCount} 个 profile</dd>
-            <dt>卡片</dt>
-            <dd>{cardsCount} 张（内置 + 用户目录）</dd>
-            <dt>卡片通道</dt>
+            <dt>{t(strings.connections)}</dt>
+            <dd>
+              {connectionsCount} {t(strings.profilesCount)}
+            </dd>
+            <dt>{t(strings.cards)}</dt>
+            <dd>
+              {cardsCount} {t(strings.cardsCount)}
+            </dd>
+            <dt>{t(strings.cardChannels)}</dt>
             <dd className="mono">cardsList · cardsHello · layoutGet</dd>
-            <dt>数据通道</dt>
+            <dt>{t(strings.dataChannels)}</dt>
             <dd className="mono">tagsReadings · tagsChanged</dd>
           </dl>
           <button type="button" className="btn btn--ghost btn--sm" onClick={onRefreshCards}>
-            重新扫描卡片目录
+            {t(strings.rescanCards)}
           </button>
         </section>
 
         <section className="settings-card settings-card--permissions">
           <header className="settings-card__head">
             <div>
-              <h2>权限</h2>
-              <p>所有能动的操作都在这儿 —— 想关哪个关哪个</p>
+              <h2>{t(strings.permissions)}</h2>
+              <p>{t(strings.permissionsHead)}</p>
             </div>
           </header>
-          <p className="settings-note">
-            一个地方，一个开关。打开的类目，卡片就能用；危险动作不跟着整类开关走，
-            必须逐条打开。
-          </p>
+          <p className="settings-note">{t(strings.permissionsNote)}</p>
           {permissions.length === 0 ? (
-            <p className="settings-note dim">没有可设的操作 —— 先接上一块板。</p>
+            <p className="settings-note dim">{t(strings.noPermissions)}</p>
           ) : (
             <>
               <div className="perm-master">
                 <MasterToggle
-                  label="元操作"
+                  label={t(strings.groupActions)}
                   detail={
                     bulkActions.length === 0
-                      ? '这块板没有可比授权的动作'
-                      : `${bulkActions.filter((row) => row.card).length} / ${bulkActions.length} 条对卡片开放`
+                      ? t(strings.noComparableActions)
+                      : `${bulkActions.filter((row) => row.card).length} / ${bulkActions.length} ${t(strings.openToCards)}`
                   }
                   checked={
                     bulkActions.length > 0 && bulkActions.every((row) => row.card)
@@ -205,11 +303,11 @@ export function SettingsPage({
                   onChange={(allowed) => setAll(bulkActions, allowed)}
                 />
                 <MasterToggle
-                  label="流程"
+                  label={t(strings.groupWorkflows)}
                   detail={
                     bulkWorkflows.length === 0
-                      ? '还没有安装流程包'
-                      : `${bulkWorkflows.filter((row) => row.card).length} / ${bulkWorkflows.length} 条对卡片开放`
+                      ? t(strings.noWorkflowPack)
+                      : `${bulkWorkflows.filter((row) => row.card).length} / ${bulkWorkflows.length} ${t(strings.openToCards)}`
                   }
                   checked={
                     bulkWorkflows.length > 0 && bulkWorkflows.every((row) => row.card)
@@ -219,7 +317,7 @@ export function SettingsPage({
                 />
                 {destructive.length > 0 ? (
                   <p className="perm-master__note">
-                    危险动作需逐条打开：
+                    {t(strings.destructiveNote)}
                     {destructive.map((row) => row.label).join('、')}
                   </p>
                 ) : null}
@@ -239,7 +337,7 @@ export function SettingsPage({
                             <span className="perm-row__label">
                               {row.label}
                               {row.danger === 'destructive' ? (
-                                <span className="perm-row__danger">危险</span>
+                                <span className="perm-row__danger">{t(strings.dangerBadge)}</span>
                               ) : null}
                             </span>
                             <span className="perm-row__op mono">{row.op}</span>
@@ -247,10 +345,12 @@ export function SettingsPage({
                           </div>
                           <div className="perm-row__switches">
                             <div className="perm-row__switch">
-                              <span className="perm-row__switch-label">卡片</span>
+                              <span className="perm-row__switch-label">
+                                {t(strings.switchLabelCard)}
+                              </span>
                               <Switch
                                 checked={row.card}
-                                label={`${row.label} · 卡片授权`}
+                                label={`${row.label} · ${t(strings.cardGrant)}`}
                                 onChange={(next) => onPermission('card', row.op, next)}
                               />
                             </div>
@@ -258,7 +358,7 @@ export function SettingsPage({
                               <span className="perm-row__switch-label">agent</span>
                               <Switch
                                 checked={row.agent}
-                                label={`${row.label} · agent 授权`}
+                                label={`${row.label} · ${t(strings.agentGrant)}`}
                                 onChange={(next) => onPermission('agent', row.op, next)}
                               />
                             </div>
@@ -276,16 +376,12 @@ export function SettingsPage({
         <section className="settings-card settings-card--about">
           <header className="settings-card__head">
             <div>
-              <h2>关于</h2>
-              <p>DevBoard Cockpit · 外壳 v0.11</p>
+              <h2>{t(strings.about)}</h2>
+              <p>{t(strings.aboutVersion)}</p>
             </div>
           </header>
-          <p className="settings-note">
-            卡片宿主、沙箱与 CSP 是 main 的职责；这个外壳只画，不判权限，不碰设备。
-          </p>
-          <p className="settings-note dim">
-            设计依据 docs/UI设计/01-UI设计总纲.md · 机制基线 docs/21 · 边界 docs/UI设计/05-外壳施工图.md
-          </p>
+          <p className="settings-note">{t(strings.aboutNote)}</p>
+          <p className="settings-note dim">{t(strings.aboutDesign)}</p>
         </section>
       </div>
     </div>
@@ -312,6 +408,7 @@ function MasterToggle({
   disabled: boolean;
   onChange: (allowed: boolean) => void;
 }): JSX.Element {
+  const t = useT();
   return (
     <div className={`perm-master__row${checked ? ' is-on' : ''}${disabled ? ' is-disabled' : ''}`}>
       <span className="perm-master__text">
@@ -321,7 +418,7 @@ function MasterToggle({
       <Switch
         checked={checked}
         disabled={disabled}
-        label={`为卡片打开${label}授权`}
+        label={`${t(strings.grantPrefix)}${label}${t(strings.grantSuffix)}`}
         onChange={onChange}
       />
     </div>

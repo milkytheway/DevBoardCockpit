@@ -1,6 +1,7 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import { cardLook, CARD_GROUPS, type CardLook } from './cards';
+import { pick, type Localised } from './i18n';
 import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
 
@@ -24,9 +25,9 @@ import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types'
  */
 export interface SecondaryItem {
   id: string;
-  label: string;
+  label: Localised;
   /** A second line: the transport, the card id, the exit code… */
-  hint?: string;
+  hint?: Localised;
   /** Visual weight. `active` marks the current selection. */
   tone?: 'default' | 'active' | 'muted';
   /** A short counter on the right (e.g. how many cards). */
@@ -54,7 +55,7 @@ export interface SecondaryItem {
    * "Pinned" first, then the card's own bucket (性能 / 内存与温度 / …).
    * The group id itself stays `cards` so the rows keep their one data shape.
    */
-  section?: string;
+  section?: Localised;
   /** Whether this card is pinned to the top of the catalogue. */
   pinned?: boolean;
   /** Toggle the pin. Drawn as a star outside the row button. */
@@ -63,12 +64,14 @@ export interface SecondaryItem {
 
 export interface SecondaryGroup {
   id: string;
-  title: string;
+  title: Localised;
   items: SecondaryItem[];
 }
 
 /** Everything the sidebar needs to build its lists. */
 export interface SecondaryContext {
+  /** The interface language. The sidebar builds its labels from it. */
+  locale: import('./i18n').Locale;
   runtime: RuntimeStatus;
   connections: ConnectionInfo[];
   cards: CardInstanceInfo[];
@@ -112,13 +115,16 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
       label: look.name,
       // **说清楚第二次点击会发生什么** ——
       // 摆好的卡再点一次是「撤下」，不写出来的话那是一次**静默的删除**。
-      hint: `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
+      hint: {
+        'zh-Hans': `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
+        en: `${card.cardId} · ${isPlaced ? 'in the work area · click to remove' : 'click to place'}`,
+      },
       tone: isPlaced ? 'active' : 'default',
       cardId: card.cardId,
       cardTone: look.tone,
       cardIcon: look.icon,
       placed: isPlaced,
-      section: isPinned ? 'Pinned' : look.group,
+      section: isPinned ? { 'zh-Hans': '置顶', en: 'Pinned' } : look.group,
       pinned: isPinned,
       onPin: ctx.onTogglePin ? () => ctx.onTogglePin?.(card.cardId) : undefined,
       onSelect: () => {
@@ -129,16 +135,19 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
   });
   // Pinned first, then the card's own bucket, then name. Sorting happens in
   // the data, so the renderer only has to draw the section headings.
+  const pinnedLabel = { 'zh-Hans': '置顶', en: 'Pinned' };
+  const isPinnedSection = (section: Localised | undefined): boolean =>
+    section?.['zh-Hans'] === pinnedLabel['zh-Hans'];
   items.sort((a, b) => {
-    const pin = Number(b.section === 'Pinned') - Number(a.section === 'Pinned');
+    const pin = Number(isPinnedSection(b.section)) - Number(isPinnedSection(a.section));
     if (pin !== 0) return pin;
     const group =
-      CARD_GROUPS.indexOf(a.section as (typeof CARD_GROUPS)[number]) -
-      CARD_GROUPS.indexOf(b.section as (typeof CARD_GROUPS)[number]);
+      CARD_GROUPS.findIndex((g) => g['zh-Hans'] === a.section?.['zh-Hans']) -
+      CARD_GROUPS.findIndex((g) => g['zh-Hans'] === b.section?.['zh-Hans']);
     if (group !== 0) return group;
-    return a.label.localeCompare(b.label, 'zh-Hans-CN');
+    return pick(a.label, ctx.locale).localeCompare(pick(b.label, ctx.locale), ctx.locale);
   });
-  return { id: 'cards', title: '卡片', items };
+  return { id: 'cards', title: { 'zh-Hans': '卡片', en: 'Cards' }, items };
 }
 
 /**
@@ -151,14 +160,17 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
 function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
   const connections: SecondaryItem[] = ctx.connections.map((connection) => ({
     id: connection.id,
-    label: connection.label,
-    hint: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+    label: { 'zh-Hans': connection.label, en: connection.label },
+    hint: {
+      'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+      en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+    },
     onSelect: () => ctx.onOpenSession(connection.id),
   }));
   const sessions: SecondaryItem[] = ctx.sessions.map((session) => ({
     id: session.sessionId,
-    label: session.label,
-    hint: session.sessionId.slice(0, 8),
+    label: { 'zh-Hans': session.label, en: session.label },
+    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
     tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
     sessionId: session.sessionId,
     onSelect: () => ctx.onSelectSession(session.sessionId),
@@ -166,8 +178,12 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     onClose: () => ctx.onCloseSession(session.sessionId),
   }));
   return [
-    { id: 'connections', title: '连接方式', items: connections },
-    { id: 'sessions', title: '会话', items: sessions },
+    {
+      id: 'connections',
+      title: { 'zh-Hans': '连接方式', en: 'Connections' },
+      items: connections,
+    },
+    { id: 'sessions', title: { 'zh-Hans': '会话', en: 'Sessions' }, items: sessions },
   ];
 }
 
@@ -178,23 +194,29 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
 function fileGroups(ctx: SecondaryContext): SecondaryGroup[] {
   const sessions: SecondaryItem[] = ctx.sessions.map((session) => ({
     id: session.sessionId,
-    label: session.label,
-    hint: session.sessionId.slice(0, 8),
+    label: { 'zh-Hans': session.label, en: session.label },
+    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
     tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
     sessionId: session.sessionId,
     onSelect: () => ctx.onSelectSession(session.sessionId),
     onClose: () => ctx.onCloseSession(session.sessionId),
   }));
-  return [{ id: 'sessions', title: '对象（可传文件的会话）', items: sessions }];
+  return [
+    {
+      id: 'sessions',
+      title: { 'zh-Hans': '对象（可传文件的会话）', en: 'Targets (sessions that can transfer files)' },
+      items: sessions,
+    },
+  ];
 }
 
 function logGroups(ctx: SecondaryContext): SecondaryGroup[] {
   const filters: SecondaryItem[] = (
     [
-      ['all', '全部'],
-      ['info', '信息'],
-      ['warn', '警告'],
-      ['error', '错误'],
+      ['all', { 'zh-Hans': '全部', en: 'All' }],
+      ['info', { 'zh-Hans': '信息', en: 'Info' }],
+      ['warn', { 'zh-Hans': '警告', en: 'Warning' }],
+      ['error', { 'zh-Hans': '错误', en: 'Error' }],
     ] as const
   ).map(([id, label]) => ({
     id: `filter-${id}`,
@@ -202,7 +224,7 @@ function logGroups(ctx: SecondaryContext): SecondaryGroup[] {
     tone: ctx.activityFilter === id ? ('active' as const) : ('default' as const),
     onSelect: () => ctx.onActivityFilter(id),
   }));
-  return [{ id: 'filter', title: '筛选', items: filters }];
+  return [{ id: 'filter', title: { 'zh-Hans': '筛选', en: 'Filter' }, items: filters }];
 }
 
 function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
@@ -210,10 +232,19 @@ function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
   return [
     {
       id: 'library',
-      title: '筛选',
+      title: { 'zh-Hans': '筛选', en: 'Filter' },
       items: [
-        { id: 'all', label: '全部卡片', badge: String(ctx.cards.length) },
-        { id: 'degraded', label: '降级的', badge: String(degraded), tone: degraded > 0 ? 'muted' : 'default' },
+        {
+          id: 'all',
+          label: { 'zh-Hans': '全部卡片', en: 'All cards' },
+          badge: String(ctx.cards.length),
+        },
+        {
+          id: 'degraded',
+          label: { 'zh-Hans': '降级的', en: 'Degraded' },
+          badge: String(degraded),
+          tone: degraded > 0 ? 'muted' : 'default',
+        },
       ],
     },
   ];
@@ -223,11 +254,29 @@ function settingsGroups(ctx: SecondaryContext): SecondaryGroup[] {
   return [
     {
       id: 'settings',
-      title: '设置',
+      title: { 'zh-Hans': '设置', en: 'Settings' },
       items: [
-        { id: 'appearance', label: '外观', hint: '深色 / 浅色' },
-        { id: 'cards', label: '卡片目录', hint: `${ctx.cards.length} 张已装` },
-        { id: 'connections', label: '连接', hint: `${ctx.connections.length} 个 profile` },
+        {
+          id: 'appearance',
+          label: { 'zh-Hans': '外观', en: 'Appearance' },
+          hint: { 'zh-Hans': '深色 / 浅色', en: 'Dark / light' },
+        },
+        {
+          id: 'cards',
+          label: { 'zh-Hans': '卡片目录', en: 'Card catalogue' },
+          hint: {
+            'zh-Hans': `${ctx.cards.length} 张已装`,
+            en: `${ctx.cards.length} installed`,
+          },
+        },
+        {
+          id: 'connections',
+          label: { 'zh-Hans': '连接', en: 'Connections' },
+          hint: {
+            'zh-Hans': `${ctx.connections.length} 个 profile`,
+            en: `${ctx.connections.length} profiles`,
+          },
+        },
       ],
     },
   ];

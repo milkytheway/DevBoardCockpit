@@ -78,7 +78,8 @@ export interface Localised {
  * empty string. An empty label reads as a rendering fault; the Chinese text
  * reads as untranslated, which is the honest outcome.
  */
-export function pick(text: Localised, locale: Locale): string {
+export function pick(text: Localised | undefined, locale: Locale): string {
+  if (text === undefined) return '';
   const value = text[locale];
   if (typeof value === 'string' && value.length > 0) return value;
   return text['zh-Hans'];
@@ -88,14 +89,40 @@ export function pick(text: Localised, locale: Locale): string {
 export const LocaleContext = createContext<Locale>(DEFAULT_LOCALE);
 
 /**
+ * Replace the placeholders in a translated string.
+ *
+ * `{name}` becomes the value passed under that key. A placeholder with no
+ * matching value is left in place rather than replaced by an empty string,
+ * because an empty hole in a sentence reads as a rendering fault.
+ */
+export function interpolate(text: string, values?: Record<string, string | number>): string {
+  if (values === undefined) return text;
+  return text.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const value = values[key];
+    return value === undefined ? match : String(value);
+  });
+}
+
+/**
  * The lookup function for the active locale.
  *
  * ```ts
  * const t = useT();
  * return <h1>{t(strings.title)}</h1>;
+ * return <h1>{t(strings.greeting, { name })}</h1>;
  * ```
  */
-export function useT(): (text: Localised) => string {
+export function useT(): (text: Localised, values?: Record<string, string | number>) => string {
   const locale = useContext(LocaleContext);
-  return (text: Localised) => pick(text, locale);
+  return (text: Localised, values?: Record<string, string | number>) =>
+    interpolate(pick(text, locale), values);
+}
+
+/**
+ * The active locale, for the cases where the text is chosen outside the
+ * lookup: sorting by a label, or putting a label into an attribute that
+ * already contains other text.
+ */
+export function useLocale(): Locale {
+  return useContext(LocaleContext);
 }

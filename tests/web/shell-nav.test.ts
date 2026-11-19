@@ -34,6 +34,7 @@ const RUNTIME: RuntimeStatus = { state: 'idle' };
 
 function context(overrides: Partial<SecondaryContext> = {}): SecondaryContext {
   return {
+    locale: 'zh-Hans',
     runtime: RUNTIME,
     connections: [],
     cards: [],
@@ -66,7 +67,7 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint).toContain('已在主区');
+    expect(items[0]?.hint?.['zh-Hans']).toContain('已在主区');
     expect(items[0]?.tone).toBe('active');
   });
 
@@ -78,7 +79,7 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint).toContain('点击摆进主区');
+    expect(items[0]?.hint?.['zh-Hans']).toContain('点击摆进主区');
     expect(items[0]?.tone).toBe('default');
   });
 
@@ -89,7 +90,7 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint).toContain('撤下');
+    expect(items[0]?.hint?.['zh-Hans']).toContain('撤下');
   });
 
   it('卡片行带稳定的 e2e 钩子（不认 class 名）', () => {
@@ -119,5 +120,19 @@ describe('外壳 · 终端页的会话', () => {
     const group = secondaryGroupsFor('files', ctx).find((g) => g.id === 'sessions');
     expect(group).toBeDefined();
     expect(group!.items[0]?.onClose).toBeTypeOf('function');
+  });
+});
+
+describe('外壳 · 卡片目录（英文）', () => {
+  it('**同一个提示有英文** ✓（界面的语言选项要真的切换文案 ✓）', () => {
+    const items = cardItems(
+      context({
+        locale: 'en',
+        cards: [card('cpu-curve', 'conn-a')],
+        placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
+      }),
+    );
+    expect(items[0]?.hint?.en).toContain('click to remove');
+    expect(items[0]?.label?.en).not.toContain('已在主区');
   });
 });

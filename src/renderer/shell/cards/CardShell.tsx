@@ -5,7 +5,14 @@ import type { CardBroker } from '../../cards/broker';
 import { UserCard } from '../../cards/user-card';
 import { cardLook } from '../cards';
 import { CardGlyph } from '../CardGlyph';
+import { pick, useLocale } from '../i18n';
 
+
+const strings = {
+  notConnected: { 'zh-Hans': '未连接', en: 'not connected' },
+  degraded: { 'zh-Hans': '降级运行', en: 'degraded' },
+  running: { 'zh-Hans': '运行中', en: 'running' },
+};
 
 /**
  * The host-drawn chrome around one card.
@@ -48,6 +55,7 @@ export function CardShell({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const downRef = useRef<{ x: number; y: number } | null>(null);
   const look = cardLook(info.cardId);
+  const locale = useLocale();
 
   // Close the menu when the pointer goes down anywhere else. `pointerdown`
   // (not `mousedown`) also covers touch and pen on Windows.
@@ -96,17 +104,19 @@ export function CardShell({
             <CardGlyph icon={look.icon} size={16} />
           </span>
           <span className="cockpit-card__titles">
-            <span className="cockpit-card__title">{look.name}</span>
+            <span className="cockpit-card__title">{pick(look.name, locale)}</span>
             <span className="cockpit-card__sub">
-              {look.note}
-              {info.connectionId ? ` · ${info.connectionId.slice(0, 10)}` : ' · 未连接'}
+              {pick(look.note, locale)}
+              {info.connectionId
+                ? ` · ${info.connectionId.slice(0, 10)}`
+                : ` · ${strings.notConnected['zh-Hans']}`}
             </span>
           </span>
         </div>
         <span
           className={`state-chip state-chip--dot${info.degraded ? ' state-chip--warn' : ' state-chip--ok'}`}
-          title={info.degraded ? '降级运行' : '运行中'}
-          aria-label={info.degraded ? '降级运行' : '运行中'}
+          title={info.degraded ? strings.degraded['zh-Hans'] : strings.running['zh-Hans']}
+          aria-label={info.degraded ? strings.degraded['zh-Hans'] : strings.running['zh-Hans']}
         >
           <span className={`live-dot live-dot--${info.degraded ? 'warn' : 'ok'}`} aria-hidden />
         </span>

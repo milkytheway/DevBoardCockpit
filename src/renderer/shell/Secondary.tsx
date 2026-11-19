@@ -11,6 +11,7 @@ import {
 import { CardGlyph } from './CardGlyph';
 import { cardToneVar } from './cards';
 import type { SecondaryGroup, SecondaryItem } from './nav';
+import { pick, useLocale, useT } from './i18n';
 
 const STORAGE_KEY = 'devboard.collapsedSections';
 
@@ -47,6 +48,22 @@ export interface SecondaryStatus {
  * it. The folded set is remembered in localStorage, so the sidebar keeps the
  * shape the user left it in.
  */
+const strings = {
+  collapse: { 'zh-Hans': '收起二级栏', en: 'Collapse the secondary sidebar' },
+  expand: { 'zh-Hans': '展开', en: 'Expand' },
+  noOptions: { 'zh-Hans': '没有可选项', en: 'Nothing to choose from' },
+  workArea: { 'zh-Hans': '主区', en: 'Work area' },
+  pin: { 'zh-Hans': '置顶 {name}', en: 'Pin {name}' },
+  unpin: { 'zh-Hans': '取消置顶 {name}', en: 'Unpin {name}' },
+  pinShort: { 'zh-Hans': '置顶', en: 'Pin' },
+  unpinShort: { 'zh-Hans': '取消置顶', en: 'Unpin' },
+  close: { 'zh-Hans': '关闭 {name}', en: 'Close {name}' },
+  closeSession: { 'zh-Hans': '关闭会话', en: 'Close the session' },
+  expandNamed: { 'zh-Hans': '展开 {name}', en: 'Expand {name}' },
+  collapseNamed: { 'zh-Hans': '折叠 {name}', en: 'Collapse {name}' },
+  pinned: { 'zh-Hans': '置顶', en: 'Pinned' },
+};
+
 export function Secondary({
   title,
   status,
@@ -59,6 +76,9 @@ export function Secondary({
   onCollapse: () => void;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
+  const t = useT();
+  const locale = useLocale();
+  const pinnedLabel = '置顶';
 
   useEffect(() => {
     try {
@@ -95,8 +115,8 @@ export function Secondary({
           type="button"
           className="icon-btn icon-btn--quiet"
           onClick={onCollapse}
-          title="收起二级栏"
-          aria-label="收起二级栏"
+          title={t(strings.collapse)}
+          aria-label={t(strings.collapse)}
         >
           <ChevronIcon size={14} />
         </button>
@@ -113,24 +133,24 @@ export function Secondary({
                 className="secondary__title"
                 onClick={() => toggle(groupKey)}
                 aria-expanded={!groupCollapsed}
-                title={groupCollapsed ? '展开' : '折叠'}
+                title={groupCollapsed ? t(strings.expand) : t(strings.collapse)}
               >
                 <ChevronIcon
                   size={12}
                   className={groupCollapsed ? 'is-collapsed' : undefined}
                 />
-                <span>{group.title}</span>
+                <span>{pick(group.title, locale)}</span>
                 <span className="secondary__count">{group.items.length}</span>
               </button>
               {groupCollapsed ? null : group.items.length === 0 ? (
-                <p className="secondary__empty">没有可选项</p>
+                <p className="secondary__empty">{t(strings.noOptions)}</p>
               ) : (
                 <ul className="secondary__list">
                   {group.items.map((item, index) => {
                     const previous = group.items[index - 1];
                     const showSection =
                       item.section !== undefined && item.section !== previous?.section;
-                    const sectionKey = `${group.id}:${item.section ?? ''}`;
+                    const sectionKey = `${group.id}:${item.section?.['zh-Hans'] ?? ''}`;
                     const sectionCollapsed = collapsed.has(`section:${sectionKey}`);
                     // A section hides **all of its rows**; the heading stays so
                     // the group can be reopened. `item.section` is contiguous
@@ -139,8 +159,8 @@ export function Secondary({
                       return showSection ? (
                         <li key={`${item.id}-heading`} className="secondary__section">
                           <SectionHeading
-                            label={item.section}
-                            pinned={item.section === 'Pinned'}
+                            label={pick(item.section, locale)}
+                            pinned={item.section?.['zh-Hans'] === pinnedLabel}
                             collapsed
                             onToggle={() => toggle(`section:${sectionKey}`)}
                           />
@@ -152,8 +172,8 @@ export function Secondary({
                         {showSection ? (
                           <li className="secondary__section">
                             <SectionHeading
-                              label={item.section ?? ''}
-                              pinned={item.section === 'Pinned'}
+                              label={pick(item.section, locale)}
+                              pinned={item.section?.['zh-Hans'] === pinnedLabel}
                               collapsed={false}
                               onToggle={() => toggle(`section:${sectionKey}`)}
                             />
@@ -180,12 +200,18 @@ export function Secondary({
                             </span>
                             <span className="secondary__text">
                               <span className="secondary__label-row">
-                                <span className="secondary__label">{item.label}</span>
+                                <span className="secondary__label">
+                                  {pick(item.label, locale)}
+                                </span>
                               </span>
                               {item.hint ? (
                                 <span className="secondary__hint">
-                                  {item.placed ? <span className="secondary__placed">主区</span> : null}
-                                  {item.hint}
+                                  {item.placed ? (
+                                    <span className="secondary__placed">
+                                      {t(strings.workArea)}
+                                    </span>
+                                  ) : null}
+                                  {pick(item.hint, locale)}
                                 </span>
                               ) : null}
                             </span>
@@ -195,8 +221,12 @@ export function Secondary({
                             <button
                               type="button"
                               className={`secondary__pin${item.pinned ? ' is-pinned' : ''}`}
-                              aria-label={item.pinned ? `取消置顶 ${item.label}` : `置顶 ${item.label}`}
-                              title={item.pinned ? '取消置顶' : '置顶'}
+                              aria-label={
+                                item.pinned
+                                  ? t(strings.unpin, { name: pick(item.label, locale) })
+                                  : t(strings.pin, { name: pick(item.label, locale) })
+                              }
+                              title={item.pinned ? t(strings.unpinShort) : t(strings.pinShort)}
                               onClick={item.onPin}
                             >
                               {item.pinned ? '★' : '☆'}
@@ -206,8 +236,8 @@ export function Secondary({
                             <button
                               type="button"
                               className="secondary__close"
-                              aria-label={`关闭 ${item.label}`}
-                              title="关闭会话"
+                              aria-label={t(strings.close, { name: pick(item.label, locale) })}
+                              title={t(strings.closeSession)}
                               // **在行按钮外面**：点它不该顺手选中那一行
                               onClick={item.onClose}
                             >
@@ -239,17 +269,18 @@ function SectionHeading({
   collapsed: boolean;
   onToggle: () => void;
 }): JSX.Element {
+  const t = useT();
   return (
     <button
       type="button"
       className="secondary__section-toggle"
       onClick={onToggle}
       aria-expanded={!collapsed}
-      title={collapsed ? `展开 ${label}` : `折叠 ${label}`}
+      title={collapsed ? t(strings.expandNamed, { name: label }) : t(strings.collapseNamed, { name: label })}
     >
       <ChevronIcon size={11} className={collapsed ? 'is-collapsed' : undefined} />
       <span>{label}</span>
-      {pinned ? <span className="secondary__section-hint">置顶</span> : null}
+      {pinned ? <span className="secondary__section-hint">{t(strings.pinned)}</span> : null}
     </button>
   );
 }

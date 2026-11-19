@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import { cardLook } from '../cards';
+import { pick, useLocale } from '../i18n';
 import { shortId } from '../format';
 import {
   ActivityIcon,
@@ -49,6 +50,7 @@ export function LibraryPage({
   onPlaceOnWorkbench: (info: CardInstanceInfo) => void;
 }): JSX.Element {
   const [query, setQuery] = useState('');
+  const locale = useLocale();
   const [selectedId, setSelectedId] = useState<string | null>(selectedCardId);
 
   const filtered = useMemo(() => {
@@ -128,7 +130,7 @@ export function LibraryPage({
                   >
                     <span className={`library-row__icon tone-${look.tone}`}>{lookIcon(card.cardId)}</span>
                     <span className="library-row__text">
-                      <span className="library-row__title">{look.name}</span>
+                      <span className="library-row__title">{pick(look.name, locale)}</span>
                       <span className="library-row__sub">
                         {card.cardId} · {card.connectionId ? shortId(card.connectionId) : '未连接'}
                       </span>
@@ -165,7 +167,7 @@ export function LibraryPage({
                   </span>
                   <div>
                     <span className="eyebrow">CARD</span>
-                    <h2>{cardLook(selected.cardId).name}</h2>
+                    <h2>{pick(cardLook(selected.cardId).name, locale)}</h2>
                     <p className="dim mono">{selected.cardId}</p>
                   </div>
                 </div>
@@ -192,7 +194,7 @@ export function LibraryPage({
                     {lookIcon(selected.cardId, 40)}
                   </span>
                   <div>
-                    <h3>{cardLook(selected.cardId).note}</h3>
+                    <h3>{pick(cardLook(selected.cardId).note, locale)}</h3>
                     <p>
                       卡片的实际渲染发生在工作台。这里展示实例元信息与沙箱边界——不是又一个
                       iframe。

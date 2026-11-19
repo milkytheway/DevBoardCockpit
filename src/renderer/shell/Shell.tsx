@@ -343,6 +343,7 @@ export function Shell(): JSX.Element {
   const secondary = useMemo(
     () =>
       secondaryGroupsFor(page, {
+        locale,
         runtime,
         connections,
         cards,
