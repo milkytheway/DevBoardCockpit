@@ -47,6 +47,13 @@ export interface WizardInput {
   boardName: string;
   /** 板的 id ✓（**默认从名字来** ✓） */
   boardId?: string;
+  /**
+   * **走哪条通道** ✓（**默认串口** ✓ —— 用户定的是「先从串口开始」✓）。
+   *
+   * → **adb** ✓ —— **插上 USB 就有** ✓ · **零凭据** ✓（探索档案 §九·Q6 ✓）。
+   * → **serial** ✓ —— **调试口** ✓。
+   */
+  transport?: 'serial' | 'adb';
 }
 
 /** 向导跑完的结果 */
@@ -108,6 +115,21 @@ export interface WizardDeps {
 
 /** 造一条**临时的**串口 profile ✓（**指名 `generic-linux`** ✓ —— 零新机制 ✓） */
 export function serialProfileOf(input: WizardInput, boardId: string): ConnectionProfile {
+  const transport = input.transport ?? 'serial';
+  if (transport === 'adb') {
+    return parseProfile(
+      {
+        id: `wizard-${boardId}`,
+        label: `向导 · ADB`,
+        transport: 'adb',
+        // **指名通用包** ✓ → 「连接指名了某个包」那条路**根本不看 match** ✓
+        board_pack: 'generic-linux',
+        device_key: boardId,
+        options: {},
+      },
+      'wizard',
+    );
+  }
   return parseProfile(
     {
       id: `wizard-${boardId}`,
@@ -175,7 +197,8 @@ export async function runWizard(
 ): Promise<WizardResult> {
   const boardId = input.boardId ?? boardIdOf(input.boardName);
   const profile = serialProfileOf(input, boardId);
-  const log = deps.createLog(`wizard-${boardId}`, 'serial');
+  const transport = input.transport ?? 'serial';
+  const log = deps.createLog(`wizard-${boardId}`, transport);
 
   let connection: Connection;
   try {
@@ -226,7 +249,10 @@ export async function runWizard(
     targetId: boardId,
     targetName: input.boardName,
     outcomes: outcomesOf(report.readers),
-    connection: { transport: 'serial', port: input.port, baudrate: input.baudrate },
+    connection:
+      transport === 'serial'
+        ? { transport: 'serial', port: input.port, baudrate: input.baudrate }
+        : { transport: 'adb' },
   });
 
   // **落盘前先落一条 profile** ✓ —— **不然这块板在界面上选不到** ✓
@@ -259,13 +285,17 @@ export async function runWizard(
  */
 export function writeProfile(profilesRoot: string, boardId: string, input: WizardInput): void {
   mkdirSync(profilesRoot, { recursive: true });
+  const transport = input.transport ?? 'serial';
   const profile = {
     id: `board-${boardId}`,
     label: `板子 · ${input.boardName}`,
-    transport: 'serial',
+    transport,
     board_pack: boardId,
     device_key: boardId,
-    options: { port: input.port, baudrate: input.baudrate, pty: true },
+    options:
+      transport === 'serial'
+        ? { port: input.port, baudrate: input.baudrate, pty: true }
+        : {},
   };
   writeFileSync(
     join(profilesRoot, `board-${boardId}.json`),

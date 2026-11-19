@@ -59,6 +59,8 @@ export const api: CockpitApi = {
   setTheme: (theme) => invoke(IPC.themeSet, theme),
   workflowsRecent: () => invoke(IPC.workflowsRecent),
   workflowsCancel: (runId: string) => invoke(IPC.workflowsCancel, runId),
+  // **接板向导** ✓ —— **宿主专用** ✓（卡片与 agent 都拿不到 ✓）
+  wizardRun: (input) => invoke(IPC.wizardRun, input),
   permissionsList: () => invoke(IPC.permissionsList),
   permissionsSet: (actor, op, allowed) => invoke(IPC.permissionsSet, actor, op, allowed),
   onCardEvent: (cb) => {

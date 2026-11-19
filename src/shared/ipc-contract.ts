@@ -105,6 +105,14 @@ export const IPC = {
    * → **不承诺进程一定死** ✓（契约 A1 ✓ —— 那取决于传输与远端 ✓）
    */
   workflowsCancel: 'workflows:cancel',
+
+  /**
+   * **接板向导** —— **跑一次向导** ✓（docs/探索/02-想法一-接板向导.md ✓）。
+   *
+   * → **人只参与一步** ✓：选串口 + 波特率 ✓ → **其余全自动** ✓。
+   * → **宿主专用** ✓ —— **卡片与 agent 都拿不到** ✓（它会写用户的目录 ✓）。
+   */
+  wizardRun: 'wizard:run',
 } as const;
 
 /**
@@ -124,6 +132,33 @@ export interface HostWorkflowRun {
   startedAt: number;
   /** 产出的槽 */
   outputs: Record<string, string>;
+}
+
+/**
+ * **向导跑完的结果** ✓ —— **宿主专用** ✓。
+ *
+ * → kind **分四种** ✓ —— **它们是不同的故障** ✓ → **修法完全不同** ✓：
+ *   **ok** ✓ · **port-unopenable** ✓（串口打不开 ✓）· **no-reply** ✓（板子没说话 ✓）·
+ *   **connection-dead** ✓（一个数都没出来 ✓ —— **那是连接一次都没通** ✓）。
+ * → **「板子没说话」与「连不上」是两件事** ✓ —— **文案上不许混** ✓。
+ */
+export interface WizardRunResult {
+  /** 成没成 ✓ */
+  ok: boolean;
+  /** **现在是哪种情况** ✓ */
+  kind: 'ok' | 'port-unopenable' | 'no-reply' | 'connection-dead';
+  /** **一句话** ✓（**说人话** ✓ —— **别把「连接失败」和「板子没说话」混成一句** ✓） */
+  message: string;
+  /** **下一步查什么** ✓（**空数组 = 没什么要提醒的** ✓） */
+  hints: string[];
+  /** **多少个元操作可用** ✓（**这板有什么** ✓） */
+  greenCount: number;
+  /** **多少个不可用** ✓ */
+  redCount: number;
+  /** **包落在哪** ✓（**成了才有** ✓） */
+  installedDir?: string;
+  /** **这块板的 id** ✓（**成了才有** ✓） */
+  boardId?: string;
 }
 
 /** 谁能执行一个操作（**卡片** / **agent** ✓） */
@@ -319,6 +354,25 @@ export interface CockpitApi {
    * → **不承诺进程一定死** ✓（A1 ✓）—— 传输说了算 ✓。
    */
   workflowsCancel(runId: string): Promise<{ runId: string }>;
+
+  /**
+   * **接板向导**（docs/探索/02-想法一-接板向导.md ✓）。
+   *
+   * ── 人只参与一步 ✓ ──
+   *
+   * → port = **串口号** ✓（**手动选** ✓ —— **不自动枚举** ✓ · 用户已定 ✓）
+   * → baudrate = **波特率** ✓（**不试** ✓ —— 用户已定 ✓）
+   * → boardName = **这块板叫什么** ✓（**给包起名** ✓）
+   *
+   * → **只给宿主** ✓ —— **卡片与 agent 都拿不到** ✓。
+   */
+  wizardRun(input: {
+    port: string;
+    baudrate: number;
+    boardName: string;
+    /** **走哪条通道** ✓ —— 缺省 = 串口 ✓ */
+    transport?: 'serial' | 'adb';
+  }): Promise<WizardRunResult>;
   /** 把外壳主题告诉 main：卡片重新加载时会拿到对应的 token */
   setTheme(theme: 'dark' | 'light'): Promise<void>;
   /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */

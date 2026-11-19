@@ -40,6 +40,7 @@ import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { createCardWiring } from './cards/wiring';
+import { runWizardForHost } from './wizard/wiring';
 import { ActionAudit } from './actions/audit';
 import { invokeAction } from './actions/executor';
 import { McpServer } from './mcp/server';
@@ -619,6 +620,30 @@ handle(IPC.layoutSet, (state) => {
  */
 handle(IPC.workflowsRecent, () => workflowService.recent().map(toHostRun));
 handle(IPC.workflowsCancel, (runId) => workflowService.cancel(String(runId)));
+
+/**
+ * **接板向导** ✓ —— **宿主专用** ✓（卡片与 agent 都拿不到 ✓）。
+ *
+ * → **人只参与一步** ✓（选串口 + 波特率 ✓）→ **其余全自动** ✓。
+ * → 它**会写用户的目录** ✓（连接 profile ✓ + 板型包 ✓）→ **所以只给宿主** ✓。
+ */
+handle(IPC.wizardRun, (input) =>
+  runWizardForHost(
+    {
+      port: String((input as { port?: unknown }).port ?? ''),
+      baudrate: Number((input as { baudrate?: unknown }).baudrate ?? 115200),
+      boardName: String((input as { boardName?: unknown }).boardName ?? ''),
+      transport:
+        (input as { transport?: unknown }).transport === 'adb' ? 'adb' : 'serial',
+    },
+    {
+      appRoot: app.getAppPath(),
+      userProfilesDir: userProfilesDir(),
+      userBoardsDir: userBoardsDir(),
+      userDataDir: userDataDir(),
+    },
+  ),
+);
 
 handle(IPC.permissionsList, () => {
   const operations = permissionOperations();
