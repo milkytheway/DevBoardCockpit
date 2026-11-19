@@ -35,9 +35,9 @@ describe('sshArgs', () => {
   it('拼出 host / port / username', () => {
     const args = sshArgs({
       id: 's', label: 's', transport: 'ssh',
-      options: { host: '192.168.136.131', port: 22, username: 'alientek' },
+      options: { host: '192.168.100.10', port: 22, username: 'alientek' },
     });
-    expect(args).toEqual({ host: '192.168.136.131', port: 22, username: 'alientek' });
+    expect(args).toEqual({ host: '192.168.100.10', port: 22, username: 'alientek' });
   });
 
   it('缺 host 时报错（事实 H1：连不上要说清是哪个主机）', () => {

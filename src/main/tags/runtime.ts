@@ -363,7 +363,7 @@ export const RETRY_BACKOFF_MS: readonly number[] = [2000, 5000, 10000, 30000];
  * **修 P2**：原来用的是 `board_pack !== undefined`——
  * 而 `local.json` 与 `ubuntu-ssh.json` 的 `board_pack` 是 **`null`**，
  * `null !== undefined` 为真 → 它们**被当成了候选** →
- * 运行时去连**本机**和 **192.168.136.131 的 SSH**，读它们的
+ * 运行时去连**本机**和 **192.168.100.10 的 SSH**，读它们的
  * `/proc/device-tree/model`（必然认不出来）。
  *
  * 代价不是「白开两条连接」那么简单：串口是**独占**的，

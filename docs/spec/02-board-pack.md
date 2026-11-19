@@ -1,6 +1,6 @@
 > **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
 > 契约层为**权威文档**。**迁入后经 `0244852` 修订过**，2026-11-12 的评审又做了一轮修订
-> ——逐节来源见 `00-overview.md` §一之二。落地方式见 `docs/04-架构设计.md`。
+> ——逐节来源见 `00-overview.md` §一之二。实现方式见仓库根目录的 `README.md`。
 >
 > **2026-11-13 修订（计划 2 前置拍板）**：能力词表与词义对照表（§10.3）、
 > 回读形式 5 `kind: none`（§4.4 / §4.5）、校验规则 25/26/27（§七）。
@@ -1048,7 +1048,7 @@ poll group，都要用同一个 reader kind 表，都要有 `provides` 绑定。
   "board_pack": "rk3588-atk",
   "device_key": "atk-01",
   "options": {
-    "serial": "f34dca7784396ab2",
+    "serial": "0000000000000000",
     "pty": false,
     "ssh": { "host": "192.168.5.100", "port": 22, "username": "root" }
   }

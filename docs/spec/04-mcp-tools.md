@@ -1,6 +1,6 @@
 > **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
 > 契约层为**权威文档**。**迁入后经 `0244852` 修订过**，2026-11-12 的评审又做了一轮修订
-> ——逐节来源见 `00-overview.md` §一之二。落地方式见 `docs/04-架构设计.md`。
+> ——逐节来源见 `00-overview.md` §一之二。实现方式见仓库根目录的 `README.md`。
 # MCP 工具集
 
 > GUI 实现 MCP server。宿主 AI 通过它感知软件现状、读板子状态、写卡片、自测。
@@ -906,7 +906,7 @@ HTTP 回环让 MCP server 仍然住在 Electron main 进程内（ADR-D2 成立�
 > （「servers MUST validate the `Origin` header」），本产品把它当作**硬约束**写进契约。
 
 **不锁的部分**：具体库、端口分配策略、SSE 或 Streamable HTTP 的具体变体，
-由 `docs/04-架构设计.md` 决定。本契约只要求「agent 能发现并连上，且连上的一定是本机用户自己启动的那个 GUI」。
+由实现层的连接方式决定。本契约只要求「agent 能发现并连上，且连上的一定是本机用户自己启动的那个 GUI」。
 
 ### 7.2 发现
 

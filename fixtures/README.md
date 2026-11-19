@@ -66,7 +66,7 @@
 
 `metrics/` 里的样本来自**前身工程**（`DevBoardConsole`）的运行记录；
 `board/` 里的样本是 **2026-11-13 直接从板子上采的**
-（`boardctl.py sh`，板子 serial `f34dca7784396ab2`）。
+（`boardctl.py sh`，板子 serial `0000000000000000`）。
 
 | 文件 | 内容 |
 |---|---|

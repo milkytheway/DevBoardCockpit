@@ -4,10 +4,10 @@
   "transport": "ssh",
   "board_pack": null,
   "options": {
-    "host": "192.168.136.131",
+    "host": "192.168.100.10",
     "port": 22,
     "username": "alientek",
-    "key_filename": "C:\\Users\\Administrator\\.ssh\\id_ed25519_codex_vm",
+    "key_filename": "C:\\Users\\Administrator\\.ssh\\id_ed25519",
     "pty": true,
     "commands": "ssh"
   }

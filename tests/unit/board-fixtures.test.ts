@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { parseLsLines } from '../../src/main/util/ls-output';
 
 /**
- * **真机样本**的对拍（2026-11-13 采集，板子 serial f34dca7784396ab2）。
+ * **真机样本**的对拍（2026-11-13 采集，板子 serial 0000000000000000）。
  *
  * 与 `tests/unit/session-log-format.test.ts` 的区别：
  * 那份的样本来自**前身工程**的日志；这里的样本是**今天从真板上采的**，

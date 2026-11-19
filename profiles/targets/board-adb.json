@@ -8,7 +8,7 @@
     "pty": false,
     "prompt": "root@ATK-DLRK3588",
     "commands": "adb",
-    "serial": "f34dca7784396ab2",
+    "serial": "0000000000000000",
     "ssh": {
       "host": "192.168.5.100",
       "port": 22,

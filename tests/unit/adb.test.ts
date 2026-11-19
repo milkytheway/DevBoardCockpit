@@ -74,8 +74,8 @@ describe('adbCapabilities', () => {
 
 describe('adbArgs', () => {
   it('有序列号时前置 -s <serial>', () => {
-    expect(adbArgs(profile({ serial: 'f34dca7784396ab2' }), ['shell']))
-      .toEqual(['-s', 'f34dca7784396ab2', 'shell']);
+    expect(adbArgs(profile({ serial: '0000000000000000' }), ['shell']))
+      .toEqual(['-s', '0000000000000000', 'shell']);
   });
 
   it('没有序列号时不带 -s', () => {

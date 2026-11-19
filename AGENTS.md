@@ -1,215 +1,95 @@
-# AGENTS.md —— 给进入这个工程的 agent 的说明
+# AGENTS.md
 
-> 你正在处理 `D:\3588\02、RK3588开发平台\DevBoardCockpit`。
-> 这是「开发板驾驶舱」新工程（Electron + React + TypeScript）。
-> 前身是同级目录的 `DevBoardConsole`（Python + PySide6，已冻结，只读参考）。
+面向在此仓库工作的 AI agent 与开发者的工程约定。
 
 ---
 
-## 1. 先建立心智模型
+## 一 · 工程结构
 
-这是一个**产品工程**。产品形态一句话：
+这是一个产品工程。产品的形态：面向嵌入式 Linux 开发者的 Windows 桌面工作台，板子的能力表达为语义位号，可视化与操控表达为卡片，扩展方式为 MCP。
 
-> 面向嵌入式 Linux 开发者的 Windows 桌面工作台。
-> 板子的能力 = 语义位号（tag），可视化与操控 = 卡片，扩展 = MCP。
-> 组态工程师是 AI。
-
-工程分**两层**，别搞混：
-
-| 层 | 在哪 | 地位 |
+| 层 | 位置 | 地位 |
 |---|---|---|
-| **契约层** | `docs/spec/` 五份文档 + `docs/spec/data/tag-vocabulary.yaml` | **权威**。tag 词汇表、板型包格式、卡片 manifest、MCP 工具集都在这里 |
-| **设计层** | `docs/04-架构设计.md` | 契约怎么落到这套栈上。**待用户逐节确认** |
-| **实现层** | `src/` | Electron 外壳、卡片运行时、路线图。**计划 1 已落地**（工程骨架 + 终端三通道 + 文件互传） |
+| 契约层 | `docs/spec/` 五份文档 + `docs/spec/data/tag-vocabulary.yaml` | 权威。位号词表、板型包格式、卡片清单、流程包格式、MCP 工具集 |
+| 实现层 | `src/` | 主进程、卡片宿主、位号运行时、流程执行器、MCP 服务 |
+| 资产 | `cards/` `profiles/` | 内置卡片、板型包、流程包、连接 profile |
 
-> ⚠️ **契约层已由用户追认**（`docs/05` ADR-D15），`writing-plans` 已排出计划 1 并开始实现。
-> **实现层的规矩**：
-> - **计划外的新功能不许写。** 计划在 `docs/superpowers/plans/`，每一步都有验收判据；
->   要加东西先改计划。
-> - **先写测试再看它失败**（TDD）。本仓库的规矩是「纯函数必须有单测；
->   真机样本做黄金向量」。
-> - **契约层仍然冻结**：改 `docs/spec/` 要走评审（ADR-D15）。
->   **升不升 `apiVersion`**：**`devboard/v1` 尚未随任何实现发布** → 那是「v1 定稿前的修正」，
->   **不升**（先例 `docs/05` ADR-D24 / D25 / D26 ✓）；**v1 发布后一律升** ✓。
->   → **封闭码表加项 = 契约变更** ✓（同 `danger_floor_version` / `reason_code_version` 那一套治理 ✓）。
-> - 契约与实测的差异记进 `docs/06`，**不擅自改包**。
->
-> **已实现**（计划 1）：工程骨架、连接 profile 的封闭 schema、
-> 串口 / ADB / SSH / 本机四个传输、终端会话与 pty/pipe 双模式、文件互传。
-> **尚未实现**（计划 2–4）：tag 位号层、板型包运行时、卡片运行时与沙箱、MCP server。
->
-> **真机验收**要在 Windows 宿主机上做，清单见
-> `docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md`。
+主进程持有全部设备 I/O、位号采集、动作执行与权限判定。渲染进程只负责绘制。卡片运行在独立 iframe 中，只能访问白名单 API。
 
-三条不可动摇的主线：
+## 二 · 三条主线
 
-1. **契约优先**：契约已冻结在 `docs/spec/`，实现必须**逐条对齐**，不得另立一套命名或状态语义。
-2. **AI 可造卡**：卡片是文件，agent 写完即生效，改一行热插拔。
-3. **驾驶舱而非遥控器**：控制动作必须**回读**，UI 以板子真实状态为准。
+1. **契约优先。** 契约冻结在 `docs/spec/`，实现必须逐条对齐，不得另立命名或状态语义。改动契约需要评审，并相应决定 `apiVersion` 是否升级。`devboard/v1` 尚未随正式版本发布，此前的修改属于定稿前的修正，不升版本号。
+2. **卡片是文件。** agent 写完即生效，改一行热插拔。卡片不依赖打包流程。
+3. **驾驶舱而非遥控器。** 控制动作必须回读，界面以板子真实状态为准。
 
-## 2. 阅读顺序
+## 三 · 工作方式
+
+- **先写测试再看它失败。** 纯函数必须有单元测试；真机样本做黄金向量。
+- **契约层冻结。** 修改 `docs/spec/` 走评审。封闭码表增加条目属于契约变更。
+- **契约与实测的差异记入核对清单，不擅自改包。** 修改板型包前先看差异清单。
+- **改架构决策要写决策记录。** 不在代码里静默改变结构。
+
+## 四 · 阅读顺序
 
 ```
 README.md
-  └─ docs/09-总设计.md                总纲：架构全貌 + 为什么 + 还差什么（**先读这个**）
-  └─ docs/spec/00-overview.md        两条对称的总线 + 契约逐节来源表
-  └─ docs/spec/01-tag-contract.md     tag 词汇表与五态
-  └─ docs/spec/data/tag-vocabulary.yaml  核心词表的机器可读权威（01 的表格由它生成）
-  └─ docs/spec/02-board-pack.md       板型包与 reader kind
-  └─ docs/spec/03-card-manifest.md    卡片与权限
-  └─ docs/spec/04-mcp-tools.md        MCP 工具集
-  └─ docs/spec/05-workflow-pack.md    流程包格式（一件事怎么做）
-  └─ docs/02-设备事实清单.md          实测事实与踩坑（写代码前必读）
-  └─ docs/04-架构设计.md              落地方式（Codex 撰写，待确认）
-  └─ docs/05-决策记录.md              已冻结的决策（ADR-D1~D19）
-  └─ docs/06-契约核对.md              契约与实测的差异（C1–C7）
-  └─ docs/07-评审报告.md              第一轮评审
-  └─ docs/08-独立评审-k3.1pro.md      第二轮独立评审 + 与 07 的对照
-  └─ docs/17-现状总账.md            当前做到哪了（**先看这个，再决定做什么**）
-  └─ docs/21-第三部分设计-卡片框架与控制面.md  卡片与控制面的机制基线
-  └─ docs/24-流程包设计.md          第四部分设计提案：流程包（**待评审**）
-  └─ docs/UI设计/10-色彩使用规范.md 色彩纪律：三张色表 + 9 条可判规则（**已落地**）
-  └─ docs/UI设计/11-卡片内部设计规范.md 卡片内部：信息预算 + 形态 ≤ 2（**已成文**）
-  └─ docs/探索/  未拍板的想法与前瞻设计（**探索区 · 不约束任何人** ✓ —— 落地时要移出去变成契约增量 → 评审 → 计划 → 决策）
+  └─ docs/spec/00-overview.md       两条主线与各文档职责
+  └─ docs/spec/01-tag-contract.md    位号词表与五种状态
+  └─ docs/spec/data/tag-vocabulary.yaml  词表的机器可读权威
+  └─ docs/spec/02-board-pack.md      板型包与数据源类型
+  └─ docs/spec/03-card-manifest.md   卡片清单与权限
+  └─ docs/spec/04-mcp-tools.md       MCP 工具集
+  └─ docs/spec/05-workflow-pack.md   流程包格式
+  └─ docs/02-设备事实清单.md         实测路径与行为约束
+  └─ docs/tutorial/01-建立板型包.md  为陌生板子建立板型包
 ```
 
-## 3. 硬规矩
+## 五 · 硬约定
 
-| 规矩 | 说明 |
+| 约定 | 说明 |
 |---|---|
-| **契约是权威** | 想改 tag 名、单位、状态语义、板型包字段 → 先改 `docs/spec/`，再同步改实现层。**两处同改**，否则对拍测试会红 |
-| **词表只有一个源头** | 核心词表的机器可读权威是 `docs/spec/data/tag-vocabulary.yaml`；`docs/spec/01` 的表格是它的渲染结果。改词表改 YAML，**不许另写一份** |
-| **颜色只有一个源头** | 语义色在 `src/shared/theme/seed.ts`（换皮改那里）；**材质色**在 `src/shared/theme/material.ts`（`--shell-mat-*`，**外壳专有**）。<br>**非生成产物的 CSS 里不许出现任何颜色字面量**（hex / `rgb()` / 颜色关键字直接上色）—— 由 `tests/web/visual-material.test.ts` 守着。<br>颜色关键字只许出现在 `color-mix()` 里当**明暗调节**。详见 `docs/UI设计/10-色彩使用规范.md` |
-| **编号分几套** | `ADR-D*`（`docs/05` 实现层决策）/ `SPEC-D*`（`docs/spec/00` 契约层决策）/ `C*`（`docs/06` 核对条目）/ `O*`（跨文档待决）/ `Q*`（`docs/04` 设计层待决）。**引用时写全前缀**——历史上两套都叫「D7」，导致「见 D7」有二义 |
-| **对拍是硬判据** | TS 实现必须跑通与契约同源的黄金样本断言（样本在 `fixtures/`，同样本同结果） |
-| **设计未确认不写实现** | `docs/04-架构设计.md` 逐节被用户确认之前，只允许写文档、契约、测试向量 |
-| **事实要标状态** | 🟢 已核实 / 🟡 用户陈述 / 🔵 待验证。**不要把 🟡 写成 🟢** |
-| **路径写绝对路径** | Windows 宿主用 `C:\...`；板端路径用 POSIX 绝对路径 |
-| **别拷大文件进仓库** | SDK、固件、PDF 原书一律只记路径 |
-| **旧工程只读** | `DevBoardConsole` 保留事实与理由，**不删不改**；移植先看 `docs/03-迁移对照表.md` |
-| **改决策要写 ADR** | 动 `docs/05-决策记录.md`，别在代码里默默改架构 |
-| **探索区不是规格** | `docs/探索/` 里的东西**不约束任何人** ✓ —— 那里只有「还没拍板」✓。**别拿它当依据写实现** ✓；要落地时它会变成契约增量 → 评审 → 计划 → 决策 ✓ |
-| **提交前跑测试** | `npm run lint && npm run typecheck && npm test` 全绿才提交 |
-| **修完 bug 要验测试真的在守** | 把修复**改回去**，确认对应测试**变红**，再还原确认变绿。<br>「测试通过」不等于「测试能抓住这个 bug」——只有变异能区分。<br>跑 `npm run mutation:check` 看当前这批修复是否都还守着 |
-| **替身按行为建模，不按结论建模** | 假实现要模拟**真实行为**（回显每一行、执行命令、异步回调），<br>不能直接返回「契约期待的那个答案」——那样会把协议形状的 bug 盖住 |
-| **词表只有一个源头** | 改词表改 `docs/spec/data/tag-vocabulary.yaml`，然后 `npm run gen:vocabulary`。<br>跑 `npm run gen:vocabulary:check` 确认「YAML = 文档表格 = 代码词表」三份一致 |
+| **词表只有一个源头** | 核心词表的机器可读权威是 `docs/spec/data/tag-vocabulary.yaml`。修改后运行 `npm run gen:vocabulary`，并用 `npm run gen:vocabulary:check` 确认文档表格、代码词表与 YAML 三者一致 |
+| **颜色只有一个源头** | 语义色在 `src/shared/theme/seed.ts`，材质色在 `src/shared/theme/`。改完运行 `npm run gen:theme:check` |
+| **路径写绝对路径** | Windows 宿主用 `C:\...`，板端路径用 POSIX 绝对路径。机器专属路径只出现在 `profiles/settings.json` 与连接 profile 中 |
+| **事实标注状态** | 已核实、用户陈述、待验证三种状态要区分开 |
+| **测试样本只增不改** | `fixtures/` 中的是黄金向量 |
+| **未知字段报错** | 契约层封闭 schema 拒收未知字段，避免拼错的字段被静默忽略 |
+| **Windows 子进程隐藏控制台** | 拉起子进程时设置 `windowsHide: true` |
 
-## 4. 事实从哪来
-
-- `docs/02-设备事实清单.md` —— **唯一事实源**，板子的路径、命令、坑都在那。
-- `docs/06-契约核对.md` —— 契约与实测对不上的地方（**先看这里再改包**）。
-- 想知道「为什么这么做」，去 `docs/legacy/` 和 `docs/spec/` 翻前身工程的设计说明。
-- 用户在学习工作区（`C:\Users\Administrator\Desktop\嵌入式Linux学习`）的实测记录
-  （`04-环境/环境实况.md`）是**上游来源**，但以本工程 `docs/02` 为准。
-
-## 5. 代码规范（实现阶段生效）
+## 六 · 代码规范
 
 | 项 | 约定 |
 |---|---|
-| 语言 | TypeScript `strict: true`，禁止 `any`（确需时 `unknown` + 收窄） |
-| 主/渲染边界 | 设备 I/O、tag 层、action 层、卡片注册表、**MCP server** 全部在 main；renderer 只画 |
-| 卡片 | 跑在 sandbox iframe 里，只能通过白名单 API 触达宿主（契约 spec/03） |
-| 进程/子进程 | Windows 下子进程一律 `windowsHide: true`（否则每条命令闪黑窗） |
-| 测试 | vitest；纯函数必须有单测；真机样本做黄金向量（`fixtures/`） |
-| 样本 | `fixtures/` 里的样本**只增不改** |
+| 语言 | TypeScript，`strict` 模式，禁用 `any`（确需时用 `unknown` 并收窄） |
+| 主进程与渲染进程边界 | 设备 I/O、位号层、动作层、卡片注册表、MCP 服务全部在主进程 |
+| 卡片沙箱 | 独立 iframe，`sandbox="allow-scripts"`，内容安全策略由宿主注入 |
+| 参数编码 | 拼接进 shell 的字符串按类型编码，路径加引号并拒绝换行与空字符 |
+| 未知不等于零 | 读不到与读数为零是两种状态，前者显示为不可用，不显示数字 |
 
-## 6. 别做的事
+## 七 · 常见错误
 
-- ❌ 私自改 tag 命名或状态语义（先改契约文档）
-- ❌ **在契约评审通过前写任何实现代码**（TS 源码、校验器、参考实现、测试脚手架都不行）
-- ❌ 让 renderer 直接碰设备（绕过 tag / action 层）
-- ❌ 给卡片开后门（同源、任意 `postMessage`、直接 fs）
-- ❌ 把「读取板子状态」写成逐文件多次往返（会污染 `/proc/stat`，见事实 A5/A6）
-- ❌ 同一个连接上让采样与动作并发往返（串口只有一根线，会串台，见 `spec/02` §1.2.1）
-- ❌ 把参数原样拼进命令（字符串参数要按类型编码，见 `spec/02` §4.6）
-- ❌ 只靠 iframe 的 `sandbox` 断网（必须由宿主注入 CSP，见 `spec/03` §6.1）
-- ❌ 把 `unavailable` 当成 `0` 处理
-- ❌ 在实现阶段把契约文档「顺手改一改」
-- ❌ **在沙箱里直接 `npm install`**（会剪掉宿主要的 win32 平台包，见 §6.1）
-
-### 6.1 加依赖（**沙箱与宿主共享同一个 node_modules**）
-
-npm 的 `optionalDependencies` 是**按平台安装**的（`@esbuild/win32-x64` vs
-`@esbuild/linux-x64`、`@rollup/rollup-win32-*` vs `-linux-*`…）。
-→ **在 Linux 上跑一次 `npm install`，npm 会把宿主那一半当成多余的剪掉**，
-宿主上 `vitest` / `tsx` 就起不来（反过来一样）。
-
-**规矩**：
-
-| 谁加依赖 | 怎么做 |
+| 错误 | 后果 |
 |---|---|
-| **沙箱（Linux）** | `bash scripts/acceptance/add-dep.sh <pkg>[@version]` —— 隔离前缀装 → 只把缺的包拷进共享树 → 改 `package.json` → `npm install --package-lock-only` 更新 lock。**共享树一个字节都不碰** |
-| **宿主（Windows）** | `npm install` → 然后**在沙箱里**跑 `bash scripts/acceptance/linux-natives.sh restore`（把 Linux 的平台包补回来；那个脚本在 Windows 上不能跑，它会动 `node-pty/build/`） |
+| 把「暂时没有数据」与「连不上」混成一句话 | 用户无法判断该查数据还是查连接 |
+| 在渲染进程直接读位号 | 绕过主进程，破坏单一数据源 |
+| 在渲染进程做权限过滤 | 权限判定必须在主进程，页面拿到的是已过滤的结果 |
+| 自行实现动作执行、回读或审计 | 参数编码与权限判定是防线，重写会引入注入面 |
+| 用真实数值代替状态 | 恒为零的仪表比没有仪表更危险，它看起来是真的 |
+| 位号自带引号 | 引号由运行时统一编码，叠加会出错 |
 
-> **改 lock 用 `npm install --package-lock-only`** —— 它**只改 lock 文件，不碰 node_modules** ✓
-> （lock 里两边的平台包都记着 ✓ → 不会把对方的剪掉）。
-> 另外：`package.json` 与 `package-lock.json` **必须同步** ——
-> 漏了的话 `npm ci`（CI / 干净机器）会装不全（这个工程已经栽过一次：
-> `react-grid-layout` 与 `@playwright/test` 都在 package.json 里却不在 lock 里）。
-
-### 6.2 调 UI 用的**假设备**（没有板子也能调外壳）
+## 八 · 常用命令
 
 ```bash
-COCKPIT_FAKE=1 npm run dev      # 假板子排第一（真板子还在列表里）
-COCKPIT_FAKE=only npm run dev   # 只有假板子
+npm run dev                    # 开发模式
+npm run build                  # 构建与产物自检
+npm run dist                   # 构建安装包
+npm run lint
+npm run typecheck
+npm test
+npm run test:cards             # Playwright，真 Electron
+npm run validate:profiles      # 校验板型包
+npm run probe:board -- --profile board-adb   # 对真板探测
+npm run check:package          # 校验打包产物
+npm run gen:vocabulary:check   # 确认词表三处一致
+npm run gen:theme:check        # 确认主题产物一致
 ```
-
-**它是什么**：一块**只吐原始文本**的假板子（`src/main/hal/fake/`），
-跑在 **HAL 边界**上——真包 + 真 kind + 真 store + 真采样器都在跑，
-只有「跟板子说话」那一层被换掉了。
-
-**三条规矩**：
-
-| 规矩 | 为什么 |
-|---|---|
-| **假设备只吐原始文本**（jiffies / kB / `@Hz` / 毫度），**不造百分比、不造五态** | 五态是**契约**（`docs/spec/01` §2.1）。假设备自己造 = **把契约抄了第二份**，迟早漂移 |
-| **假设备的 profile 不落盘** | `profiles/targets/` 要保持干净 |
-| **生产包不许有它** | `scripts/check-build.ts` 会扫 `out/main/**`，标记串出现就判红（已实测两个方向） |
-
-**为什么值得做**：板子不插电、adb 没起、串口被占的时候，外壳**只能对着空气调**——
-而一个从没见过 `unavailable` 与 `error` 的界面，等板子真掉线时**第一次见到它们**。
-（详见 `docs/05` ADR-D30。）
-
-## 7. 常用命令（实现阶段才有意义）
-
-```powershell
-npm run dev                # electron-vite 开发模式
-npm run build              # 三段构建 + 构建产物自检（preload 文件真的在吗）
-npm run lint               # ESLint
-npm run typecheck          # tsc --noEmit
-npm test                   # vitest
-# 板型包 + 卡片 manifest 校验 —— **计划 2（M3/M4）起才有**
-# 对着真板跑 reader，核对输出 —— **计划 2（M3/M4）起才有**
-npm run gen:vocabulary     # 从 YAML 生成词表（文档表格 + 代码词表）
-npm run gen:vocabulary:check        # 校验三份一致，不一致就退出码 1
-npm run mutation:check     # 变异测试：证明回归测试真的在守着（83 项）
-npm run test:cards         # Playwright（Electron 模式）的 e2e —— **真 Electron**（生产构建）
-npm run test:cards:fake    # 同上，但用**假设备**构建 —— action/workflow 的 e2e **必须**用它
-# 调 UI 用的假设备（不需要真板子）—— 见 §6.2
-COCKPIT_FAKE=1 npm run dev # 假板子排第一（合成数据）
-COCKPIT_FAKE=only npm run dev  # 只有假板子
-```
-
-
-> ⚠️ **e2e 要跑带假设备的那条**：`npm run test:cards` 走**生产构建**，
-> 而 action / workflow 的 e2e 需要假设备 → **那 6 条会红**。
-> **用 `npm run test:cards:fake`** ✓（`COCKPIT_FAKE` 走构建模式）。
->
-> ⚠️ **`mutation:check` 绝不能与任何 build 并行跑** ——
-> `mutation:check` 是**原地改源码**再跑测试的；
-> 并行跑 build 的话，构建会拿到**被变异过的源码** → e2e 报「找不到构建产物」，
-> **一个假故障**。要跑就**串行**。
->
-> **上面 8 条命令现在都有**（`package.json` 里就是这 8 条）。
-> `validate:profiles` 与 `probe:board` **属于计划 2（M3/M4）**，现在还不存在——
-> 文档里引用它们的地方已标注「计划 2 起可用」，别照抄一个不存在的命令。
->
-> **`npm run gen:vocabulary:check` 不要写成 `npm run gen:vocabulary -- --check`。**
-> PowerShell 下的 `npm.ps1` 会把 `--` 之后的内容吃掉——
-> 于是「校验」静默退化成「生成」，**而生成会改写契约文档**。
-> 独立的脚本条目不经这层转发，跨平台都对。
-
----
-
-*创建于 2026-11-12，由 Codex 按用户定稿愿景初始化；
-契约层自前身工程迁入。前身工程的 Python 参考实现已在契约评审前移除（评审通过后按契约重写）。*
