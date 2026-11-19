@@ -31,6 +31,7 @@ import {
   builtinWorkflowsDir,
   cardRootsDir,
   cardStorageDir,
+  userBoardsDir,
   userDataDir,
   userProfilesDir,
   userWorkflowsDir,
@@ -208,6 +209,9 @@ terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, 
  */
 const runtime = new TagRuntime({
   packsDir: join(app.getAppPath(), 'profiles', 'boards'),
+  // **用户自己的板型包目录** ✓ —— **向导实例化出来的包在这儿** ✓
+  // → **同 id 时用户优先** ✓（与连接 profile / 流程包 / 卡片同款 ✓）
+  userPacksDir: userBoardsDir(),
   createConnection: createConnectionFor,
   createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
 });

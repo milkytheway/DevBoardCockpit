@@ -86,6 +86,22 @@ export function userWorkflowsDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'workflows');
 }
 
+/**
+ * **用户自己的板型包目录**（可写 ✓）。
+ *
+ * ── 为什么它以前不存在（**2026-11-19 补上** ✓）──
+ *
+ * → **板型包是唯一「只有内置、没有用户」的** ✗ —— 而**连接 profile** ✓（`userProfilesDir` ✓）
+ *   · **卡片** ✓（`cardRootsDir` ✓）· **流程包** ✓（`userWorkflowsDir` ✓）**都有两份** ✓。
+ * → **后果**：**用户自己往用户数据目录放一份板型包，运行时读不到** ✗
+ *   （运行时只读 asar 里那一个 ✓ —— `src/main/index.ts:210` ✓）
+ *   → **向导实例化出来的包落地即废** ✗。
+ * → **所以它补上** ✓ —— 与那三样**同款规矩** ✓（**用户目录在后 → 同 id 时用户优先** ✓）。
+ */
+export function userBoardsDir(appName: string = DEFAULT_APP): string {
+  return join(userDataDir(appName), 'boards');
+}
+
 /** 会话日志目录 */
 export function logDir(appName: string = DEFAULT_APP): string {
   return join(userDataDir(appName), 'logs');

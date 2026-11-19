@@ -48,8 +48,14 @@ export type { RuntimeState, RuntimeStatus };
  */
 
 export interface TagRuntimeOptions {
-  /** 板型包目录的父目录 */
+  /** 板型包目录的父目录（**内置那一份** ✓） */
   packsDir: string;
+  /**
+   * **用户自己的板型包目录** ✓（**可选** ✓ —— 不存在就跳过 ✓）。
+   *
+   * → **同 id 时用户优先** ✓（与 `profiles/loader.ts` 同款 ✓）。
+   */
+  userPacksDir?: string;
   /** 建连接 */
   createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection;
   /** 建会话日志 */
@@ -131,6 +137,7 @@ export class TagRuntime {
       connection,
       boardPackId: profile.board_pack ?? null,
       packsDir: this.opts.packsDir,
+      userPacksDir: this.opts.userPacksDir,
     });
     if (binding.pack === null) {
       this.state = 'no-pack';
