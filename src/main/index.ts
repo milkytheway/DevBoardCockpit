@@ -481,6 +481,9 @@ const cards = createCardWiring({
   },
   /** 宿主里已声明的流程 id（规则 14 ✓）——**没接上就是 null（离线）✓** */
   availableWorkflows: () => workflowRegistry.list().map((w) => w.id),
+  // **板型包里的动作 id** ✓（规则 5 ✓）—— **null = 离线** ✓
+  // → 与 MCP 的 `validate_card` **同口径** ✓（2026-11-19 修 ✓）
+  availableActions: () => runtime.packView?.actions ?? null,
   permsFor: (cardId) => {
     const card = cards.registry.cards().find((c) => c.cardId === cardId);
     const declared = {
@@ -679,6 +682,12 @@ async function startTagRuntime(): Promise<void> {
     return;
   }
   await startWithRetry(runtime, candidates);
+  // **连上（或试完）之后重扫一次卡片** ✓（2026-11-19 修 ✓）
+  //
+  // → 卡片在**启动时**就被校验 ✓ → 那时板子还没连上 ✓ →
+  //   规则 5 说「动作**未验证**」✓ → **那张卡就一直「降级」** ⚠️
+  // → **连上之后重扫** ✓ → 警告**自己撤销** ✓（而不是靠人重启 ✓）
+  cards.refresh();
 }
 
 /**

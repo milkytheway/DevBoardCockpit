@@ -58,6 +58,14 @@ export interface CardWiringDeps {
    */
   availableWorkflows?: () => string[] | null;
   /**
+   * 当前板型包里的**动作 id**（规则 5 ✓）。
+   *
+   * → `null` = **离线**（查不到 ✓）→ 规则 5 降级成**警告** ✓
+   * → **不是 `null` 就给真表** ✓ —— **与 MCP 的 `validate_card` 同口径** ✓
+   *   （两条路给的答案必须一样 ✓ —— 否则「同一个产品两个答案」✗）
+   */
+  availableActions?: () => string[] | null;
+  /**
    * 每张卡的写侧（动作执行器，M6）。
    *
    * 做成**工厂**：执行器要拿着**这张卡的授权**，而授权是每卡一份的。
@@ -113,7 +121,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     roots: deps.roots,
     loadManifest: (dir) => loadManifestOf(dir),
     validate: (manifest, dir) => {
-      const result = validateManifest(manifest, dir, registry, deps.availableWorkflows);
+      const result = validateManifest(manifest, dir, registry, deps.availableWorkflows, deps.availableActions);
       return [...result.errors, ...result.warnings];
     },
   });
@@ -291,11 +299,20 @@ function validateManifest(
   dir: string,
   registry: CardRegistry,
   availableWorkflows?: () => string[] | null,
+  availableActions?: () => string[] | null,
 ): ReturnType<typeof validateCard> {
   return validateCard(manifest, {
     // **离线**：连不上板 → 动作与 tag 的存在性「未验证」，不是「不合法」
     availableTags: null,
-    availableActions: null,
+    // **动作表** ✓ —— **别再硬编码 null** ✓（2026-11-19 修 ✓）
+    //
+    // → 之前**永远**是 `null` ✓ → **规则 5 永远走「未验证」分支** ✓ →
+    //   **凡是能写板子的卡，装上就是「降级」** ⚠️
+    // → 而 MCP 的 `validate_card` 那条路给的是**真表** ✓ → **同一个产品两个答案** ✗
+    // → **开发期看不见** ✗（那条路是真表 ✓）→ **装机后才暴露** ✗
+    //
+    // → **板型包绑上了就给真表** ✓（`null` 只表示**真离线** ✓）
+    availableActions: availableActions?.() ?? null,
     // **流程 id 宿主自己就知道** ✓（不像板子要连上才查得到 ✓）
     availableWorkflows: availableWorkflows?.() ?? null,
     // 规则 2 比的是 **manifest 的 id**，而且**要排除自己**：

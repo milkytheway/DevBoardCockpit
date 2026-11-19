@@ -21,6 +21,74 @@ import type { CardPermissions } from '../../../src/main/cards/permissions';
  * → 单模块测试覆盖不到**接线**，接线要有自己的测试。
  */
 
+/**
+ * **规则 5 的「未验证」**（2026-11-19 装机时暴露的洞 ✓）
+ *
+ * ── 症状 ──
+ *
+ * 装机后 `list_cards` 报：**凡是能写板子的卡 `status: "degraded"`** ⚠️
+ * —— 而 `degraded: false` ✓ · `missing_tags: []` ✓ · `unreadable_tags: []` ✓
+ * → **自相矛盾** ⚠️ → agent 会读成「这张卡坏了」⚠️
+ *
+ * ── 根因 ──
+ *
+ * ① 注册表那条校验路（`validateManifest` ✓）把 **`availableActions` 硬编码成 `null`** ✓
+ *    → **规则 5 永远走「未验证」分支** ✓ → **永远带一个警告** ✓
+ *    → 而 `status` 把**警告**也算 degraded ✓ → **装上就是「降级」** ⚠️
+ * ② **卡片在启动时校验** ✓ → 那时板子还没连上 ✓ → 就算给了真表也拿不到 ✓
+ *    → **连上之后不重算** ⚠️ → 警告**永远挂着** ⚠️
+ *
+ * ── 而 MCP 的 `validate_card` 那条路给的是**真表** ✓ → **同一个产品两个答案** ✗
+ * → **开发期看不见** ✗ → **装机后才暴露** ✗
+ *
+ * → 修法：**注册表那条路也给真表** ✓ + **连上之后重扫一次** ✓
+ */
+describe('规则 5 · 「未验证」不该永远挂着', () => {
+  it('**板子连着 → 注册表那条路不报「未验证」** ✓（与 MCP 的 validate_card 同口径 ✓）', () => {
+    const fx = fixtureWithWrite();
+    try {
+      const wiring = createCardWiring({
+        roots: [{ dir: fx.roots, kind: 'user' }],
+        runtime: { readings: () => [], subscribe: () => () => undefined },
+        broadcast: () => undefined,
+        currentConnectionId: () => 'board-a',
+        permsFor: () => ({ read: [], write: ['led.set'] }),
+        // **板型包绑上了 → 给真表** ✓
+        availableActions: () => ['led.set'],
+      });
+      wiring.refresh();
+      const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');
+      const warnings = card?.issues.filter((i) => i.severity === 'warning') ?? [];
+      expect(warnings, '连着板子就不该说「未验证」').toEqual([]);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('**离线 → 是警告不是错误** ✓（「未验证」≠「不合法」✓）', () => {
+    const fx = fixtureWithWrite();
+    try {
+      const wiring = createCardWiring({
+        roots: [{ dir: fx.roots, kind: 'user' }],
+        runtime: { readings: () => [], subscribe: () => () => undefined },
+        broadcast: () => undefined,
+        currentConnectionId: () => 'board-a',
+        permsFor: () => ({ read: [], write: ['led.set'] }),
+        // **离线 → null** ✓
+        availableActions: () => null,
+      });
+      wiring.refresh();
+      const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');
+      const warnings = card?.issues.filter((i) => i.severity === 'warning') ?? [];
+      expect(warnings.length, '离线就该说「未验证」').toBeGreaterThan(0);
+      const errors = card?.issues.filter((i) => i.severity === 'error') ?? [];
+      expect(errors, '「未验证」不是「不合法」').toEqual([]);
+    } finally {
+      fx.cleanup();
+    }
+  });
+});
+
 interface Fixture {
   base: string;
   roots: string;
@@ -60,6 +128,29 @@ function fixture(): Fixture {
 }
 
 const PERMS: CardPermissions = { read: ['cpu.usage'], write: [] };
+
+/** 一张**有写权限**的卡** ✓（规则 5 只对有写权限的卡触发 ✓） */
+function fixtureWithWrite(): Fixture {
+  const fx = fixture();
+  mkdirSync(join(fx.roots, 'write-card'), { recursive: true });
+  writeFileSync(
+    join(fx.roots, 'write-card', 'manifest.json'),
+    JSON.stringify({
+      apiVersion: 'devboard/v1',
+      kind: 'Card',
+      id: 'write-card',
+      name: '会写板子的卡',
+      version: '1.0.0',
+      entry: 'index.html',
+      requires: {},
+      permissions: { read: [], write: ['led.set'] },
+      actions: [],
+    }),
+    'utf8',
+  );
+  writeFileSync(join(fx.roots, 'write-card', 'index.html'), '<!doctype html><html></html>', 'utf8');
+  return fx;
+}
 
 function wiringOf(fx: Fixture, opts: { connectionId?: () => string | null } = {}) {
   return createCardWiring({
