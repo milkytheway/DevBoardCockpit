@@ -30,6 +30,12 @@ import { downloadFile, uploadFile, type FileTransferHost } from './files';
 import { slotKey } from './layout-utils';
 import { secondaryGroupsFor } from './nav';
 import { applyTheme, readStoredTheme, readXtermTheme, type XtermTheme } from './theme';
+import {
+  LocaleContext,
+  readStoredLocale,
+  storeLocale,
+  type Locale,
+} from './i18n';
 import type { ActivityLevel, DetailTarget, PageId } from './types';
 import { useTerminal } from './useTerminal';
 
@@ -102,6 +108,7 @@ function readStoredPins(): string[] {
 
 export function Shell(): JSX.Element {
   const [theme, setTheme] = useState(readStoredTheme);
+  const [locale, setLocale] = useState<Locale>(readStoredLocale);
   const [cardTheme, setCardTheme] = useState(theme);
   const [page, setPage] = useState<PageId>('workbench');
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +151,11 @@ export function Shell(): JSX.Element {
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const changeLocale = useCallback((next: Locale) => {
+    setLocale(next);
+    storeLocale(next);
   }, []);
 
   useEffect(() => {
@@ -374,6 +386,7 @@ export function Shell(): JSX.Element {
   };
 
   return (
+    <LocaleContext.Provider value={locale}>
     <div className={`app-shell${page === 'wizard' ? ' is-wizard' : ''}`}>
       {/* The native title bar is hidden; this strip is the window's drag
           handle and the native min/max/close buttons float over it.
@@ -521,6 +534,8 @@ export function Shell(): JSX.Element {
                 onRefreshCards={refresh}
                 permissions={permissionRows}
                 onPermission={setPermission}
+                locale={locale}
+                onLocale={changeLocale}
               />
             ) : null}
           </div>
@@ -566,5 +581,6 @@ export function Shell(): JSX.Element {
 
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>
+    </LocaleContext.Provider>
   );
 }

@@ -1,4 +1,5 @@
 import type { ThemeMode } from '../theme';
+import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n';
 import type { ViewDensity } from '../../../shared/layout';
 import type { PermissionActor, PermissionRow } from '../../../shared/ipc-contract';
 import { PaletteIcon } from '../Icons';
@@ -19,6 +20,8 @@ export function SettingsPage({
   onRefreshCards,
   permissions,
   onPermission,
+  locale,
+  onLocale,
 }: {
   theme: ThemeMode;
   onTheme: (mode: ThemeMode) => void;
@@ -32,6 +35,10 @@ export function SettingsPage({
   permissions: PermissionRow[];
   /** 改一条（**幂等** ✓） */
   onPermission: (actor: PermissionActor, op: string, allowed: boolean) => void;
+  /** The interface language. */
+  locale: Locale;
+  /** Change it. */
+  onLocale: (locale: Locale) => void;
 }): JSX.Element {
   // The master switches only touch **card** grants: the agent side keeps its
   // own row. Destructive actions stay out of the bulk grant — one switch must
@@ -111,6 +118,22 @@ export function SettingsPage({
               </button>
             ))}
           </div>
+
+          <h3 className="settings-card__sub">界面语言</h3>
+          <div className="segmented" role="group" aria-label="语言">
+            {LOCALES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={locale === option ? 'is-active' : ''}
+                aria-pressed={locale === option}
+                onClick={() => onLocale(option)}
+              >
+                {LOCALE_NAMES[option]}
+              </button>
+            ))}
+          </div>
+          <p className="settings-note">选择立即生效，无需重启。</p>
         </section>
 
         <section className="settings-card">

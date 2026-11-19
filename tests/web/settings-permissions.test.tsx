@@ -46,7 +46,7 @@ const ROWS: PermissionRow[] = [
   { op: 'host:install_card', label: 'install_card', kind: 'host', card: true, agent: true },
 ];
 
-function renderPage(onPermission = vi.fn()) {
+function renderPage(onPermission = vi.fn(), onLocale = vi.fn()) {
   const view = render(
     <SettingsPage
       theme="dark"
@@ -58,9 +58,11 @@ function renderPage(onPermission = vi.fn()) {
       onRefreshCards={() => undefined}
       permissions={ROWS}
       onPermission={onPermission}
+      locale="zh-Hans"
+      onLocale={onLocale}
     />,
   );
-  return { onPermission, container: view.container };
+  return { onPermission, onLocale, container: view.container };
 }
 
 describe('设置页 · 权限区', () => {
@@ -129,5 +131,20 @@ describe('设置页 · 权限区', () => {
     expect(onPermission).toHaveBeenCalledWith('card', 'action:backlight.set', true);
     expect(onPermission).toHaveBeenCalledWith('card', 'action:led.set', true);
     expect(onPermission).not.toHaveBeenCalledWith('card', 'action:system.reboot', true);
+  });
+});
+
+describe('设置页 · 语言选择', () => {
+  it('**列出两种语言，并报告选择** ✓', () => {
+    const onLocale = vi.fn();
+    const { container } = renderPage(vi.fn(), onLocale);
+
+    const group = container.querySelector('.segmented[aria-label="语言"]');
+    expect(group, '设置页要有语言选择器 ✓').toBeTruthy();
+    expect(group?.querySelectorAll('button').length).toBe(2);
+
+    const english = screen.getByRole('button', { name: 'English' });
+    fireEvent.click(english);
+    expect(onLocale).toHaveBeenCalledWith('en');
   });
 });
