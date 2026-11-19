@@ -1,20 +1,23 @@
 /**
- * `ls -la` 输出解析。
+ * Parsing of `ls -la` output.
  *
- * **为什么单独一个文件**：ADB 传输要靠它解析 `adb shell ls -la` 的回包，
- * 文件互传服务也要——同一个解析器只能有一份
- * （跟「核心词表只有一个源头」同一条道理）。
+ * Why it is a file of its own: ADB transfers rely on it to parse the reply
+ * to `adb shell ls -la`, and the file transfer service needs it too — there
+ * must be exactly one parser, for the same reason there is exactly one
+ * source for the core vocabulary.
  *
- * 所以它放在 `util/`：既不属于 `hal/`（连接层），也不属于 `files/`（互传服务），
- * 两边都能用，且谁都不拥有它。
+ * That is why it lives in `util/`: it belongs neither to `hal/` (the
+ * connection layer) nor to `files/` (the file transfer service). Both sides
+ * can use it and neither side owns it.
  */
 
 /**
- * 解析 `ls -l` 的大小列。
+ * Parses the size column of `ls -l`.
  *
- * 管道下的 GNU ls 给原始字节数（`4096`），
- * 但有些环境给人类可读值（`4.0K`）——真机样本里就有 `drwxr-xr-x 6 root root 4.0K`。
- * 两种都要认。
+ * Under a pipe GNU ls reports the raw byte count (`4096`), but some
+ * environments report a human-readable value (`4.0K`) — the real-board
+ * samples contain `drwxr-xr-x 6 root root 4.0K`. Both forms have to be
+ * accepted.
  */
 export function parseSize(text: string): number | null {
   const t = text.trim();
@@ -31,10 +34,11 @@ export function parseSize(text: string): number | null {
 }
 
 /**
- * `ls -la` 的时间格式是 `Nov 12 09:30` 或 `Nov 12  2024`——
- * **不带年份**，且这个格式 `Date` 解析不了。
- * 所以手工解析：补上当前年份，把月份名换成数字。
- * 解析不出来就返回 null——时间显示不出来不是致命问题，条目本身仍然有用。
+ * The `ls -la` time format is `Nov 12 09:30` or `Nov 12  2024` — it carries
+ * no year, and `Date` cannot parse this format. So it is parsed by hand:
+ * fill in the current year and turn the month name into a number. When it
+ * cannot be parsed, return null — an entry whose time cannot be shown is
+ * still useful on its own.
  */
 export function parseLsDate(text: string): string | null {
   const months: Record<string, number> = {
@@ -46,12 +50,13 @@ export function parseLsDate(text: string): string | null {
   const month = months[m[1]];
   if (month === undefined) return null;
   const day = Number(m[2]);
-  // **按 UTC 解释远端的墙上时间**。
+  // The remote wall-clock time is interpreted as UTC.
   //
-  // 用本地时间构造再 `.toISOString()` 的话，在 UTC+8 下
-  // 「Aug 27  2026」会变成 `2026-08-26T16:00:00.000Z`——
-  // **日期差了一天**。而远端的时区我们根本不知道，
-  // 所以最可预期的做法是：把它给的墙上时间当成 UTC 原样保留。
+  // If it were built with the local time and then `.toISOString()`-ed, in
+  // UTC+8 "Aug 27  2026" would become `2026-08-26T16:00:00.000Z` — a
+  // whole day off. The remote time zone is simply not known to us, so the
+  // most predictable approach is: keep the wall-clock time it handed us as
+  // UTC, unchanged.
   const year = m[5] !== undefined ? Number(m[5]) : new Date().getUTCFullYear();
   if (m[3] !== undefined) {
     const d = new Date(Date.UTC(year, month, day, Number(m[3]), Number(m[4])));
@@ -61,27 +66,29 @@ export function parseLsDate(text: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-/** 解析出来的目录条目 */
+/** A parsed directory entry */
 export interface LsEntry {
   name: string;
-  /** 首字符：d 目录、l 软链接、- 普通文件…… */
+  /** The first character: d directory, l symlink, - regular file, ... */
   type: string;
   size: number | null;
   modifiedAt: string | null;
 }
 
 /**
- * 解析 `ls -la` 的每一行。
+ * Parses every line of `ls -la` output.
  *
- * 只取名字、类型、大小、修改时间——够文件浏览器画树了。
- * 解析不了的行直接跳过：远端的 ls 输出格式各家不同，
- * 一行解析不了不该毁掉整次列举。
+ * Only the name, the type, the size and the modification time are taken —
+ * enough for the file browser to draw its tree. Lines that cannot be parsed
+ * are simply skipped: the `ls` output of a remote system differs between
+ * implementations, and one unparsable line must not ruin the whole listing.
  *
- * **软链接**：`-rwxrwxrwx ... bin -> usr/bin/` 里的名字是 `bin`，
- * `-> usr/bin/` 是链接目标，**不是名字的一部分**。
- * 真机样本里就有这种行（`fixtures/session-log/serial-session.log`）。
- * 把箭头一起当名字，文件树里就会出现一个叫 `bin -> usr/bin/` 的条目，
- * 对它做传输时路径根本不存在。
+ * Symlinks: in `-rwxrwxrwx ... bin -> usr/bin/` the name is `bin`, while
+ * `-> usr/bin/` is the link target and not part of the name. The real-board
+ * samples contain such lines (`fixtures/session-log/serial-session.log`).
+ * Treating the arrow as part of the name would put an entry called
+ * `bin -> usr/bin/` into the file tree, and the path would not exist at all
+ * when a transfer was attempted on it.
  */
 export function parseLsLines(stdout: string): LsEntry[] {
   const out: LsEntry[] = [];
@@ -89,17 +96,19 @@ export function parseLsLines(stdout: string): LsEntry[] {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     // -rw-r--r-- 1 root root  1234 Nov 12 09:30 name
-    // 日期必须显式匹配（它内部有空格），剩下的才是文件名
+    // The date has to be matched explicitly (it contains spaces); only what
+    // follows is the file name
     const m = /^([dlbcps-])([rwxstST-]{9})\s+\d+\s+\S+\s+\S+\s+(\S+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{2}|\d{4}))\s+(.+)$/.exec(
       trimmed,
     );
     if (!m) continue;
     const [, type, , size, date, rawName] = m;
-    // 软链接：`name -> target` 只取 name
+    // Symlink: for `name -> target` take only the name
     const arrow = rawName.indexOf(' -> ');
     let name = arrow >= 0 ? rawName.slice(0, arrow) : rawName;
-    // `ls -la` 给目录名加一个尾斜杠（`dev/`）——
-    // 留着它，路径就会变成 `/root/dev/`，传输时多一个斜杠。
+    // `ls -la` appends a trailing slash to directory names (`dev/`) —
+    // keeping it would turn the path into `/root/dev/`, with one extra
+    // slash in the transfer.
     if (type === 'd') name = name.replace(/\/+$/, '');
     if (name === '.' || name === '..' || name.length === 0) continue;
     out.push({

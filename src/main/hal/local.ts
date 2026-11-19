@@ -10,11 +10,12 @@ import { capabilitiesFor, transportDefaults } from './capabilities';
 import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult, FileEntry } from './connection';
 
 /**
- * 本机传输。
+ * The local transport.
  *
- * 宿主自己也是一个「目标」——旧工程把它当参照实现
- * （`core/local_target.py`：the host machine, as a target）。
- * 有了它，终端与文件互传的代码路径在本机就能测，不必接真板。
+ * The host machine is itself a "target" — the old project kept it as the
+ * reference implementation (`core/local_target.py`: the host machine, as a
+ * target). With it, the code paths for the terminal and for file transfer
+ * can be tested locally, without attaching a real board.
  */
 
 export function localCapabilities(): ConnectionCapabilities {
@@ -22,7 +23,7 @@ export function localCapabilities(): ConnectionCapabilities {
 }
 
 export interface LocalConnectionOptions {
-  /** 跑命令的入口，测试用 */
+  /** Entry point for running commands, used by tests */
   runner?: typeof runProcess;
 }
 
@@ -43,7 +44,7 @@ export class LocalConnection implements Connection {
   }
 
   capabilities(): ConnectionCapabilities {
-    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    // **profile aware** — not a transport constant (see the notes in `capabilities.ts`).
     return capabilitiesFor(this.profile);
   }
 
@@ -68,22 +69,25 @@ export class LocalConnection implements Connection {
   }
 
   /**
-   * 列目录：**用 fs 读，不用 `ls -la`**。
+   * List a directory: **read it with fs, not with `ls -la`**.
    *
-   * 本机的 exec 走的是 cmd.exe（Windows）或 `/bin/sh`（其他），
-   * 而 `ls -la` 是 POSIX 命令——在 cmd.exe 上它根本不存在，
-   * 于是本机连接的文件树**永远是空的**。
+   * The exec of the local transport goes through cmd.exe (Windows) or
+   * `/bin/sh` (everything else), and `ls -la` is a POSIX command — on cmd.exe
+   * it does not exist at all, so the file tree of the local connection
+   * **would always be empty**.
    *
-   * 计划 Task 9 写的是「adb 用 `adb shell ls -la`，ssh 用 sftp」——
-   * 本机当然用自己的文件系统。
+   * Task 9 of the original implementation plan says "adb uses
+   * `adb shell ls -la`, ssh uses sftp" — the local transport of course uses
+   * its own filesystem.
    */
   async list(remotePath: string): Promise<FileEntry[]> {
-    // 根目录映射到**当前工作目录**。
+    // The root directory maps to the **current working directory**.
     //
-    // 文件浏览器默认的远端路径是 '/'（那是板子上的根），
-    // 但在 Windows 上 '/' 不是一个目录——`readdir('/')` 必然失败，
-    // 于是本机连接的文件树永远是空的。
-    // 本机这个「目标」没有板子意义上的根，用工作目录当根最自然。
+    // The default remote path of the file browser is '/' (the root on the
+    // board), but on Windows '/' is not a directory — `readdir('/')` is bound
+    // to fail, so the file tree of the local connection would always be
+    // empty. The local "target" has no root in the sense of a board, so
+    // using the working directory as the root is the most natural choice.
     const dir = remotePath === '/' || remotePath.length === 0 ? process.cwd() : remotePath;
     let dirents;
     try {
@@ -96,29 +100,30 @@ export class LocalConnection implements Connection {
 
     const out: FileEntry[] = [];
     for (const dirent of dirents) {
-      // 用**解析后**的目录拼：根目录映射到了 cwd，
-      // 拿未解析的 remotePath 拼出来的路径在 Windows 上是盘根，不存在——
-      // 下载会直接 ENOENT。
+      // Build the path from the **resolved** directory: the root maps to
+      // cwd, and a path built from the unresolved remotePath is the drive
+      // root on Windows, which does not exist — the download would fail with
+      // ENOENT right away.
       const path = join(dir, dirent.name);
       let isDirectory = dirent.isDirectory();
       let sizeBytes: number | null = null;
       let modifiedAt: string | null = null;
       try {
-        // stat 跟随软链接——所以软链接指向目录时 isDirectory 是对的
+        // stat follows symlinks — so isDirectory is correct when a symlink points at a directory
         const st = await stat(path);
         isDirectory = st.isDirectory();
-        // **目录的大小不是 0，是不知道**（事实 G2：读不到的东西不是 0）
+        // **The size of a directory is not 0, it is unknown** (Fact G2: what cannot be read is not 0)
         if (!isDirectory) sizeBytes = st.size;
         modifiedAt = st.mtime.toISOString();
       } catch {
-        // 读不到就留 null。条目本身仍然有用。
+        // If it cannot be read, leave it null. The entry itself is still useful.
       }
       out.push({ name: dirent.name, path, isDirectory, sizeBytes, modifiedAt });
     }
     return out;
   }
 
-  /** 下载：宿主文件系统直读 */
+  /** Download: read straight from the host filesystem */
   async pull(remotePath: string, localPath: string): Promise<void> {
     try {
       await copyFile(remotePath, localPath);
@@ -130,10 +135,11 @@ export class LocalConnection implements Connection {
   }
 
   /**
-   * 上传：宿主文件系统直写。
+   * Upload: write straight to the host filesystem.
    *
-   * `remotePath` 是**目录**（统一的语义，见 `connection.ts`）——
-   * `copyFile` 要的是完整文件路径，所以这里补上 basename。
+   * `remotePath` is a **directory** (the unified semantics, see
+   * `connection.ts`) — `copyFile` wants a full file path, so the basename is
+   * appended here.
    */
   async push(localPath: string, remotePath: string): Promise<void> {
     const target = join(remotePath, basename(localPath));
@@ -150,7 +156,7 @@ export class LocalConnection implements Connection {
     if (!this.opened) {
       throw makeError('CONN_CLOSED', '本机连接未打开', { detail: { id: this.id } });
     }
-    // 真 pty（node-pty）——不是那个只记日志的桩
+    // A real pty (node-pty) — not the stub that only records logs
     return createLocalPtySession(this.log, { cols: opts?.cols ?? 80, rows: opts?.rows ?? 24 });
   }
 }

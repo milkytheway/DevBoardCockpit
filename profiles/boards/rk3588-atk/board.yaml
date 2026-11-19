@@ -1,58 +1,67 @@
-# 正点原子 ATK-DLRK3588 板型包
+# Board pack for the ATK-DLRK3588.
 #
-# 这份包里的每一条路径都来自 core/metrics.py 的实测记录：
-#   README「Hardware metrics」一节写明「All of them were verified on an
-#   RK3588 board running Linux 6.1.141」。
+# Every path in this pack comes from the measurements recorded in
+# core/metrics.py. The "Hardware metrics" section of its README states that
+# all of them were verified on an RK3588 board running Linux 6.1.141.
 #
-# 两个已知的坑，这份包里被显式编码了：
-#   1. NPU 的 devfreq load 文件读 100@1000000000Hz —— 那是占空比，不是利用率。
-#      所以 npu.usage 绑到 rknpu_load 的读数，不绑 devfreq。
-#   2. thermal_zone5 是某个具体板的索引，不能硬编码。所以用 glob 遍历 +
-#      type 文件归并。
+# Two known traps are encoded explicitly here:
+#   1. The NPU devfreq load file reads 100@1000000000Hz, which is a duty
+#      cycle rather than a utilisation. npu.usage therefore binds to the
+#      rknpu_load reading and not to devfreq.
+#   2. thermal_zone5 is the index of one particular board and cannot be
+#      hard-coded. The pack walks the directory with a glob and merges the
+#      entries by their type file.
 #
-# 验证：`npm run validate:profiles`（校验这个包）与
-# `npm run probe:board -- --profile board-adb`（对着真板子探一遍）。
-# **这两条属于计划 2（M3/M4），2026-11-13 已实现**——
-# 但真机验收（探针全绿）**还没跑过**，见 docs/06 的 C12。
+# Verify with `npm run validate:profiles` for the pack itself and
+# `npm run probe:board -- --profile board-adb` to probe a real board.
 
 apiVersion: devboard/v1
 kind: BoardPack
 
 id: rk3588-atk
-name: 正点原子 ATK-DLRK3588
+name: ATK-DLRK3588 (Alientek)
 version: 1.0.0
-description: RK3588，Buildroot 6.1.141，8 核（Cortex-A55 ×4 + Cortex-A76 ×4）
+description: RK3588, Buildroot 6.1.141, 8 cores (Cortex-A55 x4 + Cortex-A76 x4)
 
 requires:
   transports: [adb, serial, ssh]
-  # 板级能力（封闭词表，契约 spec/02 §10.3）。
+  # Board-level capabilities (closed vocabulary, contract spec/02 section 10.3).
   #
-  # **不写 `stream`**：Stream 的业务契约还没定（spec/00 §七），
-  # 声明了也给不出来 —— 校验规则 26 把它当**错误**拦下。
-  # 等 Stream 契约落地、规则 26 的「已实现能力集」加上它，再把它加回来。
+  # `stream` is deliberately absent: the contract for Stream is not settled
+  # (spec/00 section 7), so declaring it would not be honoured. Validation
+  # rule 26 rejects it as an error. Add it back once the Stream contract
+  # lands and rule 26 lists it as implemented.
   capabilities: [shell, exec, files]
   min_contract: devboard/v1
 
-# 危险地板表的版本（契约 spec/02 §5.2.1）。地板属于契约，不属于包；
-# 这里声明的是「本包是按哪一版地板写的」。v1 的表见 spec/02。
+# Version of the danger floor table (contract spec/02 section 5.2.1). The
+# floor belongs to the contract rather than to the pack; what is declared
+# here is which revision of the floor this pack was written against. The
+# version 1 table is in spec/02.
 danger_floor_version: 1
 
-# 自动识别：连接没指名 board_pack 时，运行时读板子的型号来匹配。
-# mode: exact = 型号字符串完全相同；substring = 包含其中之一即可。
+# Automatic detection. When a connection does not name a board pack, the
+# runtime reads the board model and matches it against these rules.
+# mode: exact means the model string must be identical; substring means it
+# must contain one of them.
 match:
   mode: substring
   models:
     - ATK-DLRK3588
 
-# ── 轮询分组 ─────────────────────────────────────────────────────────────
-# 一个组 = 一次往返。同组的所有 reader 合成一条命令，一次取回。
+# ── Poll groups ─────────────────────────────────────────────────────────────
+# One group = one round trip: all readers of the same group are combined into
+# a single command and fetched in one go.
 #
-# 为什么不所有 reader 都放一组：/proc/stat 必须每 1 秒采一次（占用率是两次
-# 采样做差），而 /proc/device-tree/model 一天都不会变。把它们合成一条命令
-# 意味着 model 每秒也被重读一次——白费 fork 的 30ms，还有 fork 出来的 shell
-# 自己的 CPU 时间记进 /proc/stat 让板子看起来 100% 忙。
+# Why not put every reader in one group: `/proc/stat` has to be sampled once
+# a second (the utilisation is the difference of two samples), while
+# `/proc/device-tree/model` does not change within a day. Combining them into
+# one command means the model is re-read every second as well, which wastes
+# the 30ms of the fork, and the CPU time of the forked shell itself lands in
+# `/proc/stat` and makes the board look 100% busy.
 #
-# 为什么不是一个组全包了：上面那条 30ms 的实测就是理由。
+# Why not have one group holding everything: the measured 30ms above is the
+# reason.
 poll_groups:
   - id: fast
     interval_ms: 1000
@@ -66,7 +75,7 @@ poll_groups:
     interval_ms: 30000
     readers: [board, npu_devfreq, npu_freq, backlight, backlight1]
 
-# ── 数据源 ─────────────────────────────────────────────────────────────
+# ── Data sources ─────────────────────────────────────────────────────────────
 readers:
   - id: cpu
     kind: proc_stat
@@ -85,8 +94,9 @@ readers:
     kind: devfreq_load
     args:
       path: /sys/class/devfreq/fb000000.gpu/load
-      # 读出形如 "37@300000000Hz"。RK 的 GPU devfreq load 确实是利用率，
-      # 与 NPU 不同（见下面 npu reader）——所以这里必须声明。
+      # Reads out as "37@3000000000Hz". The GPU devfreq load of an RK really
+      # is a utilisation, unlike the NPU one (see the npu reader below), so
+      # it has to be declared here.
       measure: utilization
     provides:
       - tag: gpu.usage
@@ -97,11 +107,14 @@ readers:
   - id: npu
     kind: rknpu_load
     args:
-      # 真正的 NPU 利用率在这里，不是 devfreq 的 load 文件。
-      # debugfs **本板默认已挂载**（实测 2026-11-13：/proc/mounts 里有 debugfs 行），
-      # 但挂载**不是持久的**——重启后可能丢（取决于板子的 fstab 与 init 脚本）。
-      # 读不到时 npu.usage 报 unavailable，不能退回去读 devfreq 那个占空比，
-      # 那会显示 100% 但板子是闲的。
+      # The real NPU utilisation is here, not in the devfreq load file.
+      # debugfs is mounted by default on this board (measured 2026-11-13:
+      # /proc/mounts carries a debugfs line), but the mount is not
+      # persistent: it can be gone after a reboot (it depends on the board's
+      # fstab and init scripts).
+      # When it cannot be read, npu.usage reports unavailable. It must not
+      # fall back to the devfreq duty cycle, which would show 100% while the
+      # board is idle.
       path: /sys/kernel/debug/rknpu/load
     provides:
       - tag: npu.usage
@@ -127,7 +140,8 @@ readers:
     kind: thermal_zone
     args:
       glob: /sys/class/thermal/thermal_zone*
-      # 按 type 文件里的名字归并，不依赖 zone 序号
+      # Merge by the name in the type file, without relying on the zone
+      # index.
       type_map:
         soc-thermal: soc
         gpu-thermal: gpu
@@ -160,18 +174,20 @@ readers:
       - tag: board.model
         sample: value
 
-# ── 控制面 ─────────────────────────────────────────────────────────────
+# ── Control surface ─────────────────────────────────────────────────────────
 actions:
   - id: backlight.set
-    label: 设置背光亮度
+    label: Set the backlight brightness
     danger: reversible
     params:
       value:
         type: integer
         min: 0
         max: 255
-    # 参数域（契约 spec/02 §5.5）：0–15 太暗、看着像屏幕坏了，
-    # 归到「温和」范围之外，要单独确认一次。guard 只能缩小范围，不能扩大。
+    # Parameter range (contract spec/02 section 5.5): 0-15 is so dark that
+    # the screen looks broken, so it falls outside the "gentle" range and
+    # needs a confirmation of its own. The guard can only narrow the range,
+    # never widen it.
     guard:
       value: {min: 16, max: 255}
     command: "echo {value} > /sys/class/backlight/backlight/brightness"
@@ -182,25 +198,27 @@ actions:
       tolerance: 1
 
   - id: system.reboot
-    label: 重启板子
+    label: Reboot the board
     danger: destructive
     params: {}
     command: "reboot"
     readback:
-      # 重启命令返回 0 只说明 shell 接受了它，不说明板子重启成功了。
-      # verify 是动作**之后**执行的二次验证：等板子回来，看 uptime 变了。
+      # The reboot command returning 0 only says the shell accepted it, not
+      # that the board really rebooted.
+      # verify is the second check that runs after the action: wait for the
+      # board to come back and see that the uptime changed.
       kind: verify
       command: "uptime -s"
       timeout_ms: 60000
 
   - id: cpu.governor.set
-    label: 设置 CPU 调频策略
+    label: Set the CPU frequency governor
     danger: reversible
     params:
       governor:
         type: enum
-        # 实测可选值（docs/02 §3.1）：interactive conservative ondemand userspace
-        # powersave performance schedutil
+        # Measured available values (docs/02 section 3.1): interactive
+        # conservative ondemand userspace powersave performance schedutil
         values: [performance, schedutil, powersave, ondemand, userspace, interactive, conservative]
       cpu:
         type: integer
@@ -213,19 +231,21 @@ actions:
       path: /sys/devices/system/cpu/cpu{cpu}/cpufreq/scaling_governor
       expect: "{governor}"
 
-  # ── 元操作（2026-11-16 扩充）───────────────────────────────────────
+  # ── Meta operations (added 2026-11-16) ────────────────────────────────────
   #
-  # 这一批的来源：**正点原子《ATK-DLRK3588 Buildroot 系统快速体验手册 V1.0》
-  # 第二章的功能测试矩阵** + **2026-11-16 在真板上的逐条实测**。
+  # Where this batch comes from: the functional test matrix of chapter 2 of
+  # the Alientek "ATK-DLRK3588 Buildroot System Quick Start Manual V1.0",
+  # plus a measurement of every one of them on the real board on 2026-11-16.
   #
-  # 规矩（契约 spec/02 §四）：
-  #   每个动作都必须声明**怎么回读**（规则 27 ✓）——
-  #   「命令发出去了」不等于「板子真的变了」✓。
-  #   危险等级只有两档（reversible / destructive ✓）——
-  #   危险地板（§5.2）上的命令一律 destructive ✓（下面没有一条命中地板 ✓）。
+  # The rules (contract spec/02 section 4):
+  #   Every action has to declare how it is read back (validation rule 27):
+  #   "the command was sent" is not "the board really changed".
+  #   There are only two danger levels (reversible / destructive), and every
+  #   command on the danger floor (section 5.2) is destructive. None of the
+  #   ones below hits the floor.
 
   - id: led.set
-    label: 点亮 / 熄灭板载 LED
+    label: Turn the on-board LED on / off
     danger: reversible
     params:
       value:
@@ -233,10 +253,12 @@ actions:
         min: 0
         max: 1
         default: 1
-    # **必须先把 trigger 切成 none** ✓ —— 出厂是 `heartbeat`（手册 §2.1 ✓），
-    # **心跳模式下写 brightness 没有效果** ✓
-    # （实测 2026-11-16：写 1 读回还是 0 ✓ —— 因为值由触发器决定 ✓）。
-    # → 两步写成一条命令 ✓（`&&` ✓ —— 宿主执行器走 shell ✓）。
+    # The trigger has to be set to none first: the factory default is
+    # `heartbeat` (manual section 2.1), and writing brightness has no effect
+    # while the heartbeat is running (measured 2026-11-16: writing 1 still
+    # reads back 0, because the trigger decides the value).
+    # - The two steps are written as one command (`&&`, because the host
+    #   executor runs through a shell).
     command: "echo none > /sys/class/leds/work/trigger && echo {value} > /sys/class/leds/work/brightness"
     readback:
       kind: file_equals
@@ -244,7 +266,7 @@ actions:
       expect: "{value}"
 
   - id: backlight1.set
-    label: 设置第二路背光亮度
+    label: Set the second backlight brightness
     danger: reversible
     params:
       value:
@@ -252,8 +274,9 @@ actions:
         min: 0
         max: 255
         default: 255
-    # 第二块屏（MIPI 副屏 / HDMI 屏）的背光 ✓
-    # —— 手册只写了第一块 ✓，但这块板**确实有 backlight1** ✓（实测 ✓）。
+    # The backlight of the second panel (the MIPI secondary panel or the HDMI
+    # panel): the manual only documents the first one, but this board really
+    # has a `backlight1` (measured).
     command: "echo {value} > /sys/class/backlight/backlight1/brightness"
     readback:
       kind: file_equals
@@ -261,115 +284,133 @@ actions:
       expect: "{value}"
 
   - id: cpu.governor.set_all
-    label: 设置**所有** CPU 集群的调频策略
+    label: Set the governor of every CPU cluster
     danger: reversible
     params:
       governor:
         type: enum
-        # 实测可选值（docs/02 §3.1 ✓ · 板上 `scaling_available_governors` ✓）
+        # Measured available values (docs/02 section 3.1; on the board read
+        # `scaling_available_governors`)
         values: [performance, schedutil, powersave, ondemand, userspace, interactive, conservative]
-    # ── 为什么**要有**这一条（而 `cpu.governor.set` 只管一个核）──
+    # ── Why this one exists (while `cpu.governor.set` covers a single core) ──
     #
-    # RK3588 是 **policy 制**（实测 2026-11-16 ✓）：
-    #   policy0 = 核 0-3（A55 小核）✓
-    #   policy4 = 核 4-5（A76 大核）✓
-    #   policy6 = 核 6-7（A76 大核）✓
-    # 而 `cpu{cpu}/cpufreq` 是**指向 policy 的软链** ✓（实测 ✓）→
-    # **写 cpu0 实际写的是 policy0** ✓ → **只管 4 个核** ✓。
-    # 手册 §2.17 明确说「**全部核心都建议开启**」✓ —— 只设一个核是不够的 ✓。
+    # The RK3588 is policy based (measured 2026-11-16):
+    #   policy0 = cores 0-3 (the small A55 cores)
+    #   policy4 = cores 4-5 (the big A76 cores)
+    #   policy6 = cores 6-7 (the big A76 cores)
+    # and `cpu{cpu}/cpufreq` is a symlink pointing at a policy (measured), so
+    # writing cpu0 actually writes policy0, which covers only 4 cores.
+    # Manual section 2.17 says explicitly that "all cores are recommended to
+    # be enabled", so setting a single core is not enough.
     command: "for p in policy0 policy4 policy6; do echo {governor} > /sys/devices/system/cpu/cpufreq/$p/scaling_governor; done"
     readback:
-      # **三个都要对** —— `grep -q` 多个文件只要**有一个**命中就返回 0 ✗ →
-      # 用 `grep -qx`（整行匹配 ✓）串三个 ✓。
+      # All three have to match: `grep -q` over several files returns 0 as
+      # soon as one of them matches, so the three are chained with `grep -qx`
+      # (whole line match).
       kind: verify
       command: "grep -qx {governor} /sys/devices/system/cpu/cpufreq/policy0/scaling_governor && grep -qx {governor} /sys/devices/system/cpu/cpufreq/policy4/scaling_governor && grep -qx {governor} /sys/devices/system/cpu/cpufreq/policy6/scaling_governor"
       timeout_ms: 10000
 
   - id: network.iface.set
-    label: 网口 up / down
+    label: Network interface up / down
     danger: reversible
     params:
       iface:
         type: enum
-        # 实测存在的接口（2026-11-16 ✓）：eth0 / eth1 / can0 / wlan0 / wlan1 ✓
+        # Interfaces that exist as measured (2026-11-16): eth0 / eth1 / can0
+        # / wlan0 / wlan1
         values: [eth0, eth1, can0, wlan0, wlan1]
       state:
         type: enum
         values: [up, down]
-    # ⚠️ **eth0 就是宿主连板子的那条线** ✓ —— down 之后宿主就断板子了 ✗
-    # → 那是**用户的选择** ✓（权限区里这一行可以关掉 ✓）✓
-    # → 但**回读要真的读** ✓（断线了就回读不到 ✓ → 那一步会失败 ✓ —— **诚实** ✓）。
+    # eth0 is the line the host uses to reach the board: once it is down the
+    # host has lost the board.
+    # - That is the user's choice (this row can be switched off in the
+    #   permission area).
+    # - The readback still has to read for real: with the line down there is
+    #   nothing to read, so the step fails, which is honest.
     command: "ip link set {iface} {state}"
     readback:
       kind: verify
-      # `ip -br link` 输出的是**大写** UP / DOWN ✓ → 要 `-i` ✓（实测 ✓）。
+      # `ip -br link` prints UP / DOWN in upper case, so the match needs `-i`
+      # (measured).
       command: "ip -br link show {iface} | grep -qi {state}"
       timeout_ms: 10000
 
   - id: can.up
-    label: 启用 CAN 接口
+    label: Enable the CAN interface
     danger: reversible
     params:
       bitrate:
         type: integer
-        # 手册 §2.20：CAN 通常 1k~1M ✓，常用 500k / 250k / 125k / 100k / 50k ✓
+        # Manual section 2.20: CAN is usually 1k~1M, the common values are
+        # 500k / 250k / 125k / 100k / 50k
         min: 50000
         max: 1000000
         default: 1000000
-    # **先 down 再 up** ✓ —— 已经 up 的时候直接改 bitrate 会报
-    # `RTNETLINK answers: File exists` ✓（实测 ✓）→ 这一条要**可重复执行** ✓。
+    # Down first, then up: changing the bitrate while the interface is
+    # already up reports `RTNETLINK answers: File exists` (measured), so this
+    # action has to be repeatable.
     command: "ip link set can0 down 2>/dev/null; ip link set can0 up type can bitrate {bitrate}"
     readback:
       kind: verify
-      # ⚠️ **不能核对 bitrate 的具体值** ✓ —— 实测板子报的是 `bitrate 990000`
-      # （驱动按晶振分频，1M 只能取到 990000 ✓）→ 只查「有没有 bitrate」✓。
+      # The exact bitrate cannot be checked: the board reports
+      # `bitrate 990000` (the driver divides the crystal frequency, so 1M can
+      # only come out as 990000), so the check is only that a bitrate is
+      # there at all.
       command: "ip -details link show can0 | grep -q bitrate"
       timeout_ms: 10000
 
   - id: sysclock.set
-    label: 设置系统时间
+    label: Set the system time
     danger: reversible
     params:
       timestamp:
         type: string
-        # `date -s` 的形状：`YYYY-MM-DD HH:MM:SS` ✓
+        # The shape `date -s` expects: `YYYY-MM-DD HH:MM:SS`
         maxLength: 32
         default: "1970-01-01 00:00:00"
-    # ── 为什么这一条在真板上是**真需求** ✓ ──
+    # ── Why this is a real requirement on a real board ──
     #
-    # 实测 2026-11-16：**板子的系统时间是 1970-01-01** ✓ —— 因为
-    # **RTC 读不出来** ✓（`hwclock` 报 `RTC_RD_TIME: Invalid argument` ✓）
-    # 且出厂系统没跑 NTP ✓（手册说「插上网线才会同步」✓）→
-    # **不设时间，板子上的所有日志时间戳都是 1970** ✓。
-    # → 这条是「让板子的时间对得上」的那一步 ✓。
+    # Measured 2026-11-16: the system time of the board is 1970-01-01,
+    # because the RTC cannot be read (`hwclock` reports
+    # `RTC_RD_TIME: Invalid argument`) and the factory system runs no NTP
+    # (the manual says it only synchronises once a network cable is plugged
+    # in). Without setting the time, every log timestamp on the board is
+    # from 1970.
+    # - This step is the one that makes the board's time right.
     #
-    # ⚠️ **格式自己填** ✓ —— 不替用户猜「现在几点」✓
-    # （宿主的时间不一定对 ✓ —— 而板子的时间一定不对 ✓ —— 两个都不对的时候，
-    #   **人填的那个才是真的** ✓）。
+    # The format is filled in by the user: the app never guesses "what time
+    # is it now". The host's time is not necessarily right, and the board's
+    # time is definitely wrong; when neither is right, the one the person
+    # typed is the true one.
     command: "date -s {timestamp}"
     readback:
       kind: verify
-      # ⚠️ **占位不许自带引号**（规则 21 ✓）→ 引号由运行时加 ✓
+      # The placeholder must not carry its own quotes (validation rule 21);
+      # the runtime adds them.
       command: "date '+%Y-%m-%d %H:%M:%S' | grep -q {timestamp}"
       timeout_ms: 10000
 
   - id: audio.play
-    label: 播放音频文件
+    label: Play an audio file
     danger: reversible
     params:
       path:
         type: string
         maxLength: 200
         default: /userdata/piano2-CoolEdit.mp3
-    # 板上实测有 `gst-play-1.0` ✓（手册 §2.7.1 ✓）
-    # —— 默认文件是出厂就有的那首 ✓（实测 `/userdata/piano2-CoolEdit.mp3` ✓）。
+    # The board has `gst-play-1.0` as measured (manual section 2.7.1), and
+    # the default file is the piece that ships with the board (measured:
+    # `/userdata/piano2-CoolEdit.mp3`).
     command: "gst-play-1.0 {path}"
     readback:
-      # **退出码就是判据** ✓ —— 播完返回 0 ✓（实测 ✓）。
+      # The exit code is the criterion: the playback returns 0 when it has
+      # finished (measured).
       kind: command_ok
 
   - id: audio.record
-    label: 录一段音频
+    label: Record an audio clip
     danger: reversible
     params:
       seconds:
@@ -381,83 +422,95 @@ actions:
         type: string
         maxLength: 200
         default: /userdata/record.wav
-    # ⚠️ **用声卡名不用编号** ✓ —— 实测 `amixer -c 3`（厂商脚本用的编号 ✓）
-    # 指向的是 **hdmi1** ✗；es8388 是 **card 1** ✓ —— 但编号会随插拔变 ✓ →
-    # **用名字 `rockchipes8388`** ✓（手册 §2.7.2 用的就是名字 ✓）。
+    # Use the sound card name, not its number: the measured `amixer -c 3`
+    # (the number the vendor scripts use) points at hdmi1, and es8388 is
+    # card 1, but the numbers change when devices are plugged and unplugged.
+    # Use the name `rockchipes8388` (the manual uses the name too, section
+    # 2.7.2).
     command: "arecord -D hw:rockchipes8388,0 -c 2 -d {seconds} -f S16_LE -r 48000 {path}"
     readback:
       kind: verify
-      # **文件非空** ✓ —— `test -s`（大小 > 0 ✓）——
-      # 实测 3 秒录出来 576044 字节 ✓。
+      # The file is not empty: `test -s` (size > 0). Measured, 3 seconds of
+      # recording produced 576044 bytes.
       command: "test -s {path}"
       timeout_ms: 60000
 
   - id: camera.snapshot
-    label: 抓取一帧相机图像
+    label: Capture one camera frame
     danger: reversible
     params:
       device:
         type: enum
-        # 手册 §2.8 的丝印 ↔ 节点对照 ✓（实测四个节点的 name 都是 rkisp_mainpath ✓，
-        # 所以**只能靠丝印对照认** ✓ —— 型号认不出来 ✓）。
+        # The silkscreen to node mapping of manual section 2.8 (measured: the
+        # name of all four nodes is rkisp_mainpath, so the model cannot be
+        # recognised and only the silkscreen mapping identifies them).
         values: [/dev/video62, /dev/video71, /dev/video44, /dev/video53]
       path:
         type: string
         maxLength: 200
         default: /userdata/snapshot.jpg
-    # 手册 §2.8 的管线 ✓（实测：没接相机时**诚实地失败** ✓
-    # —— `not-negotiated (-4)` ✓ —— 不假装成功 ✓）。
+    # The pipeline of manual section 2.8 (measured: with no camera attached
+    # it fails honestly with `not-negotiated (-4)` instead of pretending to
+    # have succeeded).
     command: "gst-launch-1.0 v4l2src device={device} ! video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! videoconvert ! jpegenc ! multifilesink location={path}"
     readback:
-      # **`command_ok` 而不是 `verify`** ✓ —— **命令自己的失败就是最好的诊断** ✓：
-      # 没接相机时 gst 会报 `not-negotiated (-4)` ✓（实测 ✓），
-      # 而 `verify`（轮询 `test -s`）只会等满 30 秒然后说「超时」✗
-      # —— **那话把真正的原因盖住了** ✗。
-      # → **让 gst 自己说话** ✓（它的 stderr 会进报告 ✓）。
-      # （「文件非空」由流程层那条 `camera-capture.capture` 断言 ✓ —— **两层分工** ✓）
+      # `command_ok` rather than `verify`: the failure of the command itself
+      # is the best diagnosis. With no camera attached gst reports
+      # `not-negotiated (-4)` (measured), while `verify` (which polls
+      # `test -s`) would wait the full 30 seconds and then report "timed out",
+      # which hides the real cause.
+      # - Let gst speak for itself (its stderr reaches the report).
+      # - The "file is not empty" check belongs to the
+      #   `camera-capture.capture` assertion at the workflow layer, so the
+      #   two layers split the work.
       kind: command_ok
 
   - id: storage.benchmark
-    label: 存储写入测速
+    label: Storage write benchmark
     danger: reversible
     params:
       mountpoint:
         type: enum
-        # 实测挂载点 ✓（手册 §2.14 ✓）：eMMC 用户分区 /userdata ✓ · /oem ✓ ·
-        # USB 盘 /mnt/udisk ✓
+        # Mount points as measured (manual section 2.14): the eMMC user
+        # partition /userdata, /oem, and the USB disk /mnt/udisk
         values: [/userdata, /oem, /mnt/udisk]
       size_mb:
         type: integer
         min: 1
         max: 512
         default: 50
-    # ⚠️ **不写块设备** ✓ —— 写的是挂载点**下面的一个文件** ✓
-    # → **不命中危险地板** ✓（地板管的是「dd 写 /dev/mmcblk」✓ —— 规则 16 ✓）。
-    # → 而且 `mountpoint` 是**封闭枚举** ✓ —— 用户**没法**指向块设备 ✓。
+    # No block device is written: the write goes to a file under the mount
+    # point.
+    # - That does not hit the danger floor (the floor covers "dd writing to
+    #   /dev/mmcblk", validation rule 16).
+    # - And `mountpoint` is a closed enumeration, so the user cannot point it
+    #   at a block device.
     command: "dd if=/dev/zero of={mountpoint}/.cockpit-bench bs=1024k count={size_mb} conv=fdatasync && rm -f {mountpoint}/.cockpit-bench"
     readback:
-      # **命令返回 0** ✓ —— `dd` 失败会返回非 0 ✓（实测 eMMC 写 235 MB/s ✓）。
+      # The command returns 0; a failing `dd` returns non-zero (measured:
+      # 235 MB/s writing to the eMMC).
       kind: command_ok
 
   - id: module.load
-    label: 加载内核模块
+    label: Load a kernel module
     danger: reversible
     params:
       name:
         type: string
         maxLength: 64
-    # **按名字加载，不按路径** ✓（板子放置规范 §4 硬规矩 2 ✓）
-    # —— `insmod /path/x.ko` 能过，但 `modprobe x` 找不到 ✗
-    # → 模块要先装进 `/usr/lib/modules/$(uname -r)/extra/` 再 `depmod -a` ✓。
+    # Load by name, not by path (docs/02 section 3.5, rule P2):
+    # `insmod /path/x.ko` would pass, but `modprobe x` would not find it.
+    # - The module has to be installed into
+    #   `/usr/lib/modules/$(uname -r)/extra/` first, then `depmod -a`.
     command: "modprobe {name}"
     readback:
       kind: verify
-      # **`-w`（整词）** ✓ —— 否则 `hello` 会匹配上 `hello_world` ✓。
+      # `-w` (whole word), otherwise `hello` would also match `hello_world`.
       command: "lsmod | grep -qw {name}"
       timeout_ms: 30000
 
   - id: module.unload
-    label: 卸载内核模块
+    label: Unload a kernel module
     danger: reversible
     params:
       name:
@@ -466,24 +519,30 @@ actions:
     command: "rmmod {name}"
     readback:
       kind: verify
-      # **反向判据** ✓ —— 「不在 lsmod 里」才是卸载成功 ✓。
+      # The criterion is reversed: the module being absent from `lsmod` is
+      # what makes the unload successful.
       command: "! lsmod | grep -qw {name}"
       timeout_ms: 30000
 
-# ── 板型私有量 ─────────────────────────────────────────────────────────
-# 不在核心词表里，别的板不保证有。命名空间 = custom.<pack id>.*
+# ── Board-specific quantities ───────────────────────────────────────────────
+# They are not in the core vocabulary and other boards are not required to
+# have them. The namespace is custom.<pack id>.*
 #
-# ⚠️ 这里的路径改过一次又改回来（docs/06-契约核对.md 的 C1/C7）：
-#   迁入时写的是 /sys/kernel/debug/rknpu/devfreq/cur_freq —— 实测该目录在板上
-#   **不存在**（rknpu/ 下只有 delayms freq load power reset version volt）。
-#   第一次修订把它换成了 /sys/class/devfreq/fdab0000.npu/load —— 但那个文件里的
-#   "@<freq>Hz" 是「duty 在哪个频率上测的」，**不是当前频率**，语义被冒名了。
-#   现在按用户 2026-11-12 的拍板**回滚**到真正表示当前频率的路径。
+# The path below was changed once and then changed back:
+#   When the pack was brought in it read /sys/kernel/debug/rknpu/devfreq/cur_freq,
+#   but that directory does not exist on the board as measured (under rknpu/
+#   there are only delayms, freq, load, power, reset, version and volt).
+#   The first revision replaced it with /sys/class/devfreq/fdab0000.npu/load,
+#   but the "@<freq>Hz" in that file is "the frequency at which the duty was
+#   measured", not the current frequency, so the semantics were being
+#   impersonated.
+#   The user's decision of 2026-11-12 was to roll back to the path that really
+#   means the current frequency.
 #
-# 三个量的语义各自干净：
-#   npu.usage            ← rknpu debugfs 的真实利用率（空闲 0%）
-#   custom...npu.duty    ← devfreq 的时钟占空比  （空闲 100%）
-#   custom...npu.freq_hz ← 当前频率（不是 load 里那个 @freq）
+# The three quantities have clean semantics of their own:
+#   npu.usage            <- the real utilisation from the rknpu debugfs (0% when idle)
+#   custom...npu.duty    <- the clock duty cycle of devfreq (100% when idle)
+#   custom...npu.freq_hz <- the current frequency (not the @freq inside the load file)
 custom:
   - id: backlight
     kind: file_read
@@ -507,8 +566,9 @@ custom:
     kind: devfreq_load
     args:
       path: /sys/class/devfreq/fdab0000.npu/load
-      # 这一条确实是占空比，不是利用率。所以它只绑到 .duty 这种名字上，
-      # 不绑任何 *.usage。校验器会拦住「占空比当利用率发布」。
+      # This one really is a duty cycle, not a utilisation, so it is bound
+      # only to a name like .duty and to no *.usage at all. The validator
+      # rejects publishing a duty cycle as a utilisation.
       measure: duty_cycle
     provides:
       - tag: custom.rk3588-atk.npu.duty

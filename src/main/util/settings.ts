@@ -2,14 +2,15 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 宿主设置。
+ * Host settings.
  *
- * **机器专属路径只在这里与 `profiles/settings.json` 出现，不进代码**
- * （事实清单 §2：宿主 adb 不在 PATH，`where adb` 查不到）。
+ * Machine-specific paths appear only here and in `profiles/settings.json`,
+ * never in the code (device fact list in `docs/`, section 2: the host `adb`
+ * is not on PATH, and `where adb` cannot find it).
  */
 
 export interface HostTools {
-  /** adb 可执行文件的绝对路径。null = 让运行时按 PATH → 常见位置找 */
+  /** Absolute path of the adb executable. null = let the runtime look along PATH, then at the usual locations */
   adb: string | null;
 }
 
@@ -29,29 +30,34 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 /**
- * **设置文件的路径**（**一个入口** ✓ —— CLI 与应用不许各找各的 ✓）。
+ * The path of the settings file (one entry point — the CLI and the app must
+ * not each look for their own).
  *
- * ── 为什么要收口 ──
+ * ── Why it is centralised ──
  *
- * 之前：应用走 `join(app.getAppPath(), 'profiles', 'settings.json')` ✓，
- * 而 CLI（`scripts/run-workflow.ts` 等）**不读设置** ✗
- * → CLI 建连接时 `adbPath` 是 `undefined` ✗ → 回落成 `'adb'` ✗
- * → **宿主 adb 不在 PATH** ✗ → `spawn adb ENOENT` ✗
- * → 「编译上板」那条流程在 CLI 里**根本跑不起来** ✗
- * （而**应用里是好的** ✗ → **两份真相** ✗ ——本工程栽过好几次的同款坑 ✓）。
+ * Before: the app used `join(app.getAppPath(), 'profiles', 'settings.json')`
+ * while the CLI (`scripts/run-workflow.ts` and friends) did not read the
+ * settings at all, so `adbPath` was `undefined` when the CLI opened a
+ * connection, fell back to `'adb'`, the host `adb` is not on PATH, and
+ * `spawn adb ENOENT` was the result. The "compile onto the board" workflow
+ * simply could not run in the CLI, while in the app it worked fine — two
+ * versions of the truth, a trap this project has fallen into several times
+ * before.
  *
- * → 现在**谁来建连接，谁就按同一条路拿 adb 路径** ✓。
+ * → Now whoever opens a connection resolves the adb path the same way.
  *
- * @param root 根目录。**应用传 `app.getAppPath()`** ✓；**CLI 传 cwd** ✓。
+ * @param root The root directory. The app passes `app.getAppPath()`; the CLI
+ * passes the cwd.
  */
 export function settingsPath(root?: string): string {
   return join(root ?? process.cwd(), 'profiles', 'settings.json');
 }
 
 /**
- * 读 `profiles/settings.json`。
+ * Reads `profiles/settings.json`.
  *
- * 文件不存在或坏了就返回默认值——设置读不到不该让应用起不来。
+ * A missing or broken file yields the defaults — unreadable settings must
+ * not keep the app from starting.
  */
 export function loadSettings(settingsPath: string): Settings {
   try {
@@ -79,16 +85,17 @@ export function loadSettings(settingsPath: string): Settings {
 }
 
 /**
- * 找 adb 可执行文件。
+ * Locates the adb executable.
  *
- * 顺序：`settings.json` 里的绝对路径 → PATH → 常见安装位置。
- * 都找不到就返回 'adb'，让 spawn 报「找不到」——那是个能看懂的错。
+ * The order is: the absolute path from `settings.json`, then PATH, then the
+ * usual install locations. If none of them matches, return 'adb' and let
+ * spawn report "not found" — that is an error a human can read.
  */
 export function resolveAdbPath(settings: Settings): string {
   const configured = settings.hostTools.adb;
   if (configured && existsSync(configured)) return configured;
 
-  // 常见安装位置（这台机器的 adb 在 Downloads 下）
+  // The usual install locations (on this machine adb lives under Downloads)
   const common = [
     join(process.env['USERPROFILE'] ?? '', 'Downloads', 'platform-tools', 'adb.exe'),
     join(process.env['USERPROFILE'] ?? '', 'AppData', 'Local', 'Android', 'Sdk',
@@ -97,9 +104,10 @@ export function resolveAdbPath(settings: Settings): string {
   for (const p of common) {
     if (p && existsSync(p)) return p;
   }
-  // **`platform-tools_r33.0.3-windows` 这种带版本号的目录** ✓
-  // ——实测这台机器的 adb 就在这儿 ✓（不带版本号的那条找不到 ✓）。
-  // 用 `readdirSync` 扫一眼 Downloads ✓（**不 glob** ✓ —— glob 还得引依赖 ✓）。
+  // Versioned directory names such as `platform-tools_r33.0.3-windows` —
+  // measured: the adb on this machine is in there, while the unversioned
+  // path does not exist. Downloads is scanned once with `readdirSync` (no
+  // glob: globbing would mean adding a dependency).
   try {
     const downloads = join(process.env['USERPROFILE'] ?? '', 'Downloads');
     const candidates = readdirSync(downloads)
@@ -109,7 +117,7 @@ export function resolveAdbPath(settings: Settings): string {
       if (existsSync(p)) return p;
     }
   } catch {
-    // 目录读不到就算了 —— 下面是最后一档
+    // If the directory cannot be read, move on — this is the last resort
   }
   return 'adb';
 }

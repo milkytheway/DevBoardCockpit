@@ -1,31 +1,39 @@
-# 板子体检 —— **把「这块板现在是什么状态」一次问清楚**
+# Board health check — **ask everything about "what state is this board in"
+# in one go**
 #
-# ── 为什么要有它 ──
+# ── Why it exists ──
 #
-# 新板子到手、或者板子跑着跑着不对劲时，第一个问题永远是
-# 「它现在到底怎么样」。逐条敲 adb shell 很慢，而且**容易漏**。
+# The first question with a new board, or with a board that starts behaving
+# oddly, is always "how is it actually doing". Typing `adb shell` line by
+# line is slow, and it is easy to miss something.
 #
-# → 这一条流程**把该看的都看一遍** ✓，并且**把看得到的事实留在产出槽里** ✓
-# （宿主把产出显示出来 → 用户不用自己再去板子上查一遍 ✓）。
+# - This workflow **looks at everything there is to look at**, and **keeps
+#   the facts it can see in the output slots**
+#   (the host displays the output, so the user does not have to go to the
+#   board and check again).
 #
-# ── 判据的设计原则 ──
+# ── How the criteria are designed ──
 #
-# **必过的**（不对就是板子有问题）→ `on_mismatch: fail` ✓
-# **不一定过的**（没插网线 / 没插 TF 卡 / 时间没设）→ `on_mismatch: continue` ✓
-#   → **它照样报告「没通过」** ✓（时间线上看得见 ✓）但**不把整次体检判成失败** ✓。
+# **Must pass** (not passing means the board has a problem) → `on_mismatch:
+# fail`
+# **Not necessarily passing** (no network cable / no TF card / the time is not
+# set) → `on_mismatch: continue`
+#   - It still reports "not passed" (visible in the timeline) but does not
+#     turn the whole health check into a failure.
 #
-# ── 实测依据（2026-11-16 · 真板 ATK-DLRK3588）──
+# ── Measured basis (2026-11-16 · real board ATK-DLRK3588) ──
 #
-#   板子的**系统时间是 1970-01-01** ✓（无 RTC 读数 ✓ · 无 NTP ✓）→
-#   所以 `assert-clock` 在新板上**会失败** ✓ —— 那正是它要说的 ✓。
+#   The system time of the board is 1970-01-01 (no RTC reading, no NTP) →
+#   so `assert-clock` **fails on a new board** — that is exactly what it is
+#   there to say.
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: board-healthcheck.verify
-name: 板子体检
+name: Board health check
 version: 1.0.0
-description: 一次问清板子的型号、内核、运行时间、内存、温度、调频策略、网络与时间；必过项不过就报错。
+description: Ask the board about its model, kernel, uptime, memory, temperature, governor, network and time in one go; an item that must pass reports an error when it fails.
 
 inputs:
   clock_expect:
@@ -33,21 +41,25 @@ inputs:
     required: false
     maxLength: 32
     default: "2020"
-    description: 系统时间应该大于哪一年（早于它就说明板子没对上时间）
+    description: The year the system time has to be later than (an earlier time means the board has not synchronised)
 
 roles:
   target:
-    purpose: 被体检的板子
+    purpose: The board being checked
     profile: board-adb
 
 steps:
-  # ── 事实 ────────────────────────────────────────────────────
+  # ── Facts ────────────────────────────────────────────────────
   - id: model
     kind: exec
     role: target
-    # ⚠️ **`cat` 出来的型号带一个尾随 NUL** ✓（实测 2026-11-16 ✓）→
-    #   拼进命令时会被**注入防线直接拒绝** ✓（「路径里有换行或空字符」✓ —— 那是**对的** ✓）。
-    # → **取数时就去掉** ✓（`tr -d` ✓）—— 不要指望下游去容忍 ✓。
+    # The model read with `cat` carries one trailing NUL (measured
+    # 2026-11-16), and
+    #   splicing it into a command is **rejected by the injection guard**
+    #   ("the path contains a newline or a null character"), which is
+    #   correct.
+    # - Strip it while reading (`tr -d`); do not rely on the downstream
+    #   tolerating it.
     cmd: "tr -d '\\0' < /proc/device-tree/model"
     out: model
     readback:
@@ -117,7 +129,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ── 必过的判据 ──────────────────────────────────────────────
+  # ── Criteria that must pass ──────────────────────────────────────────
   - id: assert-model
     kind: assert
     role: target
@@ -138,23 +150,27 @@ steps:
       timeout_ms: 10000
     on_mismatch: fail
 
-  # ── 报告性的判定 ────────────────────────────────────────────
+  # ── Report-only verdicts ────────────────────────────────────────────
   #
-  # ⚠️ **为什么这里不是 `assert`** ✓
+  # **Why this is not an `assert`**
   #
-  # 契约 `spec/02` §4.5 说得很清楚：**`verify` 是「轮询验证命令直到成功或超时」** ✓
-  # → 它答的是「**这个条件什么时候会成立**」✓
-  # → 而「板子的时间现在对不对」是**一次性的静态判定** ✓
-  #   （不会「过一会儿就自己变好」✓）→
-  # → 用 `verify` 写它，等 10 秒换一句「验证命令在 10000ms 内没成功」✗
-  #   —— **那话是假的** ✗（命令**早就返回了** ✓，只是返回码不是 0 ✓）。
+  # The contract `spec/02` section 4.5 says it clearly: **`verify` is "poll
+  # the verification command until it succeeds or times out"**
+  # - It answers "when does this condition come true"
+  # - while "is the clock of the board right now" is a **one-shot static
+  #   judgement** (it does not "get better on its own after a while")
+  # - Writing it with `verify` waits 10 seconds and then reports "the
+  #   verification command did not succeed within 10000ms", which is a false
+  #   statement (the command returned long ago, only with a non-zero exit
+  #   code).
   #
-  # → **改成 `exec` + 把话说出来** ✓：
-  #   事实已经在那两个槽里 ✓（`clock` ✓），这里再给一句**人话** ✓。
+  # - **Use `exec` and put the conclusion into words**:
+  #   the facts are already in the two slots (`clock`), and here they get one
+  #   sentence in plain language.
   - id: clock-verdict
     kind: exec
     role: target
-    cmd: "if [ $(date +%Y) -gt {input:clock_expect} ]; then echo OK; else echo '板子时间没对上（先用 sysclock.set 设一次）'; fi"
+    cmd: "if [ $(date +%Y) -gt {input:clock_expect} ]; then echo OK; else echo 'the board clock is not set (run sysclock.set once first)'; fi"
     out: clock_verdict
     readback:
       kind: command_ok

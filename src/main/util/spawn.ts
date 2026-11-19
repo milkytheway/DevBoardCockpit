@@ -1,57 +1,66 @@
 import { spawn } from 'node:child_process';
 
 /**
- * 统一的子进程启动。
+ * The one place where child processes are started.
  *
- * 三条硬约束：
+ * Three hard constraints:
  *
- * - **事实 G3**：Windows 下 GUI 拉起的进程默认开控制台窗 → 必须 `windowsHide: true`。
- *   否则旧工程那种「每秒采一次指标 → 屏幕狂闪」会重演。
- * - **事实 G1**：超时一律归一到 **124**，调用方只认这一个含义。
- * - **事实 A8**：输出按 UTF-8 解码，坏字节替换成 U+FFFD，**不得废掉整条命令**。
+ * - Device fact G3: on Windows a process launched from a GUI opens a
+ *   console window by default → `windowsHide: true` is mandatory.
+ *   Otherwise the legacy project's "sample metrics once a second → the
+ *   screen flickers wildly" happens again.
+ * - Device fact G1: every timeout is normalised to 124, and the callers
+ *   recognise that one meaning only.
+ * - Device fact A8: the output is decoded as UTF-8, bad bytes are replaced
+ *   with U+FFFD, and a bad byte must not void the whole command.
  */
 
 export interface SpawnResult {
-  /** null = 被信号杀死或没退出。串口上恒为 null（事实 S5） */
+  /** null = killed by a signal or never exited. Always null over the serial port (device fact S5) */
   exitCode: number | null;
   stdout: string;
   stderr: string;
   durationMs: number;
-  /** true 时 exitCode 必为 124 */
+  /** When true, exitCode is necessarily 124 */
   timedOut: boolean;
   /**
-   * 子进程的 pid（**诊断用** ✓）。
+   * The pid of the child process (for diagnostics).
    *
-   * → 「取消之后那个进程**真的没了**吗」——这条判据要靠它 ✓
-   * （尖兵当年的现象就是「进程还在跑」✗）。
+   * → "After the cancellation, is the process really gone?" — this
+   *   criterion depends on it (the phenomenon measured on a real board
+   *   was "the process is still running").
    */
   pid?: number;
   /**
-   * **被取消了**（不是超时 ✓ —— 两者不该同码 ✓：
-   * 「等久了没结果」与「人主动叫停」是两件事 ✗）。
+   * It was cancelled (not a timeout — the two must not share a code:
+   * "waited too long and got no result" and "the human called it off" are
+   * two different things).
    */
   cancelled?: boolean;
 }
 
 export interface SpawnOptions {
-  /** 超时毫秒，默认 30000 */
+  /** Timeout in milliseconds, 30000 by default */
   timeoutMs?: number;
-  /** 写给子进程 stdin 的内容 */
+  /** The content written to the child process stdin */
   input?: string;
-  /** 追加到 process.env 的环境变量 */
+  /** Environment variables appended to process.env */
   env?: Record<string, string>;
   /**
-   * **中途叫停**（`AbortSignal` ✓）。
+   * Stopping it halfway through (`AbortSignal`).
    *
-   * → 超时是「等久了」✓；取消是「**人不要了**」✓ —— 两者分开 ✓
-   *   （尖兵实测：一个 75 秒的传输步收到取消后**照跑完** ✗ —— 就是因为没有这条路 ✓）。
-   * → 取消时**杀掉子进程** ✓（不是「不等了」——那样它还在后台跑 ✗）。
+   * → A timeout means "waited too long"; a cancellation means "the human no
+   *   longer wants it" — the two are kept apart (a real-board measurement
+   *   showed a 75-second transfer step running to completion after the cancel arrived —
+   *   precisely because this path did not exist).
+   * → A cancellation kills the child process (merely not waiting leaves it
+   *   running in the background).
    */
   signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-/** 统一超时码（事实 G1）——与 `hal/session.ts` 是同一个常量 */
+/** The unified timeout code (device fact G1) — the same constant as in `hal/session.ts` */
 const TIMEOUT_EXIT_CODE = 124;
 
 export function runProcess(
@@ -63,8 +72,9 @@ export function runProcess(
   const startedAt = Date.now();
 
   return new Promise<SpawnResult>((resolve, reject) => {
-    // stdin 用 'pipe' 而不是 'ignore'：需要写 input 时才用得上。
-    // 两种情况都会 end 掉 stdin，让子进程看到 EOF 而不是一直等输入。
+    // stdin uses 'pipe' rather than 'ignore': it is only needed when there
+    // is input to write. Both cases end stdin, so the child sees EOF
+    // instead of waiting for input forever.
     const child = spawn(command, args, {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -82,28 +92,32 @@ export function runProcess(
       child.kill();
     }, timeoutMs);
 
-    // ── 取消：**杀掉子进程** ──
-    // → 「不等了」是不够的 ✗：进程还在后台跑（尖兵实测：75 秒的传输照跑完 ✗）
-    // → 先 SIGTERM，**给它 200ms 自己退** ✗，不退再 SIGKILL ✓
+    // ── Cancellation: kill the child process ──
+    // → "Stop waiting" is not enough: the process keeps running in the
+    //   background (a real-board measurement showed a 75-second transfer running to
+    //   completion anyway)
+    // → SIGTERM first, giving it 200ms to exit on its own; if it does not,
+    //   SIGKILL
     const onAbort = (): void => {
       if (settled) return;
       cancelled = true;
       try {
         child.kill('SIGTERM');
       } catch {
-        // 已经退了就算了
+        // If it has already exited, fine
       }
       setTimeout(() => {
         try {
           child.kill('SIGKILL');
         } catch {
-          // 已经没了就算了
+          // If it is already gone, fine
         }
       }, 200);
     };
     if (opts.signal !== undefined) {
       if (opts.signal.aborted) {
-        // **一开始就取消了** → 干脆别起 ✓（**也要标 cancelled** ✓）
+        // Cancelled right from the start → do not start it at all (and still
+        // mark it cancelled)
         cancelled = true;
         child.kill();
       } else {
@@ -141,7 +155,8 @@ export function runProcess(
     if (opts.input !== undefined) {
       child.stdin?.end(opts.input);
     } else {
-      // 不给输入就关掉 stdin，让子进程看到 EOF 而不是一直等
+      // With no input, close stdin so the child sees EOF instead of waiting
+      // forever
       child.stdin?.end();
     }
   });

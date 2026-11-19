@@ -3,70 +3,77 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /**
- * 动作审计 —— 契约 `docs/spec/02-board-pack.md` §5.4。
+ * Action audit — contract `docs/spec/02-board-pack.md` §5.4.
  *
- * > 「每次动作执行记一行：时间、卡片 id、动作 id、参数、结果、回读值。
- * > ……追加写、每行 flush、时间戳前缀。」
+ * > "Record one line per action execution: time, card id, action id,
+ * > parameters, result, readback value. … append-only, flush every line,
+ * > timestamp prefix."
  *
- * ── 记的是「每一次尝试」，不只是执行成功的那些 ──
+ * ── What is recorded is every attempt, not only the ones that succeeded ──
  *
- * 契约的最低要求是「每次执行一行」；这里**每一次尝试**都记一行
- * （含被拒的与等确认的）——
- * **「谁试了什么但没被允许」恰恰是最该留痕的那一类**。
+ * The contract's minimum requirement is "one line per execution"; here every
+ * attempt gets a line (including the denied ones and the ones waiting for
+ * confirmation) — "who tried what but was not allowed" is precisely the class
+ * of event that most deserves a trace.
  *
- * ── 行式文本，不是 JSON 文件 ──
+ * ── Line-oriented text, not a JSON file ──
  *
- * 与会话日志同一种形态（`logging/session-log.ts`）：
- * **能 grep、能 tail、能 cat**。一行一个动作，追加写、每行 flush。
+ * The same shape as the session log (`logging/session-log.ts`): it can be
+ * grepped, tailed and catted. One action per line, append-only, flush every
+ * line.
  */
 export interface AuditRow {
   /**
-   * 这一行的 id（**追责单位**）。
+   * The id of this line (the unit of accountability).
    *
-   * 契约 `spec/04` §2.4：动作的结果里带 `audit_id`——
-   * 「发生了什么」与「谁让它发生的」要能互相指认。
-   * （ADR-D31 R8：流程层的时间线每一阶段也引用这个 id。）
+   * Contract `spec/04` §2.4: the action result carries an `audit_id` —
+   * "what happened" and "who caused it" have to be able to point at each
+   * other. (Implementation decision record ADR-D31 R8: every stage of the
+   * workflow-layer timeline references this id as well.)
    */
   id?: string;
-  /** 时刻（毫秒 UTC） */
+  /** Timestamp (milliseconds UTC) */
   at: number;
-  /** 谁触发的（卡片 id / agent / 用户） */
+  /** Who triggered it (card id / agent / user) */
   actor: string;
-  /** 板型包里的动作 id */
+  /** The action id declared in the board pack */
   actionId: string;
-  /** 本次调用的参数（原始值） */
+  /** The parameters of this call (raw values) */
   params: Record<string, unknown>;
   /**
-   * **最终命令**（编码之后的 ✓）。
+   * The final command, the one after encoding.
    *
-   * → 追责链的第一环：**「到底执行了什么」** ✓
-   *   （只有动作 id 与参数，事后拼不出命令 ✓）。
-   * → 流程层尤其需要它：**流程的命令是包给的** ✓（不是板型包里的动作 ✓）。
+   * → It is the first link in the chain of accountability: "what exactly was
+   *   executed". (With only the action id and the parameters, the command
+   *   cannot be reconstructed afterwards.)
+   * → The workflow layer needs it especially: a workflow's command is given
+   *   by the workflow pack (not by an action in the board pack).
    */
   command?: string;
   /**
-   * **这一步的输入值**（流程层用 ✓）。
+   * The input values of this step (used by the workflow layer).
    *
-   * → 流程的参数在**流程包**里声明，不在**板型包**里 ✓
-   *   → 不记的话，事后只看到「跑了某一步」，看不到「用了哪个工程」✗。
+   * → A workflow's parameters are declared in the workflow pack, not in the
+   *   board pack → without this, afterwards you only see "some step ran", not
+   *   "which project was used".
    */
   inputs?: Record<string, unknown>;
-  /** 动作成功了吗 */
+  /** Did the action succeed */
   ok: boolean;
-  /** **确认**板子真的进入目标状态了吗 */
+  /** Was it confirmed that the board really reached the target state */
   verified: boolean;
-  /** 回读到的值 */
+  /** The value read back */
   value?: unknown;
-  /** 给人看的一句话 */
+  /** One line for a human to read */
   detail?: string;
 }
 
-/** 时间戳前缀（ISO，去掉毫秒后的可读形态） */
+/** Timestamp prefix (ISO, in its readable form without milliseconds) */
 function stamp(at: number): string {
   return new Date(at).toISOString();
 }
 
-/** 一行审计（行式文本，字段用空格隔开） */
+/** One audit line (line-oriented text, fields separated by spaces) */
 export function formatAuditRow(row: AuditRow): string {
   const parts = [
     stamp(row.at),
@@ -85,27 +92,29 @@ export function formatAuditRow(row: AuditRow): string {
 }
 
 /**
- * 审计的落盘处。
+ * Where the audit is written to disk.
  *
- * **追加写、每行 flush** —— 崩溃/断电不能丢掉已经发生的写入
- * （契约 §5.4 的理由与会话日志一样：事实 G4）。
+ * Append-only, flush every line — a crash or a power loss must not lose
+ * writes that already happened (the reason given in contract §5.4 is the
+ * same as for the session log: fact G4).
  */
 export class ActionAudit {
-  /** 行号（同一份审计里的顺序） */
+  /** Row number (the order within the same audit file) */
   private seq = 0;
 
   constructor(private readonly filePath: string) {}
 
   /**
-   * 记一行，**返回这一行的 id**。
+   * Record one line and return the id of that line.
    *
-   * → 结果里的 `audit_id` 就是它（契约 `spec/04` §2.4）。
+   * → It is the `audit_id` in the result (contract `spec/04` §2.4).
    */
   append(row: AuditRow): string {
     this.seq += 1;
-    // **id 不可预测**（评审 35 的 V2-M10 ✓）：
-    // 时间戳 + 序号**能被猜到** ✗ → 而 audit_id 会被卡片/agent 拿到 ✓
-    // → 猜到一个别人的 audit_id 就能**指着别人的记录说「这是他干的」** ✗。
+    // The id must be unpredictable (finding V2-M10 of review 35 ✓):
+    // A timestamp plus a sequence number can be guessed ✗ → and the audit_id
+    // is handed to cards/agents ✓ → guessing somebody else's audit_id lets
+    // you point at somebody else's record and say "they did it" ✗.
     const id = row.id ?? `audit-${randomUUID().slice(0, 8)}`;
     mkdirSync(dirname(this.filePath), { recursive: true });
     appendFileSync(this.filePath, `${formatAuditRow({ ...row, id })}\n`, 'utf8');

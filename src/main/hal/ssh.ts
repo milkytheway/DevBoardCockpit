@@ -11,13 +11,14 @@ import { readFileSync } from 'node:fs';
 import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult } from './connection';
 
 /**
- * SSH 传输。
+ * The SSH transport.
  *
- * **事实 H1**：用 `ssh2`（Node 侧），**不用** `ssh.exe` 脚本——
- * 脚本做不了密码认证。
+ * **Fact H1**: it uses `ssh2` (on the Node side) and **not** an `ssh.exe`
+ * script — a script cannot do password authentication.
  *
- * SSH 是 pty 模式：远端提供真终端，自己回显、自己出 ANSI，
- * 所以宿主只转发按键（见 legacy 的两种终端模式）。
+ * SSH is in pty mode: the remote side provides a real terminal, echoes by
+ * itself and emits ANSI, so the host only forwards the keystrokes (see the
+ * two terminal modes of the legacy behaviour).
  */
 
 export function sshCapabilities(): ConnectionCapabilities {
@@ -25,9 +26,10 @@ export function sshCapabilities(): ConnectionCapabilities {
 }
 
 /**
- * 读私钥文件（**读成内容**）。
+ * Read the private key file (**read it as content**).
  *
- * 读不到 → **报错**（不是「不带私钥去连」→ 然后莫名其妙地认证失败 ✗）。
+ * If it cannot be read → **raise an error** (not "connect without the
+ * private key" → and then fail authentication for no apparent reason ✗).
  */
 function readPrivateKey(path: string): Buffer {
   try {
@@ -43,12 +45,12 @@ export interface SshConnectOptions {
   host: string;
   port: number;
   username?: string;
-  /** 私钥（**内容**，不是路径——ssh2 认的是钥匙本身 ✓） */
+  /** The private key (**content**, not a path — ssh2 wants the key itself ✓) */
   privateKey?: Buffer | string;
   password?: string;
 }
 
-/** 从 profile 里解析连接参数。缺 host 直接报错——连不上要说清是哪个主机。 */
+/** Parse the connection parameters from the profile. A missing host raises an error right away — when the connection fails it has to name the host. */
 export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
   const host = profile.options['host'];
   if (typeof host !== 'string' || host.length === 0) {
@@ -66,59 +68,66 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
     port,
     ...(typeof username === 'string' ? { username } : {}),
     ...(typeof password === 'string' ? { password } : {}),
-    // **私钥要读成内容（Buffer），不能只给路径**——
-    // ssh2 的 `privateKey` 收的是**钥匙本身**；给路径它会当成钥匙内容去解析
-    // → 「Unsupported key format」（2026-11-15 真机实测撞到的）。
+    // **The private key has to be read as content (Buffer), a path is not
+    // enough** — the `privateKey` of ssh2 takes **the key itself**; given a
+    // path it tries to parse the path as key content
+    // → "Unsupported key format" (hit in a real-device test on 2026-11-15).
     ...(typeof keyFilename === 'string' ? { privateKey: readPrivateKey(keyFilename) } : {}),
   };
 }
 
 export interface SshConnectionOptions {
-  /** 注入 ssh2 客户端，测试用 */
+  /** Inject the ssh2 client, used by tests */
   clientFactory?: (opts: SshConnectOptions) => Client;
 }
 
 /**
- * sftp 的 readdir 回包一项。
+ * One entry of an sftp readdir reply.
  *
- * ssh2 给的类型是 `FileEntryWithStats`（attrs 必带一堆方法），
- * 但真实服务端不一定给全——这里只声明我们真正用到的三个字段，
- * 缺的按「拿不到」处理，不假装有。
+ * The type ssh2 hands over is `FileEntryWithStats` (attrs always carries a
+ * pile of methods), but a real server does not necessarily provide all of
+ * them — here only the three fields we actually use are declared, and the
+ * missing ones are treated as "unobtainable" instead of being faked.
  */
 interface SftpDirEntry {
   filename: string;
   longname?: string;
   attrs?: {
-    /** POSIX 模式：高位是文件类型位 */
+    /** POSIX mode: the high bits are the file type bits */
     mode?: number;
     size?: number;
-    /** **秒**，不是毫秒 */
+    /** **Seconds**, not milliseconds */
     mtime?: number;
   };
 }
 
 /**
- * sftp 的一项 → 契约里的 `FileEntry`。
+ * One sftp entry → the `FileEntry` of the contract.
  *
- * **目录的 sizeBytes 是 null**（读不到的东西不是 0 —— 事实 G2）：
- * `ls -la` 里目录那个 4096 是文件系统给目录分配的块数，不是它的「大小」，
- * 当成文件大小显示出来是骗人。
+ * **The sizeBytes of a directory is null** (what cannot be read is not 0 —
+ * Fact G2): the 4096 that `ls -la` shows for a directory is the number of
+ * blocks the file system allocated to it, not its "size", and showing it as
+ * a file size is a lie.
  */
 function toFileEntry(entry: SftpDirEntry, remotePath: string): FileEntry {
   const attrs = entry.attrs ?? {};
   const mode = typeof attrs.mode === 'number' ? attrs.mode : undefined;
 
-  // 目录判定：POSIX 模式的高位是文件类型位（0o170000），0o040000 = 目录。
-  // mode 拿不到（缺省或 0——0 不是任何合法文件类型的模式）就退回看 longname
-  // 的首字符，那是 ls -l 那套记号（d 目录 / - 文件 / l 软链接）。
+  // Directory detection: the high bits of the POSIX mode are the file type
+  // bits (0o170000), 0o040000 = directory. When the mode is unobtainable
+  // (absent or 0 — 0 is not the mode of any legal file type) fall back to the
+  // first character of longname, which is the notation of ls -l (d
+  // directory / - file / l symlink).
   const isDirectory =
     mode !== undefined && mode > 0
       ? (mode & 0o170000) === 0o040000
       : (entry.longname ?? '').charAt(0) === 'd';
 
-  // sftp 的 mtime 是**秒**（不是毫秒）——当成毫秒会差出一千倍。
-  // mtime 为 0 是「服务端没给时间戳」，不是 1970 年：显示成 1970 是骗人，
-  // 所以按「读不到」给 null（与 sizeBytes 同一条原则，事实 G2）。
+  // The mtime of sftp is in **seconds** (not milliseconds) — treating it as
+  // milliseconds is off by a factor of a thousand.
+  // An mtime of 0 means "the server gave no timestamp", not 1970: showing it
+  // as 1970 is a lie, so it is reported as null, the "unobtainable" case
+  // (the same principle as sizeBytes, Fact G2).
   const mtime = typeof attrs.mtime === 'number' && Number.isFinite(attrs.mtime) ? attrs.mtime : undefined;
   const modifiedAt = mtime !== undefined && mtime > 0 ? new Date(mtime * 1000).toISOString() : null;
 
@@ -126,7 +135,7 @@ function toFileEntry(entry: SftpDirEntry, remotePath: string): FileEntry {
 
   return {
     name: entry.filename,
-    // remotePath 末尾的斜杠去掉再拼，免得变成 `/root//a.txt`
+    // Strip the trailing slash of remotePath before appending, so that it does not become `/root//a.txt`
     path: `${remotePath.replace(/\/+$/, '')}/${entry.filename}`,
     isDirectory,
     sizeBytes: isDirectory ? null : size,
@@ -140,7 +149,7 @@ export class SshConnection implements Connection {
 
   private client: Client | undefined;
   private readonly opts: SshConnectOptions;
-  /** 最近一次链路错误。供上层查连接健康度 */
+  /** The most recent link error. Lets the layers above check the connection health */
   lastError: Error | undefined;
 
   constructor(
@@ -153,7 +162,7 @@ export class SshConnection implements Connection {
   }
 
   capabilities(): ConnectionCapabilities {
-    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    // **profile aware** — not a transport constant (see the notes in `capabilities.ts`).
     return capabilitiesFor(this.profile);
   }
 
@@ -167,8 +176,9 @@ export class SshConnection implements Connection {
         resolve();
       };
       const onError = (err: Error & { level?: string }): void => {
-        // 连接建立之后的错误（链路断了）也要有人接——
-        // 没有监听器的 'error' 事件会变成未捕获异常，把主进程带崩。
+        // An error after the connection was established (the link dropped)
+        // also has to be handled — an 'error' event without a listener turns
+        // into an uncaught exception and takes the main process down.
         if (this.client) {
           this.lastError = err;
         } else {
@@ -180,7 +190,7 @@ export class SshConnection implements Connection {
         }
       };
       client.once('ready', onReady);
-      // 常驻监听：握手之后不再摘掉
+      // A resident listener: it is not removed after the handshake
       client.on('error', onError);
       client.connect(this.opts);
     });
@@ -208,20 +218,22 @@ export class SshConnection implements Connection {
       let settled = false;
       let stream: ClientChannel | undefined;
 
-      // **跨 chunk 重组**（约束 G15 / 风险 RF-3）：
-      // 一个中文字符可能被拆到两个 chunk 里，`Buffer.toString('utf8')` 是逐 chunk
-      // 独立解码的——那样会得到两个 U+FFFD，合法内容被静默损坏。
-      // 串口（serial.ts）与 ADB（adb.ts）都用 StringDecoder，SSH 也得用。
+      // **Reassembly across chunks** (constraint G15 / risk RF-3):
+      // a Chinese character may be split across two chunks, and
+      // `Buffer.toString('utf8')` decodes each chunk independently — that
+      // yields two U+FFFD and silently corrupts valid content. Serial
+      // (serial.ts) and ADB (adb.ts) both use StringDecoder, so SSH has to
+      // as well.
       const stdoutDecoder = new StringDecoder('utf8');
       const stderrDecoder = new StringDecoder('utf8');
 
-      /** 结算一次。重复调用无效——超时与 close 可能同时到 */
+      /** Settle once. Repeated calls have no effect — a timeout and a close may arrive at the same time */
       const settle = (code: number | null): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         opts?.signal?.removeEventListener('abort', onAbort);
-        // 冲尾巴：最后一个 chunk 的尾巴可能还缓在 decoder 里
+        // Flush the tail: the tail of the last chunk may still be sitting in the decoder
         stdout += stdoutDecoder.end();
         stderr += stderrDecoder.end();
         resolve({
@@ -235,36 +247,41 @@ export class SshConnection implements Connection {
       };
 
       /**
-       * 超时**只关那一条通道**，不拆整条连接。
+       * A timeout **closes only that one channel**, it does not tear down
+       * the whole connection.
        *
-       * 原来这里调的是 `this.client.end()`——那会把该 client 上
-       * **所有通道**一起关掉：用户正用着的交互终端当场断掉，
-       * 而连接已经死了却仍被当成「已打开」（`this.client` 没置空），
-       * 后续每条命令都往死连接上打。
+       * This used to call `this.client.end()` — that closes **all** channels
+       * of that client: the interactive terminal the user is using drops
+       * immediately, while the connection is already dead and still treated
+       * as "open" (`this.client` is not cleared), so every later command
+       * goes to a dead connection.
        */
       const timer = setTimeout(() => {
         timedOut = true;
         try {
           stream?.close();
         } catch {
-          // 通道已经关了就算了
+          // The channel is already closed, never mind
         }
-        // 超时要**自己结算**：远端不主动关通道的话，
-        // 光靠 close 事件这个 Promise 永不 settle，调用方永久挂起。
+        // A timeout has to **settle by itself**: if the remote side does not
+        // close the channel, this Promise never settles on the close event
+        // alone and the caller hangs forever.
         settle(TIMEOUT_EXIT_CODE);
       }, timeoutMs);
 
-      // ── 取消：**关掉那一条通道** ──
-      // → 与超时同款（只关通道，不拆整条连接 ✓ —— 否则用户的交互终端会当场断掉 ✗）
+      // ── Cancellation: **close that one channel** ──
+      // → Same as the timeout (close only the channel, do not tear down the
+      //   whole connection ✓ — otherwise the user's interactive terminal
+      //   would drop immediately ✗)
       const onAbort = (): void => {
         if (settled) return;
         cancelled = true;
         try {
           stream?.close();
         } catch {
-          // 通道已经关了就算了
+          // The channel is already closed, never mind
         }
-        // **自己结算**：远端不主动关通道的话，这个 Promise 永不 settle ✗
+        // **Settle by itself**: if the remote side does not close the channel, this Promise never settles ✗
         settle(null);
       };
       if (opts?.signal !== undefined) {
@@ -290,9 +307,9 @@ export class SshConnection implements Connection {
   }
 
   /**
-   * 下载：走 ssh2 的 sftp。
+   * Download: goes through ssh2's sftp.
    *
-   * **不是**远端的 `pull` 命令——远端 shell 里没有那个命令。
+   * **Not** a remote `pull` command — the remote shell has no such command.
    */
   async pull(remotePath: string, localPath: string): Promise<void> {
     const sftp = await this.openSftp();
@@ -309,16 +326,17 @@ export class SshConnection implements Connection {
         });
       });
     } finally {
-      // 失败也要关——否则每失败一次就漏一个 sftp 通道
+      // It has to be closed on failure too — otherwise every failure leaks one sftp channel
       sftp.end();
     }
   }
 
   /**
-   * 上传：走 ssh2 的 sftp。
+   * Upload: goes through ssh2's sftp.
    *
-   * `remotePath` 是**目录**（统一的语义，见 `connection.ts`）——
-   * `fastPut` 要的是完整文件路径，所以这里补上 basename。
+   * `remotePath` is a **directory** (the unified semantics, see
+   * `connection.ts`) — `fastPut` wants a full file path, so the basename is
+   * appended here.
    */
   async push(localPath: string, remotePath: string): Promise<void> {
     const target = join(remotePath, basename(localPath));
@@ -341,11 +359,12 @@ export class SshConnection implements Connection {
   }
 
   /**
-   * 列远端目录。
+   * List a remote directory.
    *
-   * **走 ssh2 的 sftp**（计划 Task 9 Step 3：「adb 用 `adb shell ls -la`，
-   * ssh 用 ssh2 的 `sftp`」）——**不是**跑一条远端的 `ls`。
-   * 那是 adb 那条线的做法；SSH 这边有 sftp 通道，就用它。
+   * **It goes through the `sftp` of ssh2** (Task 9, Step 3 of the original
+   * implementation plan: "adb uses `adb shell ls -la`, ssh uses the `sftp`
+   * of ssh2") — **not** by running a remote `ls`.
+   * That is the way of the adb line; SSH has an sftp channel here, so use it.
    */
   async list(remotePath: string): Promise<FileEntry[]> {
     const sftp = await this.openSftp();
@@ -363,13 +382,14 @@ export class SshConnection implements Connection {
       });
       return entries.map((entry) => toFileEntry(entry, remotePath));
     } finally {
-      // 用完就关（同 pull / push）。**失败也要关**——
-      // sftp 通道挂在连接上，漏一条就会一直占着。
+      // Close it when done (the same as pull / push). **It has to be closed
+      // on failure too** — the sftp channel hangs off the connection, and one
+      // leak keeps it occupied forever.
       sftp.end();
     }
   }
 
-  /** 打开一条 sftp 通道 */
+  /** Open one sftp channel */
   private openSftp(): Promise<SFTPWrapper> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
@@ -392,13 +412,14 @@ export class SshConnection implements Connection {
     if (!this.client) {
       throw makeError('CONN_CLOSED', 'SSH 连接未打开', { detail: { id: this.id } });
     }
-    // ssh2 的 shell() 是**异步**的：通道要等一次往返才拿到。
-    // 同步检查 channel 必然是 undefined——SSH 终端开不起来。
+    // The shell() of ssh2 is **asynchronous**: the channel only arrives after
+    // one round trip. Checking the channel synchronously is bound to yield
+    // undefined — the SSH terminal would not come up.
     const channel = await this.openShell(opts?.cols ?? 80, opts?.rows ?? 24);
     return new SshSession(channel, this.log);
   }
 
-  /** 打开一个 shell 通道 */
+  /** Open one shell channel */
   private openShell(cols: number, rows: number): Promise<ClientChannel> {
     return new Promise((resolve, reject) => {
       this.client!.shell({ term: 'xterm-256color', cols, rows }, (err, ch) => {
@@ -415,17 +436,19 @@ export class SshConnection implements Connection {
 
 }
 
-/** SSH 的交互式会话。远端自己回显并出 ANSI，宿主只转发按键 */
+/** The interactive session of SSH. The remote side echoes by itself and emits ANSI, the host only forwards the keystrokes */
 class SshSession extends Session {
   /**
-   * 跨 chunk 重组多字节字符（约束 G15 / 风险 RF-3）。
+   * Reassemble multi-byte characters across chunks (constraint G15 / risk
+   * RF-3).
    *
-   * 挂在会话实例上——一条会话一条 decoder，
-   * 否则两个终端各收各的字节，凑不出一个完整的字符。
+   * It hangs off the session instance — one decoder per session, otherwise
+   * two terminals each receive their own bytes and cannot piece together one
+   * complete character.
    */
   private readonly decoder = new StringDecoder('utf8');
   private readonly dataCbs: ((chunk: string) => void)[] = [];
-  /** 通道上只挂一个 data 监听：decoder.write 每块字节只能调一次 */
+  /** Only one data listener is attached to the channel: decoder.write may be called only once per chunk */
   private listening = false;
 
   constructor(
@@ -447,8 +470,9 @@ class SshSession extends Session {
     this.listening = true;
     this.channel.on('data', (d: Buffer) => {
       const chunk = this.decoder.write(d);
-      // 空串 = 这块字节只带了半个字符，等下一块再说。
-      // 直接吐出去会把半个字符变成 U+FFFD。
+      // An empty string = this chunk carried only half a character, wait for
+      // the next one. Handing it out as is would turn the half character into
+      // a U+FFFD.
       if (chunk.length === 0) return;
       for (const c of this.dataCbs) c(chunk);
     });
@@ -459,19 +483,21 @@ class SshSession extends Session {
   }
 
   /**
-   * 远端 shell 自己退出了 → 上报。
+   * The remote shell exited on its own → report it.
    *
-   * 没有它的话，用户敲了 `exit` 之后界面还留着标签页，
-   * 继续打字写进一个**已经死了**的通道——
-   * 「板子掉线了但界面不知道」。
+   * Without it, after the user types `exit` the interface keeps the tab and
+   * further typing goes into a **dead** channel — "the board went offline
+   * and the interface does not know".
    */
   onExit(cb: (exitCode: number | null) => void): void {
     this.channel.on('close', (code: number | null) => cb(code));
   }
 
   close(): void {
-    // 冲尾巴：远端可能只发了半个字符就断线了，那半个字符要显示成替换符，
-    // 不能悄悄丢掉（丢一半比显示成空白更容易让人误判屏幕内容）。
+    // Flush the tail: the remote side may have sent only half a character
+    // before the link dropped, and that half character has to be shown as a
+    // replacement character, it must not be dropped silently (losing half of
+    // it makes the screen content easier to misjudge than showing a blank).
     const tail = this.decoder.end();
     if (tail.length > 0) {
       for (const c of this.dataCbs) c(tail);

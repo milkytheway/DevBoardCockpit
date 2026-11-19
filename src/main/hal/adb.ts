@@ -13,20 +13,23 @@ import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult } from
 import { capabilitiesFor, transportDefaults } from './capabilities';
 
 /**
- * ADB 传输。
+ * The ADB transport.
  *
- * 关键事实：
+ * The key facts:
  *
- * - **事实 A1**：**不用 PTY**。`adb shell -t -t` 在 Windows 上会把回复攒到
- *   下一条命令才吐，表现为「晚一条」。所以 adb 走 pipe 模式。
- * - **事实 A7**：`adb devices` 里可能有 `offline` / `unauthorized`，
- *   **只认 `device`**。
- * - **事实 A8**：输出按 UTF-8 解码，坏字节不废掉整条命令（由 `runProcess` 负责）。
- * - **事实 A2/A3**：会话启动时 `export TERM=xterm-256color` 并用 shell 函数
- *   （见 `session-env.ts`）。
+ * - **Fact A1**: **no PTY**. On Windows `adb shell -t -t` holds the reply
+ *   back until the next command, which shows up as "lagging by one". So adb
+ *   runs in pipe mode.
+ * - **Fact A7**: `adb devices` may contain `offline` / `unauthorized`,
+ *   **only `device` counts**.
+ * - **Fact A8**: output is decoded as UTF-8 and bad bytes do not void the
+ *   whole command (this is the job of `runProcess`).
+ * - **Facts A2/A3**: at session start `export TERM=xterm-256color` and a
+ *   shell function are used (see `session-env.ts`).
  *
- * adb 路径来自 `profiles/settings.json` 的 `hostTools.adb`——
- * 机器专属路径只进配置，不进代码（事实清单 §2）。
+ * The adb path comes from `hostTools.adb` in `profiles/settings.json` —
+ * machine-specific paths only enter the configuration, never the code
+ * (fact list §2).
  */
 
 export function adbCapabilities(): ConnectionCapabilities {
@@ -34,17 +37,18 @@ export function adbCapabilities(): ConnectionCapabilities {
 }
 
 /**
- * profile 里钉的序列号。
+ * The serial pinned in the profile.
  *
- * 没钉（缺省 / 空串 / 不是字符串）就是 undefined——
- * 「钉了哪块板子」和「随便连一块」是两种连法，语义不能混。
+ * Not pinned (absent / empty string / not a string) means undefined —
+ * "pinned to a specific board" and "connect to whatever is there" are two
+ * different ways to connect, and their semantics must not be mixed.
  */
 function profileSerial(profile: ConnectionProfile): string | undefined {
   const serial = profile.options['serial'];
   return typeof serial === 'string' && serial.length > 0 ? serial : undefined;
 }
 
-/** 构造 adb 的参数数组。序列号存在时前置 `-s <serial>`。 */
+/** Build the argument array for adb. When a serial exists, `-s <serial>` is put in front. */
 export function adbArgs(profile: ConnectionProfile, extra: string[]): string[] {
   const serial = profileSerial(profile);
   if (serial !== undefined) {
@@ -53,23 +57,24 @@ export function adbArgs(profile: ConnectionProfile, extra: string[]): string[] {
   return [...extra];
 }
 
-/** `adb devices` 里的一行设备记录 */
+/** One device record in the output of `adb devices` */
 interface DeviceRow {
-  /** 序列号（第一列） */
+  /** The serial (first column) */
   serial: string;
-  /** 状态的第一个词：device / offline / unauthorized / no … */
+  /** The first word of the state: device / offline / unauthorized / no … */
   state: string;
-  /** 状态原文：`no permissions (user in plugdev group)` 这类要整段留着 */
+  /** The raw state text: things like `no permissions (user in plugdev group)` have to be kept in full */
   stateText: string;
 }
 
 /**
- * 解析 `adb devices` 的输出。
+ * Parse the output of `adb devices`.
  *
- * 滤掉两类**不是设备行**的行：
- * - `List of devices attached` 表头；
- * - `* daemon not running; starting now at tcp:5037` 之类的 **daemon 噪声**——
- *   它不是设备，混进 states 会把错误消息变成噪音（运维黑洞的反面）。
+ * Two kinds of **rows that are not device rows** are filtered out:
+ * - the `List of devices attached` header;
+ * - **daemon noise** such as `* daemon not running; starting now at tcp:5037`
+ *   — it is not a device, and letting it into the states turns the error
+ *   message into noise (the opposite of an operations black hole).
  */
 function parseDeviceRows(stdout: string): DeviceRow[] {
   const rows: DeviceRow[] = [];
@@ -88,16 +93,18 @@ function parseDeviceRows(stdout: string): DeviceRow[] {
 }
 
 export interface AdbConnectionOptions {
-  /** adb 可执行文件路径。默认 'adb'（从 PATH 找） */
+  /** Path of the adb executable. Defaults to 'adb' (found on PATH) */
   adbPath?: string;
-  /** 跑 adb 的入口，测试用假实现 */
+  /** Entry point for running adb, a fake implementation for tests */
   runner?: typeof runProcess;
   /**
-   * 起子进程的入口，测试用假实现。
+   * Entry point for spawning the child process, a fake implementation for
+   * tests.
    *
-   * **为什么需要它**：`child.stdin` 的 `'error'` 有没有人接，
-   * 只有真的起一个会立刻死掉的子进程才测得到——
-   * 而「板子掉了线」正是那条路。
+   * **Why it is needed**: whether anyone listens for the `'error'` event of
+   * `child.stdin` can only be measured by actually spawning a child process
+   * that dies immediately — and "the board dropped off the link" is exactly
+   * that path.
    */
   spawn?: typeof spawn;
 }
@@ -123,21 +130,24 @@ export class AdbConnection implements Connection {
   }
 
   capabilities(): ConnectionCapabilities {
-    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    // **profile aware** — not a transport constant (see the notes in `capabilities.ts`).
     return capabilitiesFor(this.profile);
   }
 
   /**
-   * 打开前先确认板子在 `device` 状态。
+   * Before opening, confirm that the board is in the `device` state.
    *
-   * 笼统的「连接失败」是运维黑洞——用户看不出是**没插线**、
-   * **没授权**还是**板子离线**。所以错误消息里带上原始状态串。
+   * A vague "connection failed" is an operations black hole — the user
+   * cannot tell whether the cable is **not plugged in**, the board is
+   **not authorised**, or the board is **offline**. So the error message
+   * carries the raw state string.
    *
-   * **profile 钉了 serial 时只认那一块板**（事实 A7）：
-   * `adb devices` 列的是**全部**设备（`-s` 也不筛选它），
-   * 所以「有没有任意一块是 device」这种判据会放过一块**离线**的板子——
-   * 连接开成了，之后每条命令都在 `adb -s <离线板>` 上失败，
-   * **失败点离原因十万八千里**。这里按 serial 精确匹配。
+   * **When the profile pins a serial, only that board is accepted**
+   * (Fact A7): `adb devices` lists **all** devices (`-s` does not filter it),
+   * so a criterion like "is any one of them a device" would let an
+   * **offline** board through — the connection opens and every later command
+   * fails on `adb -s <offline board>`, and **the failure is a million miles
+   * away from the cause**. Here the match is exact, by serial.
    */
   async open(): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['devices']));
@@ -147,7 +157,7 @@ export class AdbConnection implements Connection {
     const serial = profileSerial(this.profile);
 
     if (serial !== undefined) {
-      // 钉了板子：只认这一行
+      // A board is pinned: accept only this row
       const row = rows.find((r) => r.serial === serial);
       if (!row) {
         const present = rows.map((r) => r.serial);
@@ -166,7 +176,7 @@ export class AdbConnection implements Connection {
         );
       }
     } else {
-      // 没钉板子：老行为——至少有一块处于 device 状态
+      // No board is pinned: the old behaviour — at least one of them is in the device state
       const connected = rows.filter((r) => r.state === 'device');
       if (connected.length === 0) {
         const states = rows.map((r) => r.stateText);
@@ -195,9 +205,9 @@ export class AdbConnection implements Connection {
   }
 
   /**
-   * 下载：走 `adb pull`。
+   * Download: goes through `adb pull`.
    *
-   * **不是**远端的 `pull` 命令——板子上没有那个命令。
+   * **Not** a remote `pull` command — the board does not have that command.
    */
   async pull(remotePath: string, localPath: string): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['pull', remotePath, localPath]));
@@ -208,7 +218,7 @@ export class AdbConnection implements Connection {
     }
   }
 
-  /** 上传：走 `adb push` */
+  /** Upload: goes through `adb push` */
   async push(localPath: string, remotePath: string): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['push', localPath, remotePath]));
     if (result.exitCode !== 0) {
@@ -219,15 +229,18 @@ export class AdbConnection implements Connection {
   }
 
   /**
-   * 列远端目录：走 `adb shell ls -la <path>`（计划 Task 9 Step 3）。
+   * List a remote directory: goes through `adb shell ls -la <path>`
+   * (Task 9, Step 3 of the original implementation plan).
    *
-   * **列目录是连接层的能力**，跟 `pull`/`push` 一个层级——
-   * 互传服务不该知道「adb 的远端命令长什么样」，
-   * 否则每加一种传输就要改一次服务层。
+   * **Listing a directory is a capability of the connection layer**, at the
+   * same level as `pull`/`push` — the file transfer service must not know
+   * "what the remote command of adb looks like", otherwise every new
+   * transport means one more change to the service layer.
    *
-   * 目录的 `sizeBytes` 是 `null`（事实 G2）：**读不到的东西不是 0**。
-   * `ls -la` 给目录的是 inode 块数（4096），那不是目录的大小，
-   * 当成字节数报给用户就是假数据。
+   * The `sizeBytes` of a directory is `null` (Fact G2): **what cannot be read
+   * is not 0**. What `ls -la` reports for a directory is the inode block
+   * count (4096), which is not the size of the directory; reporting it to the
+   * user as a byte count is false data.
    */
   async list(remotePath: string): Promise<FileEntry[]> {
     const result = await this.exec(`ls -la ${quotePath(remotePath)}`);
@@ -236,7 +249,7 @@ export class AdbConnection implements Connection {
         detail: { remotePath, stderr: result.stderr },
       });
     }
-    // 末尾的 `/` 去掉再拼名字：'/root/' + 'a.txt' 不该变成 '/root//a.txt'
+    // Strip the trailing `/` before appending the name: '/root/' + 'a.txt' must not become '/root//a.txt'
     const base = remotePath.replace(/\/+$/, '');
     return parseLsLines(result.stdout).map((e) => ({
       name: e.name,
@@ -255,9 +268,9 @@ export class AdbConnection implements Connection {
   }
 
   /**
-   * 开一条常驻的 `adb shell`。
+   * Open a resident `adb shell`.
    *
-   * **不用 PTY**（事实 A1：`adb shell -t -t` 在 Windows 上会晚一条）。
+   * **No PTY** (Fact A1: on Windows `adb shell -t -t` lags by one).
    */
   spawnShell(): ChildProcessWithoutNullStreams {
     const args = adbArgs(this.profile, ['shell']);
@@ -269,15 +282,18 @@ export class AdbConnection implements Connection {
     child.on('error', (err) => {
       console.error(`[adb shell] ${err.message}`);
     });
-    // **stdin 也必须接 error**。
-    // 往已经关掉的管道写会拿到 EPIPE/ECONNRESET，
-    // 而流的 'error' 事件**没有监听器就会变成未捕获异常**——
-    // 不是终端窗口挂掉，是**整个 Electron 主进程挂掉**。
+    // **stdin must also handle 'error'**.
+    // Writing to an already closed pipe yields EPIPE/ECONNRESET, and a
+    // stream's 'error' event **without a listener turns into an uncaught
+    // exception** — not a crashed terminal window, but **the whole Electron
+    // main process going down**.
     //
-    // 触发路径是现实的：`adb devices` 校验通过之后、板子掉线或 serial 不匹配，
-    // 构造器里那句写会话环境脚本就打在一条即将死的管道上。
-    // （串口那条线有 `port.on('error')`、SSH 那条线有 `client.on('error')`，
-    //   唯独 ADB 的 stdin 是裸的。）
+    // The trigger path is realistic: after the `adb devices` check passes,
+    // the board drops off the link or the serial does not match, and the
+    // write of the session environment script in the constructor lands on a
+    // pipe that is about to die.
+    // (The serial line has `port.on('error')`, the SSH line has
+    //   `client.on('error')`; only ADB's stdin is bare.)
     child.stdin.on('error', (err: Error) => {
       console.error(`[adb shell stdin] ${err.message}`);
     });
@@ -286,27 +302,30 @@ export class AdbConnection implements Connection {
 }
 
 /**
- * ADB 的交互式会话。
+ * The interactive session of ADB.
  *
- * **一条常驻的 `adb shell` 子进程**，不是每次按键 spawn 一次：
- * 每敲一个键 spawn 一次 adb，板子的 CPU 会被拖垮（事实 A5：一次往返 ≈30ms），
- * 而且板子的任何输出都收不到。
+ * **One resident `adb shell` child process**, not one spawn per keystroke:
+ * spawning adb on every keystroke drags the board's CPU down (Fact A5: one
+ * round trip ≈30ms), and none of the board's output would be received.
  *
- * adb 是 pipe 模式：板子**不回显**、不出 ANSI，
- * 所以提示符与回显都由宿主负责（legacy 行为，事实 A1 的推论）。
+ * adb is in pipe mode: the board **does not echo** and does not emit ANSI,
+ * so the prompt and the echo are both the host's responsibility (legacy
+ * behaviour, a corollary of Fact A1).
  *
- * 会话建立时先执行一次 `terminalEnvScript()`——
- * 否则 `TERM` 还是 `dumb`（事实 A2，coreutils 拒绝着色），
- * `ls` 也不是多列有色的 shell 函数（事实 A3）。
+ * `terminalEnvScript()` is executed once when the session is established —
+ * otherwise `TERM` is still `dumb` (Fact A2, coreutils refuses to
+ * colorize) and `ls` is still not a multi-column colored shell function
+ * (Fact A3).
  */
 class AdbSession extends Session {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly dataCbs: ((chunk: string) => void)[] = [];
   /**
-   * stdout 与 stderr **各一个** decoder。
+   * **One decoder each** for stdout and stderr.
    *
-   * 共用一个的话，跨两个流被拆开的多字节字符会被拼错
-   * （stdout 的前半截 + stderr 的后半截 = 一个乱码字符）。
+   * Sharing one would mangle a multi-byte character that is split across the
+   * two streams (the first half from stdout + the second half from stderr =
+   * one garbled character).
    */
   private readonly stdoutDecoder = new StringDecoder('utf8');
   private readonly stderrDecoder = new StringDecoder('utf8');
@@ -329,26 +348,29 @@ class AdbSession extends Session {
       for (const cb of this.dataCbs) cb(chunk);
     });
 
-    // 会话环境：TERM 与 ls 的 shell 函数（事实 A2/A3）。
+    // The session environment: TERM and the shell function for ls (Facts
+    // A2/A3).
     //
-    // **原样写，不要再补 `\r\n`。**
-    // 脚本本身已经以 `\n` 结尾；再补一个 `\r`，那个落单的 CR 会被
-    // 远端的 shell 当成**一条命令**执行——
-    // 真机实测（2026-11-13，板子的 shell 是 bash）：
+    // **Write it verbatim, do not append `\r\n` again.**
+    // The script itself already ends with `\n`; appending one more `\r` makes
+    // that stray CR be executed by the remote shell as **a command of its
+    // own** — measured on a real board (2026-11-13, the shell of the board
+    // is bash):
     //
     // ```
     // root@ATK-DLRK3588/bin/bash: line 3: $'\r': command not found
     // ```
     //
-    // 串口那条线要 CR（getty 期待 CR，事实 S4），但 ADB 是 pipe 模式：
-    // 远端读的是**行**，行尾就是 LF。
+    // The serial line needs a CR (getty expects CR, Fact S4), but ADB is in
+    // pipe mode: the remote side reads **lines**, and the end of a line is
+    // LF.
     this.child.stdin.write(terminalEnvScript());
   }
 
   readonly exitCode: number | null = null;
 
   write(data: string): void {
-    // pipe 模式：板子不回显，宿主负责回显
+    // Pipe mode: the board does not echo, the host is responsible for the echo
     this.child.stdin.write(data);
     this.record(data);
   }
@@ -358,17 +380,18 @@ class AdbSession extends Session {
   }
 
   /**
-   * adb shell 退出了 → 上报。
+   * The adb shell exited → report it.
    *
-   * 拔线、adbd 重启、用户敲 `exit` 都会走到这里。
-   * 没有它的话，界面留着标签页继续往死通道里打字。
+   * Unplugging the cable, adbd restarting and the user typing `exit` all end
+   * up here. Without it, the interface keeps the tab and the user keeps
+   * typing into a dead channel.
    */
   onExit(cb: (exitCode: number | null) => void): void {
     this.child.on('exit', (code: number | null) => cb(code));
   }
 
   resize(_cols: number, _rows: number): void {
-    // adb shell 没有窗口尺寸概念
+    // adb shell has no concept of a window size
   }
 
   close(): void {

@@ -1,6 +1,6 @@
 {
   "id": "board-serial",
-  "label": "板子 · 串口",
+  "label": "Board · Serial",
   "transport": "serial",
   "board_pack": "rk3588-atk",
   "device_key": "atk-01",

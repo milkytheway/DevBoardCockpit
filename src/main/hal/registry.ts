@@ -9,40 +9,47 @@ import type { ConnectionProfile } from '../profiles/schema';
 import type { SessionLog } from '../logging/session-log';
 
 /**
- * 传输注册表。
+ * Transport registry.
  *
- * 「加一块新板不用改 UI」在代码层面的落点：
- * UI 只认 `Connection` 与 `ConnectionCapabilities`，不认传输名。
- * 新注册一种传输，UI 不用动一行。
+ * This is where "adding a new board without touching the UI" lands in code:
+ * the UI only knows `Connection` and `ConnectionCapabilities`, never the
+ * transport name. Register a new transport and the UI does not change by a
+ * single line.
  *
- * **能力位只有一份实现**（`./capabilities`）。
- * 原来这里另有一份，而那份**不看 profile 的 `pty` 字段**——
- * 于是两处算法不同：用户在 profile 里把 ssh 的 pty 改成 false 毫无效果。
- * 「能力位只有一个算法」跟「核心词表只有一个源头」是同一条道理。
+ * **There is exactly one implementation of the capability bits**
+ * (`./capabilities`). There used to be a second one right here, and that one
+ * **ignored the profile's `pty` field** — so the two algorithms disagreed:
+ * setting the pty of ssh to false in a profile had no effect at all.
+ * "One algorithm for the capability bits" follows the same principle as
+ * "one source for the core vocabulary".
  *
- * **2026-11-13**：这句从「约定」变成「事实」——各 HAL 模块里
- * `xxxCapabilities()` 原来各抄了一份字面量（同一张表抄了五遍），
- * 现在全部转调 `transportDefaults()`；而 `Connection.capabilities()`
- * 也改成调 `capabilitiesFor(this.profile)`，
- * **不再报「传输常量」**——它与 UI 的 `connections:list` 现在同源。
+ * **2026-11-13**: this sentence went from "convention" to "fact" — the
+ * `xxxCapabilities()` in each HAL module used to keep its own copy of the
+ * literals (the same table copied five times); they now all delegate to
+ * `transportDefaults()`. And `Connection.capabilities()` now calls
+ * `capabilitiesFor(this.profile)`, so it **no longer reports a "transport
+ * constant"** — it shares its source with the UI's `connections:list` now.
  */
 
-/** 按 profile 算能力位（唯一实现，见 `./capabilities`） */
+/** Compute the capability bits from a profile (the only implementation, see `./capabilities`) */
 export { capabilitiesFor };
 
 /**
- * 按 profile 造一个连接。
+ * Build a connection from a profile.
  *
- * ── `adbPath` 的默认值：**在这里解析** ✓ ──
+ * ── The default for `adbPath` is **resolved here** ✓ ──
  *
- * 之前只有应用传 `adbPath` ✓，CLI 不传 ✗ → 回落成 `'adb'` ✗
- * → **宿主 adb 不在 PATH** ✗ → `spawn adb ENOENT` ✗
- * → 「编译上板」那条流程**在 CLI 里跑不起来** ✗（**应用里却是好的** ✗）。
- * → **两份真相** ✓ ——本工程栽过好几次的同款坑 ✓。
+ * Previously only the application passed `adbPath` ✓, the CLI did not ✗ →
+ * it fell back to `'adb'` ✗ → **the host's adb is not on PATH** ✗ →
+ * `spawn adb ENOENT` ✗ → the "flash onto the board" workflow **does not run
+ * in the CLI** ✗ (**while it works fine in the application** ✗).
+ * → **Two sources of truth** ✓ — this project has fallen into the very same
+ * pit several times ✓.
  *
- * → **谁来建连接，谁就按同一条路拿 adb 路径** ✓
- * （`profiles/settings.json` → `hostTools.adb` → PATH → 常见位置 ✓）。
- * 显式传 `adbPath` 仍然优先 ✓（应用知道自己的 app 根在哪 ✓）。
+ * → **Whoever builds the connection resolves the adb path the same way** ✓
+ * (`profiles/settings.json` → `hostTools.adb` → PATH → common locations ✓).
+ * An explicitly passed `adbPath` still wins ✓ (the application knows where
+ * its own app root is ✓).
  */
 export function createConnection(
   profile: ConnectionProfile,
@@ -62,6 +69,6 @@ export function createConnection(
   }
 }
 
-/** 各传输的能力默认值。重新导出，方便调用方不必知道实现细节 */
+/** Capability defaults per transport. Re-exported so that callers do not need to know the implementation details */
 export { serialCapabilities, adbCapabilities, sshCapabilities, localCapabilities };
 export type { ConnectionCapabilities };

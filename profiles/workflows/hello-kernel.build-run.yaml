@@ -1,62 +1,72 @@
-# 黄金样本 · 内核模块：客机编译 → **直传板子** → 落位 → modprobe
+# Golden sample · Kernel module: compile on the client machine → **transfer
+# straight to the board** → place → modprobe
 #
-# ── 这份样本在证明什么 ──
+# ── What this sample proves ──
 #
-# ① **产物不写死文件名**：`discover` 按 `*.ko` 发现（不是 `hello.ko`）；
-# ② **落位按板子的规矩**：`placement: kernel-module` → 宿主解析成
-#    `/usr/lib/modules/<版本>/extra/`（**不**写死在包里 → 换板子不改这一行）；
-# ③ **直传**：传输命令在**源目标（客机）**上跑（ADR-D31 R7）；
-# ④ **跨目标的判据**：传输步的 `readback` **指名 role: target**
-#    → 「板子上真的有那个文件了吗」（这是板型包的回读**验不了**的东西，
-#    ADR-D32 D32-1/D32-2 → 流程层自己出这套词汇）；
-# ⑤ **按名字加载，不按路径**：`modprobe <名字>`，
-#    **绝不 `insmod /path/x.ko`**（板子放置规范 §4 硬规矩 2）。
+# ① **The artefact is not a hard-coded file name**: `discover` finds `*.ko`
+#    (not `hello.ko`);
+# ② **The placement follows the rules of the board**: `placement:
+#    kernel-module` → the host resolves it to
+#    `/usr/lib/modules/<version>/extra/` (**not** hard-coded in the pack, so
+#    another board does not change this line);
+# ③ **Straight transfer**: the transfer command runs on the **source role
+#    (the client machine)**;
+# ④ **A criterion across two roles**: the `readback` of the transfer step
+#    **names role: target**
+#    → "is that file really on the board now" (this is what the readback of
+#    a board pack cannot verify, so the workflow layer has to speak this
+#    vocabulary itself);
+# ⑤ **Load by name, not by path**: `modprobe <name>`,
+#    never `insmod /path/x.ko` (rule P2 of docs/02 section 3.5).
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.build-run
-name: 编译内核模块 → 直传板子 → 装 → 跑
+name: Compile a kernel module → transfer straight to the board → install → run
 version: 1.0.0
-description: 在客机上编译内核模块，客机直传到板子的规范位置，depmod -a 后按名字加载。
+description: Compile the kernel module on the client machine, transfer it from the client machine straight to the canonical location of the board, and load it by name after depmod -a.
 
 inputs:
   build_dir:
     type: path
     required: true
     maxLength: 200
-    description: 构建机上的工程根目录（**机器专属的值走这里，不进包** ✓）
+    description: The project root on the build machine (machine-specific values go here, they do not enter the pack)
   project:
     type: string
     required: true
     maxLength: 200
-    description: 项目目录名（相对 build_dir）
+    description: The name of the project directory (relative to build_dir)
 
 roles:
   build:
-    purpose: 编译所在（客机）
+    purpose: Where the build runs (the client machine)
     profile: ubuntu-ssh
   target:
-    purpose: 板子
+    purpose: The board
     profile: board-adb
 
 steps:
-  # ① 编译（长时：分钟级 → 必须给足超时）
+  # ① Compile (long running: minutes → it needs a generous timeout)
   - id: compile
     kind: exec
     role: build
-    # **`cd` 而不是 `make -C`**（2026-11-15 真板实测踩到 ✓）：
-    # 这个 Makefile 用 `$(PWD)` 算 `M=`（内核树的模块目录），
-    # 而 **`make -C` 只改 make 的当前目录，不改 `PWD` 环境变量** ✓
-    # → 它会去编译 `/home/alientek/Makefile` ✗（实测报错 ✓）。
-    # → **默认目标 `all`** ✓（`modules` 是内核树里的目标，不是这个工程的 ✓）。
+    # **`cd` rather than `make -C`** (hit on a real board on 2026-11-15):
+    # this Makefile computes `M=` (the module directory of the kernel tree)
+    # from `$(PWD)`, and **`make -C` only changes the current directory of
+    # make, not the `PWD` environment variable**
+    # → it builds `/home/alientek/Makefile` instead (measured error).
+    # - The default target is `all` (`modules` is a target of the kernel tree,
+    #   not of this project).
     cmd: "cd {input:build_dir}/{input:project} && make"
     timeout_ms: 1800000
-    # **编译成功的判据 = 命令返回 0**（编译不是板上的量测 ✓）
+    # **The criterion of a successful build is the command returning 0** (a
+    # build is not a measurement on the board)
     readback:
       kind: command_ok
 
-  # ② 产物发现（**按规则，不写死文件名**）
+  # ② Artefact discovery (**by rule, no hard-coded file name**)
   - id: artifacts
     kind: discover
     role: build
@@ -65,7 +75,9 @@ steps:
     exclude: ["*.o", "*.mod", "*.mod.c", "*.cmd", "*.order", "*.tmp", ".tmp_*"]
     out: artifacts
 
-  # ③ **直传**：传输命令在**源目标（客机）**上跑；目的地由宿主按 placement 解析
+  # ③ **Straight transfer**: the transfer command runs on the **source role
+  #    (the client machine)**; the host resolves the destination from the
+  #    placement
   - id: deliver
     kind: file.transfer
     from:
@@ -76,16 +88,18 @@ steps:
       placement: kernel-module
     cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 1800000
-    # **目的地路径进这个槽**（后续步骤要用它：`modprobe` 不用它，但用户态程序要）
+    # **The destination path goes into this slot** (later steps use it:
+    # `modprobe` does not need it, but a user space program does)
     out: dest
-    # **判据指名 role** → 在**板子**上读：「那个文件真的到了吗」
+    # **The criterion names a role** → it reads on the **board**: "did that
+    # file really arrive"
     readback:
       kind: verify
       role: target
       command: "test -f {to.path}"
       timeout_ms: 30000
 
-  # ④ 装 + 按名字加载（**不是 insmod**；depmod -a 先跑）
+  # ④ Install and load by name (**not insmod**; `depmod -a` runs first)
   - id: load
     kind: exec
     role: target
@@ -94,7 +108,8 @@ steps:
     readback:
       kind: command_ok
 
-  # ⑤ 确认它真的加载了（**在板子上问板子**：`lsmod` 里有没有它）
+  # ⑤ Confirm that it is really loaded (**ask the board on the board**: is it
+  #    in `lsmod`)
   - id: assert-loaded
     kind: assert
     readback:

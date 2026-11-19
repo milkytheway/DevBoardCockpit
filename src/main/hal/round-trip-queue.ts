@@ -1,37 +1,44 @@
 import { makeError } from '../../shared/errors';
 
 /**
- * 一次往返的队列（契约 `docs/spec/02-board-pack.md` §1.2.1 · ADR-D23）。
+ * The queue of round trips (contract `docs/spec/02-board-pack.md` §1.2.1 ·
+ * ADR-D23 of the implementation-layer decision record).
  *
- * ── 它解决什么 ──
+ * ── What it solves ──
  *
- * 契约 §1.2.1：「**同一个连接上，同时只能有一次往返。**
- * poll group 的采样往返与动作往返共享同一条通道，必须串行化。」
+ * Contract §1.2.1: "**only one round trip at a time on the same
+ * connection.** The sampling round trips of a poll group and the action
+ * round trips share the same channel, so they must be serialised."
  *
- * 这在串口上是硬约束：命令通道和交互终端**共用一根线**（事实 S1），
- * 只有**一个读线程 + 一份 transcript**，命令靠 marker 认领自己的回包。
- * 两次往返并发时，两个 marker 的回包会在同一份 transcript 里交错——
- * 契约点名的症状是：「**点了按钮，监控卡数值乱跳**」。
+ * On serial this is a hard constraint: the command channel and the
+ * interactive terminal **share one wire** (Fact S1), there is only **one
+ * reader thread and one transcript**, and commands claim their own replies
+ * by marker. With two concurrent round trips the replies of the two markers
+ * interleave in the same transcript — the symptom the contract names is:
+ * "**clicked a button and the numbers of the monitoring card jump around**".
  *
- * ── 四级优先级（ADR-D23）──
+ * ── Four priority levels (ADR-D23) ──
  *
- * | 级别 | 谁 |
+ * | Level | Who |
  * |---|---|
- * | `action-verify` | **动作的执行 + 回读**（一个不可拆分的独占事务） |
- * | `manual-refresh` | 用户手动触发的刷新 |
- * | `card-sampling` | 卡片的周期采样 |
- * | `diagnostics` | 探针与诊断 |
+ * | `action-verify` | **the execution and the readback of an action** (one indivisible exclusive transaction) |
+ * | `manual-refresh` | a refresh triggered by the user |
+ * | `card-sampling` | the periodic sampling of a card |
+ * | `diagnostics` | probes and diagnostics |
  *
- * ── 排队不许无限（ADR-D23）──
+ * ── Queueing must not be unbounded (ADR-D23) ──
  *
- * 「每个事务带 deadline（连接级默认 3 秒）；排队超时报 `conn_busy`，队列有上限。」
+ * "Every transaction carries a deadline (3 seconds by default at the
+ * connection level); a queue timeout reports `conn_busy`, and the queue has
+ * an upper bound."
  *
- * **为什么要有上限**：无界排队等于把「卡」变成「数据旧」，
- * 而那是最难排查的一类故障——**慢不是错，静默地慢才是**。
+ * **Why there has to be an upper bound**: unbounded queueing turns "stuck"
+ * into "stale data", and that is the hardest class of failure to diagnose —
+ * **slow is not wrong, silently slow is**.
  */
 export type RoundTripKind = 'action-verify' | 'manual-refresh' | 'card-sampling' | 'diagnostics';
 
-/** 优先级（从高到低） */
+/** The priorities (from high to low) */
 const PRIORITY: readonly RoundTripKind[] = [
   'action-verify',
   'manual-refresh',
@@ -39,34 +46,36 @@ const PRIORITY: readonly RoundTripKind[] = [
   'diagnostics',
 ];
 
-/** 每个事务的选项 */
+/** The options of a transaction */
 export interface RoundTripOptions {
   /**
-   * 这个事务的 deadline（毫秒，**从入队算起**）。
+   * The deadline of this transaction (milliseconds, **counted from the moment
+   * it was enqueued**).
    *
-   * 排队超过它 → 报 `conn_busy`，**这条事务被丢掉**（不执行）。
+   * Queueing beyond it → report `conn_busy`, and **this transaction is
+   * dropped** (it is not executed).
    */
   deadlineMs?: number;
 }
 
-/** 队列本身的选项 */
+/** The options of the queue itself */
 export interface RoundTripQueueOptions {
-  /** 现在（毫秒）——测试注入假时钟 */
+  /** Now (milliseconds) — a fake clock injected by tests */
   now?: () => number;
-  /** 队列上限（同时排队的个数） */
+  /** The upper bound of the queue (how many may be queued at the same time) */
   maxPending?: number;
-  /** 默认 deadline（毫秒）——ADR-D23「连接级默认 3 秒」 */
+  /** The default deadline (milliseconds) — ADR-D23 "3 seconds by default at the connection level" */
   deadlineMs?: number;
 }
 
-/** 一次往返的种类 */
+/** The kind of a round trip */
 interface Entry {
   fn: () => Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
-  /** 入队时刻（算 deadline 用） */
+  /** The moment it was enqueued (used to compute the deadline) */
   enqueuedAt: number;
-  /** 这一条自己的 deadline */
+  /** The deadline of this entry itself */
   deadlineMs: number;
 }
 
@@ -74,16 +83,16 @@ const DEFAULT_MAX_PENDING = 32;
 const DEFAULT_DEADLINE_MS = 3_000;
 
 export class RoundTripQueue {
-  /** 四级各一个队列（从高到低） */
+  /** One queue per level (from high to low) */
   private readonly queues: Record<RoundTripKind, Entry[]> = {
     'action-verify': [],
     'manual-refresh': [],
     'card-sampling': [],
     diagnostics: [],
   };
-  /** 当前在飞的往返数（**恒为 0 或 1**） */
+  /** The number of round trips currently in flight (**always 0 or 1**) */
   private inFlight = 0;
-  /** 已经在推进（防止重入） */
+  /** Already draining (guards against re-entry) */
   private draining = false;
 
   private readonly now: () => number;
@@ -97,16 +106,18 @@ export class RoundTripQueue {
   }
 
   /**
-   * 排一次往返。
+   * Queue one round trip.
    *
-   * @param kind 优先级级别
-   * @param fn 真正干活的那个闭包
-   * @param opts 这一条事务的选项（deadline 可覆盖）
+   * @param kind the priority level
+   * @param fn the closure that does the actual work
+   * @param opts the options of this transaction (the deadline may be
+   *             overridden)
    */
   run<T>(kind: RoundTripKind, fn: () => Promise<T>, opts: RoundTripOptions = {}): Promise<T> {
     if (this.load >= this.maxPending) {
-      // **不排队**：直接拒（`conn_busy`）——
-      // 无界排队等于把「卡」变成「数据旧」，而那最难排查。
+      // **Do not queue it**: reject it right away (`conn_busy`) — unbounded
+      // queueing turns "stuck" into "stale data", and that is the hardest to
+      // diagnose.
       return Promise.reject(
         makeError('CONN_BUSY', `往返队列已满（${this.maxPending} 条在排队），这次不排队`, {
           detail: { kind, pending: this.pending },
@@ -126,22 +137,22 @@ export class RoundTripQueue {
     });
   }
 
-  /** 队列的负载（**在飞 + 等待**）——上限按它算 */
+  /** The load of the queue (**in flight + waiting**) — the upper bound is computed from it */
   get load(): number {
     return this.inFlight + this.pending;
   }
 
-  /** 队列里还没开始执行的个数 */
+  /** The number of entries in the queue that have not started executing yet */
   get pending(): number {
     return PRIORITY.reduce((sum, kind) => sum + this.queues[kind].length, 0);
   }
 
-  /** 当前有没有一次往返在飞 */
+  /** Whether a round trip is currently in flight */
   get busy(): boolean {
     return this.inFlight > 0;
   }
 
-  /** 开始推进（已经在推进就不重复来） */
+  /** Start draining (if it is already draining, it does not come again) */
   private drain(): void {
     if (this.draining) return;
     this.draining = true;
@@ -149,10 +160,11 @@ export class RoundTripQueue {
   }
 
   /**
-   * 推进队列。
+   * Drain the queue.
    *
-   * **一条链**——不管从哪个队列进来，都由这里推进。
-   * 两条独立的链会各自开跑 → 两次往返并发 → 串口上串台。
+   * **A single chain** — no matter which queue an entry comes from, it is
+   * drained from here. Two independent chains would each start running →
+   * two concurrent round trips → crosstalk on serial.
    */
   private async pump(): Promise<void> {
     try {
@@ -165,7 +177,7 @@ export class RoundTripQueue {
           const value = await entry.fn();
           entry.resolve(value);
         } catch (err) {
-          // 一把锁坏了不该让整条通道都废了。
+          // One broken lock must not wreck the whole channel.
           entry.reject(err);
         } finally {
           this.inFlight -= 1;
@@ -173,16 +185,17 @@ export class RoundTripQueue {
       }
     } finally {
       this.draining = false;
-      // 推进期间可能又来了新的（resolve 触发的 run 会在微任务里跑）
+      // New entries may have arrived while draining (a run triggered by a resolve runs in a microtask)
       if (this.pending > 0) this.drain();
     }
   }
 
   /**
-   * 按优先级取下一条。
+   * Take the next entry by priority.
    *
-   * **deadline 到了的那条**：丢掉并报 `conn_busy`（不执行）——
-   * 一条排了半分钟的动作，跑起来可能已经过时了。
+   * **The entry whose deadline has passed**: drop it and report `conn_busy`
+   * (it is not executed) — an action that queued for half a minute may
+   * already be outdated when it runs.
    */
   private take(): Entry | undefined {
     for (const kind of PRIORITY) {

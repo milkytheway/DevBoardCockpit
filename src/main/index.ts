@@ -84,17 +84,20 @@ function titleBarOverlay(theme: 'dark' | 'light'): {
 }
 
 /**
- * Electron main 入口。
+ * Electron main entry point.
  *
- * **唯一持有设备 I/O 的地方**（`docs/04-架构设计.md` §2.1）。
- * renderer 只画界面；卡片 iframe 只经 preload 的白名单 API 触达这里。
+ * The one place that holds device I/O (see `README.md` in the repository
+ * root). The renderer only draws the interface; card iframes reach this
+ * code only through the preload's whitelist API.
  */
 
 /**
- * ⚠️ **假设备**（调试用）：`COCKPIT_FAKE=1`（假设备优先）或 `COCKPIT_FAKE=only`（只有它）。
+ * ⚠️ The fake device (debugging only): `COCKPIT_FAKE=1` (the fake
+ * device comes first) or `COCKPIT_FAKE=only` (it is the only one).
  *
- * **它只在调试构建里存在**——生产构建把这个分支整个剪掉，
- * `scripts/check-build.ts` 会验产物里没有它（ADR-D30）。
+ * It exists only in debug builds — the production build prunes this branch
+ * entirely, and `scripts/check-build.ts` verifies it is absent from the
+ * bundle (implementation decision record ADR-D30).
  */
 declare const __COCKPIT_FAKE_BUILD__: boolean;
 
@@ -112,50 +115,56 @@ type FakeModule = typeof import('./hal/fake/connection.js');
 let fakeModule: FakeModule | null = null;
 
 async function loadFakeDevice(): Promise<void> {
-  // **编译期常量**：生产构建里 `__COCKPIT_FAKE_BUILD__` 是 `false`，
-  // 于是这一行之后全是死代码 → rollup 整块剪掉，
-  // **动态 import 那个 chunk 根本不会产出**。
-  // （`scripts/check-build.ts` 会验这件事——见 ADR-D30。）
+  // Compile-time constant: in a production build `__COCKPIT_FAKE_BUILD__` is
+  // `false`, so everything after this line is dead code → rollup prunes the
+  // whole block and the dynamic import's chunk is never emitted at all.
+  // (`scripts/check-build.ts` verifies this — see ADR-D30.)
   if (!__COCKPIT_FAKE_BUILD__) return;
   if (FAKE_MODE === 'off') return;
   fakeModule = await import('./hal/fake/connection.js');
 }
 
 /**
- * 连接 profile 的来源：内置目录 + 用户目录，用户优先。
+ * Where connection profiles come from: the builtin directory plus the user
+ * directory, with the user's taking precedence.
  *
- * 假设备（开着的时候）**排第一个**——调试时看到的一定是它。
+ * The fake device (when it is on) is listed first — while debugging it is
+ * always the one you see.
  */
 function listProfiles(): ConnectionProfile[] {
   const profiles = loadProfiles({
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
-  // **编译期常量**：生产构建里它是 `false` → 下面这段是死代码 →
-  // **假设备的接线规则整个不进包**（连假 profile 的工厂也不在）。
+  // Compile-time constant: in a production build it is `false` → the block
+  // below is dead code → none of the fake device's wiring rules make it into
+  // the bundle (not even the factory for the fake profile).
   if (!__COCKPIT_FAKE_BUILD__) return profiles;
-  // **假设备没载入成功 → 就不列它**：
-  // 列了却拿真本机连接顶替，比不列更坏（标着「合成数据」，其实是自己的机器）。
+  // If the fake device failed to load, it is not listed: listing it and then
+  // substituting a real local connection is worse than not listing it at all
+  // (it would be labelled 'synthetic data' while actually being your own
+  // machine).
   return profilesWithFake(profiles, FAKE_MODE, fakeModule !== null);
 }
 
-/** 宿主设置。机器专属的 adb 路径在这里读，不进代码（事实清单 §2） */
+/** Host settings. Machine-specific adb paths are read here, not baked into the code (device fact list §2) */
 const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'));
 const adbPath = resolveAdbPath(settings);
 
-/** 连接用 manager 给的日志——**一个会话一份**，输入输出在同一处 */
+/** The log handed over by the connection manager — one per session, so input and output land in the same place */
 function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
-  // **编译期常量**：生产构建里整段假设备的路由是死代码（见上）。
+  // Compile-time constant: in a production build the whole fake-device routing block is dead code (see above).
   if (!__COCKPIT_FAKE_BUILD__) return createConnection(profile, log, { adbPath });
   const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
   if (route === 'fake' && fakeModule !== null) {
-    // ⚠️ 假设备：产出的全是**合成数据**（见 `hal/fake/`）
+    // ⚠️ Fake device: everything it produces is synthetic data (see `hal/fake/`)
     console.warn(`[FAKE] 合成数据已启用（COCKPIT_FAKE=${FAKE_MODE}）`);
     return new fakeModule.FakeConnection({ now: () => Date.now(), log, profile });
   }
   if (route === 'refuse') {
-    // **明确拒绝**（绝不回落成真连接）：
-    // 「假板子」这个 profile 的传输是 `local` —— 回落下去就是开发者自己的 shell。
+    // Explicit refusal, never a fallback to a real connection: the 'fake
+    // board' profile has transport `local` — falling back there lands on the
+    // developer's own shell.
     throw makeError('CONN_OPEN_FAILED', '假设备没载入成功（不拿真的本机连接顶替）', {
       detail: { profileId: profile.id },
     });
@@ -164,14 +173,15 @@ function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Conne
 }
 
 /**
- * 已建立的连接，**按 sessionId 建索引**。
+ * Established connections, indexed by sessionId.
  *
- * 原来按 profileId 建索引，于是同一个 profile 开两个标签时，
- * Map 里只剩最后一个——关掉其中一个，另一个标签还活着，
- * 但它的文件浏览器按 id 找连接已经找不到了（报「连接不存在」）。
+ * It used to be indexed by profileId, so opening the same profile in two tabs
+ * left only the last one in the Map — close one of them and the other tab is
+ * still alive, but its file browser can no longer find the connection by id
+ * (it reports 'connection does not exist').
  *
- * 一个标签一个连接（`TerminalManager.open` 每次都新建连接），
- * 所以索引就该按会话来。
+ * One connection per tab (`TerminalManager.open` creates a new connection
+ * every time), so the index belongs to sessions.
  */
 const connections = new Map<string, Connection>();
 
@@ -183,12 +193,12 @@ const terminal = new TerminalManager({
   listProfiles,
   createConnection: createConnectionFor,
   createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
-  // 连接建好后登记一份，文件互传模块靠它按 id 找连接
+  // Register the connection once it has been established; the file transfer module looks it up by id
   onConnectionOpen: (sessionId, connection) => connections.set(sessionId, connection),
   onConnectionClose: (sessionId) => connections.delete(sessionId),
 });
 
-// 主进程 → renderer 的推送
+// Pushes from the main process to the renderer
 function broadcast(channel: string, ...args: unknown[]): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, ...args);
@@ -199,34 +209,39 @@ terminal.onData((sessionId, chunk) => broadcast(IPC.terminalData, sessionId, chu
 terminal.onExit((sessionId, exitCode) => broadcast(IPC.terminalExit, sessionId, exitCode));
 
 /**
- * tag 运行时 —— 让板子的读数**自己在动**。
+ * The tag runtime — it makes the board's readings move on their own.
  *
- * 它**自己建一条连接**（与终端标签的连接分开）：
- * 面板必须在**没有终端标签**的时候也有数——
- * 「看板子的读数」是这个产品的主线，终端是附带的。
+ * It opens its own connection, separate from the terminal tab's:
+ * the panels must have numbers even when no terminal tab is open —
+ * 'watching a board's readings' is this product's main line, the terminal is
+ * the accessory.
  *
- * 代价明说：**串口是独占的**，运行时与终端标签各要一条连接，
- * 同一个 COM3 上只能有一个。第二个会失败，而失败是**看得见的**。
+ * The cost, stated plainly: a serial port is exclusive, the runtime and a
+ * terminal tab each need a connection, and only one of them can have a given
+ * COM3. The second one fails, and the failure is visible.
  */
 const runtime = new TagRuntime({
   packsDir: join(app.getAppPath(), 'profiles', 'boards'),
-  // **用户自己的板型包目录** ✓ —— **向导实例化出来的包在这儿** ✓
-  // → **同 id 时用户优先** ✓（与连接 profile / 流程包 / 卡片同款 ✓）
+  // The user's own board pack directory ✓ — the packs instantiated by
+  // the wizard land here ✓
+  // → On the same id the user's wins ✓ (same rule as connection profiles /
+  //   workflow packs / cards ✓)
   userPacksDir: userBoardsDir(),
   createConnection: createConnectionFor,
   createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
 });
 
-// 读数只经 TagStore 出（ADR-D22）：renderer 拿不到别处的副本
+// Readings only ever come out through the TagStore (ADR-D22): the renderer cannot get a copy from anywhere else
 handle(IPC.tagsReadings, () => runtime.readings());
 handle(IPC.tagsStatus, () => runtime.status);
 runtime.subscribe((reading) => broadcast(IPC.tagsChanged, reading));
 
 /**
- * `cockpit://` 必须**在 ready 之前**登记为 privileged scheme。
+ * `cockpit://` must be registered as a privileged scheme before ready.
  *
- * `standard: true` 让它有**真源**（`cockpit://card/<id>/…` 的 origin 是
- * `cockpit://card`）——CSP 的 `'self'` 才有意义（契约 §6.1 的断网承诺靠它）。
+ * `standard: true` gives it a real origin (the origin of
+ * `cockpit://card/<id>/…` is `cockpit://card`) — that is what makes CSP's
+ * `'self'` meaningful (contract §6.1's no-network promise depends on it).
  */
 protocol.registerSchemesAsPrivileged([
   {
@@ -240,9 +255,11 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-/* ── 卡片（契约 §六）─────────────────────────────────────────────────
-   两个根：**用户目录优先**（用户能改内置卡——「卡片即文件」的前提）。
-   目录变了就重新发现（热插拔）；manifest 不合法的卡**保留上一版**。
+/* ── Cards (contract §6) ──────────────────────────────────────
+   Two roots, the user's directory first (the user can modify the builtin
+   cards — the premise of 'cards are files').
+   A changed directory is rediscovered (hot plug); a card with an invalid
+   manifest keeps the previous version.
    ─────────────────────────────────────────────────────────────────── */
 
 const cardRoots: CardRoot[] = [
@@ -251,38 +268,48 @@ const cardRoots: CardRoot[] = [
 ];
 
 /**
- * 外壳自己的 CSP。
+ * The shell's own CSP.
  *
- * **为什么生产的外壳不走 `file://`**：`file://` 上的 `'self'` **匹配不到任何东西**
- * （本地 scheme 的 origin 是 opaque 的）——外壳想用 CSP 就得有个**真源**，
- * 所以生产的外壳从 `cockpit://app/` 伺服 ✓。
+ * Why the production shell does not use `file://`: on `file://` the `'self'`
+ * source matches nothing at all (a local scheme's origin is opaque) — a
+ * shell that wants a CSP needs a real origin, so the production shell is
+ * served from `cockpit://app/` ✓.
  *
- * 开发时走 Vite（`http://localhost:5173`），那里有真源，用另一份宽松的
- * （`script-src 'self' 'unsafe-inline'` 是给 Vite 的 inline preamble 留的口子）。
+ * In development it goes through Vite (`http://localhost:5173`), which does
+ * have a real origin, so it uses a separate, looser policy
+ * (`script-src 'self' 'unsafe-inline'` leaves room for Vite's inline preamble).
  */
 /**
- * 控制面（M6 · 契约 §五）。
+ * The control plane (M6 · contract §5).
  *
- * - **没有授权账** ✓ —— **有效权限 = 声明** ✓（契约 §2.4 ✓ · ADR-D46 ✓）：
- *   **板型包说了算** ✓；**卡片的 manifest 就是它的权限** ✓；
- *   **用户点了就是同意** ✓ → **不再有第二份「谁授过」** ✓。
- * - **确认凭据**（`actions/authorization.ts`）：一次性、5 分钟有效。
- * - **审计**（`actions/audit.ts`）：每个动作一行，行式文本。
+ * - No authorization ledger ✓ — effective permission = declaration ✓
+ *   (contract §2.4 ✓ · implementation decision record ADR-D46 ✓): the board
+ *   pack decides ✓; a card's manifest is its permission ✓; the user
+ *   clicking is the consent ✓ → there is no second record of 'who granted
+ *   this' any more ✓.
+ * - Confirmation credentials (`actions/authorization.ts`): one-shot, valid
+ *   for 5 minutes.
+ * - Audit (`actions/audit.ts`): one line per action, line-oriented text.
  */
 /**
- * **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓）。
+ * The unified permission area (that table on the settings page ✓ ·
+ * implementation decision record ADR-D47 ✓).
  *
- * → **一个地方** ✓：**想关就关** ✓ —— **不再有弹窗** ✓。
- * → **卡片写板子默认禁止** ✓（**C2** ✓）→ **要写板子的人在设置里打开** ✓。
+ * → One place ✓: turn it off and it is off ✓ — no more pop-ups ✓.
+ * → Cards writing to the board are forbidden by default ✓ (C2 ✓) → whoever
+ *   needs to write to the board turns it on in settings ✓.
  */
 const permissions = new PermissionStore(join(userDataDir(), 'permissions.json'));
 const actionAudit = new ActionAudit(join(userDataDir(), 'logs', 'actions.log'));
 
 /**
- * **这张卡能做的动作** ✓ —— **就是它声明的那些** ✓（契约 §2.4 ✓ · ADR-D46 ✓）。
+ * The actions this card may perform — exactly the ones it declares ✓
+ * (contract §2.4 ✓ · implementation decision record ADR-D46 ✓).
  *
- * → **不再有「人授过」的第二份账** ✓（**同一件事记两遍** ✗ —— **迟早对不上** ✗）。
- * → **域不收窄** ✓（`{}` ✓）—— **guard 的收窄是「问人」用的** ✓（卡片那条路不问 ✓）。
+ * → There is no second ledger of 'what a person granted' any more ✓
+ *   (recording the same thing twice ✗ — the two copies will drift apart ✗).
+ * → The domain is not narrowed ✓ (`{}` ✓) — a guard's narrowing is for
+ *   the 'ask a person' path ✓ (the card path does not ask ✓).
  */
 function grantedFor(cardId: string): { actions: Record<string, Record<string, { min?: number; max?: number }> | undefined> } {
   const card = cards.registry.cards().find((c) => c.cardId === cardId);
@@ -294,19 +321,22 @@ function grantedFor(cardId: string): { actions: Record<string, Record<string, { 
 }
 
 /**
- * 流程层（计划 6 ✓ · 计划 7 把它接给卡片 ✓）。
+ * The workflow layer (plan 6 ✓ · plan 7 connects it to the cards ✓).
  *
- * → **注册表**扫两个目录：随应用分发的（`profiles/workflows/` ✓）+ 用户自己的 ✓
- *   （用户目录优先 ✓ —— 与卡片目录同规矩 ✓）。
- * → **闸不在这里** ✓ —— **流程包的存在本身就是说明** ✓（ADR-D48 ✓）
- *   → **能不能跑看设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）。
+ * → The registry scans two directories: the one shipped with the app
+ *   (`profiles/workflows/` ✓) plus the user's own ✓ (the user's directory
+ *   first ✓ — the same rule as the card directories ✓).
+ * → The gate is not here ✓ — the existence of a workflow pack is itself
+ *   the explanation ✓ (implementation decision record ADR-D48 ✓)
+ *   → Whether it may run is decided by the unified permission area in
+ *     settings ✓ (`05` §7.2 ✓ · implementation decision record ADR-D47 ✓).
  */
 const workflowRegistry = new WorkflowRegistry({
   dirs: [builtinWorkflowsDir(app.getAppPath()), userWorkflowsDir()],
 });
 workflowRegistry.scan();
 
-/** 流程的目标登记处（**角色 → 连接** ✓ —— 计划 6 ✓） */
+/** Where workflows register their targets (role → connection ✓ — plan 6 ✓) */
 const workflowTargets = new TargetRegistry({
   profileFor: (id) => listProfiles().find((p) => p.id === id),
   createConnection: (profile) =>
@@ -325,26 +355,32 @@ const workflowService = new WorkflowService({
   runDeps: {
     targets: workflowTargets,
     profileFor: (id) => listProfiles().find((p) => p.id === id),
-    // **流程的每一步也进同一本动作审计** ✓（契约 `05` §7.2 的第三本账 ✓）
+    // Every workflow step also goes into the same action audit ✓ (the third ledger of contract `05` §7.2 ✓)
     audit: (row) => actionAudit.append(row),
   },
-  /** 流程层的**授权** ✓ —— **只剩一层** ✓（ADR-D48 ✓）：
-   * **流程包的存在本身就是说明** ✓ —— **闸在设置里的统一权限区** ✓（ADR-D47 ✓） */
+  /** Workflow-layer authorization ✓ — only one layer is left ✓
+   *  (implementation decision record ADR-D48 ✓): the existence of a workflow
+   *  pack is itself the explanation ✓ — the gate is the unified permission
+   *  area in settings ✓ (implementation decision record ADR-D47 ✓) */
 });
 
 /**
- * **设置页权限区的那张表**（**一行一个操作** ✓ · ADR-D47 ✓）。
+ * That table on the settings page's permission area (one row per operation ✓
+ * · implementation decision record ADR-D47 ✓).
  *
- * → **当前这块板的动作** ✓（**板型包说了算** ✓）
- * → **已批准的流程** ✓（**只有批过的才列** ✓ —— 没批过的流程**卡片看不见** ✓）
- * → **宿主那三个操作** ✓（装卡 / 卸卡 / 提为全屏 ✓）
+ * → The actions of the board currently connected ✓ (the board pack decides ✓)
+ * → The approved workflows ✓ (only the approved ones are listed ✓ — an
+ *   unapproved workflow is invisible to cards ✓)
+ * → The host's three operations ✓ (install card / uninstall card / promote
+ *   to full screen ✓)
  */
 /**
- * 宿主侧的一次流程运行 → **共享契约里的形状** ✓。
+ * One workflow run on the host side → the shape from the shared contract ✓.
  *
- * → preload **不许 import main 的模块** ✓（分层 ✓ · AGENTS.md §5 ✓）→
- *   所以这个形状**必须**声明在 `shared/` ✓ → 这里只做**裁剪** ✓
- *   （去掉 main 内部的字段 ✓）—— **不是脱敏** ✓（宿主是可信的 ✓）。
+ * → The preload must not import main's modules ✓ (layering ✓ · AGENTS.md §5 ✓)
+ *   → so this shape must be declared in `shared/` ✓ → here it is only trimmed ✓
+ *   (main-internal fields removed ✓) — this is not redaction ✓ (the host is
+ *   trusted ✓).
  */
 function toHostRun(status: WorkflowRunStatus): HostWorkflowRun {
   return {
@@ -368,12 +404,12 @@ function permissionOperations(): PermissionOperation[] {
       label: action.label ?? action.id,
       kind: 'action',
       danger: action.danger === 'destructive' ? 'destructive' : 'reversible',
-      // **危险等级只是信息** ✓（**闸在开关上** ✓ —— ADR-D48 ✓）
+      // The danger level is only information ✓ (the gate is the switch ✓ — implementation decision record ADR-D48 ✓)
       ...(action.danger === 'destructive' ? { hint: '破坏性动作' } : {}),
     });
   }
   for (const flow of workflowRegistry.list()) {
-    // **不再有「已批准」那一层** ✓（ADR-D48 ✓）—— **存在即说明** ✓
+    // The 'approved' layer is gone ✓ (implementation decision record ADR-D48 ✓) — existence is the explanation ✓
     const plan = workflowRegistry.planOf(flow.id);
     operations.push({
       op: `workflow:${flow.id}`,
@@ -389,11 +425,14 @@ function permissionOperations(): PermissionOperation[] {
 }
 
 /**
- * **MCP server**（契约 `spec/04` §7.1 ✓ · ADR-D2：与 GUI **同进程** ✓）。
+ * The MCP server (contract `spec/04` §7.1 ✓ · implementation decision record
+ * ADR-D2: same process as the GUI ✓).
  *
- * → **HTTP 回环** ✓（`127.0.0.1` ✓ —— 契约明写不许绑 `0.0.0.0` ✓）
- * → **发现文件** ✓（agent 靠它找到端口与 token ✓ —— 它是唯一的耦合点 ✓）
- * → **退出时删掉它** ✓（不留指向死进程的发现文件 ✓）
+ * → HTTP loopback ✓ (`127.0.0.1` ✓ — the contract explicitly forbids binding
+ *   `0.0.0.0` ✓)
+ * → The discovery file ✓ (agents find the port and token through it ✓ — it is
+ *   the only coupling point ✓)
+ * → It is deleted on quit ✓ (no discovery file pointing at a dead process ✓)
  */
 const mcpToken = generateToken();
 const mcpDiscoveryPath = discoveryFilePath(userDataDir());
@@ -403,31 +442,33 @@ async function startMcpServer(): Promise<void> {
   try {
     const mcp = new McpServer({
       workflows: workflowService,
-      // **读侧工具的宿主依赖** ✓（`docs/04` §9.2.1 ✓）
+      // Host dependencies of the read-side tools ✓ (see `src/main/mcp/host.ts` ✓)
       host: buildMcpHost({
         listProfiles: () => listProfiles(),
         runtime,
         terminal,
         cards: cards.registry,
         cardLog: cards.log,
-        // **布局是同一份账** ✓ —— 与卡片侧共用 ✓（不另开一套 ✓）
+        // The layout is the same ledger ✓ — shared with the card side ✓ (no second set ✓)
         layoutGet: () => cards.layoutGet(),
         layoutSet: (state) => cards.layoutSet(state),
-        // **装卡与卸卡** ✓（契约 §2.3 ✓）
+        // Installing and uninstalling cards ✓ (contract §2.3 ✓)
         cardsRoot: cardRootsDir(),
-        // **内置卡 id** ✓ —— **只从内置目录取** ✓
-        // （用户目录的卡**可以卸** ✓ —— 那才是「用户装的东西」✓）
+        // Builtin card ids ✓ — taken only from the builtin directory ✓
+        // (cards from the user directory can be uninstalled ✓ — those are the
+        // 'things the user installed' ✓)
         builtinCardIds: listCardDirs([{ dir: builtinCardsDir(app.getAppPath()), kind: 'builtin' }]).map(
           (c) => c.cardId,
         ),
-        // **agent 的动作执行** ✓ —— **同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）
+        // The agent's action execution ✓ — the same executor ✓ (the card side uses the same one ✓ — the seven-step chain exists in exactly one place ✓)
         agentActions: {
           packId: runtime.packId ?? '',
-          // **与执行器用的是同一个值** ✓（**同一处取** ✓）——
-          // 不一致 → **凭据永远消费不掉** ✗（症状是「人点了也没用」✗）
+          // The same value the executor uses ✓ (taken from one place ✓) —
+          // if the two differ the credential can never be consumed ✗ (the
+          // symptom is 'a person clicked and nothing happened' ✗)
           packIdOf: () => runtime.packId ?? '',
           contractVersion: 'devboard/v1',
-          // **当前那块板是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+          // Which board is the board currently in use ✓ (the credential must be bound to it ✓ — contract `spec/04` §2.4.1 item six ✓)
           deviceKey: () => runtime.currentDeviceKey ?? '',
           hasExitCode: runtime.hasExitCode,
           runTransaction: (fn) => runtime.runTransaction(fn),
@@ -441,7 +482,7 @@ async function startMcpServer(): Promise<void> {
       mcp,
       token: mcpToken,
       host: '127.0.0.1',
-      // **0 = 让 OS 分配** ✓（避免多开撞端口 ✓ —— 契约 §7.2 ✓）
+      // 0 = let the OS assign it ✓ (avoids a second instance colliding on the port ✓ — contract §7.2 ✓)
       port: 0,
     });
     mcpHttp = started;
@@ -456,13 +497,13 @@ async function startMcpServer(): Promise<void> {
       started_at: new Date().toISOString(),
     });
   } catch (err) {
-    // **起不来不许挡住应用** ✓（MCP 是给 agent 用的 ✓ —— 它坏了，GUI 照常用 ✓）
+    // Failing to start must not block the app ✓ (the MCP server is for agents ✓ — if it breaks, the GUI still works ✓)
     console.error(`[MCP] server 起不来：${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 function stopMcpServer(): void {
-  // **发现文件先删** ✓（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）
+  // The discovery file is deleted first ✓ (no discovery file pointing at a dead process ✓ — contract §7.2 ✓)
   removeDiscoveryFile(mcpDiscoveryPath);
   void mcpHttp?.close();
   mcpHttp = undefined;
@@ -484,10 +525,10 @@ const cards = createCardWiring({
     if (profile === undefined) return null;
     return { label: profile.label, transport: profile.transport };
   },
-  /** 宿主里已声明的流程 id（规则 14 ✓）——**没接上就是 null（离线）✓** */
+  /** Workflow ids already declared on the host (rule 14 ✓) — not wired up means null (offline) ✓ */
   availableWorkflows: () => workflowRegistry.list().map((w) => w.id),
-  // **板型包里的动作 id** ✓（规则 5 ✓）—— **null = 离线** ✓
-  // → 与 MCP 的 `validate_card` **同口径** ✓（2026-11-19 修 ✓）
+  // Action ids from the board pack ✓ (rule 5 ✓) — null means offline ✓
+  // → Same yardstick as the MCP `validate_card` ✓ (fixed 2026-11-19 ✓)
   availableActions: () => runtime.packView?.actions ?? null,
   permsFor: (cardId) => {
     const card = cards.registry.cards().find((c) => c.cardId === cardId);
@@ -496,8 +537,10 @@ const cards = createCardWiring({
       write: card?.manifest.permissions.write ?? [],
       workflows: card?.manifest.permissions.workflows ?? [],
     };
-    // **有效权限 = 声明** ✓（契约 §2.4 ✓ · ADR-D46 ✓）
-    // → **不再有第二份「谁授过」** ✓（**板型包说了算** ✓ · **点一下就是同意** ✓）
+    // Effective permission = declaration ✓ (contract §2.4 ✓ ·
+    // implementation decision record ADR-D46 ✓)
+    // → There is no second record of 'who granted this' any more ✓ (the
+    //   board pack decides ✓ · a click is consent ✓)
     return {
       read: declared.read,
       write: declared.write,
@@ -505,34 +548,40 @@ const cards = createCardWiring({
     };
   },
   /**
-   * 每张卡的**流程侧**（计划 7 ✓）。
+   * The workflow side of each card (plan 7 ✓).
    *
-   * → **每卡一份** ✓（授权是每卡一份的 ✓）。
-   * → **返回给卡片的是缩减投影** ✓（契约 `05` §八·B·B5 ✓ —— V3-M7 在这里关掉 ✓）。
+   * → One set per card ✓ (authorization is per card ✓).
+   * → What is returned to the card is a reduced projection ✓ (contract `05`
+   *   §8·B·B5 ✓ — V3-M7 is closed off here ✓).
    */
   workflowsFor: (cardId) => ({
     list: () => workflowService.list(),
     run: (id: string, inputs: Record<string, unknown>) => {
       try {
-        // **权限区**（ADR-D47 ✓）：**设置里那一个开关** ✓
-        // → **卡片触发流程默认允许** ✓（**闸就是这行开关** ✓）
+        // The permission area (implementation decision record ADR-D47 ✓): that
+        // one switch in settings ✓
+        // → A card triggering a workflow is allowed by default ✓ (that switch
+        //   is the gate ✓)
         if (!permissions.allows('card', `workflow:${id}`)) {
           return { ok: false, reason: 'denied' };
         }
-        // → **这里就是全部的闸了** ✓（会话层查的是「卡级声明」✓；
-        // **没有第二本批准账** ✓ —— 流程包存在即说明 ✓ · ADR-D48 ✓）。
+        // → This is the whole gate ✓ (the session layer checks the card-level
+        //   declaration ✓; there is no second approval ledger ✓ — the
+        //   existence of a workflow pack is the explanation ✓ ·
+        //   implementation decision record ADR-D48 ✓).
         const { runId } = workflowService.start(id, inputs);
         return { ok: true, runId };
       } catch (err) {
-        // **封闭的理由码** ✓（不能把宿主侧的话泄给卡片 —— 里面有路径 ✓）
+        // Closed reason codes ✓ (host-side wording must not leak to the card — it contains paths ✓)
         return { ok: false, reason: workflowReasonOf(err) };
       }
     },
     status: (runId: string) => {
       try {
         const status = workflowService.status(runId);
-        // **归属校验** ✓：这张卡有没有**这个流程**的权限 ✓
-        // （契约 §7.7：「同上」= `permissions.workflows` 里有这个 id ✓）
+        // Ownership check ✓: does this card have permission for this workflow ✓
+        // (contract §7.7: 'same as above' = this id is in
+        // `permissions.workflows` ✓)
         const allowed =
           cards.registry
             .cards()
@@ -552,18 +601,20 @@ const cards = createCardWiring({
       if (action === undefined) {
         return { ok: false, reason: 'not_found', actionId };
       }
-      // **权限区**（ADR-D47 ✓）：**卡片写板子默认禁止** ✓
-      // → **要写板子的人在设置里打开那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）
+      // The permission area (implementation decision record ADR-D47 ✓): cards
+      // writing to the board are forbidden by default ✓
+      // → Whoever needs to write to the board turns that switch on in
+      //   settings ✓ (once ✓ · no more pop-ups ✓)
       if (!permissions.allows('card', `action:${actionId}`)) {
         return { ok: false, reason: 'denied', actionId };
       }
       return invokeAction(action, params, {
         packId: runtime.packId ?? '',
         contractVersion: 'devboard/v1',
-        // **当前那块板是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+        // Which board is the board currently in use ✓ (the credential must be bound to it ✓ — contract `spec/04` §2.4.1 item six ✓)
         deviceKey: () => runtime.currentDeviceKey ?? '',
         hasExitCode: runtime.hasExitCode,
-        // **执行与回读在同一个独占事务里**（SPEC-D22）
+        // Execution and readback happen in the same exclusive transaction (spec decision SPEC-D22)
         runTransaction: (fn) => runtime.runTransaction(fn),
         readTag: (tag) => runtime.sampleTag(tag),
         granted: () => grantedFor(cardId),
@@ -572,9 +623,9 @@ const cards = createCardWiring({
       });
     },
   }),
-  // **存储不在卡片根目录里**——它被 fs.watch 盯着，写一次就触发一次热刷新（回路）
+  // Storage is not in the card root directories — fs.watch watches them, and every write triggers a hot refresh (a loop)
   storageDir: cardStorageDir(),
-  // **布局是宿主记的账**（哪张卡在哪个格子里）→ 落在用户数据目录
+  // The layout is the host's ledger (which card sits in which cell) → it lands in the user data directory
   layoutFile: join(userDataDir(), 'layout.json'),
   shellDir: join(__dirname, '../renderer'),
   shellCsp: SHELL_CSP,
@@ -594,7 +645,7 @@ handle(IPC.cardsHello, (instanceId) => {
   if (cardId === null) {
     throw makeError('PACK_INVALID', `没有登记过的卡片实例：${id}`);
   }
-  // v1 只有一条连接上下文（契约 §7.8：由宿主注入）
+  // v1 has only one connection context (contract §7.8: injected by the host)
   cards.sessions.open(id, cardId, runtime.status.profileId ?? null);
   return undefined;
 });
@@ -606,26 +657,31 @@ handle(IPC.layoutSet, (state) => {
   return undefined;
 });
 /**
- * **统一权限区**（设置页 ✓ · ADR-D47 ✓）。
+ * The unified permission area (settings page ✓ · implementation decision
+ * record ADR-D47 ✓).
  *
- * → **列所有操作 + 谁能用** ✓
- * → **改一条** ✓（**幂等** ✓）
+ * → Lists every operation plus who may use it ✓
+ * → Changes one entry ✓ (idempotent ✓)
  */
 /**
- * **宿主侧的流程运行**（契约 `05` §八·A ✓）。
+ * Workflow runs on the host side (contract `05` §8·A ✓).
  *
- * → **只有宿主能取消** ✓（A4 ✓）→ 所以这一对通道**只在宿主这一侧** ✓
- *   （**卡片 API 里没有 `workflows.cancel`** ✓ · **MCP 里也没有** ✓）
- * → 卡片看到的是**缩减投影** ✓（`cards/workflow-view.ts` ✓）
+ * → Only the host can cancel ✓ (A4 ✓) → so this pair of channels exists
+ *   only on the host side ✓ (there is no `workflows.cancel` in the card API ✓
+ *   · and none in MCP either ✓)
+ * → What the card sees is a reduced projection ✓ (`cards/workflow-view.ts` ✓)
  */
 handle(IPC.workflowsRecent, () => workflowService.recent().map(toHostRun));
 handle(IPC.workflowsCancel, (runId) => workflowService.cancel(String(runId)));
 
 /**
- * **接板向导** ✓ —— **宿主专用** ✓（卡片与 agent 都拿不到 ✓）。
+ * The board connection wizard ✓ — host-only ✓ (neither cards nor agents can
+ * reach it ✓).
  *
- * → **人只参与一步** ✓（选串口 + 波特率 ✓）→ **其余全自动** ✓。
- * → 它**会写用户的目录** ✓（连接 profile ✓ + 板型包 ✓）→ **所以只给宿主** ✓。
+ * → A person takes part in exactly one step ✓ (choosing the serial port and
+ *   the baud rate ✓) → everything else is automatic ✓.
+ * → It writes to the user's directories ✓ (the connection profile ✓ + the
+ *   board pack ✓) → so it is host-only ✓.
  */
 handle(IPC.wizardRun, (input) =>
   runWizardForHost(
@@ -652,7 +708,7 @@ handle(IPC.permissionsList, () => {
 });
 handle(IPC.permissionsSet, (actor, op, allowed) => {
   const key = String(op);
-  // **不存在的操作不许设** ✓（**否则账里会攒下一堆没人看得见的垃圾键** ✓）
+  // An operation that does not exist must not be settable ✓ (otherwise the ledger accumulates junk keys nobody can see ✓)
   if (!permissions.knows(key)) {
     throw makeError('IPC_INVALID_PAYLOAD', `没有这个操作：${key}`);
   }
@@ -674,16 +730,19 @@ handle(IPC.themeSet, (theme) => {
 });
 
 /**
- * 一张卡的 **CSP 违规** → 它的运行时日志。
+ * A card's CSP violation → its runtime log.
  *
- * 契约 §6.1 的承诺：「浏览器的 CSP 违规会记在卡片运行时日志里，
- * agent 因此能看到『这张卡试图联网』」。
+ * The promise of contract §6.1: 'a browser CSP violation is recorded in the
+ * card's runtime log, so an agent can see that this card tried to reach the
+ * network'.
  *
- * **为什么不用 `console-message`**（实测，Electron 34.5.8）：
- * 那个事件的 `sourceId` 对 `connect-src` / `script-src` 违规是**空串** →
- * 归属不到卡 → **恰恰是「试图联网」那一类抓不到**。
- * → 改用卡片文档里的 `securitypolicyviolation` 事件
- * （宿主注入的 `__host/csp.js` 监听）→ 归属天然精确。
+ * Why not `console-message` (measured on Electron 34.5.8): for `connect-src` /
+ * `script-src` violations that event's `sourceId` is an empty string → the
+ * violation cannot be attributed to a card → exactly the 'tried to reach the
+ * network' cases go uncaught.
+ * → Instead the `securitypolicyviolation` event of the card document is used
+ * (the listener the host injects, `__host/csp.js`) → attribution is exact by
+ * construction.
  */
 handle(IPC.cardsCsp, (instanceId, detail) => {
   const id = String(instanceId);
@@ -697,40 +756,45 @@ handle(IPC.cardsCsp, (instanceId, detail) => {
 });
 
 /**
- * 挑一个能采的连接 profile 起运行时。
+ * Pick a connection profile that can be sampled and start the runtime with it.
  *
- * **挨个试**：板子可能在 adb 上、也可能在串口上——
- * 第一个连不上的（adb 没插板子、串口被占着）**不是**失败，
- * 试下一个就行。都不行 → 按退避档位再试一轮
- * （**板子后插上，面板不该永远是空的**）。
+ * Try them one by one: the board may be on adb or on a serial port — the
+ * first one that cannot connect (no board plugged into adb, the serial port
+ * occupied) is not a failure, just move on to the next. If none works, go
+ * through another round following the backoff schedule (a board plugged in
+ * later must not leave the panels permanently empty).
  */
 async function startTagRuntime(): Promise<void> {
   const candidates = pickCandidates(listProfiles());
   if (candidates.length === 0) {
-    // 没有带板型包的连接：面板会显示「没有带板型包的连接」
+    // No connection with a board pack: the panels will show 'no connection with a board pack'
     return;
   }
   await startWithRetry(runtime, candidates);
-  // **连上（或试完）之后重扫一次卡片** ✓（2026-11-19 修 ✓）
+  // Rescan the cards once after connecting (or after the tries are over) ✓
+  // (fixed 2026-11-19 ✓)
   //
-  // → 卡片在**启动时**就被校验 ✓ → 那时板子还没连上 ✓ →
-  //   规则 5 说「动作**未验证**」✓ → **那张卡就一直「降级」** ⚠️
-  // → **连上之后重扫** ✓ → 警告**自己撤销** ✓（而不是靠人重启 ✓）
+  // → Cards are validated at startup ✓ → at that moment the board is not
+  //   connected yet ✓ → rule 5 says the action is 'unverified' ✓ → the card
+  //   stays 'degraded' ⚠️
+  // → Rescanning after connecting ✓ makes the warning withdraw itself ✓
+  //   (instead of relying on a restart ✓)
   cards.refresh();
 }
 
 /**
- * 注册一个 invoke 通道。
+ * Register an invoke channel.
  *
- * **主进程不抛错，而是返回 `{ok, error}`**：
- * Electron 会把主进程抛出的错误包成
- * `Error invoking remote method 'x': <原错误>`。
- * 原错误若是普通对象，`String(error)` 就是 `[object Object]`——
- * 用户在界面上看到的是 `[object Object]`，
- * 而「串口 COM3 被占用」这句话**永远到不了眼前**。
+ * The main process does not throw, it returns `{ok, error}`: Electron wraps
+ * an error thrown in the main process as
+ * `Error invoking remote method 'x': <original error>`.
+ * If the original error is a plain object, `String(error)` is
+ * `[object Object]` — the user sees `[object Object]` in the interface, and
+ * the sentence 'the serial port COM3 is occupied' never reaches their eyes.
  *
- * 所以错误在这里被拍平成 `{code, message, retryable, detail}`，
- * 由 preload 还原成带错误码的异常抛给 renderer。
+ * So the error is flattened here into `{code, message, retryable, detail}`,
+ * and the preload turns it back into an exception carrying the error code and
+ * throws it to the renderer.
  */
 function handle<T>(channel: IpcChannel, fn: (...args: unknown[]) => T | Promise<T>): void {
   ipcMain.handle(channel, async (_e, ...args: unknown[]): Promise<IpcResult<T>> => {
@@ -745,10 +809,12 @@ function handle<T>(channel: IpcChannel, fn: (...args: unknown[]) => T | Promise<
 handle(IPC.terminalOpen, (profileId) => terminal.open(String(profileId)));
 
 /**
- * 这两个是无返回值通道（ipcMain.on）：抛出的异常**没人接**，
- * 会变成未捕获异常把主进程带崩。所以在这里兜住并记日志。
+ * These two are channels without a return value (ipcMain.on): a thrown
+ * exception has nobody to catch it and turns into an uncaught exception that
+ * takes the main process down. So it is caught here and logged.
  *
- * 按键是 fire-and-forget 的——每个键都等一次往返会让终端没法用。
+ * Key presses are fire-and-forget — waiting for a round trip on every key
+ * would make the terminal unusable.
  */
 ipcMain.on(IPC.terminalWrite, (_e, sessionId: string, data: string) =>
   guard('terminalWrite', () => terminal.write(sessionId, data)),
@@ -757,10 +823,10 @@ ipcMain.on(IPC.terminalResize, (_e, sessionId: string, cols: number, rows: numbe
   guard('terminalResize', () => terminal.resize(sessionId, cols, rows)),
 );
 
-// 关会话走 invoke：关不掉（串口还占着）要让用户知道，不能只进控制台
+// Closing a session goes through invoke: if it cannot be closed (the serial port is still occupied) the user has to be told, not just the console
 handle(IPC.terminalClose, (sessionId) => terminal.close(String(sessionId)));
 
-/** 包住可能抛出的调用。异常只记日志，不许崩主进程。 */
+/** Wraps a call that may throw. The exception is only logged, it must not crash the main process. */
 function guard(what: string, fn: () => void): void {
   try {
     fn();
@@ -769,28 +835,32 @@ function guard(what: string, fn: () => void): void {
   }
 }
 
-// ── 文件互传 ────────────────────────────────────────────────────────
+// ── File transfer ───────────────────────────────────────────────
 handle(IPC.connectionsList, () =>
   listProfiles().map((p) => ({
     id: p.id,
     label: p.label,
     transport: p.transport,
     boardPack: p.board_pack ?? null,
-    // **这块板的标识** ✓（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）
+    // This board's identifier ✓ (the physical board and the connection are two layers ✓ — contract `spec/02` §10.2 ✓)
     deviceKey: deviceKeyOf(p),
-    // **它是当前运行时那条连接吗** ✓（**与「有没有活连接」是两条判据** ✓ —— 不混 ✓）
+    // Is it the connection the runtime is currently using ✓ (that and 'is there a live connection' are two separate criteria ✓ — not conflated ✓)
     current: runtime.status.profileId === p.id,
     capabilities: capabilitiesFor(p),
   })),
 );
 
 /**
- * **切到某块板** ✓（界面「选板子」✓ —— 契约 `spec/02` §10.2 ✓）。
+ * Switch to a given board ✓ (the interface's 'select board' ✓ — contract
+ * `spec/02` §10.2 ✓).
  *
- * → **界面只列板** ✓ → **哪条连接由宿主挑** ✓（`profiles/device-select.ts` ✓）
- * → **连不上就报错** ✓ —— **不静默地换一块板** ✗
- *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）。
- * → **已经在那块板上 → 不重连** ✓（**白连一次会掉读数** ✗）。
+ * → The interface only lists boards ✓ → which connection to use is the
+ *   host's choice ✓ (`profiles/device-select.ts` ✓)
+ * → If it cannot connect, it reports an error ✓ — it never silently swaps in
+ *   another board ✗ (that would be 'silently doing something else' ✗ — the
+ *   user picked A and something else is actually connected ✗).
+ * → Already on that board → no reconnect ✓ (a pointless reconnect drops the
+ *   readings ✗).
  */
 handle(IPC.devicesSelect, async (deviceKey) => {
   const key = String(deviceKey);
@@ -818,10 +888,12 @@ handle(IPC.filesPush, (connectionId, localPath, remotePath) => {
 });
 
 handle(IPC.filesPull, (connectionId, remotePath, localPath) => {
-  // **本地落盘位置由宿主定**。
-  // renderer 只知道远端路径，不知道宿主上该放哪；
-  // 早先 renderer 传空串、宿主注释写着「用默认落盘位置」，
-  // 而那个「默认落盘位置」根本不存在——于是下载按钮必挂。
+  // The host decides the local install location.
+  // The renderer only knows the remote path, not where on the host it
+  // should go; earlier the renderer passed an empty string while the host
+  // comment said 'use the default install location', and that 'default
+  // install location' did not exist at all — so the download button always
+  // failed.
   const target = localPath
     ? String(localPath)
     : uniqueDownloadPath(app.getPath('downloads'), String(remotePath), existsSync);
@@ -840,14 +912,18 @@ function createWindow(): BrowserWindow {
     titleBarStyle: 'hidden',
     titleBarOverlay: titleBarOverlay(shellTheme),
     webPreferences: {
-      // preload 的文件名不是随手写的：与 electron-vite 的产出同名（`src/shared/build-layout.ts` 是唯一出处），
-      // `npm run build` 末尾的自检脚本会验这个文件真的存在。
+      // The preload's file name is not arbitrary: it matches what
+      // electron-vite produces (`src/shared/build-layout.ts` is the single
+      // source for it), and the self-check script at the end of
+      // `npm run build` verifies that the file really exists.
       preload: join(__dirname, '../preload', PRELOAD_FILE),
       contextIsolation: true,
       nodeIntegration: false,
-      // 渲染进程要装不可信的卡片（契约 §6.1 的 CSP 断网），
-      // 沙箱是最后一道防线——**不许为了用 ESM preload 关掉它**。
-      // ESM preload 需要 `sandbox: false`，所以 preload 一律构建成 CommonJS。
+      // The renderer loads untrusted cards (the CSP no-network rule of
+      // contract §6.1), so the sandbox is the last line of defence — it must
+      // not be turned off in order to use an ESM preload.
+      // An ESM preload needs `sandbox: false`, so preloads are always built
+      // as CommonJS.
       sandbox: true,
     },
   });
@@ -856,13 +932,14 @@ function createWindow(): BrowserWindow {
   if (devUrl) {
     void win.loadURL(devUrl);
   } else {
-    // **生产的外壳也走 `cockpit://app/`** —— `file://` 上的 `'self'` 匹配不到任何东西
+    // The production shell also goes through `cockpit://app/` — the `'self'` source on `file://` matches nothing at all
     void win.loadURL('cockpit://app/index.html');
   }
 
-  // 拖一个文件进窗口，Electron 默认会**导航到那个文件**——
-  // 整个窗口被替换成文件内容，应用看起来「崩了」。
-  // 拦住它，拖放交给 renderer 的文件浏览器处理。
+  // Dragging a file into the window makes Electron navigate to that file by
+  // default — the whole window is replaced by the file's content and the
+  // application looks like it has crashed.
+  // Block it; drag and drop is handled by the renderer's file browser.
   win.webContents.on('will-navigate', (event, url) => {
     const current = win.webContents.getURL();
     if (url !== current) event.preventDefault();
@@ -876,23 +953,26 @@ app.whenReady().then(async () => {
   // No File/Edit/View… strip under the title bar: the shell is the menu.
   Menu.setApplicationMenu(null);
 
-  // `cockpit://` 的处理器（卡片 + 外壳）
+  // The `cockpit://` handler (cards + shell)
   protocol.handle('cockpit', (request) => cards.protocol(request));
 
-  // ⚠️ 假设备（调试构建里才有）
-  // **载入失败不许挡住应用起来**——假设备是调试用的脚手架，
-  // 它坏了也只该让调试的人少一块板子，不该让整个应用开不了。
+  // ⚠️ The fake device (only in debug builds)
+  // A failure to load must not stop the app from starting — the fake device is
+  // debugging scaffolding; if it breaks, the only consequence should be one
+  // fewer board for the person debugging, not an application that will not
+  // open.
   await loadFakeDevice().catch((err: unknown) => {
     console.error(`[FAKE] 假设备载入失败：${err instanceof Error ? err.message : String(err)}`);
   });
 
   createWindow();
 
-  // **MCP server**（不挡着窗口起来 ✓ —— 它是给 agent 用的 ✓）
+  // The MCP server (does not block the window from coming up ✓ — it is for agents ✓)
   void startMcpServer();
 
-  // 读数的运行时：**不挡着窗口起来**——
-  // 连不上是常事（板子没插、端口被占），面板会显示为什么。
+  // The readings runtime: it does not block the window from coming up —
+  // failing to connect is normal (no board plugged in, the port occupied), and
+  // the panels will show why.
   void startTagRuntime();
 
   app.on('activate', () => {
@@ -904,7 +984,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// **退出时删掉发现文件** ✓（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）
+// The discovery file is deleted on quit ✓ (no discovery file pointing at a dead process ✓ — contract §7.2 ✓)
 app.on('will-quit', () => {
   stopMcpServer();
 });

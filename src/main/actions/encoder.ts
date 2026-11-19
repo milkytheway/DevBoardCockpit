@@ -3,40 +3,43 @@ import { quoteShellValue, PLACEHOLDER } from '../util/shell-quote';
 import type { PackParam } from '../tags/schema';
 
 /**
- * 参数编码 —— 契约 `docs/spec/02-board-pack.md` §4.6「注入防线」。
+ * Parameter encoding — contract `docs/spec/02-board-pack.md` §4.6, the
+ * "injection barrier".
  *
- * ── 为什么它是运行时的事 ──
+ * ── Why this belongs to the runtime ──
  *
- * 板端会话是 root 权限（`docs/02` 事实 A1/S1 一带的实测）。
- * 一条 `--model 'x; reboot'` 就能把「启动管线」变成「重启板子」——
- * 而 `reboot` **不在命令模板里**，所以危险地板按模板匹配**根本拦不住**
- * （§5.3 说过这件事）。
+ * A board-side session runs as root (measured around facts A1/S1 in
+ * `docs/02`). A single `--model 'x; reboot'` turns "start the pipeline" into
+ * "reboot the board" — and `reboot` is not in the command template, so
+ * matching the template against the danger floor cannot stop it at all
+ * (§5.3 says exactly this).
  *
- * → **参数值按类型编码后再注入**，包只声明类型与范围，不负责转义
- * （十个包作者会写出十种转义方式，其中九种是错的）。
+ * → Parameter values are encoded by type before they are injected; the pack
+ *   only declares types and ranges and is not responsible for escaping (ten
+ *   pack authors would write ten escaping schemes, nine of them wrong).
  *
- * ── 运行时**再校验一次**（§4.6 规则 4）──
+ * ── The runtime validates once more (§4.6 rule 4) ──
  *
- * 不信任包的自述，也不信任调用方的自述：
- * 声明是 `integer` 而传进来的是 `'30'`，**不放行**。
+ * It trusts neither the pack's own description nor the caller's: a value
+ * declared as `integer` that arrives as `'30'` is not let through.
  */
 
-/** 编码的结果 */
+/** The result of encoding */
 export interface EncodedParams {
-  /** 编码后的命令（可以直接执行） */
+  /** The encoded command (directly executable) */
   command: string;
-  /** 每个参数的编码片段 —— **审计要记参数**（`spec/02` §5.4） */
+  /** The encoded fragment of each parameter — the audit has to record the parameters (`spec/02` §5.4) */
   encoded: Record<string, string>;
 }
 
-/** 参数不合法 */
+/** The parameter is invalid */
 function invalid(param: string, message: string): Error {
   return makeError('IPC_INVALID_PAYLOAD', `参数「${param}」${message}`, {
     detail: { param },
   });
 }
 
-/** 值落在 min/max 之外 → 拒掉 */
+/** The value falls outside min/max → reject it */
 function checkRange(param: string, value: number, spec: PackParam): void {
   if (spec.min !== undefined && value < spec.min) {
     throw invalid(param, `超出范围（最小 ${spec.min}）`);
@@ -47,14 +50,14 @@ function checkRange(param: string, value: number, spec: PackParam): void {
 }
 
 /**
- * 按类型编码一个参数值。
+ * Encode one parameter value by type.
  *
- * | type | 编码 |
+ * | type | Encoding |
  * |---|---|
- * | `integer` / `number` | 十进制字面量，**不带引号、不带任何其他字符** |
+ * | `integer` / `number` | A decimal literal, with no quotes and no other characters |
  * | `boolean` | `true` / `false` |
- * | `enum` | 必须是 `values` 里的某一项，**原样注入** |
- * | `string` | **单引号包裹**，`'` 转义为 `'\''`，长度不超 `maxLength` |
+ * | `enum` | Must be one of the `values`, injected as is |
+ * | `string` | Wrapped in single quotes, `'` escaped as `'\''`, length not over `maxLength` |
  */
 function encodeValue(param: string, spec: PackParam, raw: unknown): string {
   switch (spec.type) {
@@ -104,12 +107,13 @@ function encodeValue(param: string, spec: PackParam, raw: unknown): string {
 }
 
 /**
- * 把参数按类型编码。
+ * Encode the parameters by type.
  *
- * @param schema 包里声明的参数（类型 + 范围）。
- * @param values 调用方给的值。
- * @returns 每个参数的编码片段。
- * @throws 参数不合法（`IPC_INVALID_PAYLOAD`）——**执行前**就拒掉。
+ * @param schema The parameters declared in the pack (type + range).
+ * @param values The values given by the caller.
+ * @returns The encoded fragment of each parameter.
+ * @throws The parameter is invalid (`IPC_INVALID_PAYLOAD`) — it is rejected
+ *   before the execution.
  */
 export function encodeParams(
   schema: Record<string, PackParam>,
@@ -124,8 +128,9 @@ export function encodeParams(
     }
     encoded[name] = encodeValue(name, spec, raw);
   }
-  // **多出来的参数 → 拒掉**：调用方塞了一个没声明的参数，
-  // 说明它以为这个参数存在（拼错了？或者偷偷多塞）→ 两种都不该放行。
+  // An extra parameter → reject it: the caller slipped in a parameter that
+  // was never declared, which means it believes that parameter exists (a
+  // typo? or deliberately smuggling one in?) — neither should be let through.
   for (const name of Object.keys(values)) {
     if (!Object.prototype.hasOwnProperty.call(schema, name)) {
       throw invalid(name, '没有声明这个参数');
@@ -135,11 +140,13 @@ export function encodeParams(
 }
 
 /**
- * 把命令模板里的 `{param}` 换成编码后的片段。
+ * Replace `{param}` in the command template with the encoded fragment.
  *
- * **引号是编码的一部分** —— 片段**原样**放进去（`{model}` → `'x'`）。
+ * The quotes are part of the encoding — the fragment goes in as is (`{model}`
+ * → `'x'`).
  *
- * @throws 模板里有没声明的占位（`IPC_INVALID_PAYLOAD`）。
+ * @throws The template contains an undeclared placeholder
+ *   (`IPC_INVALID_PAYLOAD`).
  */
 export function renderCommand(template: string, encoded: Record<string, string>): string {
   return template.replace(PLACEHOLDER, (_match, name: string) => {
@@ -154,9 +161,10 @@ export function renderCommand(template: string, encoded: Record<string, string>)
 }
 
 /**
- * 一次到位：校验 → 编码 → 渲染。
+ * One shot: validate → encode → render.
  *
- * @returns 命令 + 每个参数的编码片段（审计要记参数）。
+ * @returns The command plus the encoded fragment of each parameter (the
+ *   audit has to record the parameters).
  */
 export function buildCommand(
   template: string,

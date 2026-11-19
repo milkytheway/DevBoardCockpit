@@ -1,6 +1,6 @@
 {
   "id": "board-ssh",
-  "label": "板子 · SSH",
+  "label": "Board · SSH",
   "transport": "ssh",
   "board_pack": "rk3588-atk",
   "device_key": "atk-01",

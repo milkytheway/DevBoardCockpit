@@ -1,6 +1,6 @@
 {
   "id": "local",
-  "label": "本机",
+  "label": "Local machine",
   "transport": "local",
   "board_pack": null,
   "options": {

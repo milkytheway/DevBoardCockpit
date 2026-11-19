@@ -1,27 +1,30 @@
-# 存储测速 —— **写一遍 + 读一遍，报两个数**
+# Storage benchmark — **write once and read once, report two numbers**
 #
-# ── 为什么写与读要分开量 ──
+# ── Why the write and the read are measured separately ──
 #
-# eMMC 的写与读差一个数量级 ✓（实测 2026-11-16：写 **235 MB/s** ✓ ·
-# 读 **345 MB/s** ✓）→ **只报一个数会骗人** ✓。
+# On an eMMC the write and the read differ by an order of magnitude (measured
+# 2026-11-16: write **235 MB/s** · read **345 MB/s**) → **reporting a single
+# number would mislead**.
 #
-# ── 写测速必须 `conv=fdatasync` ──
+# ── The write benchmark has to use `conv=fdatasync` ──
 #
-# 不加它，dd 写完就返回 —— **那测的是「进缓存的速度」** ✗，
-# 不是「落到介质上的速度」✗。手册 §2.14.2 也这么写 ✓。
+# Without it dd returns as soon as the write is done — **that measures "the
+# speed into the cache"**, not "the speed onto the medium". Manual section
+# 2.14.2 says the same.
 #
-# ── 落哪 ──
+# ── Where it writes ──
 #
-# **挂载点下面的一个文件** ✓（不是块设备 ✓ —— 写块设备命中危险地板 ✓）。
-# 测完**删掉** ✓（不留垃圾 ✓）。
+# **A file under the mount point** (not a block device — writing a block
+# device hits the danger floor).
+# It is **deleted afterwards** (no litter left behind).
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: storage-benchmark.measure
-name: 存储测速
+name: Storage benchmark
 version: 1.0.0
-description: 在指定挂载点写一个文件量写入速度、用 hdparm 量读取速度，测完清理临时文件。
+description: Write a file on the given mount point to measure the write speed, use hdparm to measure the read speed, and clean up the temporary file afterwards.
 
 inputs:
   mountpoint:
@@ -29,39 +32,42 @@ inputs:
     required: false
     maxLength: 100
     default: /userdata
-    description: 测速的挂载点（必须是挂载点，不能是块设备）
+    description: The mount point to measure (it has to be a mount point, not a block device)
   size_mb:
     type: integer
     required: false
     default: 50
-    description: 写多少 MB
+    description: How many MB to write
   device:
     type: string
     required: false
     maxLength: 100
     default: /dev/mmcblk0p8
-    description: 量读取速度用的块设备（只读，不写）
+    description: The block device used for the read speed (read only, never written)
 
 roles:
   target:
-    purpose: 被测的板子
+    purpose: The board under test
     profile: board-adb
 
 steps:
-  # ① 写入测速（**fdatasync** ✓ —— 否则测的是缓存速度 ✗）
+  # ① Write benchmark (**fdatasync** — otherwise the speed into the cache
+  #    is what gets measured)
   - id: write
     kind: exec
     role: target
-    # ⚠️ **`dd` 的统计是打到 stderr 的** ✓（实测 ✓）→ 不合并的话**产出槽是空的** ✓
-    #   （执行器只取 stdout ✓ —— 契约 `spec/04` §2.4 说的就是 stdout ✓）。
-    # → **自己合并** ✓（`2>&1` ✓）。
+    # **The statistics of `dd` go to stderr** (measured) → without merging
+    #   them the **output slot stays empty**
+    #   (the executor takes stdout only — the contract `spec/04` section 2.4
+    #   says stdout).
+    # - **Merge them yourself** (`2>&1`).
     cmd: "dd if=/dev/zero of={input:mountpoint}/.cockpit-bench bs=1024k count={input:size_mb} conv=fdatasync 2>&1"
     timeout_ms: 600000
     out: write_result
     readback:
       kind: command_ok
 
-  # ② 读测速（**hdparm** ✓ —— 它读的是块设备本身 ✓）
+  # ② Read benchmark (**hdparm** — it reads the block device itself)
   - id: read
     kind: exec
     role: target
@@ -71,7 +77,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ③ 清理（**不留半截文件** ✓）
+  # ③ Clean up (**no half written file left behind**)
   - id: cleanup
     kind: exec
     role: target
@@ -80,7 +86,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ④ 确实清掉了 ✓
+  # ④ It is really gone
   - id: assert-clean
     kind: assert
     role: target

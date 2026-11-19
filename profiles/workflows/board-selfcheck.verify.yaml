@@ -1,43 +1,49 @@
-# 厂商出厂自检 —— **跑正点原子自己写的那套检查脚本**
+# Vendor factory self check — **run the check scripts Alientek wrote**
 #
-# ── 为什么用它而不是自己重写一遍 ──
+# ── Why use it instead of rewriting our own ──
 #
-# 板子上**本来就有**一套出厂自检：`/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/`
-# （实测 ✓ · 出厂测试 App 用的就是它 ✓ · 厂商对每块板子都跑过 ✓）。
+# The board **already carries** a factory self check:
+# `/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/`
+# (measured · it is the one the factory test app uses · the vendor runs it on
+# every board).
 #
-# → **不要另写一套** ✓ —— 那会变成「我们的检查」与「厂家的检查」两套口径 ✓
-# → 直接调它的脚本 ✓ —— **检查项与出厂一致** ✓。
+# - **Do not write another one** — that would leave two measures of "the
+#   check" in play, ours and the vendor's.
+# - Call its scripts directly — **the check items are the factory ones**.
 #
-# ── 分「必过」与「报告」两级 ──
+# ── Two levels: "must pass" and "report" ──
 #
-# 脚本会**因为外设没插**而失败 ✓（实测：eth1 没插网线 → exit 1 ✓ ·
-#      没有 TF 卡 → `hdparm -t /dev/mmcblk1p1` 失败 ✓）。
-# → 那**不是板子坏了** ✓ → 用 `on_mismatch: continue` ✓
-#   （**照样在时间线上报「没通过」** ✓ —— 用户看得见 ✓）。
+# The scripts **fail because a peripheral is not plugged in** (measured: eth1
+# with no network cable → exit 1; no TF card → `hdparm -t /dev/mmcblk1p1`
+# fails).
+# - That **does not mean the board is broken** → use `on_mismatch: continue`
+#   (it still reports "not passed" in the timeline, so the user sees it).
 #
-# ⚠️ **mic_test.sh / loudspeaker_test.sh 不在这里** ✓ ——
-#    它们是 `for i in {1..1000}` 的**死循环** ✓（实测脚本内容 ✓）→
-#    跑一次就是几十分钟 ✓ → **不列** ✓。
+# `mic_test.sh` / `loudspeaker_test.sh` are **not** in the list —
+#    they are `for i in {1..1000}` **infinite loops** (measured from the
+#    script contents) → one run takes tens of minutes → they are **left
+#    out**.
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: board-selfcheck.verify
-name: 厂商出厂自检
+name: Vendor factory self check
 version: 1.0.0
-description: 调用板子上正点原子自带的出厂检查脚本；必过项（CPU 频率 / 有线网 / WiFi / 蓝牙）不过就报错，外设缺失的项只报告。
+description: Call the factory check scripts that ship on the board; the items that must pass (CPU frequency / wired network / WiFi / Bluetooth) report an error when they fail, and the items whose peripheral is missing are only reported.
 
-# 这一条**没有参数** ✓ —— 它查的东西全是固定的 ✓
-# （但 `inputs` 这个键**必须在** ✓ —— 流程包的形状是封闭的 ✓）
+# This one has **no parameters** — everything it checks is fixed
+# (but the `inputs` key **has to be there**, the shape of a workflow pack is
+# closed)
 inputs: {}
 
 roles:
   target:
-    purpose: 被检查的板子
+    purpose: The board being checked
     profile: board-adb
 
 steps:
-  # ── 必过 ────────────────────────────────────────────────────
+  # ── Must pass ────────────────────────────────────────────────────
   - id: cpufreq
     kind: exec
     role: target
@@ -70,15 +76,17 @@ steps:
     readback:
       kind: command_ok
 
-  # ── 只报告（外设没插是**事实**，不是故障）────────────────────
+  # ── Report only (a missing peripheral is a **fact**, not a fault) ──
   #
-  # ⚠️ **同样不用 `assert`** ✓ —— 理由同体检那条 ✓：
-  # `verify` 是「等它成立」✓，而「这个外设插了没有」是**一次性的事实** ✓。
-  # → **跑一遍，把结论写进产出槽** ✓（用户看得见是哪个外设缺席 ✓）。
+  # **Also no `assert` here** — the reason is the same as in the health
+  # check: `verify` is "wait until it holds", while "is this peripheral
+  # plugged in" is a **one-shot fact**.
+  # - Run it once and write the conclusion into the output slot (the user
+  #   sees which peripheral is absent).
   - id: eth1
     kind: exec
     role: target
-    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/eth1_test.sh >/dev/null 2>&1 && echo '第二网口：有 IP' || echo '第二网口：没插网线或没拿到 IP'"
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/eth1_test.sh >/dev/null 2>&1 && echo 'second network port: has an IP' || echo 'second network port: no network cable or no IP'"
     timeout_ms: 30000
     out: eth1_verdict
     readback:
@@ -87,7 +95,7 @@ steps:
   - id: rtc
     kind: exec
     role: target
-    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/rtc_test.sh >/dev/null 2>&1 && echo '硬件 RTC：节点在' || echo '硬件 RTC：节点不在'"
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/rtc_test.sh >/dev/null 2>&1 && echo 'hardware RTC: node present' || echo 'hardware RTC: node absent'"
     timeout_ms: 30000
     out: rtc_verdict
     readback:
@@ -96,7 +104,7 @@ steps:
   - id: sdcard
     kind: exec
     role: target
-    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/sdcard_test.sh >/dev/null 2>&1 && echo 'TF 卡：可读' || echo 'TF 卡：没插或读不到'"
+    cmd: "sh /opt/ui/src/apps/resource/pcba/ATK-DLRK3588/sdcard_test.sh >/dev/null 2>&1 && echo 'TF card: readable' || echo 'TF card: not inserted or not readable'"
     timeout_ms: 60000
     out: sdcard_verdict
     readback:

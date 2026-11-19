@@ -1,49 +1,56 @@
-# 网络测速 —— **板子与客机之间跑一次 iperf3**
+# Network benchmark — **run one iperf3 between the board and the client
+# machine**
 #
-# ── 为什么方向是「板子做服务端」而不是反过来 ──
+# ── Why the direction is "the board is the server" and not the other way
+#    round ──
 #
-# 实测 2026-11-16：**客机 → 板子通** ✓（192.168.100.10 → 192.168.5.100 ✓）
-# **板子 → 客机不通** ✗（`Network is unreachable` ✗ —— 两者不在同一网段 ✓）→
-# → **服务端必须在板子上** ✓（客户端去连它 ✓）。
+# Measured 2026-11-16: **client machine → board works** (192.168.100.10 →
+# 192.168.5.100), **board → client machine does not** (`Network is
+# unreachable`, the two are not on the same subnet) →
+# **the server has to be on the board** (the client connects to it).
 #
-# ⚠️ **这条流程要客机上装了 iperf3** ✓（手册 §2.11 说要 `sudo apt-get install iperf3` ✓
-#    —— 2026-11-16 实测：客机**默认没装** ✓ → 先装 ✓）。
+# This workflow **requires iperf3 on the client machine** (manual section
+# 2.11 says to run `sudo apt-get install iperf3` —
+#    measured 2026-11-16: the client machine **does not have it by default**
+#    → install it first).
 #
-# ── 测的是哪一段链路 ──
+# ── Which part of the link is measured ──
 #
-# 客机 ↔ 宿主 ↔ 板子（板子是网线直连宿主网口的 ✓）→
-# 所以这个数字**是板子网口的真实能力**（受客机那一侧限速 ✓）。
-# 实测：**419 Mbits/sec** ✓（千兆口 ✓）。
+# client machine ↔ host ↔ board (the board is wired straight to a network
+# port of the host) → so this number **is the real capability of the network
+# port of the board** (limited by the client machine side).
+# Measured: **419 Mbits/sec** (a gigabit port).
 #
-# ── 服务端用 `-1`（one-off）──
+# ── The server runs with `-1` (one-off) ──
 #
-# 跑完一次连接**自动退出** ✓ → 不留常驻进程 ✓（实测跑完无残留 ✓）。
+# It **exits by itself** after one connection → no daemon is left behind
+# (measured: nothing left running afterwards).
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: network-iperf.measure
-name: 网络测速（iperf3）
+name: Network benchmark (iperf3)
 version: 1.0.0
-description: 板子作为 iperf3 服务端、客机作为客户端，测两端之间的吞吐；服务端 one-off 跑完自退。
+description: The board is the iperf3 server and the client machine is the client; the throughput between the two is measured, and the one-off server exits by itself.
 
 inputs:
   seconds:
     type: integer
     required: false
     default: 5
-    description: 测多久（秒）
+    description: How long to measure (seconds)
 
 roles:
   target:
-    purpose: 被测的板子（iperf3 服务端）
+    purpose: The board under test (the iperf3 server)
     profile: board-adb
   client:
-    purpose: 发起测速的机器（iperf3 客户端）
+    purpose: The machine that starts the measurement (the iperf3 client)
     profile: ubuntu-ssh
 
 steps:
-  # ① 服务端起（**one-off** ✓ —— 跑完一次连接就退 ✓）
+  # ① Start the server (**one-off** — it exits after one connection)
   - id: server
     kind: exec
     role: target
@@ -52,13 +59,16 @@ steps:
     readback:
       kind: command_ok
 
-  # ② 客户端测（**地址来自角色事实** ✓ —— 流程包不该知道板子的 IP ✓）
+  # ② The client measures (**the address comes from the role facts** — a
+  #    workflow pack should not know the IP of the board)
   #
-  # ⚠️ **`| grep receiver` 不是为了好看** ✓ —— 是**必须**的 ✓：
-  # iperf3 的完整输出**是十几行** ✓ → 塞进下一步的命令里会被**注入防线拒绝** ✓
-  # （「路径里有换行或空字符」✓ —— 那是**对的** ✓）。
-  # → **只取 receiver 那一行** ✓（**单行** ✓ → 后面拼得进命令 ✓）
-  #   而那一行**就是答案** ✓（`... 424 Mbits/sec  receiver` ✓ —— 实测 ✓）。
+  # **`| grep receiver` is not for looks** — it is **required**:
+  # the full output of iperf3 **is more than a dozen lines** → splicing it
+  # into the next command would be **rejected by the injection guard**
+  # ("the path contains a newline or a null character"), which is correct.
+  # - **Take only the receiver line** (**one line** → it can be spliced into
+  #   a command), and that line **is the answer** (`... 424 Mbits/sec
+  #   receiver`, measured).
   - id: measure
     kind: exec
     role: client
@@ -68,7 +78,8 @@ steps:
     readback:
       kind: command_ok
 
-  # ③ 结果里有「receiver」那一行才算测成了 ✓（**单行** ✓ → 拼得进命令 ✓）
+  # ③ The result counts only if it holds the "receiver" line (**one line** →
+  #    it can be spliced into a command)
   - id: assert-receiver
     kind: assert
     role: client
@@ -79,13 +90,18 @@ steps:
       timeout_ms: 10000
     on_mismatch: fail
 
-  # ④ 收尾：万一客户端没连上，服务端还挂着 → 清掉 ✓（不留残留 ✓）
+  # ④ Clean up: if the client never connected, the server is still running
+  #    → remove it (no leftovers)
   #
-  # ⚠️ **必须用 `-x`（精确匹配进程名）**，**不能用 `-f`** ✓
-  #   —— `pkill -f "iperf3 -s"` 匹配的是**整条命令行** ✓，
-  #   而**模式本身就出现在这条 shell 自己的命令行里** ✓ → **它把自己杀了** ✓
-  #   （实测 2026-11-16：命令**没有任何输出** ✓ + 退出码非 0 ✓ —— 典型的自杀现场 ✓）。
-  # → `-x iperf3` 只匹配**进程名** ✓ → 杀不到 shell ✓（实测 ✓）。
+  # **`-x` (exact process name match) is required**, **`-f` must not be
+  # used**
+  #   — `pkill -f "iperf3 -s"` matches the **whole command line**, and
+  #   **the pattern itself appears in the command line of that very shell**
+  #   → **it kills itself**
+  #   (measured 2026-11-16: the command produced **no output at all** and a
+  #   non-zero exit code — a textbook self-kill).
+  # - `-x iperf3` matches the **process name** only → it cannot reach the
+  #   shell (measured).
   - id: cleanup
     kind: exec
     role: target

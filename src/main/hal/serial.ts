@@ -8,70 +8,83 @@ import { capabilitiesFor, transportDefaults } from './capabilities';
 import type { ConnectionCapabilities, Connection, ExecResult, FileEntry, ExecOptions } from './connection';
 
 /**
- * 串口传输。
+ * The serial transport.
  *
- * 串口的三个硬事实（`docs/02-设备事实清单.md`）：
+ * Three hard facts about serial (`docs/02-设备事实清单.md`):
  *
- * - **S1 单通道**：命令通道和交互终端共用一根线，一个读线程 + 一份 transcript。
- * - **S5 没有退出码**：有文本回包 = 0，超时 = 124。
- * - **S7 传不了文件**：`capabilities()` 不含 `files`，UI 相应禁用文件浏览器。
+ * - **S1 single channel**: the command channel and the interactive terminal
+ *   share one wire, one reader thread and one transcript.
+ * - **S5 no exit code**: a textual reply = 0, a timeout = 124.
+ * - **S7 cannot carry files**: `capabilities()` does not contain `files`, and
+ *   the UI disables the file browser accordingly.
  *
- * 另外两条：**S2** 板子会回显命令，marker 在 transcript 里出现两次；
- * **S4** getty 期待 CR，发送时 `\n` → `\r\n`。
+ * Two more: **S2** the board echoes commands, so a marker appears twice in
+ * the transcript; **S4** getty expects CR, so on send `\n` → `\r\n`.
  */
 
 /**
- * 串口是**控制台**：真终端，自己回显、自己出提示符。
+ * Serial is a **console**: a real terminal that echoes by itself and prints
+ * its own prompt.
  *
- * 这不是我的判断，是三处一致：
- * - legacy 架构说明：「A target that runs a real terminal -- `ssh`, **or a serial
- *   console** -- gives the user a prompt, an echo and line editing」
- * - 本仓库自己的 `profiles/targets/board-serial.json` 写着 `"pty": true`
- * - 事实 S2 说板子**回显**命令——回显是真终端的行为
+ * This is not my judgement, three sources agree:
+ * - the legacy architecture notes: "A target that runs a real terminal --
+ *   `ssh`, **or a serial console** -- gives the user a prompt, an echo and
+ *   line editing"
+ * - this repository's own `profiles/targets/board-serial.json` says
+ *   `"pty": true`
+ * - Fact S2 says the board **echoes** commands — echoing is the behaviour of
+ *   a real terminal
  *
- * 计划的能力表把串口写成 `pty: false`，与这三条冲突，是计划错了。
- * 串口传不了文件（事实 S7）、拿不到退出码（事实 S5）——这两条不变。
+ * The capability table of the plan wrote serial as `pty: false`, which
+ * conflicts with those three; the plan was wrong. Serial cannot carry files
+ * (Fact S7) and cannot obtain an exit code (Fact S5) — those two stay.
  */
 export function serialCapabilities(): ConnectionCapabilities {
   return transportDefaults('serial');
 }
 
 /**
- * 串口端口的最小抽象——只为可测，真实实现包一层 serialport。
+ * The minimal abstraction of a serial port — only to make it testable; the
+ * real implementation wraps serialport.
  *
- * `close` 是**异步**的：serialport 的 `close()` 要等 `close` 事件才真的关完，
- * 同步返回会导致「关完就报错」。
+ * `close` is **asynchronous**: serialport's `close()` only finishes once the
+ * `close` event arrives, and returning synchronously would produce "it
+ * reports an error right after it closed".
  */
 export interface SerialPortLike {
   write(data: string): void;
   onData(cb: (chunk: string) => void): void;
-  /** 底层出错时通知（拔线、驱动异常） */
+  /** Notification when the layer below fails (cable unplugged, driver anomaly) */
   onError(cb: (err: Error) => void): void;
   close(): Promise<void>;
 }
 
 /**
- * 打开一个串口。**必须真的打开端口**——
- * `new SerialPort({autoOpen: false})` 只是构造，之后 write 会因为「端口没开」抛错，
- * 而那个错没人监听 → 主进程崩。
+ * Open a serial port. **The port must really be opened** —
+ * `new SerialPort({autoOpen: false})` only constructs the object; a later
+ * write then throws because "the port is not open", and nobody listens to
+ * that error → the main process crashes.
  */
 export type SerialPortFactory = (opts: { path: string; baudRate: number }) => Promise<SerialPortLike>;
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** 真实实现：serialport 的 SerialPort 适配成 SerialPortLike */
+/** The real implementation: serialport's SerialPort adapted to SerialPortLike */
 /**
- * 真实的串口工厂。
+ * The real serial port factory.
  *
- * **导出是为了能被测。** 之前的实现在模块内私有，于是「端口到底开没开」
- * 这件事**现在有测试守着**了——把 `await port.open()` 删掉，
- * `tests/unit/serial-real-factory.test.ts` 会立刻变红（变异守卫 M40）。
- * 而那正是整支评审的 C1：端口不开，用户第一次按键就崩主进程。
+ * **It is exported so that it can be tested.** The previous implementation
+ * was private to the module, so the question "did the port actually open"
+ * is **now guarded by a test** — delete `await port.open()` and
+ * `tests/unit/serial-real-factory.test.ts` turns red immediately (mutation
+ * guard M40). And that is exactly the C1 of the whole review: with the port
+ * not open, the main process crashes on the user's first keystroke.
  */
 export const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {
   const port = new SerialPort({ path, baudRate, autoOpen: false });
-  // 坏字节不废掉整条命令（事实 A8）——用 StringDecoder 跨 chunk 重组，
-  // 否则一个多字节字符被拆到两个 chunk 时会变成两个 U+FFFD。
+  // Bad bytes do not void the whole command (Fact A8) — a StringDecoder
+  // reassembles across chunks, otherwise a multi-byte character split across
+  // two chunks becomes two U+FFFD.
   const decoder = new StringDecoder('utf8');
   const listeners: ((chunk: string) => void)[] = [];
   const errorListeners: ((err: Error) => void)[] = [];
@@ -111,29 +124,36 @@ export class SerialConnection implements Connection {
   readonly transport = 'serial' as const;
 
   private port: SerialPortLike | undefined;
-  /** 最近一次端口层错误（拔线、驱动异常）。供上层查连接健康度 */
+  /** The most recent port-level error (cable unplugged, driver anomaly). Lets the layers above check the connection health */
   lastError: Error | undefined;
   /**
-   * 本次 exec 的回包缓冲。`undefined` = 当前没有命令在跑。
+   * The reply buffer of this exec. `undefined` = no command is running at the
+   * moment.
    *
-   * **为什么是「本次的」而不是「共享的一份 transcript」**：
-   * 原来用 `transcript.length` 当绝对下标，认领时 `slice(from)`。
-   * 但 transcript 会被裁剪（64 KB 上限），下标一旦失效就永远认不回来——
-   * 大输出（`cat` 大文件、`ls -la` 大目录）之后，**这条连接上的 exec 通道永久死亡**。
+   * **Why it is "this one" and not "one shared transcript"**:
+   * it used `transcript.length` as an absolute index and claimed with
+   * `slice(from)`. But the transcript is trimmed (64 KB cap), and once an
+   * index goes stale it can never be claimed back — after a large output
+   * (`cat` of a big file, `ls -la` of a big directory), **the exec channel of
+   * this connection is dead for good**.
    *
-   * 改成「每次 exec 用自己的缓冲，只装命令发出之后到达的数据」，
-   * 就**没有下标这回事**了：缓冲天生只含本次命令的回包。
+   * Changed to "every exec uses its own buffer, holding only the data that
+   * arrives after the command was sent", so **there is no such thing as an
+   * index** any more: the buffer naturally holds only the reply of this
+   * command.
    */
   private execBuffer: string | undefined;
   /**
-   * 往返互斥（契约 `spec/02` §1.2.1 + 事实 S1）。
+   * Round-trip mutual exclusion (contract `spec/02` §1.2.1 + Fact S1).
    *
-   * 串口只有一根线、一个读线程。命令通道和交互终端**共用一根线**——
-   * 所以同一连接上同时只能有一次往返。
+   * Serial has one wire and one reader thread. The command channel and the
+   * interactive terminal **share one wire** — so only one round trip at a
+   * time is possible on the same connection.
    *
-   * 原来这把锁只挡 exec↔exec：交互会话开着的时候，
-   * 任何一次 exec 都会把命令**追加在用户没打完的输入后面**
-   * （板端 shell 拿到的是 `ls -l /tmpuptime; echo marker`）。
+   * This lock used to block only exec↔exec: while an interactive session was
+   * open, any exec would **append the command after the input the user had
+   * not finished typing** (the shell on the board receives
+   * `ls -l /tmpuptime; echo marker`).
    */
   private busy = false;
 
@@ -146,7 +166,7 @@ export class SerialConnection implements Connection {
   }
 
   capabilities(): ConnectionCapabilities {
-    // **profile 感知**——不是传输常量（见 `capabilities.ts` 的说明）。
+    // **profile aware** — not a transport constant (see the notes in `capabilities.ts`).
     return capabilitiesFor(this.profile);
   }
 
@@ -154,8 +174,8 @@ export class SerialConnection implements Connection {
     const port = this.profile.options['port'];
     const baudRate = Number(this.profile.options['baudrate'] ?? 115200);
 
-    // 重复 open 会覆盖 `this.port`，**前一个端口句柄就泄漏了**。
-    // 先把旧的关掉。
+    // A repeated open overwrites `this.port`, and **the previous port handle
+    // leaks**. Close the old one first.
     if (this.port) {
       await this.port.close();
       this.port = undefined;
@@ -168,7 +188,7 @@ export class SerialConnection implements Connection {
       const code = (err as { code?: string } | undefined)?.code;
       const busy = code === 'EBUSY' || /busy|denied/i.test(message);
       if (busy) {
-        // RF-5：要说清是哪个端口被占，而不是笼统的「打开失败」
+        // RF-5: name the port that is busy instead of a vague "open failed"
         throw makeError('PORT_BUSY', `串口 ${String(port)} 被占用`, {
           detail: { port: String(port) },
         });
@@ -179,13 +199,15 @@ export class SerialConnection implements Connection {
     }
 
     this.port.onData((chunk) => {
-      // 只往「本次命令的缓冲」里塞。缓冲在命令发出前清空，
-      // 所以它天生只含本次命令的回包——不需要下标。
+      // Only feed the buffer of "this command". The buffer is cleared before
+      // the command is sent, so it naturally holds only the reply of this
+      // command — no index needed.
       if (this.execBuffer !== undefined) this.execBuffer += chunk;
     });
 
-    // 端口层出错（拔线、驱动异常）要有去处——
-    // 没有监听器的 'error' 事件会变成未捕获异常，把主进程带崩。
+    // A port-level error (cable unplugged, driver anomaly) has to go
+    // somewhere — an 'error' event without a listener turns into an
+    // uncaught exception and takes the main process down.
     this.port.onError((err) => {
       this.lastError = err;
     });
@@ -199,19 +221,22 @@ export class SerialConnection implements Connection {
   }
 
   /**
-   * 跑一条命令。
+   * Run a command.
    *
-   * 走 marker 协议：发命令 → 在 transcript 里认领回包。
-   * **有文本回包 = 0；超时 = 124**（事实 S5）——串口拿不到 exit status。
+   * It follows the marker protocol: send the command → claim the reply in
+   * the transcript. **A textual reply = 0; a timeout = 124** (Fact S5) —
+   * serial cannot obtain an exit status.
    */
   async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.port) {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
     if (this.busy) {
-      // 同一连接上并发往返 = 串台。宁可拒绝，也不能让两个命令互相认领对方的输出。
-      // **不是超时，是「被拒」**：两者不该同码——
-      // UI 分不清「等久了没结果」与「这条线正忙着」。
+      // Concurrent round trips on the same connection = crosstalk. Better to
+      // reject than to let two commands claim each other's output.
+      // **It is not a timeout, it is a "rejection"**: the two must not share
+      // a code — the UI cannot tell "waited long and got nothing" from
+      // "this line is busy".
       throw makeError('CONN_BUSY', '这条连接上还有命令在跑', {
         detail: { id: this.id, command },
       });
@@ -230,26 +255,30 @@ export class SerialConnection implements Connection {
     const startedAt = Date.now();
     const marker = buildMarker(process.pid, Date.now());
 
-    // 本次命令的回包缓冲：清空后再发命令，
-    // 于是缓冲里只有「命令发出之后到达的数据」。
+    // The reply buffer of this command: clear it, then send the command, so
+    // the buffer holds only "the data that arrived after the command was
+    // sent".
     this.execBuffer = '';
     try {
-      // **一行协议**（事实 S2）。
+      // **The one-line protocol** (Fact S2).
       //
-      // 板子会**回显命令**，所以同一个 marker 在回包里出现**两次**：
-      //   第一次 = 回显的那一行里（`command; echo marker` 被回显出来）
-      //   第二次 = 命令跑完后 echo 打印出来
-      // 取两次之间的内容就是命令的输出。
+      // The board **echoes commands**, so the same marker appears **twice**
+      // in the reply:
+      //   the first = on the echoed line (`command; echo marker` is echoed
+      //     back)
+      //   the second = printed by echo after the command has run
+      // The content between the two is the output of the command.
       //
-      // 如果把 marker 单独发一行，板子会先执行 `marker` 这个命令
-      // （sh: marker: not found），输出全错。
+      // If the marker is sent on a line of its own, the board first runs
+      // `marker` as a command (sh: marker: not found) and the output is
+      // completely wrong.
       //
-      // 事实 S4：getty 期待 CR，只发 \n 可能不换行
+      // Fact S4: getty expects CR, sending only \n may not produce a newline
       this.port?.write(`${command}; echo ${marker}\r\n`);
 
       const output = await this.waitForMarker(marker, timeoutMs, opts?.signal);
       const timedOut = output === undefined;
-      // **取消**与**超时**分开 ✓（串口上没有退出码 ✓，只能用标记区分 ✓）
+      // **Cancellation** and **timeout** are kept apart ✓ (serial has no exit code ✓, only a flag can tell them apart ✓)
       const cancelled = output === undefined && opts?.signal?.aborted === true;
 
       const portName = this.profile.options['port'];
@@ -260,12 +289,15 @@ export class SerialConnection implements Connection {
         durationMs: Date.now() - startedAt,
         timedOut: timedOut && !cancelled,
         ...(cancelled ? { cancelled: true } : {}),
-        // 超时的**第一嫌疑**是「回包被别的程序吃了」，不是「板子慢」。
+        // The **prime suspect** for a timeout is "the reply was eaten by
+        // another program", not "the board is slow".
         //
-        // 真机上真踩过（2026-11-13）：宿主上计划 1 验收留下的 `serial-server.py`
-        // **独占打开了 COM3** —— 板子是活的、串口是通的，
-        // 但**回包被它吃掉**，所以应用自己的 exec 永远等不到。
-        // 不说清楚，人就会往「板子是不是死了」的方向查。
+        // This really happened on a real board (2026-11-13): the
+        // `serial-server.py` left behind by the Plan 1 acceptance run on the
+        // host **opened COM3 exclusively** — the board was alive, the serial
+        // line was fine, but **the reply was eaten by it**, so the
+        // application's own exec waited forever. Without saying so, people
+        // go looking in the "is the board dead" direction.
         ...(timedOut && !cancelled
           ? {
               hint:
@@ -281,17 +313,17 @@ export class SerialConnection implements Connection {
     }
   }
 
-  /** 串口传不了文件（事实 S7） */
+  /** Serial cannot carry files (Fact S7) */
   async list(_remotePath: string): Promise<FileEntry[]> {
     throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
   }
 
-  /** 串口传不了文件（事实 S7） */
+  /** Serial cannot carry files (Fact S7) */
   async pull(_remotePath: string, _localPath: string): Promise<void> {
     throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
   }
 
-  /** 串口传不了文件（事实 S7） */
+  /** Serial cannot carry files (Fact S7) */
   async push(_localPath: string, _remotePath: string): Promise<void> {
     throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
   }
@@ -301,20 +333,22 @@ export class SerialConnection implements Connection {
       throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
     }
     if (this.busy) {
-      // 同一根线上已经有一次往返了（事实 S1：命令通道与交互终端共用一根线）。
-      // 宁可拒绝，也不能把命令追加在用户没打完的输入后面。
+      // There is already a round trip on this wire (Fact S1: the command
+      // channel and the interactive terminal share one wire). Better to reject
+      // than to append the command after the input the user has not finished
+      // typing.
       throw makeError('CONN_BUSY', '这条连接上已经有命令在跑', {
         detail: { id: this.id },
       });
     }
-    // 交互会话占住这条线，直到它关闭
+    // The interactive session holds the line until it closes
     this.busy = true;
     return new SerialSession(this.port, this.log, () => {
       this.busy = false;
     });
   }
 
-  /** 等 marker 出现第二次。返回输出文本；超时返回 undefined */
+  /** Wait for the marker to appear a second time. Returns the output text; undefined on timeout */
   private waitForMarker(
     marker: string,
     timeoutMs: number,
@@ -324,14 +358,18 @@ export class SerialConnection implements Connection {
     return new Promise((resolve) => {
       const check = (): void => {
         const chunk = this.execBuffer ?? '';
-        // marker 出现两次才算收齐（板子回显一次 + 输出后一次）
+        // The marker has to appear twice to count as complete (echoed once by the board + once after the output)
         if (chunk.split(marker).length - 1 >= 2) {
           resolve(extractMarkerOutput(chunk, marker));
           return;
         }
-        // **被取消了 → 明确放弃** ✓（契约 §5.2 的「放弃等这个 marker」✓）
-        // → 串口上**没法杀远端的进程** ✓（那不是一条 shell 连接 ✗）
-        // → 至少**宿主不等了** ✓（尖兵实测：收到取消后照跑完 ✗ —— 就是因为宿主还在等 ✗）
+        // **It was cancelled → give up explicitly** ✓ (the "abandon waiting
+        // for this marker" of contract §5.2 ✓)
+        // → On serial there is **no way to kill the remote process** ✓ (it is
+        //   not a shell connection ✗)
+        // → At least **the host stops waiting** ✓ (the vanguard's real-device
+        //   test: it ran to completion after being cancelled ✗ — precisely
+        //   because the host was still waiting ✗)
         if (signal?.aborted === true) {
           resolve(undefined);
           return;
@@ -348,22 +386,23 @@ export class SerialConnection implements Connection {
 }
 
 /**
- * 串口的交互式会话。
+ * The interactive session of serial.
  *
- * **端口归连接所有，会话不关它**——关会话是连接的职责（`connection.close()`）。
- * 会话只负责释放那把「往返互斥」的锁。
+ * **The port belongs to the connection; the session does not close it** —
+ * closing the session is the job of the connection (`connection.close()`).
+ * The session only releases the "round-trip mutual exclusion" lock.
  */
 class SerialSession extends Session {
   constructor(
     private readonly port: SerialPortLike,
     log: SessionLog,
-    /** 会话关闭时的回调。用来释放连接的往返互斥锁 */
+    /** The callback when the session closes. It releases the round-trip mutual exclusion lock of the connection */
     private readonly onClose: () => void,
   ) {
     super(log);
   }
 
-  /** 串口拿不到退出码（事实 S5） */
+  /** Serial cannot obtain an exit code (Fact S5) */
   readonly exitCode: number | null = null;
 
   write(data: string): void {
@@ -376,7 +415,7 @@ class SerialSession extends Session {
   }
 
   resize(_cols: number, _rows: number): void {
-    // 串口没有窗口尺寸概念
+    // Serial has no concept of a window size
   }
 
   close(): void {

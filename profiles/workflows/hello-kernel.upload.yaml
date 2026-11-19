@@ -1,14 +1,16 @@
-# 编译上板 · 第二步：只上传（要求编译产物已经存在）。
+# Build and deploy · Step two: upload only (requires the build artefacts to
+# exist already).
 #
-# 先按规则发现 *.ko，再直传到板子的内核模块目录，最后在板子上 test -f。
+# First discover the *.ko by rule, then transfer it straight to the kernel
+# module directory of the board, and finally run `test -f` on the board.
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.upload
-name: 上传内核模块
+name: Upload a kernel module
 version: 1.0.0
-description: 把构建机上的内核模块直传到板子的模块目录，并在板子上确认文件存在。
+description: Transfer the kernel module from the build machine straight to the module directory of the board, and confirm on the board that the file exists.
 
 inputs:
   build_dir:
@@ -16,20 +18,20 @@ inputs:
     required: false
     default: /home/alientek/build
     maxLength: 200
-    description: 构建机上的工程根目录
+    description: The project root on the build machine
   project:
     type: string
     required: false
     default: 01-hello
     maxLength: 200
-    description: 项目目录名（相对 build_dir）
+    description: The name of the project directory (relative to build_dir)
 
 roles:
   build:
-    purpose: 编译所在（客机）
+    purpose: Where the build runs (the client machine)
     profile: ubuntu-ssh
   target:
-    purpose: 板子
+    purpose: The board
     profile: board-adb
 
 steps:

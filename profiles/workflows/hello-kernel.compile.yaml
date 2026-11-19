@@ -1,15 +1,17 @@
-# 编译上板 · 第一步：只编译，不上板。
+# Build and deploy · Step one: compile only, do not deploy.
 #
-# 这是「编译上板」卡的三段式里的第一段。参数都给了默认值，用户可以在卡里
-# 改；留空就用默认值。真正执行仍在系统流程层，卡片只负责把参数递进去。
+# This is the first of the three stages of the "build and deploy" card. Every
+# parameter carries a default that the user can change in the card; leaving it
+# alone uses the default. The execution itself still happens in the system
+# workflow layer, the card only passes the parameters in.
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.compile
-name: 编译内核模块
+name: Compile a kernel module
 version: 1.0.0
-description: 在构建机上编译 hello 内核模块，只编译，不传输。
+description: Compile the hello kernel module on the build machine, compile only, no transfer.
 
 inputs:
   build_dir:
@@ -17,24 +19,25 @@ inputs:
     required: false
     default: /home/alientek/build
     maxLength: 200
-    description: 构建机上的工程根目录
+    description: The project root on the build machine
   project:
     type: string
     required: false
     default: 01-hello
     maxLength: 200
-    description: 项目目录名（相对 build_dir）
+    description: The name of the project directory (relative to build_dir)
 
 roles:
   build:
-    purpose: 编译所在（客机）
+    purpose: Where the build runs (the client machine)
     profile: ubuntu-ssh
 
 steps:
   - id: compile
     kind: exec
     role: build
-    # cd（不是 make -C）：这个 Makefile 用 $(PWD) 算模块目录。
+    # `cd` rather than `make -C`: this Makefile computes the module directory
+    # from $(PWD).
     cmd: "cd {input:build_dir}/{input:project} && make"
     timeout_ms: 1800000
     readback:

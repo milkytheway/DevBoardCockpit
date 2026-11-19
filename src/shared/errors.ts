@@ -1,8 +1,8 @@
 /**
- * 全工程统一的错误形状。
+ * The error shape used across the project.
  *
- * 契约：`docs/04-架构设计.md` §11.1。
- * 错误码族见下表——**新增码要在这里登记**，不要散落在各处。
+ * Every error code is listed here. A new code must be registered in this
+ * list rather than introduced at the point of use.
  */
 
 export type ErrorCode =
@@ -18,24 +18,25 @@ export type ErrorCode =
   | 'INTERNAL';
 
 /**
- * 错误**必须是 Error 实例**，不能是普通对象。
+ * Errors must be `Error` instances, not plain objects.
  *
- * 理由是一条真实踩过的坑：Electron 的 `ipcRenderer.invoke` 在主进程抛错时，
- * 会把错误包成 `new Error("Error invoking remote method 'x': " + error)`。
- * 如果主进程抛的是普通对象，`String(error)` 就是 **`[object Object]`**——
- * 用户在界面上看到的是
- * 「Error invoking remote method 'terminal:open': [object Object]」，
- * 而「串口 COM3 被占用」这句话**永远到不了用户眼前**。
+ * The reason is a defect that was actually hit: when the main process throws
+ * during `ipcRenderer.invoke`, Electron wraps it as
+ * `new Error("Error invoking remote method 'x': " + error)`. If the main
+ * process threw a plain object, `String(error)` would be `[object Object]`,
+ * and the user would see
+ * "Error invoking remote method 'terminal:open': [object Object]"
+ * while the sentence "serial port COM3 is busy" never reached the screen.
  *
- * 所以：错误码、消息、可重试性都挂在**实例**上，
- * 跨 IPC 时用 `toAppErrorPayload` 拍平成普通数据再传，
- * 到对面用 `appErrorToException` 还原成实例。
+ * The code, the message and the retryability therefore live on the instance.
+ * Across the IPC boundary `toAppErrorPayload` flattens the error into plain
+ * data, and `appErrorToException` restores it on the other side.
  */
 export class AppError extends Error {
   readonly code: ErrorCode;
-  /** 同样的输入再来一次会不会成功 */
+  /** Whether the same input would succeed on a retry */
   readonly retryable: boolean;
-  /** 补充信息（端口号、字段名……）。只放安全信息，不放堆栈 */
+  /** Supplementary information (port number, field name). Safe data only, no stack */
   readonly detail?: unknown;
 
   constructor(
@@ -59,7 +60,7 @@ export function makeError(
   return new AppError(code, message, extra);
 }
 
-/** 跨 IPC 传的错误载荷（普通数据，能被结构化克隆） */
+/** The error payload carried across the IPC boundary (plain, structured-cloneable data) */
 export interface AppErrorPayload {
   code: ErrorCode;
   message: string;
@@ -68,10 +69,11 @@ export interface AppErrorPayload {
 }
 
 /**
- * 任何抛出物 → 可跨 IPC 的载荷。
+ * Any thrown value becomes a payload that can cross the IPC boundary.
  *
- * 不是 AppError 的（原生 Error、字符串、随便一个对象）一律归到 `INTERNAL`，
- * 但**消息要保住**——那是用户唯一能看懂的东西。
+ * Values that are not `AppError` (a native `Error`, a string, an arbitrary
+ * object) are mapped to `INTERNAL`, but the message is preserved: it is the
+ * only part the user can read.
  */
 export function toAppErrorPayload(err: unknown): AppErrorPayload {
   if (err instanceof AppError) {
@@ -89,10 +91,11 @@ export function toAppErrorPayload(err: unknown): AppErrorPayload {
 }
 
 /**
- * 载荷 → Error 实例（对面收到时还原成带错误码的异常）。
+ * Payload becomes an `Error` instance, so the receiving side gets an
+ * exception it can branch on by `err.code`.
  *
- * renderer 侧于是可以按 `err.code` 分支的——
- * 「串口被占用」和「板子不在线」要给的提示不一样。
+ * "The serial port is busy" and "the board is offline" need different
+ * messages, and the code is what distinguishes them.
  */
 export function appErrorToException(payload: AppErrorPayload): AppError {
   return new AppError(payload.code, payload.message, {

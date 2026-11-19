@@ -1,8 +1,8 @@
 {
-  "$comment": "宿主工具与全局设置。机器专属路径只在这里出现，不要写进代码（见 AGENTS.md）。",
+  "$comment": "Host tools and global settings. Machine-specific paths belong here only, never in code (see AGENTS.md).",
   "hostTools": {
     "adb": "C:\\Users\\Administrator\\Downloads\\platform-tools_r33.0.3-windows\\platform-tools\\adb.exe",
-    "$comment.adb": "宿主 adb 不在 PATH（where adb 查不到）。也可留 null，让应用按 PATH → 常见安装位置自行查找。"
+    "$comment.adb": "The host adb is not on PATH (where adb finds nothing). This may also be left null, letting the app look it up by PATH and then by the usual install locations."
   },
   "app": {
     "name": "DevBoardCockpit",

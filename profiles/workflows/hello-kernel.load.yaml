@@ -1,15 +1,17 @@
-# 编译上板 · 第三步：只加载（要求模块已经上传到板子）。
+# Build and deploy · Step three: load only (requires the module to have been
+# uploaded to the board already).
 #
-# depmod -a 后按名字 modprobe；不按路径 insmod（放置规范 §4 硬规矩 2）。
-# 最后在板子上用 lsmod 确认它真的加载了。
+# Run `depmod -a` and then `modprobe` by name; not `insmod` by path (rule P2 of
+# docs/02 section 3.5). Finally confirm on the board with `lsmod` that it is
+# really loaded.
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.load
-name: 加载内核模块
+name: Load a kernel module
 version: 1.0.0
-description: 在板子上 depmod 后按名字加载模块，并用 lsmod 确认加载成功。
+description: Load the module on the board by name after depmod, and confirm the load with lsmod.
 
 inputs:
   module:
@@ -17,11 +19,11 @@ inputs:
     required: false
     default: hello
     maxLength: 100
-    description: 模块名（不带 .ko）
+    description: The name of the module (without .ko)
 
 roles:
   target:
-    purpose: 板子
+    purpose: The board
     profile: board-adb
 
 steps:

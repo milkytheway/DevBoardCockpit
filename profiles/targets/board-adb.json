@@ -1,6 +1,6 @@
 {
   "id": "board-adb",
-  "label": "板子 · ADB",
+  "label": "Board · ADB",
   "transport": "adb",
   "board_pack": "rk3588-atk",
   "device_key": "atk-01",

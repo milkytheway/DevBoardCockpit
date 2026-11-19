@@ -1,15 +1,18 @@
 /**
- * 会话启动时注入的环境脚本。
+ * Environment script injected when a session starts.
  *
- * 两处都是旧工程踩过的坑：
+ * Both entries come from pitfalls the old project ran into:
  *
- * - **事实 A2**：adb 把 `TERM` 设成 `dumb`，GNU coreutils 直接拒绝着色
- *   （`--color=always` 也没用）。所以会话启动时 `export TERM=xterm-256color`。
- * - **事实 A3**：非交互 shell **不展开 alias**，所以 `alias ls='ls --color=auto'`
- *   静默无效。必须用 **shell 函数** `ls() { command ls -C --color=always "$@"; }`，
- *   且要带 `-C`（多列排版）。
+ * - **Fact A2**: adb sets `TERM` to `dumb`, and GNU coreutils refuses to
+ *   colorize outright (`--color=always` does not help either). So the session
+ *   starts with `export TERM=xterm-256color`.
+ * - **Fact A3**: a non-interactive shell does **not** expand aliases, so
+ *   `alias ls='ls --color=auto'` fails silently. It has to be a **shell
+ *   function**: `ls() { command ls -C --color=always "$@"; }`, and it needs
+ *   `-C` (multi-column layout).
  *
- * 这段脚本由宿主在每次会话开始时执行一次，不是每次命令。
+ * The host runs this script once at the start of every session, not once per
+ * command.
  */
 export function terminalEnvScript(): string {
   return [

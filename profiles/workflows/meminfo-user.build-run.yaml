@@ -1,43 +1,45 @@
-# 黄金样本 · 用户态程序：客机编译 → **直传板子** → 落位 → 运行 → 看输出
+# Golden sample · User space program: compile on the client machine →
+# **transfer straight to the board** → place → run → look at the output
 #
-# ── 与内核模块那份的差别 ──
+# ── How it differs from the kernel module one ──
 #
-# ① 落位不同（`user-program` → `/usr/local/bin/`）；
-# ② **可执行文件要 chmod +x**（放置规范 §4 硬规矩 4）；
-# ③ **最后一步是「运行并看输出」**——不是量测，是**命令的输出**
-#    → 判据用 `verify`（跑一次并看退出码）。
+# ① The placement differs (`user-program` → `/usr/local/bin/`);
+# ② **The executable needs chmod +x** (rule P4 of docs/02 section 3.5);
+# ③ **The last step is "run it and look at the output"** — not a
+#    measurement but the **output of the command**
+#    → the criterion is `verify` (run it once and look at the exit code).
 
 apiVersion: devboard/v1
 kind: Workflow
 
 id: meminfo-user.build-run
-name: 编译用户态程序 → 直传板子 → 运行 → 看输出
+name: Compile a user space program → transfer straight to the board → run → look at the output
 version: 1.0.0
-description: 在客机上编译用户态程序，直传到板子的 /usr/local/bin/，运行并确认它跑起来了。
+description: Compile the user space program on the client machine, transfer it straight to /usr/local/bin/ on the board, run it and confirm that it runs.
 
 inputs:
   build_dir:
     type: path
     required: true
     maxLength: 200
-    description: 构建机上的工程根目录（**机器专属的值走这里，不进包** ✓）
+    description: The project root on the build machine (machine-specific values go here, they do not enter the pack)
   project:
     type: string
     required: true
     maxLength: 200
-    description: 项目目录名（相对 build_dir）
+    description: The name of the project directory (relative to build_dir)
   artifact:
     type: string
     required: true
     maxLength: 100
-    description: 要送板子的那个可执行文件（**工程自己叫什么，是工程的事** ✓）
+    description: The executable that goes to the board (what the project calls it is the project's business)
 
 roles:
   build:
-    purpose: 编译所在（客机）
+    purpose: Where the build runs (the client machine)
     profile: ubuntu-ssh
   target:
-    purpose: 板子
+    purpose: The board
     profile: board-adb
 
 steps:
@@ -67,7 +69,8 @@ steps:
       placement: user-program
     cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 600000
-    # **目的地路径进这个槽**（后面两步要用它）
+    # **The destination path goes into this slot** (the two later steps use
+    # it)
     out: dest
     readback:
       kind: verify
@@ -75,7 +78,7 @@ steps:
       command: "test -f {to.path}"
       timeout_ms: 30000
 
-  # **可执行文件要 chmod +x**（放置规范 §4 硬规矩 4）
+  # **The executable needs chmod +x** (rule P4 of docs/02 section 3.5)
   - id: make-executable
     kind: exec
     role: target

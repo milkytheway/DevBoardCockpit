@@ -1,40 +1,46 @@
 import { matchDangerFloorArgv, tokenizeCommand, type FloorMatch } from '../tags/floor';
 
 /**
- * 危险地板的**运行时复查** —— 契约 `docs/spec/02-board-pack.md` §5.2.1。
+ * The runtime re-check of the danger floor — contract
+ * `docs/spec/02-board-pack.md` §5.2.1.
  *
- * ── 它与校验器的那次复查差在哪 ──
+ * ── How it differs from the validator's check ──
  *
- * | | 查的对象 | 什么时候 |
+ * | | What it inspects | When |
  * |---|---|---|
- * | 校验器（规则 16） | **命令模板** | 装包时 |
- * | **这里** | **编码后的最终命令** | 每次执行前 |
+ * | The validator (rule 16) | The command template | At pack install time |
+ * | Here | The encoded final command | Before every execution |
  *
- * 差别就是**参数值**：模板 `rm -rf {dir}` 干干净净，
- * 而 `dir` 的值是 `/` 时，最终命令就是 `rm -rf /`。
- * → **危险动作只在模板里查是不够的**（§5.3 说过这件事）。
+ * The difference is the parameter values: the template `rm -rf {dir}` is
+ * clean, while when the value of `dir` is `/` the final command is
+ * `rm -rf /`.
+ * → Checking dangerous actions in the template alone is not enough (§5.3 says
+ *   exactly this).
  *
- * ── 处置 ──
+ * ── Disposition ──
  *
- * **命中 → 按 `destructive` 处理**（走确认通道，不是直接拒绝）——
- * §5.2.1：「运行时在执行一个动作前，把命令和地板表对一遍。
- * 命中任何一条，这个动作按 destructive 处理」。
+ * A hit → treat it as `destructive` (it goes through the confirmation
+ * channel, not an outright refusal) —
+ * §5.2.1: "before the runtime executes an action, it compares the command
+ * against the floor table. Any hit means the action is treated as
+ * destructive".
  *
- * **没命中 ≠ 安全**（§5.2）：表里没有的模式按包的声明走，
- * 但**必须记一条 warning**。
+ * No hit ≠ safe (§5.2): a pattern that is not in the table is governed by the
+ * pack's declaration, but a warning must be recorded.
  */
 export interface FloorVerdict extends FloorMatch {
-  /** 命中 → 按 `destructive` 处理；没命中 → `ok` */
+  /** A hit → treat it as `destructive`; no hit → `ok` */
   verdict: 'ok' | 'destructive';
-  /** 没命中时的告警（**匹配不上不等于安全**） */
+  /** The warning when nothing was hit (not matching the floor does not mean safe) */
   warning: string | null;
 }
 
 /**
- * 拿 **argv** 撞地板。
+ * Run the argv against the floor.
  *
- * **不重新切词** —— 传进来的就是 shell 会看到的那些词
- * （切词的是 `tokenizeCommand`，编码器与这里共用它）。
+ * It does not tokenize again — the words passed in are exactly the ones the
+ * shell will see (tokenization is done by `tokenizeCommand`, which the
+ * encoder and this module share).
  */
 export function checkFloorArgv(argv: string[]): FloorVerdict {
   const match = matchDangerFloorArgv(argv);
@@ -51,9 +57,9 @@ export function checkFloorArgv(argv: string[]): FloorVerdict {
 }
 
 /**
- * 拿一条**最终命令**（编码后）撞地板。
+ * Run a final command (after encoding) against the floor.
  *
- * @param command 编码后的命令（`actions/encoder` 的产物）。
+ * @param command The encoded command (the product of `actions/encoder`).
  */
 export function checkFloor(command: string): FloorVerdict {
   return checkFloorArgv(tokenizeCommand(command));

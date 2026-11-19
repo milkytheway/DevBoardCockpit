@@ -1,48 +1,57 @@
 import type { ActionDef, PackGuard, PackParam } from '../tags/schema';
 
 /**
- * 授权 —— 契约 `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4。
+ * Authorization — contract `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4.
  *
- * ── **只有两条判据**（**2026-11-16 砍完** ✓ · ADR-D48 ✓）──
+ * ── Only two criteria (cut down on 2026-11-16 ✓ · implementation decision
+ *    record ADR-D48 ✓) ──
  *
- * | 判据 | 不满足时 |
+ * | Criterion | When it is not met |
  * |---|---|
- * | **这个动作在授权集里吗** ✓（**卡片的 manifest 声明** ✓ / **agent 的授权集 = 当前包的全部动作** ✓） | **拒绝** ✓ |
- * | **参数落在 `guard` 域内吗** ✓（**guard 是包作者划的界** ✓ —— 契约 §5.5 ✓） | **拒绝** ✓ |
+ * | Is this action in the granted set ✓ (declared by the card's manifest ✓ / an agent's granted set = all the actions of the current pack ✓) | Denied ✓ |
+ * | Do the parameters fall inside the `guard` domain ✓ (the guard is the line the pack author drew ✓ — contract §5.5 ✓) | Denied ✓ |
  *
- * ── **不再有「停下来问人」** ✓ ──
+ * ── There is no more "stop and ask a human" ✓ ──
  *
- * → **destructive 只是信息** ✓（**设置页的权限区里写着** ✓ —— 「**开启权限默认知道危险性**」✓）。
- * → **命中危险地板不再要确认** ✓（**地板是校验与显示用的** ✓ —— 契约 §5.2.1 ✓）。
- * → **超 guard 域 → 拒绝** ✓（**不是「问不问」** ✓ —— **那是包作者划的界** ✓）。
+ * → `destructive` is only information ✓ (it is written down in the
+ *   permission area of the settings page ✓ — "turning a permission on means
+ *   you know it is dangerous" ✓).
+ * → Hitting the danger floor no longer requires a confirmation ✓ (the floor
+ *   is there for validation and display ✓ — contract §5.2.1 ✓).
+ * → Outside the guard domain → denied ✓ (it is not a question of "should we
+ *   ask" ✓ — that is the line the pack author drew ✓).
  *
- * → **要控制什么，去设置里的统一权限区** ✓（**ADR-D47** ✓）—— **一个地方一个开关** ✓。
+ * → To control what may be done, use the unified permission area in the
+ *   settings ✓ (implementation decision record ADR-D47 ✓) — one place, one
+ *   switch ✓.
  */
 
-/** 已授权的动作（装卡时用户批准的） */
+  /** Granted actions (approved by the user when the card was installed) */
 export interface GrantedActions {
   /**
-   * 动作 id → 批准的参数域（**按参数名**，形状与动作自己的 `guard` 一样）。
+   * Action id → the approved parameter domain (by parameter name, the same
+   * shape as the action's own `guard`).
    *
-   * `undefined` = 批准了这个动作，但**没有缩小**参数域
-   * （等价于 guard = 参数自己声明的完整域）。
+   * `undefined` = the action was approved but its parameter domain was not
+   * narrowed (equivalent to guard = the full domain the parameter itself
+   * declares).
    */
   actions: Record<string, Record<string, PackGuard> | undefined>;
 }
 
-/** 授权的结论（**2026-11-16：没有「要确认」这一档了** ✓ —— ADR-D48 ✓） */
+  /** The authorization verdict (on 2026-11-16 there is no "needs confirmation" tier any more ✓ — implementation decision record ADR-D48 ✓) */
 export type AuthorizationVerdict = 'ok' | 'denied';
 
-/** 授权结果 */
+  /** The authorization result */
 export interface AuthorizationResult {
   verdict: AuthorizationVerdict;
-  /** 给人看的一句话 */
+  /** One line for a human to read */
   detail?: string;
-  /** 哪个参数超了域（说清楚是哪一条** ✓） */
+  /** Which parameter went out of its domain (say exactly which one ✓) */
   param?: string;
 }
 
-/** 一个值落在这个域里吗 */
+  /** Does a value fall inside this domain */
 function withinRange(value: unknown, range: { min?: number; max?: number } | undefined): boolean {
   if (range === undefined) return true;
   if (typeof value !== 'number' || !Number.isFinite(value)) return false;
@@ -52,31 +61,37 @@ function withinRange(value: unknown, range: { min?: number; max?: number } | und
 }
 
 /**
- * 判断这个动作能不能直接执行（**不满足就是拒绝** ✓ —— **没有第三种** ✓）。
+ * Decide whether this action may be executed directly (failing a criterion
+ * is a denial ✓ — there is no third outcome ✓).
  *
- * @param action 板型包里声明的动作
- * @param params 本次调用的**原始**参数值
- * @param granted 授权集（**卡片的 manifest 声明** ✓ / **agent 的 = 当前包的全部动作** ✓）
+ * @param action The action declared in the board pack
+ * @param params The raw parameter values of this call
+ * @param granted The granted set (declared by the card's manifest ✓ / for an
+ *   agent, = all the actions of the current pack ✓)
  */
 export function authorize(
   action: ActionDef,
   params: Record<string, unknown>,
   granted: GrantedActions,
 ): AuthorizationResult {
-  // 1) 授权集里有没有这个动作
+  // 1) Is this action in the granted set
   if (!Object.prototype.hasOwnProperty.call(granted.actions, action.id)) {
     return { verdict: 'denied', detail: `动作「${action.id}」没有获得授权` };
   }
 
-  // 2) 参数域：**guard 是包作者划的界** ✓（契约 §5.5 ✓）
-  //    → **超出去就拒绝** ✓（**不是「要不要问」** ✓ —— ADR-D48 ✓）
+    // 2) The parameter domain: the guard is the line the pack author drew ✓
+    //    (contract §5.5 ✓)
+    //    → Outside it, deny ✓ (it is not a question of "should we ask" ✓ —
+    //      implementation decision record ADR-D48 ✓)
   const grantedDomain = granted.actions[action.id];
   const guard = action.guard ?? {};
   for (const [name, spec] of Object.entries(action.params ?? {})) {
     const paramSpec = spec as PackParam;
-    // **参数域只管数值参数**——min/max 是数字，
-    // 套到 string/enum 上只会得到「永远超出」这种假拒绝。
-    // （字符串的长度由 `maxLength` 管，编码器已经拒了。）
+    // The parameter domain only governs numeric parameters — min/max are
+    // numbers, and applying them to a string/enum only produces a false
+    // denial of "always out of range".
+    // (String length is handled by `maxLength`; the encoder already rejects
+    // those.)
     if (paramSpec.type !== 'integer' && paramSpec.type !== 'number') continue;
     const range =
       grantedDomain?.[name] ?? guard[name] ?? { min: paramSpec.min, max: paramSpec.max };
@@ -92,7 +107,7 @@ export function authorize(
   return { verdict: 'ok' };
 }
 
-/** 把范围说成人话 */
+/** Put the range into plain language */
 function describeRange(range: { min?: number; max?: number }): string {
   if (range.min !== undefined && range.max !== undefined) return `${range.min} .. ${range.max}`;
   if (range.min !== undefined) return `≥ ${range.min}`;

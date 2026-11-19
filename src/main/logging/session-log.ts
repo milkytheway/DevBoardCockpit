@@ -2,25 +2,29 @@ import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 会话日志。
+ * The session log.
  *
- * 旧工程事实 G4：**崩溃/重启/关窗都不能丢记录**，
- * 每行落盘 + flush、ANSI 码剥掉、路径
- * `%LOCALAPPDATA%/<App>/logs/<date>/<label>-<HHMMSS>.log`。
+ * Legacy project fact G4: a crash, a restart or closing the window must
+ * never lose records — every line is written to disk and flushed, the ANSI
+ * codes are stripped, and the path is
+ * `%LOCALAPPDATA%/<App>/logs/<date>/<label>-<HHMMSS>.log`.
  *
- * 这里用**同步写**（`appendFileSync`）：每次开合文件本身就是「每行 flush」，
- * 进程被 kill 时已写的行不会丢。异步写要处理背压与 flush 时机，
- * 对一个每秒几行的会话日志来说不值得。
+ * The writes here are synchronous (`appendFileSync`): opening and closing
+ * the file for every write is itself a "flush per line", so the lines that
+ * were written before the process was killed are not lost. Asynchronous
+ * writes would have to deal with backpressure and with when to flush, which
+ * is not worth it for a session log of a few lines per second.
  *
- * ── 格式的前身是旧工程 ──
+ * ── The format comes from the legacy project ──
  *
- * `fixtures/session-log/serial-session.log` 这份黄金样本**是旧工程的
- * `SessionLog` 产出的**（`DevBoardConsole/devboard_console/core/session_log.py`）。
- * 所以格式不是猜的，是有出处的：
+ * The golden sample `fixtures/session-log/serial-session.log` was produced
+ * by the legacy project's `SessionLog`
+ * (`DevBoardConsole/devboard_console/core/session_log.py`). So the format
+ * is not guessed, it has a source:
  *
  * ```
- * [02:15:07.054] === session opened 2026-11-12 02:15:07 target=板子 · 串口 transport=serial ===
- * [02:15:07.054] --- connected 板子 · 串口 ===
+ * [02:15:07.054] === session opened 2026-11-12 02:15:07 target=<label> · serial transport=serial ===
+ * [02:15:07.054] --- connected <label> · serial ---
  * [02:15:10.071] drwxr-xr-x   3 root root 4.0K Aug 27  2026 data/
  * ...
  * [02:19:47.165] --- disconnected ---
@@ -28,47 +32,55 @@ import { join } from 'node:path';
  * === session closed 2026-11-12 02:20:10 ===
  * ```
  *
- * 四条规矩：
- * 1. **每一行都有 `[HH:mm:ss.SSS]` 前缀**（多行 chunk 也要逐行加——
- *    旧工程是 `split("\n")` 后逐行写；不逐行加，第二行就没了前缀）。
- * 2. **会话开/关与事件行**：`=== session opened ... ===`、
- *    `--- connected ... ---`、`=== session closed ... ===`。
- *    注意**收尾那一行没有时间戳**——旧工程是直接写句柄的。
- * 3. **ANSI 全部剥掉**，包括 `ESC[?25l`（隐藏光标）与 OSC 序列。
- * 4. `\r\n` / `\r` 归一成 `\n`——串口控制台的行尾是 CR。
+ * Four rules:
+ * 1. Every line carries the `[HH:mm:ss.SSS]` prefix (a multi-line chunk is
+ *    prefixed line by line — the legacy project wrote line by line after
+ *    `split("\n")`; without prefixing line by line, the second line would
+ *    have no prefix).
+ * 2. The session open/close lines and the event lines:
+ *    `=== session opened ... ===`, `--- connected ... ---`,
+ *    `=== session closed ... ===`. Note that the closing line carries no
+ *    timestamp — the legacy project wrote it straight to the handle.
+ * 3. All ANSI is stripped, including `ESC[?25l` (hide cursor) and OSC
+ *    sequences.
+ * 4. `\r\n` / `\r` are normalised to `\n` — the serial console ends its
+ *    lines with CR.
  */
 
 export interface SessionLogOptions {
-  /** 进文件名，如 'board-serial' */
+  /** Goes into the file name, e.g. 'board-serial' */
   label: string;
-  /** 绝对路径，测试传临时目录 */
+  /** An absolute path; the tests pass a temporary directory */
   dataDir: string;
-  /** 传输种类。写进「session opened」那行（旧工程也写） */
+  /** The kind of transport. Written into the "session opened" line (the legacy project wrote it too) */
   transport?: string;
-  /** 注入时钟，默认 () => new Date()。测试用固定时间保证文件名可预测 */
+  /** An injected clock, `() => new Date()` by default. The tests use a fixed time so that the file name is predictable */
   now?: () => Date;
 }
 
 /**
- * 去掉 ANSI 转义序列。
+ * Removes ANSI escape sequences.
  *
- * **覆盖三种形态**（旧工程 `ANSI_RE` 的口径）：
- * - CSI：`ESC [ <参数> <中间字节> <最终字节>`，参数里可以有 `?`（私有）
- * - OSC：`ESC ] ... BEL`（窗口标题）
- * - 单字符：`ESC <字母>`（例如 `ESC c`）
+ * It covers three forms (the scope of the legacy project's `ANSI_RE`):
+ * - CSI: `ESC [ <params> <intermediate bytes> <final byte>`, the params may
+ *   contain `?` (private)
+ * - OSC: `ESC ] ... BEL` (window title)
+ * - A single character: `ESC <letter>` (for example `ESC c`)
  *
- * 旧工程的实现只认 `ESC[` + 数字，**漏了 `ESC[?25l`（隐藏光标）与 OSC**——
- * 日志里会留下半截转义码。
+ * The legacy implementation only recognised `ESC[` plus digits and missed
+ * `ESC[?25l` (hide cursor) and OSC — half an escape code was left in the
+ * log.
  */
 export function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   const CSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
   /**
-   * OSC 序列：`ESC ] <内容> <终止符>`。
+   * An OSC sequence: `ESC ] <content> <terminator>`.
    *
-   * **终止符有两个**：BEL（`\x07`）与 ST（`ESC \`）。
-   * xterm 与多数现代 shell 在 OSC 0/2（窗口标题）、OSC 8（超链接）上用 ST——
-   * 只认 BEL 的话，日志里会留下 `0;titletext` 这种半截。
+   * There are two terminators: BEL (`\x07`) and ST (`ESC \`).
+   * xterm and most modern shells use ST for OSC 0/2 (window title) and OSC 8
+   * (hyperlink) — recognising BEL only would leave half a sequence such as
+   * `0;titletext` in the log.
    */
   // eslint-disable-next-line no-control-regex
   const OSC = /\x1b\](?:[^\x07\x1b]|\x1b(?!\\))*(?:\x07|\x1b\\)/g;
@@ -77,7 +89,7 @@ export function stripAnsi(s: string): string {
   return s.replace(CSI, '').replace(OSC, '').replace(CH, '');
 }
 
-/** 时间戳前缀 `[HH:mm:ss.SSS]`（本地时间） */
+/** The timestamp prefix `[HH:mm:ss.SSS]` (local time) */
 export function formatTimestamp(at: Date): string {
   const pad = (n: number, w = 2): string => String(n).padStart(w, '0');
   return (
@@ -93,13 +105,13 @@ export function logFileName(label: string, at: Date): string {
   return `${label}-${hhmm}.log`;
 }
 
-/** 文件名里不安全的字符（旧工程 `_SANITIZE` 的口径） */
+/** The characters that are unsafe in a file name (the scope of the legacy project's `_SANITIZE`) */
 function safeName(label: string): string {
   const cleaned = label.replace(/[\\/:*?"<>|]+/g, '-').trim().replace(/^-+|-+$/g, '');
   return cleaned || 'session';
 }
 
-/** 'YYYY-MM-DD HH:MM:SS'（旧工程事件行里的时间格式） */
+/** 'YYYY-MM-DD HH:MM:SS' (the time format of the legacy project's event lines) */
 function eventStamp(at: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return (
@@ -117,13 +129,15 @@ export class SessionLog {
     const dir = join(opts.dataDir, 'logs', dateDir);
     mkdirSync(dir, { recursive: true });
 
-    // 两个会话在同一秒开起来不许撞名——撞了第二个会**追加**到第一个的日志里，
-    // 事后没法分清两段对话。
+    // Two sessions that start within the same second must not collide on
+    // the name — a collision makes the second one append to the log of the
+    // first, and afterwards the two conversations cannot be told apart.
     //
-    // 文件名是 `<label>-<HHMMSS>.log`（`logFileName` 定的口径）。
-    // 之前这里写的是 `logFileName('', at).slice(0, 6)`——
-    // 那个空 label 会多带一个连字符，切 6 位又**少切一位数字**，
-    // 于是 09:05:03 的会话落成 `t--09050.log`。
+    // The file name is `<label>-<HHMMSS>.log` (the shape defined by
+    // `logFileName`). This used to be `logFileName('', at).slice(0, 6)` —
+    // the empty label brings an extra hyphen, and slicing 6 characters off
+    // cuts one digit too few, so the 09:05:03 session landed as
+    // `t--09050.log`.
     const stem = logFileName(safeName(opts.label), at).replace(/\.log$/, '');
     let path = join(dir, `${stem}.log`);
     let counter = 1;
@@ -133,7 +147,8 @@ export class SessionLog {
     }
     this.filePath = path;
 
-    // 开场行：与旧工程同构（旧工程是在 open() 里写的）
+    // The opening line: isomorphic with the legacy project (which wrote it
+    // in open())
     const transport = opts.transport ?? 'unknown';
     this.write(
       `=== session opened ${eventStamp(at)} target=${opts.label} transport=${transport} ===`,
@@ -141,11 +156,13 @@ export class SessionLog {
   }
 
   /**
-   * 写一行：剥 ANSI → **按行拆开** → 每行加时间戳 → 追加落盘。
+   * Writes one line: strip ANSI → split it by line → timestamp every line →
+   * append to the file.
    *
-   * **按行拆开是必须的**：远端一次回包常常是好几行，
-   * 不逐行加前缀的话，第二行起就没有时间戳了——
-   * 而黄金样本里**每一行都有**。
+   * Splitting by line is mandatory: one reply from the remote side is often
+   * several lines, and without a prefix per line the second line onwards
+   * would have no timestamp — while in the golden sample every single line
+   * has one.
    */
   write(line: string): void {
     const stamp = formatTimestamp(this.now());
@@ -156,19 +173,21 @@ export class SessionLog {
   }
 
   /**
-   * 记一个事件（连接、断流……）。
+   * Records an event (connection, stream drop, ...).
    *
-   * 旧工程叫 `write_event`，格式是 `--- <kind> [<detail>] ---`。
+   * The legacy project called it `write_event`, and the format is
+   * `--- <kind> [<detail>] ---`.
    */
   writeEvent(kind: string, detail = ''): void {
     this.write(`--- ${kind}${detail ? ` ${detail}` : ''} ---`);
   }
 
   /**
-   * 收尾。
+   * The closing.
    *
-   * **收尾行没有时间戳**——旧工程是直接写句柄的，
-   * 黄金样本的最后一行也是这样（`=== session closed ... ===`）。
+   * The closing line carries no timestamp — the legacy project wrote it
+   * straight to the handle, and the last line of the golden sample is the
+   * same (`=== session closed ... ===`).
    */
   close(): void {
     appendFileSync(this.filePath, `=== session closed ${eventStamp(this.now())} ===\n`);

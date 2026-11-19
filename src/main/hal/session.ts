@@ -1,51 +1,56 @@
 import type { SessionLog } from '../logging/session-log';
 
 /**
- * 会话基类与 marker 协议。
+ * Session base class and the marker protocol.
  *
- * **marker 协议**是串口的命根子（事实 S1–S3）：
- * 串口只有一根线、一个读线程、一份 transcript，命令靠 marker 认领自己的回包。
- * 板子会**回显**命令，所以同一个 marker 在 transcript 里出现**两次**
- * （回显行一次、输出之后一次）——取「第一次之后的换行」到「第二次出现」之间的内容。
+ * The **marker protocol** is the lifeline of serial (Facts S1–S3): a serial
+ * line has one wire, one reader thread and one transcript; commands claim
+ * their own reply by marker. The board **echoes** commands, so the same
+ * marker appears **twice** in the transcript (once on the echo line, once
+ * after the output) — take the content between "the newline after the first
+ * occurrence" and "the second occurrence".
  *
- * marker 格式：`__DBC<pid>_<毫秒时间戳>__`，每次唯一（事实 S3），
- * 且发给用户前必须从 transcript 里抹掉。
+ * Marker format: `__DBC<pid>_<millisecond timestamp>__`, unique every time
+ * (Fact S3), and it has to be stripped from the transcript before the output
+ * is handed to the user.
  */
 
-/** 全工程统一的超时码（事实 G1）：各传输超时表现不一致，一律归一到 124 */
+/** The timeout code shared by the whole project (Fact G1): the transports time out differently, so everything is normalised to 124 */
 export const TIMEOUT_EXIT_CODE = 124;
 
-/** 构造本次命令的唯一 marker */
+/** Build the unique marker of this command */
 export function buildMarker(pid: number, atMs: number): string {
   return `__DBC${pid}_${atMs}__`;
 }
 
 /**
- * 从 transcript 里认领某个 marker 对应的命令输出。
+ * Claim the command output that belongs to a marker in the transcript.
  *
- * - marker 出现两次（板子回显）：取第一次之后到第二次之间的内容
- * - marker 只出现一次（板子不回显）：取第一次之后的全部内容
- * - marker 不存在：返回空串
+ * - The marker appears twice (the board echoes): take what is between the
+ *   first occurrence and the second
+ * - The marker appears only once (the board does not echo): take everything
+ *   after the first occurrence
+ * - The marker does not exist: return an empty string
  *
- * 结果去掉尾部换行。
+ * The trailing newline is removed from the result.
  */
 export function extractMarkerOutput(transcript: string, marker: string): string {
   const first = transcript.indexOf(marker);
   if (first < 0) return '';
 
   let after = transcript.slice(first + marker.length);
-  // 跳过紧跟其后的一个换行（回显行之后就是输出）
+  // Skip the single newline right after it (the output follows the echo line)
   if (after.startsWith('\r\n')) after = after.slice(2);
   else if (after.startsWith('\n')) after = after.slice(1);
 
   const second = after.indexOf(marker);
   const body = second >= 0 ? after.slice(0, second) : after;
 
-  // 去掉尾部换行
+  // Strip the trailing newline
   return body.replace(/\r?\n$/, '');
 }
 
-/** 把这些 marker 从文本里抹掉（发给用户前用，事实 S3） */
+/** Strip these markers from the text (used before sending to the user, Fact S3) */
 export function stripMarkers(transcript: string, markers: string[]): string {
   let out = transcript;
   for (const m of markers) {
@@ -55,48 +60,51 @@ export function stripMarkers(transcript: string, markers: string[]): string {
 }
 
 /**
- * 会话基类。
+ * Session base class.
  *
- * 子类实现具体的传输（串口 / ssh / 本地 pty）。
- * 共同的部分是：写日志、退出码语义、marker 管理。
+ * The subclasses implement the concrete transports (serial / ssh / local
+ * pty). What they share: writing the log, the exit code semantics, marker
+ * management.
  */
 export abstract class Session {
   constructor(protected readonly log: SessionLog) {}
 
-  /** 写数据给远端 */
+  /** Write data to the remote side */
   abstract write(data: string): void;
 
-  /** 终端尺寸变化。串口没有窗口概念，实现里是空操作 */
+  /** Terminal size change. Serial has no concept of a window, so the implementation is a no-op */
   abstract resize(cols: number, rows: number): void;
 
-  /** 关闭会话 */
+  /** Close the session */
   abstract close(): void;
 
-  /** 订阅远端输出。传输层把收到的数据喂进来 */
+  /** Subscribe to the remote output. The transport layer feeds the received data in */
   abstract onData(cb: (chunk: string) => void): void;
 
   /**
-   * 退出码。**串口恒为 null**——串口拿不到 exit status（事实 S5）：
-   * 有文本回包算 0，超时算 124。
+   * Exit code. **Always null for serial** — serial cannot obtain an exit
+   * status (Fact S5): a textual reply counts as 0, a timeout counts as 124.
    */
   abstract readonly exitCode: number | null;
 
   /**
-   * 会话**自己结束**了（远端 shell 退出、adbd 断连、拔线）。
+   * The session **ended on its own** (the remote shell exited, adbd dropped
+   * the link, the cable was unplugged).
    *
-   * **为什么需要这个钩子**：没有它，用户在 SSH 终端里敲 `exit` 之后，
-   * 界面还留着那个标签页，屏幕停在最后的输出上，
-   * 继续打字写进一个**已经死了**的通道——
-   * 「板子掉线了但界面不知道」。
-   * 这与「驾驶舱而非遥控器」直接冲突：驾驶舱要显示板子**实际**在做什么。
+   * **Why this hook is needed**: without it, after the user types `exit` in
+   * an SSH terminal the tab stays in the interface, the screen freezes on the
+   * last output, and further typing goes into a **dead** channel — "the
+   * board went offline and the interface does not know". That collides
+   * directly with "a cockpit, not a remote control": a cockpit has to show
+   * what the board is **actually** doing.
    *
-   * 默认没有退出事件（串口控制台不会报告退出）。
+   * There is no exit event by default (a serial console never reports one).
    */
   onExit(_cb: (exitCode: number | null) => void): void {
-    // 默认实现：没有退出事件
+    // Default implementation: no exit event
   }
 
-  /** 记录一行到会话日志 */
+  /** Record one line into the session log */
   protected record(line: string): void {
     this.log.write(line);
   }

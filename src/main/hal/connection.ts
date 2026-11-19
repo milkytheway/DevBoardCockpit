@@ -2,61 +2,69 @@ import type { Session } from './session';
 import type { TransportKind } from '../../shared/ipc-contract';
 
 /**
- * 连接层的公共接口。
+ * The common interface of the connection layer.
  *
- * 四种传输（串口 / ADB / SSH / 本机）实现同一套接口，
- * UI 与能力层因此不需要知道自己连的是哪种线——
- * 这就是「统一工作台」在代码层面的落点。
+ * The four transports (serial / ADB / SSH / local) implement the same
+ * interface, so the UI and the capability layer never need to know which
+ * wire they are attached to — this is where "one unified workbench" lands in
+ * code.
  */
 
 /**
- * 能力位。**UI 依能力降级**，不依传输名。
+ * Capability bits. **The UI degrades by capability**, not by transport name.
  *
- * 旧工程吃过这个亏：终端模式（pty/pipe）曾由传输名推断，
- * 新注册的传输就被当成了真终端。这里把能力显式化。
+ * The old project paid for this: terminal mode (pty/pipe) used to be inferred
+ * from the transport name, so a newly registered transport was treated as a
+ * real terminal. Here the capabilities are made explicit.
  *
- * 定义在 `shared/ipc-contract.ts`——renderer 也要用它决定
- * 「文件浏览器入口要不要禁用」，而 renderer 不能 import main。
+ * Defined in `shared/ipc-contract.ts` — the renderer also needs it to decide
+ * "whether the file browser entry point has to be disabled", and the renderer
+ * cannot import from main.
  */
 export type { ConnectionCapabilities, FileEntry } from '../../shared/ipc-contract';
 import type { ConnectionCapabilities, FileEntry } from '../../shared/ipc-contract';
 
 export interface ExecResult {
-  /** null = 拿不到（串口）。超时一律是 124 */
+  /** null = unobtainable (serial). A timeout is always 124 */
   exitCode: number | null;
   stdout: string;
   stderr: string;
   durationMs: number;
   timedOut: boolean;
   /**
-   * **被取消了**（不是超时 ✓ —— 两者不该同码 ✓：
-   * 「等久了没结果」与「人主动叫停」是两件事 ✗）。
+   * **It was cancelled** (not a timeout ✓ — the two must not share a code ✓:
+   * "waited long and got nothing" and "a human called it off" are two
+   * different things ✗).
    *
-   * → 尖兵实测：没有这条路时，一个 75 秒的传输步**收到取消后照跑完** ✗。
+   * → The vanguard's real-device test: without this path, a 75-second
+   * transfer step **ran to completion after being cancelled** ✗.
    */
   cancelled?: boolean;
   /**
-   * **给人看的下一步**（可选）。
+   * **The next step for the human** (optional).
    *
-   * 只在「失败形态容易误判」时给：
-   * 串口超时最常见的原因是「**回包被另一个程序吃掉了**」，
-   * 而不是「板子慢」——不说清楚，人会往错的方向查。
+   * It is only given when "the shape of the failure is easy to misread": the
+   * most common reason for a serial timeout is "**the reply was eaten by
+   * another program**", not "the board is slow" — without saying so, people
+   * go debugging in the wrong direction.
    *
-   * **加字段不改语义**：超时仍然是 `exitCode: 124`（事实 G1）。
+   * **Adding a field does not change the semantics**: a timeout is still
+   * `exitCode: 124` (Fact G1).
    */
   hint?: string;
 }
 
 /**
- * 执行一条命令的选项。
+ * The options for executing one command.
  *
- * → **`signal` 是「中途叫停」** ✓（`AbortSignal` ✓）：
- * 超时是「等久了」✓，取消是「**人不要了**」✓ —— 两者分开 ✓。
+ * → **`signal` means "call it off midway"** ✓ (`AbortSignal` ✓):
+ * a timeout is "waited too long" ✓, a cancellation is "**the human no
+ * longer wants it**" ✓ — the two are kept apart ✓.
  */
 export interface ExecOptions {
-  /** 超时（毫秒） */
+  /** Timeout (milliseconds) */
   timeoutMs?: number;
-  /** 中途叫停（`AbortSignal` ✓） */
+  /** Call it off midway (`AbortSignal` ✓) */
   signal?: AbortSignal;
 }
 
@@ -68,44 +76,53 @@ export interface Connection {
   close(): Promise<void>;
   exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /**
-   * 文件互传。
+   * File transfer.
    *
-   * **按传输分派**，不是跑远端的 `pull`/`push` 命令——
-   * 板子上没有这两个命令（adb 的 pull 是 `adb pull`，ssh 的是 sftp）。
+   * **Dispatched by transport**, not by running a remote `pull`/`push`
+   * command — the board has neither command (adb's pull is `adb pull`, ssh's
+   * is sftp).
    *
-   * ── 语义约定：远端路径一律是「目录」 ──
+   * ── Semantic convention: a remote path is always a "directory" ──
    *
-   * 三种传输的底层工具对「目标」的含义不一样：
-   * - `adb push <本地> <目录>` —— 目标是目录，adb 自己补上 basename ✓
-   * - `sftp.fastPut(<本地>, <远端文件>)` —— 目标是**完整文件路径**
-   * - `copyFile(<本地>, <远端文件>)` —— 目标是**完整文件路径**
+   * The underlying tool of each of the three transports means something
+   * different by "target":
+   * - `adb push <local> <directory>` — the target is a directory, adb
+   *   appends the basename itself ✓
+   * - `sftp.fastPut(<local>, <remote file>)` — the target is a **full file
+   *   path**
+   * - `copyFile(<local>, <remote file>)` — the target is a **full file path**
    *
-   * 所以**统一约定：`remotePath` 是目录**，由各传输自己补 basename。
-   * 否则「上传到某个目录」这件事，SSH 与本机必挂
-   * （`copyFile(src, '/')` → ENOENT）。
-   * （`docs/13-计划1复评报告.md` S-05）
+   * Hence the **unified convention: `remotePath` is a directory**, and each
+   * transport appends the basename itself. Otherwise "upload to a given
+   * directory" would break on SSH and on the local transport
+   * (`copyFile(src, '/')` → ENOENT).
+   * (Plan 1 re-review, finding S-05)
    */
   pull(remotePath: string, localPath: string): Promise<void>;
   push(localPath: string, remotePath: string): Promise<void>;
 
   /**
-   * 列远端目录。
+   * List a remote directory.
    *
-   * **按传输分派**，不是跑一条远端的 `ls`——
-   * 本机是 Windows 的 cmd.exe，POSIX 的 `ls -la` 根本不存在（计划 Task 9
-   * 写的是「adb 用 `adb shell ls -la`，ssh 用 ssh2 的 `sftp`」）。
+   * **Dispatched by transport**, not by running a remote `ls` — the local
+   * transport is Windows' cmd.exe, where the POSIX `ls -la` simply does not
+   * exist (Task 9 of the original implementation plan says "adb uses
+   * `adb shell ls -la`, ssh uses ssh2's `sftp`").
    *
-   * 目录的 `sizeBytes` 是 `null`（读不到的东西不是 0 —— 事实 G2）。
+   * The `sizeBytes` of a directory is `null` (what cannot be read is not 0 —
+   * Fact G2).
    */
   list(remotePath: string): Promise<FileEntry[]>;
 
   /**
-   * 打开一个交互式会话（终端用）。
+   * Open an interactive session (for the terminal).
    *
-   * **异步**：SSH 的 `shell()` 要等一次往返才拿到通道——
-   * 同步实现必然拿不到通道，SSH 终端开不起来。
+   * **Asynchronous**: the `shell()` of SSH needs one round trip before the
+   * channel arrives — a synchronous implementation can never get the
+   * channel, so the SSH terminal would not come up.
    *
-   * pipe 模式的会话不回显（宿主负责），pty 模式的会（远端负责）。
+   * A pipe-mode session does not echo (the host is responsible for it), a
+   * pty-mode session does (the remote side is responsible for it).
    */
   openSession(opts?: { cols?: number; rows?: number }): Promise<Session>;
 }
