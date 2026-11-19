@@ -62,6 +62,13 @@ export interface FirstTruth {
   kind: 'ok' | 'port-unopenable' | 'no-reply' | 'wrong-baud';
   /** **一句话** ✓ */
   detail: string;
+  /**
+   * **传输层给的提示** ✓（**可选** ✓）。
+   *
+   * → **串口的 hint 说了真话** ✓（「**最常见的原因是回包被另一个程序吃掉了**」✓
+   *   —— 串口 HAL 自己知道 ✓ → **别把它丢了** ✗）。
+   */
+  hint?: string;
 }
 
 /** 真相表 ✓ */
@@ -176,7 +183,12 @@ export function describeWizard(state: WizardState): WizardDescription {
     return {
       kind: 'no-reply',
       message: `**板子没说话** ✓ —— ${truth.detail}（**连上了，只是它没回话** ✓）`,
-      hints: NO_REPLY_HINTS,
+      // **传输层的 hint 要排第一** ✓ —— **它说的是最准的那条** ✓
+      // （串口 HAL 自己知道「回包被别的程序吃掉了」✓ → **别压在后面** ✗）
+      hints:
+        truth.hint !== undefined
+          ? [truth.hint, ...NO_REPLY_HINTS]
+          : NO_REPLY_HINTS,
       next: null,
     };
   }

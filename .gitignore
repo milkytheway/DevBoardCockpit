@@ -54,3 +54,6 @@ venv/
 # Playwright 产物（npm run test:cards 会生成）
 test-results/
 playwright-report/
+
+# 审查看图的产物（一次性截图 ✓ —— 不进版本库 ✓）
+shots/

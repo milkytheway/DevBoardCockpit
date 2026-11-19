@@ -62,6 +62,8 @@ export interface WizardResult {
   ok: boolean;
   /** **第一个真相** ✓ */
   firstTruth: FirstTruth;
+  /** **传输层给的提示** ✓（**可选** ✓ —— 串口知道「回包被吃了」✓） */
+  hint?: string;
   /** **真相表** ✓（**试通用元操作的结果** ✓） */
   reports?: ProbeReaderReport[];
   /** **实例化出来的包** ✓ */
@@ -167,6 +169,8 @@ export function firstTruthOf(
           ok: false,
           kind: 'no-reply',
           detail: '连上了，但命令没有回包',
+          // **传输层的话要带出来** ✓（串口知道「回包被别的程序吃了」✓ —— **别丢** ✗）
+          ...(result.hint !== undefined ? { hint: result.hint } : {}),
         };
       }
       return {
@@ -178,7 +182,17 @@ export function firstTruthOf(
     .catch((err: unknown): FirstTruth => {
       const message = err instanceof Error ? err.message : String(err);
       // **端口打不开**与**别的错**要分开 ✓
-      if (/open|打开|ENOENT|EBUSY|Access|denied/i.test(message)) {
+      //
+      // ⚠️ **判据要认「错误码」** ✓ —— **别只认消息文本** ✓
+      // （**中文差一个字就分错了** ✓ —— 实测 2026-11-20 ⚠️：
+      //   串口抛的是「**打不开**串口 COM99」✓ → **不含「打开」** ✓ →
+      //   只按文本匹配 → **它被归成「板子没说话」** ⚠️ → **说错了故障** ⚠️）
+      const code = (err as { code?: string } | undefined)?.code;
+      if (code === 'CONN_OPEN_FAILED' || code === 'PORT_BUSY') {
+        return { ok: false, kind: 'port-unopenable', detail: message };
+      }
+      // **文本只当兜底** ✓（错误码之外的错 ✓）
+      if (/打不开|打开|被占用|ENOENT|EBUSY|Access|denied/i.test(message)) {
         return { ok: false, kind: 'port-unopenable', detail: message };
       }
       return { ok: false, kind: 'no-reply', detail: message };
@@ -231,6 +245,8 @@ export async function runWizard(
     return {
       ok: false,
       firstTruth: truth,
+      // **传输层的 hint 一起带出去** ✓（界面要能显示它 ✓）
+      ...(truth.hint !== undefined ? { hint: truth.hint } : {}),
       message:
         truth.kind === 'port-unopenable'
           ? `**串口打不开** ✓ —— ${truth.detail}`

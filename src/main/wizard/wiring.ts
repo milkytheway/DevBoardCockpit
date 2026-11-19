@@ -103,7 +103,8 @@ export async function runWizardForHost(
         ? 'port-unopenable'
         : 'no-reply',
     message: result.message,
-    hints: [],
+    // **传输层的 hint 排第一** ✓（**它说的是最准的那条** ✓ —— 串口知道「回包被吃了」✓）
+    hints: result.hint !== undefined ? [result.hint] : [],
     greenCount,
     redCount,
     ...(result.installedDir !== undefined ? { installedDir: result.installedDir } : {}),
