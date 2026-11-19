@@ -10,7 +10,7 @@ import type { ConnectionCapabilities, Connection, ExecResult, FileEntry, ExecOpt
 /**
  * The serial transport.
  *
- * Three hard facts about serial (`docs/02-设备事实清单.md`):
+ * Three hard facts about serial (`docs/02-device-facts.md`):
  *
  * - **S1 single channel**: the command channel and the interactive terminal
  *   share one wire, one reader thread and one transcript.

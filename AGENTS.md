@@ -40,7 +40,7 @@ README.md
   └─ docs/spec/03-card-manifest.md   卡片清单与权限
   └─ docs/spec/04-mcp-tools.md       MCP 工具集
   └─ docs/spec/05-workflow-pack.md   流程包格式
-  └─ docs/02-设备事实清单.md         实测路径与行为约束
+  └─ docs/02-device-facts.md         实测路径与行为约束
   └─ docs/tutorial/01-建立板型包.md  为陌生板子建立板型包
 ```
 

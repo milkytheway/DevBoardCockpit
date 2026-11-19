@@ -15,7 +15,7 @@
 | 层 | 内容 | 位置 |
 |---|---|---|
 | 契约 | 位号词表、板型包格式、卡片清单、流程包格式、MCP 工具集 | `docs/spec/` |
-| 设备事实 | ATK-DLRK3588 的实测路径与行为约束 | `docs/02-设备事实清单.md` |
+| 设备事实 | ATK-DLRK3588 的实测路径与行为约束 | `docs/02-device-facts.md` |
 | 实现 | Electron 主进程、卡片宿主、运行时、流程执行器、MCP 服务 | `src/` |
 | 资产 | 内置卡片、板型包、流程包、连接 profile | `cards/` `profiles/` |
 
@@ -102,7 +102,7 @@ npm run check:package       # 校验打包产物
 | [卡片清单](docs/spec/03-card-manifest.md) | 清单结构、权限、沙箱 |
 | [MCP 工具集](docs/spec/04-mcp-tools.md) | 工具定义与返回形状 |
 | [流程包格式](docs/spec/05-workflow-pack.md) | 步骤类型、角色、取消语义 |
-| [设备事实](docs/02-设备事实清单.md) | 实测路径与行为约束 |
+| [设备事实](docs/02-device-facts.md) | 实测路径与行为约束 |
 | [教程](docs/tutorial/01-建立板型包.md) | 为一块陌生的板子建立板型包 |
 
 ## 许可

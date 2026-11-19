@@ -15,7 +15,7 @@ In essence this is SCADA / HMI software for embedded boards: tags are data sourc
 | Layer | Contents | Location |
 |---|---|---|
 | Contract | Tag vocabulary, board pack format, card manifest, workflow pack format, MCP tool set | `docs/spec/` |
-| Device facts | Measured paths and behavioural constraints of the ATK-DLRK3588 | `docs/02-设备事实清单.md` |
+| Device facts | Measured paths and behavioural constraints of the ATK-DLRK3588 | `docs/02-device-facts.md` |
 | Implementation | Electron main process, card host, tag runtime, workflow engine, MCP server | `src/` |
 | Assets | Built-in cards, board packs, workflow packs, connection profiles | `cards/` `profiles/` |
 
@@ -102,7 +102,7 @@ Dangerous actions are switched individually in settings and are off by default.
 | [Card manifest](docs/spec/03-card-manifest.md) | Manifest structure, permissions, sandbox |
 | [MCP tool set](docs/spec/04-mcp-tools.md) | Tool definitions and return shapes |
 | [Workflow pack format](docs/spec/05-workflow-pack.md) | Step kinds, roles, cancellation semantics |
-| [Device facts](docs/02-设备事实清单.md) | Measured paths and behavioural constraints |
+| [Device facts](docs/02-device-facts.md) | Measured paths and behavioural constraints |
 | [Tutorial](docs/tutorial/01-build-a-board-pack.md) | Building a board pack for an unfamiliar board |
 
 ## License
