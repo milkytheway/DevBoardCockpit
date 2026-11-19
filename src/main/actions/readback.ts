@@ -4,83 +4,88 @@ import type { ReadbackDef } from '../tags/schema';
 import { PLACEHOLDER } from '../util/shell-quote';
 
 /**
- * 回读 —— 契约 `docs/spec/02-board-pack.md` §4.4「回读的五种形式」。
+ * Readback — contract `docs/spec/02-board-pack.md` §4.4, "the five forms of
+ * readback".
  *
- * ── 为什么回读是强制的 ──
+ * ── Why the readback is mandatory ──
  *
- * 契约 §5.2：「**回读是强制的**。运行时在动作执行后按 `readback` 取值，
- * 把这个值作为动作结果返回。卡片**必须**用返回值渲染，不能自己乐观更新。」
+ * Contract §5.2: "the readback is mandatory. After the runtime executes an
+ * action it takes the value according to `readback` and returns that value as
+ * the result of the action. The card must render from the returned value and
+ * must not update optimistically on its own."
  *
- * → **没回读 = 不知道板子有没有真的进入目标状态**，
- * 而驾驶舱显示「已生效」其实没生效，是这个产品最不能出的错。
+ * → Without a readback there is no way to know whether the board really
+ *   reached the target state, and a cockpit that shows "in effect" while
+ *   nothing took effect is the one mistake this product must not make.
  *
- * ── 五种形式 ──
+ * ── The five forms ──
  *
- * | 形式 | 看什么 |
+ * | Form | What it looks at |
  * |---|---|
- * | 1 `tag`（**默认**） | 定向读一次那个 tag（**新鲜的**，不是等下一个周期） |
- * | 2 `file_equals` | 读文件比值（`expect` 可以是 `{param}`，有 `tolerance`） |
- * | 3 `command_ok` | **动作自己那条命令**的退出码（**不跑第二条命令**） |
- * | 4 `verify` | 再跑一条二次验证命令，轮询到成功或超时 |
- * | 5 `none` | 没有可观测状态 → **`ok: true` + `verified: false`** |
+ * | 1 `tag` (the default) | Reads that one tag on purpose (a fresh one, not waiting for the next cycle) |
+ * | 2 `file_equals` | Reads the file and compares the value (`expect` may be `{param}`, there is a `tolerance`) |
+ * | 3 `command_ok` | The exit code of the action's own command (it does not run a second command) |
+ * | 4 `verify` | Runs a second verification command, polling until it succeeds or times out |
+ * | 5 `none` | There is no observable state → `ok: true` + `verified: false` |
  *
- * ── 串口上没有退出码（事实 S5）──
+ * ── There is no exit code on a serial port (fact S5) ──
  *
- * 形式 3 与 4 都看退出码 → **在串口传输上必须被拒绝**
- * （契约 §4.4 末尾：「在串口传输上必须拒绝这两种形式」）。
+ * Forms 3 and 4 both look at the exit code → they must be rejected on a
+ * serial transport (contract §4.4, at the end: "these two forms must be
+ * rejected on a serial transport").
  */
 
-/** 回读的结果 */
+/** The result of the readback */
 export interface ReadbackResult {
-  /** 动作执行成功了吗（命令跑完了没有） */
+  /** Did the action execute successfully (did the command finish) */
   ok: boolean;
-  /** **确认**板子真的进入目标状态了吗 */
+  /** Was it confirmed that the board really reached the target state */
   verified: boolean;
-  /** 回读到的值 */
+  /** The value read back */
   value?: number | string | boolean | null;
   unit?: string;
-  /** 回读到的那个 tag 的状态 */
+  /** The status of the tag that was read back */
   status?: TagReading['status'];
-  /** 为什么不符 / 为什么不成立 */
+  /** Why it does not match / why it does not hold */
   reason?:
     | 'readback_mismatch'
     | 'not_found'
     | 'timeout'
     | 'unsupported_transport'
     | 'failed'
-    /** **被叫停了** ✓（不是「不符」✓ —— 人叫停 ≠ 板子不听话 ✓） */
+    /** It was called off ✓ (not "does not match" ✓ — a human calling it off ≠ the board not obeying ✓) */
     | 'cancelled';
-  /** 期望值 */
+  /** The expected value */
   expected?: unknown;
-  /** 实际值 */
+  /** The actual value */
   actual?: unknown;
-  /** 给人看的一句话 */
+  /** One line for a human to read */
   detail?: string;
 }
 
-/** 参数（两副面孔） */
+/** The parameters (with two faces) */
 export interface ReadbackParams {
-  /** **原始值**——比较用（`expect` 是值，不是 shell 片段） */
+  /** The raw values — used for comparing (`expect` is a value, not a shell fragment) */
   raw: Record<string, unknown>;
-  /** **编码后的片段**——拼命令用（`'x'` 这种） */
+  /** The encoded fragments — used for assembling commands (like `'x'`) */
   encoded: Record<string, string>;
 }
 
-/** 回读需要的能力（都是「能做什么」，不是「怎么连」） */
+/** The capabilities the readback needs (all of them "what it can do", not "how it connects") */
 export interface ReadbackDeps {
-  /** 读一个 tag（**新鲜的**） */
+  /** Read one tag (a fresh one) */
   readTag: (tag: string) => Promise<TagReading | undefined>;
-  /** 读一个文件（远端）；读不到回 `null` */
+  /** Read one file (remote); `null` when it cannot be read */
   readFile: (path: string) => Promise<string | null>;
-  /** 跑一条命令 */
+  /** Run one command */
   exec: (command: string) => Promise<ExecResult>;
-  /** **这条连接有退出码吗**（串口没有，事实 S5） */
+  /** Does this connection have an exit code (serial does not, fact S5) */
   hasExitCode: boolean;
-  /** 等一会儿（`verify` 轮询用） */
+  /** Wait a while (used by the `verify` polling) */
   sleep?: (ms: number) => Promise<void>;
 }
 
-/** 把 `{param}` 换成给定的值 */
+/** Replace `{param}` with the given value */
 function substitute(text: string, values: Record<string, unknown>): string {
   return text.replace(PLACEHOLDER, (_match, name: string) => {
     const value = values[name];
@@ -88,7 +93,7 @@ function substitute(text: string, values: Record<string, unknown>): string {
   });
 }
 
-/** 两个值算不算一样（数字按数字比，其余按字面量比） */
+/** Do two values count as equal (numbers are compared as numbers, the rest as literals) */
 function sameValue(actual: unknown, expected: unknown): boolean {
   if (actual === expected) return true;
   if (actual === null || actual === undefined) return false;
@@ -98,7 +103,7 @@ function sameValue(actual: unknown, expected: unknown): boolean {
   return String(actual) === String(expected);
 }
 
-/** 形式 1：读一个 tag */
+/** Form 1: read one tag */
 async function readTagForm(
   spec: ReadbackDef,
   params: ReadbackParams,
@@ -113,8 +118,9 @@ async function readTagForm(
     return { ok: false, verified: false, reason: 'not_found', detail: `读不到 ${tag}` };
   }
   if (reading.status !== 'ok') {
-    // **不是 ok 就不能说「确认生效」**——
-    // stale 的值是**旧的**（板子可能还没进目标状态），unavailable/error 更不用说了。
+    // Not ok means "cannot be confirmed as in effect" —
+    // a stale value is an old one (the board may not have reached the target
+    // state yet), and unavailable/error need no further explanation.
     return {
       ok: false,
       verified: false,
@@ -125,7 +131,7 @@ async function readTagForm(
     };
   }
   if (spec.expect === undefined) {
-    // 没有 expect → 读到就是确认（形式 1 的默认用法）
+    // No expect → reading it is the confirmation (the default use of form 1)
     return { ok: true, verified: true, value: reading.value, unit: reading.unit, status: reading.status };
   }
   const expected = substitute(String(spec.expect), params.raw);
@@ -142,7 +148,7 @@ async function readTagForm(
   return { ok: true, verified: true, value: reading.value, unit: reading.unit, status: reading.status };
 }
 
-/** 形式 2：读文件比值 */
+/** Form 2: read the file and compare the value */
 async function readFileForm(
   spec: ReadbackDef,
   params: ReadbackParams,
@@ -177,7 +183,7 @@ async function readFileForm(
   return { ok: true, verified: true, value: actual, detail: `${path} = ${actual}` };
 }
 
-/** 形式 3：动作自己那条命令的退出码 */
+/** Form 3: the exit code of the action's own command */
 function commandOkForm(
   deps: ReadbackDeps,
   actionResult: ExecResult | undefined,
@@ -196,9 +202,11 @@ function commandOkForm(
   if (actionResult.timedOut) {
     return { ok: false, verified: false, reason: 'timeout', detail: '动作那条命令超时了' };
   }
-  // **被取消了** → 退出码是 `null` ✓（不是 0、也不是 124 ✓）
-  // → 不看这个标志的话，它会掉进「返回非 0」那一档 ✗
-  // → 报「回读不符」是**撒谎** ✗（人叫停 ≠ 板子不听话 ✓）
+  // It was cancelled → the exit code is `null` ✓ (neither 0 nor 124 ✓)
+  // → Without looking at this flag it would fall into the "returned non-zero"
+  //   bucket ✗
+  // → Reporting "the readback does not match" would be a lie ✗ (a human
+  //   calling it off ≠ the board not obeying ✓)
   if (actionResult.cancelled === true) {
     return { ok: false, verified: false, reason: 'cancelled', detail: '动作那条命令被取消了' };
   }
@@ -215,7 +223,7 @@ function commandOkForm(
   return { ok: true, verified: true, value: actionResult.exitCode, detail: '命令返回 0' };
 }
 
-/** 形式 4：再跑一条二次验证命令，轮询到成功或超时 */
+/** Form 4: run a second verification command, polling until it succeeds or times out */
 async function verifyForm(
   spec: ReadbackDef,
   params: ReadbackParams,
@@ -251,12 +259,13 @@ async function verifyForm(
 }
 
 /**
- * 按回读声明取一次值。
+ * Take one value according to the readback declaration.
  *
- * @param spec 板型包里声明的回读块
- * @param params 本次调用的参数（原始值 + 编码后的片段）
- * @param deps 能力（读 tag / 读文件 / 跑命令）
- * @param actionResult **动作自己那条命令**的执行结果（形式 3 看它）
+ * @param spec The readback block declared in the board pack
+ * @param params The parameters of this call (raw values + encoded fragments)
+ * @param deps The capabilities (read a tag / read a file / run a command)
+ * @param actionResult The execution result of the action's own command (form 3
+ *   looks at it)
  */
 export async function runReadback(
   spec: ReadbackDef,
@@ -275,9 +284,10 @@ export async function runReadback(
     case 'verify':
       return verifyForm(spec, params, deps);
     case 'none':
-      // **形式 5**：`ok: true` + **`verified: false`**——
-      // 不写 `ok: false`（命令确实执行了、效果也确实有），
-      // 也不写 `ok: true` 什么都不说（把「没验证」藏起来）。
+      // Form 5: `ok: true` + `verified: false` —
+      // not `ok: false` (the command really did run and the effect really is
+      // there), and not `ok: true` with nothing said either (that hides "not
+      // verified").
       return {
         ok: true,
         verified: false,

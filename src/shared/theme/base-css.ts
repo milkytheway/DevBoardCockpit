@@ -1,19 +1,23 @@
 /**
- * 卡片的基础样式：**宿主注入给卡片的那一套**。
+ * The base styles of a card: the set that the host injects into the cards.
  *
- * ── 为什么宿主要给卡片塞样式 ──
+ * ── Why the host pushes styles into the cards ──
  *
- * 契约 §六 说「卡片不得硬编码颜色，只用宿主注入的 CSS 变量」——
- * 但**只给变量不够**：卡片作者仍然可能把 `unavailable` 画成一个灰色的 0。
- * （而「读不到」与「真的是 0」混淆，是这个产品最不能出的错。）
+ * Contract section 6 says that cards must not hard-code colours and may
+ * only use the CSS variables the host injects — but handing over the
+ * variables alone is not enough: a card author may still draw
+ * `unavailable` as a grey zero. (Mixing up "cannot be read" and "really
+ * zero" is the mistake this product must never make.)
  *
- * → 宿主把**状态的视觉语言也一起给**：卡片作者**只要选一个类名**，
- * 就不可能把状态画错。
+ * → So the host hands over the visual language of the states as well: the
+ *   card author only has to pick a class name, and then it is impossible to
+ *   draw a state wrongly.
  *
- * ── 一条硬规矩 ──
+ * ── One hard rule ──
  *
- * **这个文件里不许出现任何色值**——只有 `var(--cockpit-*)`。
- * 皮肤变了，注入的这段跟着变；卡片不用改一行。
+ * No colour value may appear in this file — only `var(--cockpit-*)`. When
+ * the skin changes, this injected block changes with it, and no card has to
+ * change by a single line.
  */
 export function baseStyleBlock(): string {
   return `/* cockpit 基础样式 —— 宿主注入（__host/theme.css）

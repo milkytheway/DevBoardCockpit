@@ -1,28 +1,35 @@
 /**
- * 管道模式的行编辑。
+ * The line editing of pipe mode.
  *
- * ── 这份代码的规格来源是旧工程 ──
+ * ── The specification of this code is the legacy project ──
  *
  * `DevBoardConsole/devboard_console/ui/line_editor.py` + `ui/keymap.py` +
- * `ui/console_input.py`（16 KB）就是**这件事的规格**：
- * pipe 模式（`adb shell` 无 PTY）下远端没有 readline，
- * 提示符、回显、行编辑**全都得宿主自己做**。
+ * `ui/console_input.py` (16 KB) is the specification of this very thing:
+ * in pipe mode (`adb shell` without a PTY) the remote side has no readline,
+ * so the prompt, the echo and the line editing all have to be done by the
+ * host.
  *
- * 迁移对照表原来把这一项判成「丢弃 · xterm.js 自带」——**那是错的**
- * （`docs/11-计划1评审报告.md` R-01 已指出；xterm.js 只带 PTY 流，不带行编辑）。
- * 本工程先写了一个最小版本（只做回车与退格），
- * 2026-11-13 拿旧工程的**测试断言**当规格补齐——
- * 旧工程是在真板上跑过的实现，它的测试就是这块行为的标准。
+ * The migration comparison table used to judge this item as "drop it,
+ * xterm.js has it built in" — that was wrong (the plan-1 review, finding
+ * R-01, already pointed it out; xterm.js only carries the PTY stream, not
+ * the line editing). This project first wrote a minimal version (only
+ * carriage return and backspace), and on 2026-11-13 the test assertions of
+ * the legacy project were taken as the specification to complete it — the
+ * legacy project is an implementation that was run on a real board, so its
+ * tests are the standard for this behaviour.
  *
- * 分两层（与旧工程同构）：
- * - `LineEditor`：**纯状态**（文本、光标、历史、kill ring），不碰渲染
- * - `PipeInput`：把**字节流**解成动作 → 改状态 → 渲染回显
+ * Two layers (isomorphic with the legacy project):
+ * - `LineEditor`: pure state (text, cursor, history, kill ring), it does not
+ *   touch the rendering
+ * - `PipeInput`: decodes the byte stream into actions → changes the state →
+ *   renders the echo
  *
- * 为什么按字节而不是按键名：xterm 的 `onData` 给的是**字节**，
- * 方向键是 `ESC [ D` 这样的转义序列——得自己解。
+ * Why by bytes and not by key names: the `onData` of xterm hands over bytes,
+ * and the arrow keys are escape sequences like `ESC [ D` — they have to be
+ * decoded by hand.
  */
 
-/** 一个按键动作（与旧工程 `keymap.Action` 同义） */
+/** One keystroke action (the same as the `keymap.Action` of the legacy project) */
 export type EditAction =
   | 'insert'
   | 'backspace'
@@ -43,21 +50,22 @@ export type EditAction =
   | 'none';
 
 /**
- * 行编辑状态（纯数据，不含渲染）。
+ * The line editing state (pure data, no rendering).
  *
- * 语义**逐条对齐旧工程** `line_editor.py`：
- * 退格删光标前一个字符、Delete 删光标处那个、
- * Ctrl+W 删光标前的词（**连词前的空格一起删**）、
- * Ctrl+U 删光标**之前**的、Ctrl+K 删光标**之后**的、Ctrl+Y 把 kill ring 贴回来。
+ * The semantics line up with the legacy project `line_editor.py` one by one:
+ * backspace deletes the character before the cursor, Delete deletes the one
+ * under the cursor, Ctrl+W deletes the word before the cursor (together with
+ * the space in front of it), Ctrl+U deletes what is before the cursor,
+ * Ctrl+K what is after it, Ctrl+Y puts the kill ring back.
  */
 export class LineEditor {
   text = '';
   cursor = 0;
-  /** 已提交过的命令行 */
+  /** The command lines that have been submitted */
   history: string[] = [];
-  /** null = 正在输入新行；否则是 history 的下标 */
+  /** null = a new line is being typed; otherwise the index into history */
   historyIdx: number | null = null;
-  /** kill ring：Ctrl+Y 贴回来的东西 */
+  /** kill ring: the thing Ctrl+Y puts back */
   killed = '';
 
   insert(text: string): void {
@@ -95,10 +103,12 @@ export class LineEditor {
   }
 
   /**
-   * Ctrl+W：删掉光标前那个**词**（连它前面的空格一起）。
+   * Ctrl+W: deletes the word before the cursor (together with the space in
+   * front of it).
    *
-   * 旧工程的算法：先往回跳过空格，再往回跳过非空格。
-   * 于是 `"cat file.txt"` → `"cat "`（**尾随空格留着**）。
+   * The algorithm of the legacy project: skip the spaces backwards first,
+   * then skip the non-spaces backwards. So `"cat file.txt"` → `"cat "` (the
+   * trailing space stays).
    */
   killWord(): void {
     let start = this.cursor;
@@ -109,20 +119,20 @@ export class LineEditor {
     this.cursor = start;
   }
 
-  /** Ctrl+U：删掉光标**之前**的（后面的留着） */
+  /** Ctrl+U: deletes what is before the cursor (what is after it stays) */
   killToStart(): void {
     this.killed = this.text.slice(0, this.cursor);
     this.text = this.text.slice(this.cursor);
     this.cursor = 0;
   }
 
-  /** Ctrl+K：删掉光标**之后**的 */
+  /** Ctrl+K: deletes what is after the cursor */
   killToEnd(): void {
     this.killed = this.text.slice(this.cursor);
     this.text = this.text.slice(0, this.cursor);
   }
 
-  /** Ctrl+Y：把 kill ring 贴回来 */
+  /** Ctrl+Y: puts the kill ring back */
   yank(): void {
     if (this.killed) this.insert(this.killed);
   }
@@ -132,7 +142,7 @@ export class LineEditor {
     this.cursor = 0;
   }
 
-  /** 上箭头：上一条命令 */
+  /** The up arrow: the previous command */
   historyPrev(): void {
     if (this.history.length === 0) return;
     if (this.historyIdx === null) this.historyIdx = this.history.length - 1;
@@ -140,7 +150,7 @@ export class LineEditor {
     this.load(this.history[this.historyIdx]);
   }
 
-  /** 下箭头：下一条命令；走过最后一条就清空行 */
+  /** The down arrow: the next command; past the last one the line is cleared */
   historyNext(): void {
     if (this.historyIdx === null) return;
     if (this.historyIdx < this.history.length - 1) {
@@ -153,7 +163,7 @@ export class LineEditor {
     }
   }
 
-  /** 收尾：交出这一行，并记住它 */
+  /** Wrapping up: hands out this line and remembers it */
   commit(): string {
     const line = this.text;
     if (line.trim().length > 0) this.history.push(line);
@@ -170,10 +180,12 @@ export class LineEditor {
 }
 
 /**
- * 把字节流解成动作。
+ * Decodes a byte stream into actions.
  *
- * 转义序列的字节取自旧工程的 `PTY_BYTES`（那里就是终端按键的字节）。
- * 一次 `input` 可能带来多个按键（粘贴），所以是「解出一串动作」。
+ * The bytes of the escape sequences come from the `PTY_BYTES` of the legacy
+ * project (there they are the bytes of the terminal keys). One `input` can
+ * bring several keystrokes (a paste), so it decodes into a string of
+ * actions.
  */
 export function decodeActions(bytes: string): EditAction[] {
   const out: EditAction[] = [];
@@ -181,11 +193,11 @@ export function decodeActions(bytes: string): EditAction[] {
   while (i < bytes.length) {
     const ch = bytes[i];
 
-    // 转义序列
+    // An escape sequence
     if (ch === '\x1b') {
       const seq = matchEscape(bytes, i);
       if (seq === null) {
-        // 光秃秃的 ESC（或不认识的序列）→ 什么都不做
+        // A bare ESC (or an unknown sequence) → do nothing
         i += 1;
         out.push('none');
         continue;
@@ -238,7 +250,7 @@ export function decodeActions(bytes: string): EditAction[] {
   return out;
 }
 
-/** 认出转义序列。返回 null = 不认识（整段丢掉） */
+/** Recognises an escape sequence. Returning null = unknown (the whole thing is dropped) */
 function matchEscape(
   bytes: string,
   at: number,
@@ -256,28 +268,33 @@ function matchEscape(
   for (const [seq, action] of table) {
     if (rest.startsWith(seq)) return { action, length: seq.length };
   }
-  // 不认识的 CSI：吃掉到最终字节为止，别把参数当字符插进行里
+  // An unknown CSI: eat it up to the final byte, do not insert its
+  // parameters into the line as characters
   // eslint-disable-next-line no-control-regex
   const m = /^\x1b\[[0-9;?]*[ -/]*[@-~]/.exec(rest);
   if (m) return { action: 'none', length: m[0].length };
   return null;
 }
 
-/** 提示符的可见宽度（去掉 ANSI 之后的长度） */
+/** The visible width of the prompt (the length after the ANSI has been removed) */
 export function visibleLength(text: string): number {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07]*\x07/g, '').length;
 }
 
 /**
- * 显示宽度：**终端的列**，不是字符个数。
+ * The display width: the columns of the terminal, not the number of
+ * characters.
  *
- * 一个汉字占 **2 列**，一个 emoji 也占 2 列，组合字符占 0 列。
- * 用 `String.length` 算出来的「UTF-16 码元数」——
- * 重画时按它退列，光标就会越退越偏（中文行一多就歪）。
+ * One Chinese character takes 2 columns, one emoji also takes 2 columns, a
+ * combining character takes 0 columns. The "number of UTF-16 code units"
+ * that `String.length` gives — when the line is redrawn and the cursor is
+ * moved back by that much, it drifts more and more (the more Chinese lines,
+ * the more it skews).
  *
- * 口径与终端一致（wcwidth 的常见近似）：
- * 东亚宽字符 = 2 列，组合记号 = 0 列，其余 = 1 列。
+ * The measure is the same as the terminal's (the common approximation of
+ * wcwidth): East Asian wide characters = 2 columns, combining marks = 0
+ * columns, everything else = 1 column.
  */
 export function displayWidth(text: string): number {
   let width = 0;
@@ -290,7 +307,7 @@ export function displayWidth(text: string): number {
   return width;
 }
 
-/** 组合记号与零宽字符：占 0 列 */
+/** Combining marks and zero-width characters: 0 columns */
 function isZeroWidth(cp: number): boolean {
   return (
     (cp >= 0x0300 && cp <= 0x036f) || // 组合附加符号
@@ -300,7 +317,7 @@ function isZeroWidth(cp: number): boolean {
   );
 }
 
-/** 东亚宽字符与 emoji：占 2 列 */
+/** East Asian wide characters and emoji: 2 columns */
 function isWide(cp: number): boolean {
   return (
     (cp >= 0x1100 && cp <= 0x115f) ||
@@ -322,65 +339,72 @@ function isWide(cp: number): boolean {
 }
 
 /**
- * pipe 模式的输入层：状态 + 渲染。
+ * The input layer of pipe mode: state + rendering.
  *
- * **渲染策略**：改动之后把整行重画一遍。
- * 逐字符地发退格/擦除在光标不在行尾时会对不齐，
- * 而光标移动、kill、历史调用**都要求行可以重画**。
+ * The rendering strategy: after a change, redraw the whole line. Sending
+ * backspaces and erasures character by character misaligns when the cursor
+ * is not at the end of the line, and cursor movement, kill and history all
+ * require that the line can be redrawn.
  */
 export class PipeInput {
   readonly editor = new LineEditor();
 
   /**
-   * 「下一个提示符还没画」。
+   * "The next prompt has not been drawn yet".
    *
-   * ── 为什么提示符要等到用户开始打字才画 ──
+   * ── Why the prompt waits until the user starts typing ──
    *
-   * pipe 模式远端**不发提示符**（没有 tty，`PS1` 无从打印），
-   * 所以提示符得宿主画。但**画在提交的那一刻就会排错序**：
+   * In pipe mode the remote side sends no prompt (there is no tty, so
+   * `PS1` cannot be printed), so the host has to draw the prompt. But
+   * drawing it at the moment of the commit puts the order wrong:
    *
    * ```
-   * root@board$ ls          ← 命令
-   * root@board$             ← 下一个提示符（提交时就画了）
-   * file1                    ← 远端的输出（**再走一次往返才回来**）
+   * root@board$ ls          ← the command
+   * root@board$             ← the next prompt (drawn at the commit)
+   * file1                    ← the output of the remote side (it takes
+   *                            another round trip to come back)
    * ```
    *
-   * 输出落在「下一个提示符」**后面**，读起来像是那个提示符的输出。
-   * （`docs/13-计划1复评报告.md` S-04 / `docs/12` N-1）
+   * The output lands after the "next prompt" and reads as if it were the
+   * output of that prompt. (Plan-1 re-review, finding S-04 / finding N-1 of
+   * the plan-1 documents)
    *
-   * 改成**用户开始打下一条命令时才画**：
+   * It was changed to: it is drawn when the user starts typing the next
+   * command.
    *
    * ```
    * root@board$ ls
-   * file1                    ← 输出紧跟在它自己的命令后面
-   * root@board$ ls -l        ← 下一个提示符跟着下一条命令一起出现
+   * file1                    ← the output follows right after its own command
+   * root@board$ ls -l        ← the next prompt appears together with the next
+   *                            command
    * ```
    *
-   * 顺序对了，提示符也还在。
+   * The order is right and the prompt is still there.
    */
   private promptPending = false;
 
   constructor(private readonly prompt: string = '') {}
 
   /**
-   * 处理一次用户输入。
+   * Handles one piece of user input.
    *
-   * @returns `toRemote` 发给远端的字节；`echo` 回显给用户的内容
+   * @returns `toRemote` the bytes to send to the remote side; `echo` the
+   *   content echoed back to the user
    */
   input(bytes: string): { toRemote: string; echo: string } {
     return this.apply(bytes);
   }
 
-  /** 真正干活的地方 */
+  /** Where the real work happens */
   private apply(bytes: string): { toRemote: string; echo: string } {
     let toRemote = '';
     let echo = '';
     let dirty = false;
     const before = { text: this.editor.text, cursor: this.editor.cursor };
 
-    // 逐字符处理：普通字符按字符插入，其余按动作
+    // Character by character: an ordinary character is inserted as a character, the rest as an action
     let i = 0;
-    // 上一个字符是 CR —— 紧接着的 LF 是同一个换行的一部分（粘贴时的 CRLF）
+    // The previous character was a CR — the LF right after it belongs to the same newline (the CRLF of a paste)
     let afterCr = false;
     while (i < bytes.length) {
       const ch = bytes[i];
@@ -402,7 +426,7 @@ export class PipeInput {
         continue;
       }
 
-      // 提示符等到「用户开始打字」才画（见 promptPending 的说明）
+      // The prompt waits until "the user starts typing" (see the explanation of promptPending)
       if (this.promptPending) {
         echo += this.prompt;
         this.promptPending = false;
@@ -411,16 +435,18 @@ export class PipeInput {
       switch (ch) {
         case '\r':
         case '\n':
-          // **先把还没画出来的字画出来**再换行——
-          // 一次 `input('ls\r')` 里，'ls' 的重画发生在收尾，
-          // 不先画出来，这两个字就凭空没了。
+          // The characters that have not been drawn yet are drawn first, and
+          // then the newline — in one `input('ls\r')` the redraw of 'ls'
+          // happens at the end, and without drawing it first those two
+          // characters vanish into thin air.
           if (dirty) {
             echo += this.redraw(before);
             dirty = false;
           }
           toRemote += `${this.editor.commit()}\n`;
-          // **只换行，不画下一个提示符**——提示符要等下一条命令开始才画，
-          // 否则远端的输出会落在它的后面。
+          // Only the newline, no next prompt — the prompt is drawn when the
+          // next command starts, otherwise the output of the remote side
+          // lands after it.
           echo += '\r\n';
           this.promptPending = true;
           dirty = false;
@@ -457,17 +483,19 @@ export class PipeInput {
           dirty = true;
           break;
         case '\x0c':
-          // 清**屏**（旧工程 keymap 的规格：Clear the screen → clear_requested → 清屏），
-          // 不是清这一行。行还在，只是屏幕被清空、提示符重画。
+          // It clears the screen (the specification of the keymap of the
+          // legacy project: Clear the screen → clear_requested → clear the
+          // screen), not this line. The line is still there, only the screen
+          // was cleared and the prompt is drawn again.
           echo += '\x1b[2J\x1b[H';
           this.editor.clear();
           echo += this.prompt;
           dirty = false;
           break;
         case '\x03':
-          // 中断：字节发给远端（管道里没有信号，只能发字节）
+          // Interrupt: the bytes go to the remote side (there is no signal in a pipe, only bytes)
           toRemote += '\x03';
-          // **这一行要丢掉**——不然下次回车会把「旧命令 + 新命令」拼成一条发出去
+          // This line has to be dropped — otherwise the next carriage return sends "old command + new command" as one line
           this.editor.clear();
           echo += '^C\r\n';
           this.promptPending = true;
@@ -518,17 +546,22 @@ export class PipeInput {
   }
 
   /**
-   * 把整行重画一遍。
+   * Redraws the whole line.
    *
-   * 步骤：回到行首 → 擦到行尾 → 写新文本 → 把光标挪到该在的位置。
-   * 「行首」= 提示符之后，所以要退 `提示符宽度 + 旧光标` 列。
+   * The steps: back to the start of the line → erase to the end of the line
+   * → write the new text → move the cursor to where it belongs. The "start
+   * of the line" = after the prompt, so the cursor moves back
+   * `prompt width + old cursor` columns.
    */
   private redraw(before: { text: string; cursor: number }): string {
-    // **只退到文本区起点**，不能退到提示符之前——
-    // 退过头再擦行（ESC[K），就把提示符本身擦掉了，
-    // 而提示符是 pipe 模式唯一的「我在这儿」信号。
+    // It only moves back to the start of the text area, it must not move
+    // back in front of the prompt — moving back too far and then erasing the
+    // line (ESC[K) erases the prompt itself, and the prompt is the only
+    // "I am here" signal of pipe mode.
     //
-    // 列数按**显示宽度**算：汉字占两列，用字符数会越退越偏。
+    // The number of columns is computed by the display width: a Chinese
+    // character takes two columns, and counting characters drifts more and
+    // more.
     const back = displayWidth(before.text.slice(0, before.cursor));
     let out = '';
     if (back > 0) out += `\x1b[${back}D`;

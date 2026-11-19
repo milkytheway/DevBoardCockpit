@@ -10,126 +10,143 @@ import { runReadback } from './readback';
 import type { AuditRow } from './audit';
 
 /**
- * 动作执行器 —— 契约 `docs/spec/02-board-pack.md` §5.2 + `docs/21` §6.9 的七步链。
+ * The action executor — contract `docs/spec/02-board-pack.md` §5.2 and the
+ * seven-step chain.
  *
  * ```
- * ① 编码参数 → ② 地板复查 → ③ 授权 → ④（必要时）确认
- *              → ⑤ 执行 → ⑥ 回读 → ⑦ 审计
+ * ① Encode the parameters → ② Re-check the floor → ③ Authorize
+ *                         → ④ (Confirm if necessary)
+ *                         → ⑤ Execute → ⑥ Readback → ⑦ Audit
  * ```
  *
- * ── 执行与回读是**一个不可拆分的独占事务**（ADR-D23 / SPEC-D22）──
+ * ── Execution and readback are one inseparable exclusive transaction
+ *    (implementation decision records ADR-D23 / SPEC-D22) ──
  *
- * 回读若被采样插队，读到的可能是**别的命令的输出**——
- * 「回读不符」就成了假阴性，驾驶舱会显示错的真实状态。
- * → 所以两者都跑在 `runTransaction` 里面（同一个队列槽位）。
+ * If the readback is interleaved by a sample, what it reads may be the output
+ * of a different command — "the readback does not match" would then be a
+ * false negative, and the cockpit would display a wrong real state.
+ * → So both of them run inside `runTransaction` (the same queue slot).
  */
 
-/** 执行器需要的东西 */
+/** What the executor needs */
 export interface ActionExecutorDeps {
-  /** 板型包 id（凭据要绑它） */
+  /** The board pack id (the credentials are bound to it) */
   packId: string;
-  /** 契约版本（凭据要绑它） */
+  /** The contract version (the credentials are bound to it) */
   contractVersion: string;
   /**
-   * **这一步动的是哪块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 的**第六项** ✓）。
+   * Which board this step touches (the credentials are bound to it ✓ —
+   * contract `spec/04` §2.4.1, the sixth item ✓).
    *
-   * → **是函数不是值** ✓ —— **当前那条连接会换** ✓（换板了 ✓）
-   * → **签发与消费读的是同一个函数** ✓ → 两边一致 ✓。
+   * → It is a function, not a value ✓ — the current connection can change ✓
+   *   (the board was swapped ✓)
+   * → The issuing side and the consuming side read the same function ✓ → so
+   *   the two agree ✓.
    */
   deviceKey: () => string;
-  /** **这条连接有退出码吗**（串口没有，事实 S5） */
+  /** Does this connection have an exit code (serial does not, fact S5) */
   hasExitCode: boolean;
-  /** 在这条连接上跑一次独占事务（执行 + 回读都在里面） */
+  /** Run one exclusive transaction on this connection (execution + readback both live inside it) */
   runTransaction: <T>(fn: (connection: Connection) => Promise<T>) => Promise<T>;
-  /** 读一个 tag（新鲜的） */
+  /** Read one tag (a fresh one) */
   readTag: (tag: string) => Promise<TagReading | undefined>;
-  /** 已授权的动作（装卡时用户批准的） */
+  /** Granted actions (approved by the user when the card was installed) */
   granted: () => GrantedActions;
-  // **没有「要不要问人」这一项了** ✓（2026-11-16 ✓ · ADR-D48 ✓）——
-  // **要控制什么，去设置里的统一权限区** ✓（ADR-D47 ✓）。
-  /** 审计（每次尝试一行）——**返回那一行的 id**（结果要带 `audit_id`） */
+  // There is no "should we ask a human" item any more ✓ (2026-11-16 ✓ ·
+  // implementation decision record ADR-D48 ✓) —
+  // to control what may be done, use the unified permission area in the
+  // settings ✓ (implementation decision record ADR-D47 ✓).
   audit: (row: AuditRow) => string;
-  /** 谁触发的（卡片 id / agent / 用户） */
+  /** Who triggered it (card id / agent / user) */
   actor?: string;
   /**
-   * **这一步的输入**（流程层给 ✓ —— 流程的参数在**流程包**里声明，
-   * 不在板型包里 ✓；不记的话事后只看到「跑了某一步」，
-   * 看不到「用了哪个工程」✗ —— 追责链断了一环 ✓）。
+   * The input of this step (given by the workflow layer ✓ — a workflow's
+   * parameters are declared in the workflow pack, not in the board pack ✓;
+   * without this, afterwards you only see "some step ran" and not "which
+   * project was used" ✗ — a link of the chain of accountability is broken
+   * ✓).
    */
   auditInputs?: Record<string, unknown>;
   /**
-   * **中途叫停**（`AbortSignal` ✓）—— 「人不要了」✓。
+   * Call it off midway (`AbortSignal` ✓) — "the human does not want it any
+   * more" ✓.
    *
-   * → 流程层用它实现「取消」✓（`spec/05` §八 ✓）；
-   * → 与超时**分开** ✓（超时是「等久了」✓）。
+   * → The workflow layer uses it to implement "cancel" ✓ (`spec/05` §8 ✓);
+   * → it is kept apart from the timeout ✓ (a timeout is "waited too long" ✓).
    */
   execSignal?: AbortSignal;
   /**
-   * 执行超时（毫秒）。
+   * The execution timeout (milliseconds).
    *
-   * → 流程层的长步骤（编译是分钟级）用它 ✓；
-   * → **不设就没有超时**（M6 的动作通常很快 ✓）。
+   * → The workflow layer's long steps (compiling takes minutes) use it ✓;
+   * → without one there is no timeout at all ✓ (the actions of M6 are
+   *   usually fast ✓).
    */
   execTimeoutMs?: number;
-  /** 现在（毫秒） */
+  /** Now (milliseconds) */
   now?: () => number;
 }
 
 /**
- * 一次调用的结果。
+ * The result of one invocation.
  *
- * ── 形状**按契约**（不是按实现方便）──
+ * ── The shape follows the contract, not the convenience of the
+ *    implementation ──
  *
- * `spec/04` §2.4（`execute_action`）与 `spec/03` §5.2（`cockpit.actions.invoke`）：
+ * `spec/04` §2.4 (`execute_action`) and `spec/03` §5.2
+ * (`cockpit.actions.invoke`):
  *
  * ```
  * → { ok: true,  readback: { value, unit, status, at }, verified: true, audit_id: "..." }
  * → { ok: false, reason: "readback_mismatch", expected: true, actual: false }
  * ```
  *
- * → **回读到的值在 `readback` 里**（卡片按 `r.readback.value` 渲染），
- * **不是平铺在顶层**。
- * → 失败时带 `expected` / `actual`（人能看出「差多少」）。
- * → `audit_id` 是**追责单位**（ADR-D31 R8 的时间线要引用它）。
+ * → The value read back lives in `readback` (the card renders it as
+ *   `r.readback.value`), not flattened at the top level.
+ * → On failure it carries `expected` / `actual` (a human can see how far off
+ *   it is).
+ * → `audit_id` is the unit of accountability (the timeline of ADR-D31 R8
+ *   references it).
  */
 export interface ActionOutcome {
-  /** 动作成功了吗 */
+  /** Did the action succeed */
   ok: boolean;
-  /** **确认**板子真的进入目标状态了吗 */
+  /** Was it confirmed that the board really reached the target state */
   verified: boolean;
-  /** 回读到的真实状态（契约 §2.4 的 `readback`） */
+  /** The real state read back (the `readback` of contract §2.4) */
   readback?: {
     value?: unknown;
     unit?: string;
-    /** 回读到的那个 tag 的状态（形式 1 才有） */
+    /** The status of the tag that was read back (only form 1 has it) */
     status?: TagReading['status'];
-    /** 回读的时刻（毫秒 UTC） */
+    /** The moment of the readback (milliseconds UTC) */
     at: number;
   };
-  /** 为什么不成功 */
+  /** Why it did not succeed */
   reason?: string;
-  /** 期望值（失败时给） */
+  /** The expected value (given on failure) */
   expected?: unknown;
-  /** 实际值（失败时给） */
+  /** The actual value (given on failure) */
   actual?: unknown;
-  /** 给人看的一句话 */
+  /** One line for a human to read */
   detail?: string;
-  /** 审计行的 id（追责单位） */
+  /** The id of the audit row (the unit of accountability) */
   audit_id?: string;
   /**
-   * **命令的输出**（stdout，**截断过的** ✓）。
+   * The output of the command (stdout, truncated ✓).
    *
-   * → 「跑一下，把输出给我看」这类需求要它 ✓
-   *   （用户那张卡的「**观察中间结果**」就靠它 ✓）；
-   * → 流程层的步骤也要它：把一条命令的输出**交给下一步** ✓
-   *   （凭据准备那一步：源目标的公钥 → 目标目标的 `authorized_keys` ✓）。
+   * → A request like "run it and show me the output" needs it ✓
+   *   (the user's "watch the intermediate result" card relies on it ✓);
+   * → a workflow step needs it too: hand the output of one command to the
+   *   next step ✓ (the credential preparation step: the source target's
+   *   public key → the target's `authorized_keys` ✓).
    */
   output?: string;
-  /** 输出被截断了吗（**说清楚**，别让人以为看全了） */
+  /** Was the output truncated (say so, do not let people think they saw all of it) */
   outputTruncated?: boolean;
 }
 
-/** 调一次动作 */
+/** Invoke one action */
 export async function invokeAction(
   action: ActionDef,
   params: Record<string, unknown>,
@@ -140,9 +157,9 @@ export async function invokeAction(
   const actor = deps.actor ?? 'unknown';
 
   /**
-   * 写一行审计，**并把它的 id 填回结果**。
+   * Write one audit row and put its id back into the result.
    *
-   * → 结果里的 `audit_id` = 那一行（契约 `spec/04` §2.4）。
+   * → The `audit_id` in the result is that row (contract `spec/04` §2.4).
    */
   const record = (outcome: ActionOutcome, value?: unknown): void => {
     outcome.audit_id = deps.audit({
@@ -150,7 +167,9 @@ export async function invokeAction(
       actor,
       actionId: action.id,
       params,
-      // **最终命令**进审计行（追责的第一环 ✓ —— 事后要能拼出「到底执行了什么」✓）
+      // The final command goes into the audit row (the first link of the chain
+      // of accountability ✓ — afterwards it has to be possible to reconstruct
+      // "what exactly was executed" ✓)
       command,
       ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),
       ok: outcome.ok,
@@ -160,7 +179,8 @@ export async function invokeAction(
     });
   };
 
-  // ① 编码（§4.6）—— 不合法就地拒，**不执行**
+  // ① Encode (§4.6) — an invalid parameter is rejected on the spot, the
+  // command is not executed
   let command: string;
   let encoded: Record<string, string>;
   try {
@@ -178,7 +198,7 @@ export async function invokeAction(
     return outcome;
   }
 
-  // ② 授权（**两条判据** ✓ —— ADR-D48 ✓）
+  // ② Authorize (two criteria ✓ — implementation decision record ADR-D48 ✓)
   const verdict = authorize(action, params, deps.granted());
 
   if (verdict.verdict === 'denied') {
@@ -192,7 +212,7 @@ export async function invokeAction(
     return outcome;
   }
 
-  // ③⑥ 执行 + 回读（**同一个独占事务**）
+  // ③⑥ Execute + readback (the same exclusive transaction)
   const { result: readback, execResult } = await deps.runTransaction(async (connection) => {
     const execResult = await connection.exec(command, {
       ...(deps.execTimeoutMs === undefined ? {} : { timeoutMs: deps.execTimeoutMs }),
@@ -203,18 +223,21 @@ export async function invokeAction(
       { raw: params, encoded },
       {
         readTag: deps.readTag,
-        // **读文件 = 在同一条连接上 `cat`** —— HAL 没有「读远端文件内容」这个能力
-        // （只有 list / pull / push）。而它必须在**同一个事务**里：
-        // 另开一次往返就会插到动作与回读之间（SPEC-D22）。
+        // Reading a file = `cat` on that same connection — the HAL has no
+        // "read the content of a remote file" capability (only list / pull /
+        // push). And it has to happen inside the same transaction: opening
+        // another round trip would slot itself between the action and the
+        // readback (SPEC-D22).
         readFile: async (path: string): Promise<string | null> => {
           const cat = await connection.exec(`cat -- ${quoteShellValue(path)}`);
           return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
         },
-        // 回读的 `verify` 也在**同一条连接**上跑。
+        // The readback's `verify` also runs on the same connection.
         //
-        // **它也要过危险地板**（`verify` 的命令是**包给的** ✓）：
-        // 不查 → 一个包就能借「验证」之名在板上跑 `rm -rf /` ✗
-        // （两条独立评审都点了这一条 ✓）。
+        // It has to pass the danger floor as well (the `verify` command is
+        // given by the pack ✓): without the check a pack could run `rm -rf /`
+        // on the board under the name of "verification" ✗ (two independent
+        // reviews both flagged this ✓).
         exec: (cmd: string): Promise<ExecResult> => {
           const verifyFloor = checkFloor(cmd);
           if (verifyFloor.verdict === 'destructive') {
@@ -233,9 +256,10 @@ export async function invokeAction(
     return { execResult, result };
   });
 
-  // **被取消了** → 不是「失败」，是「人叫停」 ✓
-  // → **必须在这里判** ✓：回读形式是 `none` 时它会报 `ok: true` ✓
-  //   （「命令确实执行了、效果也确实有」✓ —— 但它**被砍到一半**了 ✗ → 那是撒谎 ✗）
+  // It was cancelled → that is not "failure", it is "the human called it off" ✓
+  // → It has to be checked here ✓: when the readback form is `none` it
+  //   reports `ok: true` ✓ (the command really did run and the effect really
+  //   is there ✓ — but it was cut in half ✗ → that would be a lie ✗)
   if (execResult.cancelled === true) {
     const cancelledOutcome: ActionOutcome = {
       ok: false,
@@ -249,7 +273,9 @@ export async function invokeAction(
 
   const hasReadback =
     readback.value !== undefined || readback.unit !== undefined || readback.status !== undefined;
-  // **输出要截断**（编译的输出能有几万行 → 全带出来会拖垮 IPC 与审计 ✓）
+  // The output has to be truncated (the output of a compile can run to tens of
+  // thousands of lines → passing all of it along would overwhelm the IPC and
+  // the audit ✓)
   const rawOutput = execResult.stdout ?? '';
   const OUTPUT_LIMIT = 8 * 1024;
   const truncated = rawOutput.length > OUTPUT_LIMIT;
@@ -260,7 +286,8 @@ export async function invokeAction(
     verified: readback.verified,
     ...(output === '' ? {} : { output }),
     ...(truncated ? { outputTruncated: true } : {}),
-    // **回读到的值在 `readback` 里**（契约 §2.4 / §5.2——卡片按 `r.readback.value` 渲染）
+    // The value read back lives in `readback` (contract §2.4 / §5.2 — the card
+    // renders it as `r.readback.value`)
     ...(hasReadback
       ? {
           readback: {

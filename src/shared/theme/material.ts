@@ -1,87 +1,100 @@
 /**
- * 主题的**材质层**：遮罩、边缘高光、投影、画布底。
+ * The material layer of the theme: the veils, the edge highlights, the
+ * shadows and the canvas base.
  *
- * ── 为什么要有这一层 ──
+ * ── Why this layer exists ──
  *
- * 契约层（`seed.ts` → `map.ts` → `alias.ts`）管的是**语义**：
- * 「这块颜色代表正常 / 代表危险 / 代表正文」。
+ * The contract layer (`seed.ts` → `map.ts` → `alias.ts`) is about
+ * semantics: "this colour means normal / means danger / means body text".
  *
- * 但外壳还需要另一类颜色，它们**不代表任何语义**，只表示「材质」：
- * 一层玻璃的反光、一道 1px 的上沿高光、一片投影的浓淡。
- * 这类颜色过去是**直接写在 CSS 里的**——`visual.css` 一度有 43 处硬编码，
- * 于是「换个底色要改 43 个地方」，也「没人说得清哪些是刻意的、哪些是随手写的」。
+ * But the shell needs another kind of colour, one that stands for no
+ * semantics at all and only says "material": the reflection of a sheet of
+ * glass, a 1px highlight along the top edge, the density of a shadow.
+ * These colours used to be written straight into the CSS — `visual.css`
+ * once carried 43 hard-coded values, so "changing the base colour meant
+ * changing 43 places" and "nobody could tell which values were
+ * deliberate and which were written by hand".
  *
- * → 这一层把它们**登记成档位**。登记之后：
- *   1. 所有色值有名字、有用途说明、有归属族；
- *   2. CSS 里不再出现任何色值字面量（由 `tests/web/visual-material.test.ts` 守着）；
- *   3. 换肤时改一处，全应用跟着变。
+ * → This layer registers them as tiers. Once they are registered:
+ *   1. every colour value has a name, a description of its purpose and a
+ *      family it belongs to;
+ *   2. no colour literal appears in the CSS any more (guarded by
+ *      `tests/web/visual-material.test.ts`);
+ *   3. changing the skin means changing one place, and the whole
+ *      application follows.
  *
- * ── 命名为什么是 `--shell-mat-*` 而不是 `--cockpit-*` ──
+ * ── Why the name is `--shell-mat-*` and not `--cockpit-*` ──
  *
- * `--cockpit-*` 是**契约前缀**：卡片能依赖的那十几个。
- * 材质层是**外壳专有**的——卡片拿不到，也**不该**拿到：
- * 一旦卡片也能用 `--cockpit-mat-*`，它就会开始自己造第二套材质，
- * 「统一皮肤」当场就破。
- * → 用 `--shell-mat-*` 让边界在名字上就写着。
+ * `--cockpit-*` is the contract prefix: the dozen-odd names a card may
+ * rely on. The material layer belongs to the shell alone — cards cannot
+ * reach it and must not reach it: as soon as cards could use
+ * `--cockpit-mat-*` as well, they would start building a second set of
+ * materials of their own and the idea of one unified skin would fall apart
+ * on the spot.
+ * → The `--shell-mat-*` prefix puts the boundary into the name itself.
  *
- * ── 一条硬规矩 ──
+ * ── One hard rule ──
  *
- * **这里面的值一个都不许在 CSS 里再抄一遍。**
- * 要用就 `var(--shell-mat-*)`。
+ * Not one of the values in here may be copied into the CSS a second
+ * time. To use one, write `var(--shell-mat-*)`.
  *
- * ── 与 `seed.ts` 的区别 ──
+ * ── The difference from `seed.ts` ──
  *
- * `seed.ts` 是**手挑的**（换皮改那里）。
- * 这一层是**登记的**（外壳自己用，不给换皮的人添麻烦，但也不是随手写的）。
- * 两者都只放「值」，不放「怎么用」。
+ * `seed.ts` is picked by hand (changing the skin means changing there).
+ * This layer is registered (the shell uses it itself; it does not make the
+ * work of the person changing the skin harder, but it is not written by
+ * hand either). Both of them hold values only, never the way to use them.
  */
 
 import type { ThemeName } from './seed';
 
-/** 材质族——用来回答「这是什么性质的颜色」 */
+/** The material family — it answers "what kind of colour is this" */
 export type MaterialFamily =
-  /** 遮罩：叠在内容**下面**的半透明底 */
+  /** Veil: the translucent base laid UNDER the content */
   | 'veil'
-  /** 边缘：描边、上沿高光、发丝线 */
+  /** Edge: outlines, highlights along the top edge, hairlines */
   | 'edge'
-  /** 面光：面板/卡片面上的那一层渐变 */
+  /** Sheen: the gradient layer on the face of a panel/card */
   | 'sheen'
-  /** 投影：浮起、压下、拖拽 */
+  /** Lift: the shadows of something raised, pressed down or dragged */
   | 'lift'
-  /** 画布：最底下那一层 */
+  /** Canvas: the layer at the very bottom */
   | 'canvas';
 
 /**
- * 档位状态：
- * - `active` —— 当前生效的那一版
- * - `legacy` —— 被后面的规则覆盖了，但**留着**（删掉会改动观感的风险大于收益，
- *   而且它们是历史设计的证据：v0.6 → v0.7 迭代了三次玻璃质感）
+ * The state of a tier:
+ * - `active` — the version in effect right now
+ * - `legacy` — overridden by a later rule, but kept on purpose (removing it
+ *   would risk a change in the looks, which outweighs the gain, and these
+ *   are the evidence of the historical design: v0.6 → v0.7 iterated on the
+ *   glass look three times)
  */
 export type MaterialStatus = 'active' | 'legacy';
 
 export interface MaterialDef {
-  /** CSS 变量名（`--shell-mat-*`） */
+  /** The CSS variable name (`--shell-mat-*`) */
   name: string;
-  /** 暗色皮肤下的值 */
+  /** The value under the dark skin */
   dark: string;
-  /** 浅色皮肤下的值（绝大多数与暗色相同——材质是"厚薄"，不是"颜色"） */
+  /** The value under the light skin (most of them are the same as under the dark one — a material is a "thickness", not a "colour") */
   light: string;
-  /** 族 */
+  /** The family */
   family: MaterialFamily;
-  /** 当前生效 / 历史留档 */
+  /** In effect right now / kept as history */
   status: MaterialStatus;
-  /** 这条材质干什么用的（人看） */
+  /** What this material is for (for humans) */
   usage: string;
 }
 
 /**
- * 材质档位表。
+ * The table of the material tiers.
  *
- * ⚠️ **这里的值与 `visual.css` 里的原值逐字相同**——
- * 这一层是**登记**，不是**改设计**。观感必须一字节不变。
+ * ⚠️ The values here are identical, character by character, with the
+ * original ones in `visual.css` — this layer registers, it does not change
+ * the design. The looks must not change by a single byte.
  */
 export const MATERIALS: readonly MaterialDef[] = [
-  // ── veil：叠在内容下面的半透明底 ───────────────────────────────
+  // ── veil: the translucent base laid under the content ─────────
   {
     name: '--shell-mat-veil-code',
     dark: 'rgba(4, 6, 9, 0.5)',
@@ -107,7 +120,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     usage: '画布中央的一圈环境光 —— v0.6 glass pass',
   },
 
-  // ── edge：描边与高光 ─────────────────────────────────────────
+  // ── edge: outlines and highlights ─────────────────────────────
   {
     name: '--shell-mat-edge-highlight',
     dark: 'rgba(255, 255, 255, 0.06)',
@@ -134,7 +147,7 @@ export const MATERIALS: readonly MaterialDef[] = [
   },
 
 
-  // ── sheen：面上的渐变高光 ────────────────────────────────────
+  // ── sheen: the gradient highlight on a face ───────────────────
   {
     name: '--shell-mat-sheen-card',
     dark: 'linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.025) 46%)',
@@ -168,7 +181,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     usage: '浅色皮肤上的纯白 —— 浮层底、渐变起点',
   },
 
-  // ── canvas：最底下那一层 ─────────────────────────────────────
+  // ── canvas: the layer at the very bottom ─────────────────────
   {
     name: '--shell-mat-canvas',
     dark: '#06080b',
@@ -186,7 +199,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     usage: '玻璃画布的底 —— v0.7 第一遍',
   },
 
-  // ── lift：投影 ───────────────────────────────────────────────
+  // ── lift: shadows ────────────────────────────────────────────
   {
     name: '--shell-mat-shadow-card',
     dark: '0 18px 36px -26px rgba(0, 0, 0, 0.9), 0 2px 6px -3px rgba(0, 0, 0, 0.4)',
@@ -293,7 +306,7 @@ export const MATERIALS: readonly MaterialDef[] = [
   },
 ];
 
-/** 材质变量名 → 该皮肤下的值 */
+/** Material variable name → the value under that skin */
 export function materialVars(theme: ThemeName): Record<string, string> {
   const out: Record<string, string> = {};
   for (const m of MATERIALS) {
@@ -302,5 +315,5 @@ export function materialVars(theme: ThemeName): Record<string, string> {
   return out;
 }
 
-/** 材质层里的所有名字 */
+/** Every name of the material layer */
 export const MATERIAL_NAMES: readonly string[] = MATERIALS.map((m) => m.name);

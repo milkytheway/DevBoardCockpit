@@ -2,44 +2,51 @@ import { deviceKeyOf, type ConnectionProfile } from './schema';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 
 /**
- * **选板子 = 宿主挑连接**（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+ * Choosing a board = the host picks the connection (the physical board and
+ * the connection are two layers ✓ — contract `spec/02` §10.2 ✓).
  *
- * ── 为什么宿主挑 ──
+ * ── Why the host picks ──
  *
- * → 界面**只列板卡** ✓（用户 2026-11-16 明确：「仅支持板卡选择，
- *   当前有 fake 和 3588 的真版，不要把连接这些放进去」✓）
- * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **哪条能用只有宿主知道** ✓
- * → 用户点的是**板** ✓ → **宿主挑一条能用的** ✓ → **界面不暴露连接** ✓。
+ * → The interface lists only the board cards ✓ (the user was explicit on
+ *   2026-11-16: "only board card selection is supported, there are real
+ *   versions of fake and of the 3588, do not put the connections and such in
+ *   there" ✓)
+ * → One board has three connections: ADB / serial / SSH ✓ → only the host
+ *   knows which one works ✓
+ * → What the user clicks is the board ✓ → the host picks one that works ✓
+ *   → the interface never exposes a connection ✓.
  *
- * ── 三条规矩（**都是「不猜」** ✓）──
+ * ── Three rules (all of them "never guess" ✓) ──
  *
- * | # | 规矩 | 为什么 |
+ * | # | Rule | Why |
  * |---|---|---|
- * | 1 | **已经在那块板上 → 不重连** ✓ | **白连一次会掉读数** ✗ —— 采样器会重起 ✓ |
- * | 2 | **挨个试这块板的连接** ✓ | **用户点的是板，不是某条通道** ✓ → 宿主挑一条 ✓ |
- * | 3 | **全都不行 → 报错** ✓ | **不静默地换一块板** ✗ —— 那是「静默地做另一件事」 ✗ |
+ * | 1 | Already on that board → do not reconnect ✓ | Connecting for nothing drops the readings ✗ — the sampler restarts ✓ |
+ * | 2 | Try the connections of this board one by one ✓ | What the user clicked is the board, not a particular channel ✓ → the host picks one ✓ |
+ * | 3 | None of them works → report an error ✓ | Silently swapping in another board ✗ — that is "silently doing something else" ✗ |
  */
 
-/** 宿主这边的依赖（**窄接口** ✓ —— 替身能进 ✓） */
+/** The host-side dependencies (a narrow interface ✓ — a test double fits in ✓) */
 export interface DeviceSelectDeps {
-  /** 起运行时（连某条连接） */
+  /** Start the runtime (over some connection) */
   start(profile: ConnectionProfile): Promise<RuntimeStatus>;
-  /** 当前运行时用的是哪条连接（**没有就是 `null`** ✓） */
+  /** Which connection the current runtime uses (`null` when there is none ✓) */
   currentProfileId(): string | null;
 }
 
-/** 选板子的结果 */
+/** The result of choosing a board */
 export type DeviceSelectResult =
   | { ok: true; profileId: string; reused: boolean }
   | { ok: false; reason: 'not_found' | 'connect_failed'; detail: string };
 
 /**
- * 切到**某块板**。
+ * Switch to a board.
  *
- * → **候选 = 这块板的所有连接** ✓（`device_key` 相同 ✓ —— 契约 `spec/02` §10.2 ✓）
- * → **顺序 = profile 的顺序** ✓（**不按偏好排** ✓ —— 哪条先试是**声明顺序** ✓）
- * → **已经在上面 → 不动** ✓
- * → **都不行 → 说清楚每一条为什么失败** ✓（**不静默** ✓）。
+ * → The candidates = all the connections of this board ✓ (the same
+ *   `device_key` ✓ — contract `spec/02` §10.2 ✓)
+ * → The order = the order of the profiles ✓ (not sorted by preference ✓ —
+ *   which one is tried first is the declaration order ✓)
+ * → Already on it → nothing happens ✓
+ * → None of them works → say clearly why each one failed ✓ (never silent ✓).
  */
 export async function selectDevice(
   profiles: readonly ConnectionProfile[],
@@ -51,15 +58,16 @@ export async function selectDevice(
     return { ok: false, reason: 'not_found', detail: `没有这个设备：${deviceKey}` };
   }
 
-  // ── **已经在那块板上 → 不重连** ✓ ──
-  // → **白连一次会掉读数** ✗ —— 采样器会重起 ✓ → 界面会闪一下 ✗
+  // ── Already on that board → do not reconnect ✓ ──
+  // → Connecting for nothing drops the readings ✗ — the sampler restarts ✓
+  //   → the interface flickers ✗
   const current = deps.currentProfileId();
   if (current !== null) {
     const already = candidates.find((profile) => profile.id === current);
     if (already !== undefined) return { ok: true, profileId: already.id, reused: true };
   }
 
-  // ── **挨个试** ✓ ──
+  // ── Try them one by one ✓ ──
   const failures: string[] = [];
   for (const profile of candidates) {
     const status = await deps.start(profile);

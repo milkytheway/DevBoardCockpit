@@ -1,14 +1,16 @@
 import { makeError } from '../../shared/errors';
 
 /**
- * 连接 profile（target）的 schema。
+ * The schema of a connection profile (target).
  *
- * 一份 profile 描述**一个连接实例**：连谁、用什么传输、参数是什么。
- * 它和板型包（board pack）是两样东西——板型包说「这块板有什么」，
- * profile 说「怎么连上它」（契约 `docs/spec/02-board-pack.md` §10）。
+ * One profile describes one connection instance: whom it connects to, over
+ * which transport, with which parameters. It is a different thing from a
+ * board pack — the board pack says "what this board has", the profile says
+ * "how to connect to it" (contract `docs/spec/02-board-pack.md` §10).
  *
- * **封闭 schema**：未知字段一律报错。静默忽略拼错的字段是危险的——
- * 拼错的 `board_pack` 会让连接绑不上任何板，而用户看不到任何提示。
+ * A closed schema: an unknown field is always an error. Silently ignoring a
+ * misspelled field is dangerous — a misspelled `board_pack` leaves the
+ * connection bound to no board at all, and the user sees no hint of it.
  */
 
 export type { TransportKind } from '../../shared/ipc-contract';
@@ -18,27 +20,31 @@ export interface ConnectionProfile {
   id: string;
   label: string;
   transport: TransportKind;
-  /** 绑定的板型包 id（契约口径的键名）。null / 缺省 = 不绑 */
+  /** The bound board pack id (the key name in the terms of the contract). null / absent = no binding */
   board_pack?: string | null;
   /**
-   * **这块板的标识**（契约 `spec/02` §10.2 ✓）。
+   * The identity of this board (contract `spec/02` §10.2 ✓).
    *
-   * → **板实物**与**连接**是两层 ✓ —— 一块板有 ADB / 串口 / SSH 三条连接 ✓
-   * → **同一块板的多条连接写同一个 `device_key`** ✓
-   * → 缺省 = `id` ✓（**一板一连** ✓ 的连接就这么办 ✓）。
+   * → The physical board and the connection are two layers ✓ — one board has
+   *   three connections: ADB / serial / SSH ✓
+   * → Several connections of the same board write the same `device_key` ✓
+   * → Absent = `id` ✓ (a connection with one board and one connection is
+   *   done that way ✓).
    *
-   * → **取值一律走 `deviceKeyOf()`** ✓ —— **别直接读这个字段** ✓
-   *   （手搓的 profile 没有它 ✓ → 直接读会拿到 `undefined` ✗）。
+   * → Always read the value through `deviceKeyOf()` ✓ — do not read this
+   *   field directly ✓ (a hand-written profile does not have it ✓ → reading
+   *   it directly yields `undefined` ✗).
    */
   device_key?: string;
   options: Record<string, unknown>;
 }
 
 /**
- * **这条连接属于哪块板** ✓。
+ * Which board this connection belongs to ✓.
  *
- * → **缺省 = profile id** ✓（契约 `spec/02` §10.2 ✓）
- * → **这是取值的唯一入口** ✓ —— 别处直接读 `profile.device_key` ✗（可能是 `undefined` ✗）。
+ * → Absent = the profile id ✓ (contract `spec/02` §10.2 ✓)
+ * → This is the one place the value is read ✓ — reading `profile.device_key`
+ *   anywhere else ✗ (it may be `undefined` ✗).
  */
 export function deviceKeyOf(profile: ConnectionProfile): string {
   return profile.device_key !== undefined && profile.device_key.length > 0
@@ -46,23 +52,27 @@ export function deviceKeyOf(profile: ConnectionProfile): string {
     : profile.id;
 }
 
-/** 一个 `device_key` 的冲突（**说清楚是哪几条** ✓） */
+/** A conflict on one `device_key` (say exactly which ones ✓) */
 export interface DeviceKeyConflict {
-  /** 冲突的那个 key ✓ */
+  /** The key that conflicts ✓ */
   device_key: string;
-  /** 声明了哪些板型包（**多于一个就是冲突** ✓） */
+  /** Which board packs are declared (more than one is a conflict ✓) */
   board_packs: string[];
-  /** 牵涉哪几条 profile ✓ */
+  /** Which profiles are involved ✓ */
   profile_ids: string[];
 }
 
 /**
- * **同一个 `device_key` 声明了不同的板型包** ✓（契约 `spec/02` §10.2 ✓）。
+ * The same `device_key` declares different board packs ✓ (contract
+ * `spec/02` §10.2 ✓).
  *
- * → **一块板只有一个型号** ✓ → 同一个 key 声明了两个包 ✗ → **配置写错了** ✓
- * → **要说得出来** ✓（**不静默** ✓ —— 界面会把它当一块板 ✓ → 混了型号 ✓）。
+ * → One board has only one model ✓ → the same key declares two packs ✗ →
+ *   the configuration is wrong ✓
+ * → It has to be said out loud ✓ (never silent ✓ — the interface treats it
+ *   as one board ✓ → the models get mixed up ✓).
  *
- * → **两块同型号的板不算冲突** ✓（**它们的 key 不同** ✓ —— **共享一个包** ✓ 但不是一块 ✓）。
+ * → Two boards of the same model are not a conflict ✓ (their keys differ ✓
+ *   — they share one pack ✓ but they are not one board ✓).
  */
 export function deviceKeyConflicts(
   profiles: readonly ConnectionProfile[],
@@ -87,7 +97,7 @@ export function deviceKeyConflicts(
   return out;
 }
 
-/** 各传输允许的 options。必填项必须有，其余可选。 */
+/** The options each transport allows. The required ones have to be there, the rest are optional. */
 interface TransportSpec {
   required: readonly string[];
   optional: readonly string[];
@@ -95,33 +105,41 @@ interface TransportSpec {
 }
 
 /**
- * 各传输共有的可选字段。
+ * The optional fields shared by all transports.
  *
- * - `pty`：目标是不是真终端（能力位由 profile 决定，不靠传输名猜）
- * - `prompt`：**pipe 模式下宿主要画的提示符**。
- *   pipe 模式的远端没有 tty，`PS1` 无从打印——前身工程就是宿主画的
- *   （`docs/legacy/旧工程架构说明-PySide6.md`）。
- * - `commands`：**快捷命令集的 id**（前身工程：quick-command set）。
- *   **已登记但尚未消费**——快捷命令面板属 M5。
- *   在那之前它是一个「看起来支持」的字段，所以在这里写清楚，
- *   免得有人以为改它能生效（`docs/11-计划1评审报告.md` R-36）。
+ * - `pty`: is the target a real terminal (the capability bit is decided by
+ *   the profile, not guessed from the transport name)
+ * - `prompt`: the prompt the host has to draw in pipe mode. The remote side
+ *   in pipe mode has no tty, so `PS1` cannot be printed — the legacy project
+ *   drew it on the host side (the architecture notes of the legacy PySide6
+ *   project).
+ * - `commands`: the id of a quick-command set (quick-command set in the
+ *   legacy project). It is registered but not consumed yet — the
+ *   quick-command panel belongs to M5. Until then it is a field that "looks
+ *   supported", so it is spelled out here, so that nobody thinks changing it
+ *   takes effect (plan-1 review, finding R-36).
  */
 const COMMON_OPTIONAL = ['pty', 'prompt', 'commands'] as const;
 
 /**
- * **`options.ssh`** —— **这条连接背后那台机器**的 SSH 端点（契约 `spec/02` §10.3 ✓）。
+ * `options.ssh` — the SSH endpoint of the machine behind this connection
+ * (contract `spec/02` §10.3 ✓).
  *
- * → **它跨传输** ✓ —— ADB 连的板子也能被 SSH 连 ✓ —— 同一块板 ✓
- * → **跨机器的动作在另一台机器上发起** ✓ → 那条命令要用**板子的 SSH 地址** ✓
- * → **流程包不该知道板子的地址** ✓ → **它跟着 profile 走** ✓。
+ * → It crosses transports ✓ — a board connected by ADB can also be
+ *   connected by SSH ✓ — the same board ✓
+ * → An action that crosses machines is started on the other machine ✓ →
+ *   that command has to use the board's SSH address ✓
+ * → A workflow pack should not know the board's address ✓ → it travels
+ *   with the profile ✓.
  *
- * → **只给 `serial` / `adb`** ✓ ——
- * → `ssh` 传输**自己就是那个端点** ✓ → 双写 = 漂移 ✓ → **报错** ✓（不是「谁赢」✓ —— **不猜** ✓）
- * → `local` 是**宿主自己** ✓ → 没有背后的板子 ✓。
+ * → Only for `serial` / `adb` ✓ —
+ * → the `ssh` transport is that endpoint itself ✓ → writing it twice means
+ *   drift ✓ → report an error ✓ (not "whoever wins" ✓ — never guess ✓)
+ * → `local` is the host itself ✓ → there is no board behind it ✓.
  */
 const SSH_FACT_OPTIONAL = ['ssh'] as const;
 
-/** `options.ssh` 的封闭字段表。`host` 必填。 */
+/** The closed field table of `options.ssh`. `host` is required. */
 const SSH_FACT_KEYS = ['host', 'port', 'username'] as const;
 
 const TRANSPORT_SPECS: Record<TransportKind, TransportSpec> = {
@@ -166,9 +184,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * 校验并规范化一份 profile。
- * @param raw   解析好的 JSON（必须是对象）
- * @param source 出处（文件路径），写进错误的 detail 里便于定位
+ * Validates and normalises one profile.
+ * @param raw   The parsed JSON (must be an object)
+ * @param source Where it came from (the file path), written into the detail of the error so that it can be located
  */
 export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   if (!isRecord(raw)) fail('profile 必须是一个对象', source);
@@ -193,8 +211,10 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   const rawOptions = raw['options'];
   if (!isRecord(rawOptions)) fail('options 必须是一个对象', source);
 
-  // **`options.ssh` 的传输冲突** ✓ —— **先于「未知字段」判** ✓
-  // （否则报的是「未知字段 'ssh'」✓ → 看不出那是**冲突**而不是拼错 ✓）
+  // A transport conflict on `options.ssh` ✓ — judged before the "unknown
+  // field" check ✓
+  // (otherwise the error says "unknown field 'ssh'" ✓ → that does not show
+  // that it is a conflict and not a typo ✓)
   if (rawOptions['ssh'] !== undefined) {
     if (transport === 'ssh') {
       fail('options.ssh 不许带：这条连接自己就是那个 SSH 端点（双写会漂移）', source, {
@@ -217,7 +237,7 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     }
   }
 
-  // **`options.ssh` 自己的封闭形状** ✓
+  // The closed shape of `options.ssh` itself ✓
   const sshFact = rawOptions['ssh'];
   if (sshFact !== undefined) {
     if (!isRecord(sshFact)) fail('options.ssh 必须是一个对象', source);
@@ -238,7 +258,7 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     }
   }
 
-  // 事实 A1：adb 不用 PTY（`adb shell -t -t` 在 Windows 上会晚一条）
+  // Fact A1: adb does not use a PTY (`adb shell -t -t` on Windows arrives one line late)
   if (transport === 'adb' && rawOptions['pty'] === true) {
     fail("adb 的 pty 必须是 false：adb shell -t -t 在 Windows 上会晚一条（事实 A1）", source);
   }
@@ -250,7 +270,7 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     fail('board_pack 必须是字符串或 null', source);
   }
 
-  // **`device_key`** ✓ —— 缺省 = profile id ✓
+  // `device_key` ✓ — absent = the profile id ✓
   const rawDeviceKey = raw['device_key'];
   if (
     rawDeviceKey !== undefined &&

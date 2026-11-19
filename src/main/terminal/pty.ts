@@ -3,15 +3,19 @@ import { Session } from '../hal/session';
 import type { SessionLog } from '../logging/session-log';
 
 /**
- * 本机的 pty 会话。
+ * The pty session of the local machine.
  *
- * `node-pty` 是**原生模块**，但它是 **NAPI** 的 → ABI 稳定，
- * 包自带的 prebuilds 跨 Node 与 Electron 版本通用，
- * **不必**为 Electron 重编译（`scripts/ensure-native.mjs`：加载不了才编译）。
- * （⚠️ Linux 没有 node-pty 的 prebuild → Linux 侧仍要编译器。）
+ * `node-pty` is a native module, but it is an NAPI one → the ABI is stable,
+ * and the prebuilds shipped with the package work across Node and Electron
+ * versions, so there is no need to recompile it for Electron
+ * (`scripts/ensure-native.mjs`: it only compiles when the module cannot be
+ * loaded).
+ * (⚠️ Linux has no prebuild for node-pty → the Linux side still needs a
+ * compiler.)
  *
- * 加载失败时不静默降级：原生模块没编好就跑不起来，
- * 那种「终端不显示」的错最难查。
+ * It does not degrade silently when the load fails: without a properly built
+ * native module it simply does not run, and that kind of "the terminal does
+ * not show up" bug is the hardest to track down.
  */
 
 interface PtyModule {
@@ -31,10 +35,11 @@ interface PtyModule {
 let ptyModule: PtyModule | undefined;
 
 /**
- * 加载 node-pty。
+ * Loads node-pty.
  *
- * 用 `createRequire` 而不是裸 `require`：构建产物是 ESM
- * （package.json 有 `"type": "module"`），裸 `require` 在 ESM 里不存在。
+ * It uses `createRequire` instead of a bare `require`: the build output is
+ * ESM (package.json has `"type": "module"`), and a bare `require` does not
+ * exist in ESM.
  */
 function loadPty(): PtyModule {
   if (ptyModule) return ptyModule;
@@ -84,12 +89,13 @@ export class LocalPtySession extends Session {
   }
 
   /**
-   * 本机 shell 退出了 → 上报。
+   * The local shell exited → report it.
    *
-   * 没有它的话，用户在「本机」标签里敲 `exit` → powershell 退出 →
-   * **界面不知道** → 标签页留着，继续打字写进一个已死的 pty。
-   * （SSH 与 ADB 都有这个钩子，本机这条漏了——
-   *  `docs/13-计划1复评报告.md` S-07）
+   * Without this, the user types `exit` in the "local" tab → powershell
+   * exits → the interface does not know → the tab stays open and the
+   * following typing goes into a dead pty.
+   * (SSH and ADB both have this hook, the local one was missing —
+   * plan-1 re-review, finding S-07)
    */
   onExit(cb: (exitCode: number | null) => void): void {
     this.proc.onExit((code) => {
@@ -107,7 +113,7 @@ export class LocalPtySession extends Session {
   }
 }
 
-/** 给 LocalConnection 用的工厂：每次开一个新 pty 会话 */
+/** The factory for LocalConnection: opens a new pty session every time */
 export function createLocalPtySession(log: SessionLog, opts: LocalPtyOptions = {}): Session {
   return new LocalPtySession(log, opts);
 }

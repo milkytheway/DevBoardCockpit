@@ -1,24 +1,31 @@
 /**
- * tag 读数的结构与状态。
+ * The structure and the states of a tag reading.
  *
- * 契约：`docs/spec/01-tag-contract.md` §2.1（五态模型）、§2.1.1（读数的结构与 reason 码表）。
+ * Contract: `docs/spec/01-tag-contract.md` section 2.1 (the model of the
+ * five states) and section 2.1.1 (the structure of a reading and the table
+ * of reason codes).
  *
- * **定义放在 shared**：main 产出读数、renderer 消费读数——
- * 两边都要用同一份定义，不许各抄一份（那正是「读数漂移」的来源）。
+ * The definition lives in shared: main produces the readings and the
+ * renderer consumes them — both sides have to use one definition and must
+ * not each keep a copy (that is exactly where reading drift comes from).
  */
 
-/** 读数的五态（契约 §2.1） */
+/** The five states of a reading (contract section 2.1) */
 export type TagStatus = 'ok' | 'stale' | 'unavailable' | 'error' | 'pending';
 
 /**
- * 读数不可用的原因码（契约 §2.1.1 的**封闭枚举**）。
+ * The reason codes for an unavailable reading (the closed enumeration of
+ * contract section 2.1.1).
  *
- * **不许自造码**（N3）：具体性由 `detail` 承担，
- * 不为每个路径变体新增一个码——那张表刻意保持最小。
+ * No codes may be invented (N3): the specifics are carried by `detail`, and
+ * no new code is added for every variant of a path — that table is kept
+ * minimal on purpose.
  *
- * `not_found` = **「你问的那个东西不存在」**——
- * 动作那边也是同一个码同一个意思（契约 §2.4 的 `not_found`），
- * **不给 AI 两套要互相翻译的方言**（ADR-D27）。
+ * `not_found` means "the thing you asked about does not exist" — the action
+ * side uses the same code with the same meaning (the `not_found` of
+ * contract section 2.4), so that the AI is never given two dialects it
+ * would have to translate between (implementation-layer decision record
+ * ADR-D27).
  */
 export type ReasonCode =
   | 'not_found'
@@ -29,7 +36,7 @@ export type ReasonCode =
   | 'out_of_domain'
   | 'timeout';
 
-/** reason 码的全集（校验与测试用） */
+/** The complete set of reason codes (for validation and tests) */
 export const REASON_CODES: readonly ReasonCode[] = [
   'not_found',
   'device_absent',
@@ -40,19 +47,19 @@ export const REASON_CODES: readonly ReasonCode[] = [
   'timeout',
 ];
 
-/** 一个 tag 读数（契约 §2.1.1） */
+/** One tag reading (contract section 2.1.1) */
 export interface TagReading {
   tag: string;
-  /** `unavailable` 时**没有** value；`ok` 时**必带** value */
+  /** With `unavailable` there is no value; with `ok` the value is always present */
   value: number | string | boolean | null;
   unit: string;
   status: TagStatus;
-  /** 机器可读的封闭枚举 */
+  /** The machine-readable closed enumeration */
   reason?: ReasonCode;
-  /** 给人看的自由文本。可含修复提示 */
+  /** Free text for humans. May contain a hint on how to fix it */
   detail?: string;
-  /** 本次采样的完成时刻（毫秒 UTC） */
+  /** The moment this sample finished (milliseconds UTC) */
   at: number;
-  /** 同一 tag 内**单调递增**的序号 */
+  /** A monotonically increasing sequence number within the same tag */
   seq: number;
 }

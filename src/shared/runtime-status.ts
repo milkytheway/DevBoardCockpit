@@ -1,32 +1,36 @@
 import type { ErrorCode } from './errors';
 
 /**
- * tag 运行时的状态。
+ * The state of the tag runtime.
  *
- * ── 为什么住在 shared ──
+ * ── Why it lives in shared ──
  *
- * IPC 通道的类型**住在 `src/shared/`**（依赖方向：main → shared ← renderer）。
- * 而这个状态**要上屏**（面板得说「为什么没有数」）→ 它必须能被 renderer 拿到。
- * 放 `src/main/tags/runtime.ts` 的话，shared 就得依赖 main —— **方向反了**。
+ * The types of the IPC channels live in `src/shared/` (the dependency
+ * direction is main → shared ← renderer). This state has to reach the
+ * screen (the panel has to say why there is no number), so the renderer
+ * must be able to get it. If it lived in `src/main/tags/runtime.ts`, shared
+ * would have to depend on main — the direction would be reversed.
  *
- * 所以它搬到这里，`src/main/tags/runtime.ts` 从这儿 import 并**再导出**
- * （既有 import 不断）。
+ * So it was moved here, and `src/main/tags/runtime.ts` imports it from
+ * here and re-exports it (so the existing imports keep working).
  */
 
-/** 运行时状态机 */
+/** The state machine of the runtime */
 export type RuntimeState = 'idle' | 'running' | 'no-pack' | 'error';
 
 export interface RuntimeStatus {
   state: RuntimeState;
-  /** 人话：为什么不是 running */
+  /** Plain language: why it is not running */
   detail?: string;
-  /** 正在采的是哪个连接 profile */
+  /** The connection profile that is being sampled */
   profileId?: string;
   /**
-   * 失败的**错误码**（`ErrorCode`）。
+   * The error code of the failure (`ErrorCode`).
    *
-   * **为什么状态里要带码**：判「串口是不是被别的程序占了」不能靠中文消息匹配
-   * ——改一个字就失效。错误码是**封闭的**，`PORT_BUSY` 已经在 `hal/serial.ts` 里用了。
+   * Why the state carries a code: deciding "is the serial port taken by
+   * another program" must not rely on matching a human-readable message,
+   * because changing one character breaks it. The error codes are closed,
+   * and `PORT_BUSY` is already used in `hal/serial.ts`.
    */
   detailCode?: ErrorCode;
 }

@@ -1,26 +1,32 @@
 /**
- * 主题的**别名层**：组件与卡片用的语义名。
+ * The alias layer of the theme: the semantic names that the components and
+ * the cards use.
  *
- * ── 为什么要「别名」这一层 ──
+ * ── Why there is an alias layer ──
  *
- * 直接用色值（`#58A6FF`）写代码，换皮就得**改几百个文件**；
- * 用别名（`var(--cockpit-accent)`），换皮只改种子。
+ * Writing colour values (`#58A6FF`) straight into the code means that
+ * changing the skin means changing hundreds of files; with aliases
+ * (`var(--cockpit-accent)`), changing the skin only touches the seed.
  *
- * ── `contract: true` 的那些是**契约** ──
+ * ── The ones with `contract: true` are the contract ──
  *
- * 契约 `spec/03` §六 要求「卡片不得硬编码颜色，只用宿主注入的 CSS 变量」——
- * 但**宿主注入哪些变量，契约里一个字都没有**（实测：`spec/03` 搜不到 `CSS` / `变量` / `--cockpit`）。
- * 卡片是 AI 写的，它需要一份「**可以依赖什么**」的清单。
- * → 这 15 个进契约（`docs/UI设计/01-UI设计总纲.md` §19·7）。
+ * The contract (`docs/spec/03-card-manifest.md` section 6) requires that
+ * cards must not hard-code colours and may only use the CSS variables the
+ * host injects — but the contract does not say a single word about which
+ * variables the host injects (verified: searching `spec/03` finds no
+ * `CSS`, no word for a CSS variable and no `--cockpit`). Cards are written
+ * by an AI and they need a list of what they may rely on.
+ * → These 15 enter the contract (the UI design specification in the
+ *   implementation-layer design notes, section 19.7).
  */
 export interface AliasDef {
-  /** CSS 变量名 */
+  /** The CSS variable name */
   name: string;
-  /** 对应种子层的哪个角色 */
+  /** Which role of the seed layer it corresponds to */
   role: string;
-  /** 是否进契约（卡片**可以**依赖） */
+  /** Whether it enters the contract (cards may rely on it) */
   contract: boolean;
-  /** 用在哪（给人看） */
+  /** Where it is used (for humans) */
   usage: string;
 }
 
@@ -47,11 +53,11 @@ export const ALIASES: readonly AliasDef[] = [
   { name: '--cockpit-series-5', role: 'series-5', contract: false, usage: '图表序列 5' },
   { name: '--cockpit-series-6', role: 'series-6', contract: false, usage: '图表序列 6' },
   { name: '--cockpit-series-7', role: 'series-7', contract: false, usage: '图表序列 7' },
-  // ── 契约里的最后三个：几何与字体 ──
+  // ── The last three of the contract: geometry and fonts ──
   { name: '--cockpit-radius', role: 'radius-control', contract: true, usage: '控件圆角' },
   { name: '--cockpit-font-mono', role: 'font-mono', contract: true, usage: '等宽（读数 / 终端 / tag 名）' },
   { name: '--cockpit-font-ui', role: 'font-ui', contract: true, usage: '界面字体' },
 ];
 
-/** 契约里的那 15 个（卡片可以依赖的） */
+/** The 15 of the contract (the ones cards may rely on) */
 export const CONTRACT_ALIASES: readonly AliasDef[] = ALIASES.filter((a) => a.contract);

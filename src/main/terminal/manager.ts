@@ -8,62 +8,73 @@ import type { Session } from '../hal/session';
 import { PipeInput } from './line-editor';
 
 /**
- * 终端会话的生命周期。
+ * The lifecycle of a terminal session.
  *
- * 一个会话 = 一个连接实例上的一个交互式会话。
- * 宿主这边只做三件事：转发按键、转发输出、记日志。
+ * One session = one interactive session on one connection instance.
+ * On the host side only three things happen: forwarding the keystrokes,
+ * forwarding the output, writing the log.
  *
- * **回显的责任在谁**（legacy 的两种终端模式）：
+ * Who is responsible for the echo (the two terminal modes of the legacy
+ * project):
  *
- * - **pty 模式**（ssh、`adb shell -t`）：远端提供真终端，自己回显、自己出 ANSI。
- *   宿主**只转发按键**，不多回显一遍——多回显一次用户就看到两行字。
- * - **pipe 模式**（`adb shell` 无 PTY、串口）：远端**不回显**。
- *   所以宿主把用户输入**也写进数据通道**，用户才看得到自己打的字。
+ * - pty mode (ssh, `adb shell -t`): the remote side provides a real
+ *   terminal, echoes by itself and emits the ANSI itself. The host only
+ *   forwards the keystrokes and does not echo a second time — one extra echo
+ *   and the user sees two lines of text.
+ * - pipe mode (`adb shell` without a PTY, serial): the remote side does not
+ *   echo. So the host also writes the user input into the data channel, and
+ *   only then does the user see what they typed.
  *
- * 这条分界必须在**能力位**上判断，不能靠传输名——
- * 旧工程就是靠传输名推断的，新注册的传输就被当成了真终端（见 `connection.ts`）。
+ * This boundary has to be decided on the capability bits, not on the
+ * transport name — the legacy project inferred it from the transport name,
+ * and a newly registered transport was then treated as a real terminal (see
+ * `connection.ts`).
  */
 
 export interface TerminalManagerOptions {
-  /** 列出可用的连接 profile（按 id 查） */
+  /** Lists the usable connection profiles (looked up by id) */
   listProfiles(): ConnectionProfile[];
   /**
-   * 按 profile 造一个连接。
+   * Builds a connection from a profile.
    *
-   * **日志由 manager 造好传进来**——一个会话一份日志，
-   * 连接那份与会话那份必须是**同一个文件**：
-   * 输入（`Session.record`）与输出（manager 的 `onData`）得在同一处。
-   * 之前两边各造一份，标签还一样，于是**一次会话落两个文件**，
-   * 连接那份永远没有收尾行。
+   * The log is built by the manager and handed in — one log per session,
+   * and the copy of the connection and the copy of the session have to be
+   * the same file: the input (`Session.record`) and the output (the
+   * manager's `onData`) have to end up in the same place. Both sides used to
+   * build one each, with the same label, so one session landed in two files
+   * and the connection's copy never got its closing line.
    */
   createConnection(profile: ConnectionProfile, log: SessionLog): Connection;
   /**
-   * 造一个会话日志。
+   * Builds a session log.
    *
-   * **一个会话一份**（不是一份 profile 一份）——
-   * 同一个 profile 开两个标签，两个会话的对话必须分得开。
+   * One per session (not one per profile) — the same profile opened in two
+   * tabs means two conversations that have to be told apart.
    */
   createLog(label: string, transport: string): SessionLog;
-  /** 连接建好后的通知。文件互传等模块靠它拿到「按 id 找连接」的入口 */
+  /** The notification after a connection is established. Modules such as the file transfer use it to get the "find a connection by id" entry point */
   onConnectionOpen?: (sessionId: string, connection: Connection) => void;
-  /** 连接关掉后的通知。否则 connections Map 里会留下已关闭的连接 */
+  /** The notification after a connection is closed. Otherwise the connections Map keeps the closed connections */
   onConnectionClose?: (sessionId: string) => void;
 }
 
 interface LiveSession {
   id: string;
   /**
-   * **这条会话连的是哪个 profile** ✓。
+   * Which profile this session is connected to ✓.
    *
-   * → 它答的是「**这条配置现在有活连接吗**」✓（契约 `spec/04` §2.1 的 `connected` ✓）。
-   * → **按 sessionId 索引会话，按 profileId 索引「谁连着」** ✓ —— 两个不同的问法 ✓
-   *   （同一个 profile 可以开两个标签 ✓ —— 按 profileId 索引**会话**会撞 ✓ —— 那个坑踩过 ✓）。
+   * → It answers "does this profile have a live connection right now" ✓
+   *   (the `connected` of contract `spec/04` §2.1 ✓).
+   * → Sessions are indexed by sessionId, "who is connected" is indexed by
+   *   profileId ✓ — two different questions ✓
+   *   (the same profile can be opened in two tabs ✓ — indexing the sessions
+   *   by profileId collides ✓ — that pit has been stepped into ✓).
    */
   profileId: string;
   session: Session;
   connection: Connection;
   pty: boolean;
-  /** pipe 模式的行编辑层。每个会话一份（各会话的输入行互不相干） */
+  /** The line-editing layer of pipe mode. One per session (the input lines of the sessions do not touch each other) */
   editor: PipeInput;
 }
 
@@ -75,7 +86,7 @@ export class TerminalManager {
 
   constructor(private readonly opts: TerminalManagerOptions) {}
 
-  /** 每个会话一份日志（按 sessionId 索引，不按 profile） */
+  /** One log per session (indexed by sessionId, not by profile) */
   private logFor(sessionId: string, label: string, transport: string): SessionLog {
     let log = this.logs.get(sessionId);
     if (!log) {
@@ -85,11 +96,11 @@ export class TerminalManager {
     return log;
   }
 
-  /** 收掉一个会话的日志：断开 → （远端自己退出的话）断流 → 收尾 */
+  /** Closes out the log of a session: disconnect → (if the remote side exited on its own) end of stream → closing */
   private closeLog(sessionId: string, remoteExited: boolean): void {
     const log = this.logs.get(sessionId);
     if (!log) return;
-    // 顺序与黄金样本一致：
+    // The order matches the golden sample:
     //   --- disconnected --- → --- stream-ended --- → === session closed ===
     log.writeEvent('disconnected');
     if (remoteExited) log.writeEvent('stream-ended');
@@ -97,7 +108,7 @@ export class TerminalManager {
     this.logs.delete(sessionId);
   }
 
-  /** 打开一个会话。找不到 profile 就报 TERM_NOT_FOUND */
+  /** Opens a session. Reports TERM_NOT_FOUND when the profile cannot be found */
   async open(profileId: string): Promise<{ sessionId: string }> {
     const profile = this.opts.listProfiles().find((p) => p.id === profileId);
     if (!profile) {
@@ -107,8 +118,9 @@ export class TerminalManager {
     }
 
     const id = randomUUID();
-    // 会话日志：**一个会话一份**（同 profile 的两个标签要分得开），
-    // 而且连接与会话**共用这一份**——输入与输出得在同一处。
+    // The session log: one per session (the two tabs of the same profile have
+    // to be told apart), and the connection and the session share this one —
+    // the input and the output have to end up in the same place.
     const log = this.logFor(id, profileId, profile.transport);
 
     let connection: Connection;
@@ -116,7 +128,7 @@ export class TerminalManager {
       connection = this.opts.createConnection(profile, log);
       await connection.open();
     } catch (err) {
-      // 连不上：日志不能留一个没有收尾的半截
+      // It cannot connect: the log must not be left with an unfinished half
       this.closeLog(id, false);
       throw err;
     }
@@ -125,53 +137,62 @@ export class TerminalManager {
     try {
       session = await connection.openSession({ cols: 80, rows: 24 });
     } catch (err) {
-      // 开不出会话就把连接收掉——否则 ssh 客户端与 socket 永久挂着，
-      // 而且连接没进 Map，没有任何东西能回收它。
+      // If no session can be opened, close the connection — otherwise the ssh
+      // client and the socket hang around forever, and the connection is not
+      // in the Map, so nothing can reclaim it.
       await connection.close().catch(() => undefined);
       this.closeLog(id, false);
       throw err;
     }
-    // **终端模式由 profile 决定**，不是由传输名决定。
+    // The terminal mode is decided by the profile, not by the transport name.
     //
-    // 这里曾经有个**两个能力位来源互相矛盾**的 bug：
-    // `connection.capabilities().pty` 报的是**传输的常量**（serial=true / adb=false / …），
-    // 看都不看 profile；而 UI 侧的 `connections:list` 用的是 profile 感知的
-    // `capabilitiesFor(profile)`。用户把 profile 的 `pty` 改成 false，
-    // UI 报 false、运行时仍按 true 走，
-    // 于是宿主不做行编辑也不回显，用户打的字一个都看不见，
-    // 回车原样发成 `\r`，远端永远等不到行尾。
+    // There used to be a bug here where the two sources of the capability
+    // bit contradicted each other: `connection.capabilities().pty` reported
+    // the constant of the transport (serial=true / adb=false / …) and never
+    // looked at the profile, while on the UI side `connections:list` used
+    // the profile-aware `capabilitiesFor(profile)`. The user set `pty` to
+    // false in the profile, the UI reported false, the runtime still ran as
+    // true, so the host did neither line editing nor echoing, not a single
+    // character the user typed was visible, and the carriage return went
+    // out as `\r`, so the remote side never saw the end of a line.
     //
-    // **当时的绕法**：这里直接调 `capabilitiesFor(profile)`，绕开连接对象。
-    // **2026-11-13 的修法**：连接对象自己也调 `capabilitiesFor(profile)`
-    // （`Connection.capabilities()` 不再报传输常量），
-    // **矛盾本身没了**，这里仍然调同一个函数是为了让「唯一实现」名副其实。
+    // The workaround at the time: this called `capabilitiesFor(profile)`
+    // directly and bypassed the connection object. The fix of 2026-11-13:
+    // the connection object calls `capabilitiesFor(profile)` as well
+    // (`Connection.capabilities()` no longer reports the transport
+    // constant), so the contradiction itself is gone; this still calls the
+    // same function so that "the only implementation" is true in name too.
     const pty = capabilitiesFor(profile).pty;
 
-    // 开场事件行。格式与黄金样本同构（旧工程也写这几行）
+    // The opening event line. The format is isomorphic with the golden sample (the legacy project wrote these lines too)
     log.writeEvent('connected', profileId);
 
     session.onData((chunk: string) => {
-      // 远端输出也要记进日志——事实 G4：「崩溃/重启/关窗都不能丢记录」。
-      // 只记输入不记输出，事后复盘就只剩半截对话。
+      // The remote output has to be written to the log as well — fact G4:
+      // "a crash / a restart / closing the window must not lose records".
+      // Writing the input but not the output leaves only half a conversation
+      // for the after-the-fact review.
       log.write(chunk);
       for (const cb of this.dataCbs) cb(id, chunk);
     });
 
-    // 远端自己退出了（敲 exit / 拔线 / adbd 断连）→ 收掉会话并通知界面。
-    // 没有这条，界面留着标签页，用户继续往死通道里打字。
+    // The remote side exited on its own (exit typed / the cable pulled /
+    // adbd disconnected) → close out the session and notify the interface.
+    // Without this, the interface keeps the tab and the user goes on typing
+    // into a dead channel.
     session.onExit((exitCode: number | null) => {
       this.closeSession(id, exitCode, true);
     });
 
-    // pipe 模式：远端不发提示符，宿主画（profile 的 `options.prompt`）
+    // pipe mode: the remote side sends no prompt, the host draws it (the `options.prompt` of the profile)
     const prompt = typeof profile.options['prompt'] === 'string' ? profile.options['prompt'] : '';
     const editor = new PipeInput(prompt);
     this.sessions.set(id, { id, profileId: profile.id, session, connection, pty, editor });
-    // **按 sessionId 登记**：一个标签一个连接。
-    // 按 profileId 登记的话，同一个 profile 开两个标签会互相覆盖。
+    // Registered by sessionId: one tab, one connection. Registered by
+    // profileId, two tabs of the same profile would overwrite each other.
     this.opts.onConnectionOpen?.(id, connection);
 
-    // pipe 模式的第一条提示符
+    // The first prompt of pipe mode
     if (!pty && prompt.length > 0) {
       for (const cb of this.dataCbs) cb(id, prompt);
     }
@@ -182,15 +203,18 @@ export class TerminalManager {
     const live = this.require(sessionId);
 
     if (live.pty) {
-      // pty 模式：远端有真终端（getty / sshd），行规程与回显都在那边。
-      // 宿主**只转发**，多回显一次用户就看到两行字。
+      // pty mode: the remote side has a real terminal (getty / sshd), the
+      // line discipline and the echo live over there. The host only
+      // forwards, one extra echo and the user sees two lines of text.
       live.session.write(data);
       return;
     }
 
-    // pipe 模式：远端没有行规程——宿主做行编辑并回显。
-    // 回车必须译成 LF 发过去，否则远端 shell 永远等不到行尾
-    // （`docs/11-计划1评审报告.md` R-01 的真机实测）。
+    // pipe mode: the remote side has no line discipline — the host does the
+    // line editing and the echoing. The carriage return has to be translated
+    // into an LF before it goes out, otherwise the remote shell never sees
+    // the end of a line (measured on a real board, plan-1 review, finding
+    // R-01).
     const edit = live.editor.input(data);
     if (edit.toRemote.length > 0) live.session.write(edit.toRemote);
     if (edit.echo.length > 0) {
@@ -203,21 +227,25 @@ export class TerminalManager {
   }
 
   /**
-   * 关掉一个会话。
+   * Closes a session.
    *
-   * **要等连接真的关掉再返回**：串口的 `close()` 是异步的（等 `port.close()` 回调），
-   * 不等就返回的话，用户「关标签 → 马上重开」会撞 `PORT_BUSY`——
-   * 而他刚关掉标签，那个「端口被占用」会让人以为端口被别人占了。
+   * It has to wait until the connection is really closed before returning:
+   * the `close()` of a serial port is asynchronous (it waits for the
+   * `port.close()` callback), and returning without waiting makes the user
+   * hit `PORT_BUSY` when they "close a tab → reopen it right away" — and
+   * since they just closed the tab, that "the port is in use" makes people
+   * think the port is taken by somebody else.
    */
   async close(sessionId: string): Promise<void> {
     await this.closeSession(sessionId, this.sessions.get(sessionId)?.session.exitCode ?? null, false);
   }
 
   /**
-   * 收掉一个会话。
+   * Closes out a session.
    *
-   * 两条路径会走到这里：用户点关闭按钮、远端自己退出了。
-   * 重复调用无害——会话从 map 里删掉后第二次就直接返回。
+   * Two paths lead here: the user clicks the close button, or the remote
+   * side exited on its own. Calling it twice is harmless — once the session
+   * is deleted from the map, the second call returns right away.
    */
   private async closeSession(
     sessionId: string,
@@ -226,14 +254,16 @@ export class TerminalManager {
   ): Promise<void> {
     const live = this.sessions.get(sessionId);
     if (!live) return;
-    // 会话先关：SSH 会把 decoder 里那半个字符 flush 出来——
-    // 它得落在 `=== session closed ===` **之前**。
+    // The session is closed first: SSH flushes out the half character that
+    // was in the decoder — it has to land before `=== session closed ===`.
     live.session.close();
     await live.connection.close().catch(() => undefined);
     this.sessions.delete(sessionId);
-    // 连接也要注销——否则按 id 找连接会拿到一个已关闭的
+    // The connection has to be unregistered as well — otherwise looking up a
+    // connection by id hands out a closed one
     this.opts.onConnectionClose?.(sessionId);
-    // 断开与收尾也要进日志——事后要能看出「这个会话是怎么结束的」
+    // The disconnect and the closing have to go into the log as well —
+    // afterwards it has to be visible "how did this session end"
     this.closeLog(sessionId, remoteExited);
     for (const cb of this.exitCbs) cb(sessionId, exitCode);
   }
@@ -243,16 +273,20 @@ export class TerminalManager {
   }
 
   /**
-   * **现在有活连接的那些 profile id** ✓。
+   * The profile ids that have a live connection right now ✓.
    *
-   * → 这是「**这条配置现在有活连接吗**」的答案 ✓（契约 `spec/04` §2.1 的 `connected` ✓）。
-   * → **同一个 profile 开多个标签只出现一次** ✓ —— 问的是「有哪些 profile 连着」✓
-   *   不是「有几个会话」✓。
-   * → **关掉一个标签 → 另一个还在 → profile 还在** ✓。
+   * → This is the answer to "does this profile have a live connection right
+   *   now" ✓ (the `connected` of contract `spec/04` §2.1 ✓).
+   * → The same profile opened in several tabs appears only once ✓ — the
+   *   question is "which profiles are connected" ✓, not "how many sessions
+   *   are there" ✓.
+   * → Closing one tab → the other one is still there → the profile is still
+   *   there ✓.
    *
-   * → **为什么需要它** ✓：宿主侧**没有连接 registry** ✓ ——
-   *   `main/index.ts` 的 `connections` Map 按 **sessionId** 索引 ✓（给文件互传用 ✓），
-   *   **按 profileId 索引会话会撞** ✓（同一个 profile 开两个标签 ✓）。
+   * → Why it is needed ✓: on the host side there is no connection registry ✓
+   *   — the `connections` Map of `main/index.ts` is indexed by sessionId ✓
+   *   (it is there for the file transfer ✓), and indexing the sessions by
+   *   profileId collides ✓ (the same profile opened in two tabs ✓).
    */
   liveProfileIds(): string[] {
     const ids = new Set<string>();

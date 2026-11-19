@@ -1,29 +1,34 @@
 /**
- * 构建产物的**布局契约**。
+ * The layout contract of the build artefacts.
  *
- * main 写死的 preload 路径、electron-vite 生成的 preload 文件名、
- * 以及构建自检脚本，三处必须说同一件事。
- * 所以它们不各自写死字符串——都从这里取。
+ * The preload path hard-coded in main, the preload file name produced by
+ * electron-vite and the build self-check script all have to say the same
+ * thing. So none of them hard-codes a string of its own — they all take it
+ * from here.
  *
- * **为什么要 CJS（`.cjs`）而不是 ESM（`.mjs`）**：
- * Electron 的沙箱 preload 只跑 CommonJS（`docs/04` §9.0 的进程与安全基线）。
- * ESM preload 需要 `sandbox: false`，那等于关掉渲染进程的沙箱——
- * 而本工程要在渲染进程里装载**不可信的卡片**（契约 §6.1 的 CSP 断网），
- * 沙箱是最后一道防线，不能为了省事关掉。
- * （依据：Electron 官方文档「Sandboxed preload scripts can't use ESM imports」
- * 与「ESM preload scripts must have the .mjs extension」。）
+ * Why CJS (`.cjs`) and not ESM (`.mjs`):
+ * Electron's sandboxed preload only runs CommonJS (the process and security
+ * baseline of the implementation-layer architecture design).
+ * An ESM preload needs `sandbox: false`, which amounts to turning the
+ * renderer sandbox off — and this project loads untrusted cards into the
+ * renderer (the CSP network cut-off of contract section 6.1).
+ * The sandbox is the last line of defence and must not be switched off to
+ * save effort.
+ * (Sources: the Electron official documentation sections "Sandboxed preload
+ * scripts can't use ESM imports" and "ESM preload scripts must have the .mjs
+ * extension".)
  */
 
-/** preload 的构建格式。沙箱 preload 只能是 CommonJS。 */
+/** The build format of the preload. A sandboxed preload can only be CommonJS. */
 export const PRELOAD_FORMAT = 'cjs' as const;
 
-/** rollup 的 entryFileNames：构建产物叫 `[name].cjs` */
+/** rollup's entryFileNames: the build artefact is called `[name].cjs` */
 export const PRELOAD_ENTRY = '[name].cjs';
 
-/** 构建产物目录里的实际文件名 */
+/** The actual file name inside the build artefact directory */
 export const PRELOAD_FILE = 'index.cjs';
 
-/** 两条约定必须对得上：`[name]` 换成入口名就是文件名 */
+/** The two conventions must line up: `[name]` with the entry name substituted is the file name */
 export function preloadEntryName(entryName: string): string {
   return PRELOAD_ENTRY.replace('[name]', entryName);
 }

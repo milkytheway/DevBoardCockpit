@@ -3,29 +3,33 @@ import { materialVars } from './material';
 import { GEOMETRY, SEEDS, type ThemeName } from './seed';
 
 /**
- * 主题的**映射层**：种子 → 角色 → 别名。
+ * The mapping layer of the theme: seed → role → alias.
  *
- * ── 为什么映射是纯函数 ──
+ * ── Why the mapping is a pure function ──
  *
- * 因为它要**同时**产出四样东西，而它们**必须永远一致**：
+ * Because it has to produce four things at once, and they must always
+ * agree:
  *
  * ```
- * 映射(seed) ──┬─→ 应用自己的 CSS 变量
- *             ├─→ 卡片注入的 <style>（__host/theme.css）
- *             ├─→ ECharts 主题 JSON（给卡片）
- *             └─→ xterm 的 theme 对象（终端）
+ * mapping(seed) ──┬─→ the CSS variables of the application itself
+ *              ├─→ the <style> injected into cards (__host/theme.css)
+ *              ├─→ the ECharts theme JSON (for the cards)
+ *              └─→ the xterm theme object (the terminal)
  * ```
  *
- * 四处各维护一份 = 迟早对不上（终端和卡片颜色不一样，是这类产品最常见的破相）。
- * **一处映射，四处产出** = 换一次皮肤，全应用连着换 ✓。
+ * One copy maintained in each of the four places = they will drift apart
+ * sooner or later (the terminal and the cards showing different colours is
+ * the most common way a product like this loses its looks). One mapping,
+ * four outputs: change the skin once and the whole application changes
+ * with it.
  */
 
-/** 角色 → 值（种子层直接给） */
+/** Role → value (the seed layer provides it directly) */
 export function roleVars(theme: ThemeName): Record<string, string> {
   return { ...SEEDS[theme], ...GEOMETRY };
 }
 
-/** 别名 → 值 */
+/** Alias → value */
 export function aliasVars(theme: ThemeName): Record<string, string> {
   const roles = roleVars(theme);
   const out: Record<string, string> = {};
@@ -33,26 +37,34 @@ export function aliasVars(theme: ThemeName): Record<string, string> {
     const value = roles[alias.role];
     if (value !== undefined) out[alias.name] = value;
   }
-  // 几何与字号也进别名层（它们与皮肤无关，但组件要用同一个入口取）
+  // The geometry and the type sizes enter the alias layer as well (they are
+  // independent of the skin, but the components take them through the same
+  // entry point)
   for (const [key, value] of Object.entries(GEOMETRY)) {
     const name = `--cockpit-${key}`;
-    // **别名层说了算**（别名的定义更具体：比如 `--cockpit-radius` 指的是控件圆角）
+    // The alias layer has the final word (the alias definition is the more
+    // specific one: `--cockpit-radius` means the corner radius of a control)
     if (!(name in out)) out[name] = value;
   }
   return out;
 }
 
 /**
- * 生成 `:root{…}` 的 CSS 文本。
+ * Generates the CSS text for `:root{…}`.
  *
- * @param selector 变量挂在谁身上（`:root` 或 `[data-theme='light']`）
- * @param includeMaterial 是否带上**材质层**（`--shell-mat-*`）。
+ * @param selector Who the variables are attached to (`:root` or
+ * `[data-theme='light']`)
+ * @param includeMaterial Whether the material layer (`--shell-mat-*`) is
+ * included.
  *
- *   ⚠️ **只有应用外壳要带，卡片不许带。**
+ *   ⚠️ Only the application shell may carry it; cards must not.
  *
- *   材质层是外壳专有的（见 `material.ts`）。一旦卡片也能用 `--shell-mat-*`，
- *   它就会开始自己造第二套材质，「统一皮肤」当场就破。
- *   → 卡片注入的 `theme.css` 一律 `includeMaterial = false`。
+ *   The material layer belongs to the shell alone (see `material.ts`). As
+ *   soon as cards could use `--shell-mat-*` as well, they would start
+ *   building a second set of materials of their own and the idea of one
+ *   unified skin would fall apart on the spot.
+ *   → The `theme.css` injected into cards always uses
+ *     `includeMaterial = false`.
  */
 export function themeCss(theme: ThemeName, selector = ':root', includeMaterial = false): string {
   const vars = aliasVars(theme);
@@ -63,7 +75,7 @@ export function themeCss(theme: ThemeName, selector = ':root', includeMaterial =
   return `${selector} {\n${body}\n}\n`;
 }
 
-/** 两套皮肤的 CSS 文本（生成脚本用它落盘） */
+/** The CSS text of the two skins (the generation script writes it to disk) */
 export function allThemesCss(): string {
   return [
     '/* 本文件是**生成产物** —— 改它没有意义，改 `src/shared/theme/seed.ts`。 */',

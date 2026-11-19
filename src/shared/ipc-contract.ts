@@ -1,8 +1,9 @@
 /**
- * main 与 renderer 之间的全部 IPC 通道。
+ * Every IPC channel between main and renderer.
  *
- * 通道名集中在这里，main 与 preload 共用同一份定义——
- * 拼错通道名在编译期就会报错，而不是运行时静默失败。
+ * The channel names are collected here; main and preload share one
+ * definition — a misspelled channel name is a compile-time error instead of
+ * a silent failure at runtime.
  */
 
 import type { AppErrorPayload } from './errors';
@@ -22,195 +23,226 @@ export const IPC = {
   filesPull: 'files:pull',
   connectionsList: 'connections:list',
   /**
-   * **切到某块板** ✓（界面「选板子」✓ —— 板实物与连接是两层 ✓）。
+   * Switch to a given board (the board picker of the UI — the physical
+   * board and the connection are two separate layers).
    *
-   * → **界面只列板** ✓ → **哪条连接由宿主挑** ✓（**用户点的是板** ✓）。
-   * → **v1 是单连接** ✓（`O11` / `O18` ✓）→ **「选板子」= 换一块板** ✓
-   * → **不是「同时看多块板」** ✓（那是 M8 ✓ —— **另说** ✓）。
+   * → The UI lists boards only; the host picks which connection backs them
+   *   (the user clicks a board, not a connection).
+   * → v1 has a single connection (`O11` / `O18`), so picking a board means
+   *   switching to another board
+   * → it does not mean showing several boards at once (that is M8 — a
+   *   separate discussion).
    */
   devicesSelect: 'devices:select',
   /**
-   * tag 读数的**当前快照**。
+   * The current snapshot of the tag readings.
    *
-   * **为什么要有「取快照」而不只是「听推送」**：
-   * 晚订阅的窗口会漏掉之前的推送——**它打开时看到的应该是现在的数**，
-   * 而不是一片空白（契约 §2.1：读数有五态、有 seq，本来就是「当前状态」）。
+   * Why there is a "take a snapshot" call and not only "listen for pushes":
+   * a window that subscribes late misses the earlier pushes — what it sees
+   * when it opens should be the readings as they are now and not a blank
+   * page (contract section 2.1: readings have the five states and a seq,
+   * they are a snapshot of the current state by nature).
    */
   tagsReadings: 'tags:readings',
-  /** tag 读数**变化**的推送 */
+  /** The push for a change of a tag reading */
   tagsChanged: 'tags:changed',
   /**
-   * tag 运行时的**状态**（连上了吗 / 为什么连不上）。
+   * The state of the tag runtime (is it connected / why is it not).
    *
-   * **为什么单独一条通道**：`tags:readings` 只给读数——
-   * **「为什么一个数都没有」这件事根本到不了面板**，
-   * 面板只能笼统地说「还没有读数」。而「板子没插上」和「等一个采样周期」
-   * 是两回事，前者等一辈子也不会好。
+   * Why it is a channel of its own: `tags:readings` carries readings only
+   * — the reason why not a single number is available never reaches the
+   * panel, and the panel can only say generically that there are no
+   * readings yet. "The board is not plugged in" and "waiting for a sampling
+   * interval" are two different things, and the first one never gets better
+   * no matter how long you wait.
    */
   tagsStatus: 'tags:status',
-  /** 装着的卡片（页面据此渲染卡片区） */
+  /** The installed cards (the page renders the card area from them) */
   cardsList: 'cards:list',
-  /** 卡片实例连上了（main 开一个会话） */
+  /** A card instance has connected (main opens a session for it) */
   cardsHello: 'cards:hello',
-  /** 卡片的一个请求 → main（权限判定在 main） */
+  /** One request from a card → main (the permission decision is made in main) */
   cardsRequest: 'cards:request',
   /**
-   * 一张卡的 **CSP 违规** → main（进那张卡的运行时日志）。
+   * A CSP violation in one card → main (it goes into the runtime log of
+   * that card).
    *
-   * **为什么单独一条通道**：它**不是卡片 API**——
-   * 是宿主注入的监听脚本（`__host/csp.js`）在卡片自己的文档里报的。
-   * 卡片伪造一条也只能污染**它自己**的日志。
+   * Why it is a channel of its own: it is not a card API — it is reported
+   * by the listener script the host injects (`__host/csp.js`) inside the
+   * card's own document. A card that forges one can only pollute its own
+   * log.
    */
   cardsCsp: 'cards:csp',
-  /** main → 卡片（推给某个实例） */
+  /** main → card (pushed to one instance) */
   cardsEvent: 'cards:event',
-  /** 装着的卡片变了（热插拔）—— 页面据此重新取清单 */
+  /** The installed cards changed (hot plug) — the page fetches the manifest again */
   cardsChanged: 'cards:changed',
-  /** 读布局（哪张卡在哪个格子里） */
+  /** Reads the layout (which card sits in which cell) */
   layoutGet: 'layout:get',
-  /** 存布局（拖完之后） */
+  /** Stores the layout (after a drag) */
   layoutSet: 'layout:set',
   /**
-   * 外壳主题（深/浅）。
+   * The shell theme (dark/light).
    *
-   * **为什么必须经过 main**：卡片 iframe 的 token 是协议 handler 在响应
-   * `cockpit://` 时注入的；renderer 改 document 属性只能改外壳自己。
-   * 主题落在 main，卡片重挂时才会带上新的 `theme.css`。
+   * Why it has to go through main: the tokens of a card iframe are injected
+   * by the protocol handler when it answers `cockpit://`; changing a
+   * document attribute in the renderer only changes the shell itself. The
+   * theme lives in main, so a card that is mounted again picks up the new
+   * `theme.css`.
    */
   themeSet: 'theme:set',
   /**
-   * **统一权限区**（设置页的那张表 ✓ · ADR-D47 ✓）。
+   * The unified permission area (the table on the settings page ·
+   * implementation-layer decision record ADR-D47).
    *
-   * → **列所有操作 + 谁能用** ✓
+   * → It lists every operation and who may use it.
    */
   permissionsList: 'permissions:list',
 
-  /** **改一条**（`actor` × `op` × `allowed` ✓） */
+  /** Changes one entry (`actor` × `op` × `allowed`) */
   permissionsSet: 'permissions:set',
 
   /**
-   * **最近的流程运行**（**含还在跑的** ✓ —— 外壳据此显示「运行中」✓）。
+   * The recent workflow runs (including the ones still running — the shell
+   * shows "running" from them).
    *
-   * → **宿主侧专有** ✓（契约 `05` §八·A **A4** ✓：「**只有宿主能取消**」✓）
-   * → 卡片与 agent **都拿不到这一份** ✓（卡片看到的是**缩减投影** ✓）
+   * → Host-side only (contract `docs/spec/05-workflow-pack.md` section 8·A,
+   *   item A4: only the host may cancel)
+   * → Neither cards nor agents get this copy (a card sees a reduced
+   *   projection)
    */
   workflowsRecent: 'workflows:recent',
   /**
-   * **取消**一次流程运行。
+   * Cancels one workflow run.
    *
-   * → **只有宿主能取消** ✓（**卡片与 agent 都没有这个接口** ✓ —— 契约 A4 ✓：
-   *   「行不行」不给 agent ✓，「停不停」也不给 ✓ —— 否则 agent 就有了
-   *   「**自己决定不干**」的通道 ✓ → 「人点头」那条链多了一个旁路 ✗）
-   * → **幂等** ✓（取消一个**已经结束**的运行**状态一个字都不改** ✓ —— 契约 A5 ✓）
-   * → **不承诺进程一定死** ✓（契约 A1 ✓ —— 那取决于传输与远端 ✓）
+   * → Only the host may cancel: neither cards nor agents have this
+   *   interface (contract A4: the agent does not get to decide what is
+   *   allowed, and it does not get to decide what gets stopped either —
+   *   otherwise the agent would have a channel for deciding on its own not
+   *   to act, which puts a bypass into the chain where the human nods)
+   * → It is idempotent: cancelling a run that has already finished does not
+   *   change a single character of its state (contract A5)
+   * → It does not promise that the process really dies (contract A1 — that
+   *   depends on the transport and the far end)
    */
   workflowsCancel: 'workflows:cancel',
 
   /**
-   * **接板向导** —— **跑一次向导** ✓（docs/探索/02-想法一-接板向导.md ✓）。
+   * The board-setup wizard — it runs the wizard once (see the wizard design
+   * note in the implementation-layer exploration notes).
    *
-   * → **人只参与一步** ✓：选串口 + 波特率 ✓ → **其余全自动** ✓。
-   * → **宿主专用** ✓ —— **卡片与 agent 都拿不到** ✓（它会写用户的目录 ✓）。
+   * → The human takes part in one step only: picking the serial port and
+   *   the baud rate; everything else is automatic.
+   * → Host-only: neither cards nor agents can reach it (it writes into the
+   *   user's directories).
    */
   wizardRun: 'wizard:run',
 } as const;
 
 /**
- * 宿主看到的一次流程运行（**宿主是可信的** ✓ —— 它看得到完整的那一份 ✓）。
+ * One workflow run as the host sees it (the host is trusted — it sees the
+ * complete copy).
  *
- * → **这个形状必须声明在契约层** ✓ —— preload **不许 import main 的模块** ✓
- *   （分层 ✓ · AGENTS.md §5 ✓）→ 所以它不能是 `main/workflows/service.ts` 里的类型 ✓
+ * → This shape has to be declared in the contract layer: preload is not
+ *   allowed to import modules of main (the layering, AGENTS.md section 5),
+ *   so it cannot be a type of `main/workflows/service.ts`.
  */
 export interface HostWorkflowRun {
   runId: string;
   workflowId: string;
-  /** 四档（`running` / `done` / `failed` / `cancelled` ✓ —— 契约 A2 ✓） */
+  /** The four states (`running` / `done` / `failed` / `cancelled` — contract A2) */
   state: 'running' | 'done' | 'failed' | 'cancelled';
-  /** 当前这一步（**没有在飞就是 null** ✓ —— 契约 B1 ✓） */
+  /** The current step (`null` when nothing is in flight — contract B1) */
   current: { stepId: string; kind: string; at: number } | null;
-  /** 开始的时刻（毫秒 UTC ✓） */
+  /** The moment it started (milliseconds UTC) */
   startedAt: number;
-  /** 产出的槽 */
+  /** The produced slots */
   outputs: Record<string, string>;
 }
 
 /**
- * **向导跑完的结果** ✓ —— **宿主专用** ✓。
+ * The result of a finished wizard run — host-only.
  *
- * → kind **分四种** ✓ —— **它们是不同的故障** ✓ → **修法完全不同** ✓：
- *   **ok** ✓ · **port-unopenable** ✓（串口打不开 ✓）· **no-reply** ✓（板子没说话 ✓）·
- *   **connection-dead** ✓（一个数都没出来 ✓ —— **那是连接一次都没通** ✓）。
- * → **「板子没说话」与「连不上」是两件事** ✓ —— **文案上不许混** ✓。
+ * → kind has four values: they are different failures and the fixes differ
+ *   completely — `ok`; `port-unopenable` (the serial port cannot be
+ *   opened); `no-reply` (the board said nothing); `connection-dead` (not a
+ *   single number came out — that means the connection never came up at
+ *   all).
+ * → "The board said nothing" and "cannot connect" are two different things
+ *   and must not be merged in the wording.
  */
 export interface WizardRunResult {
-  /** 成没成 ✓ */
+  /** Whether it worked */
   ok: boolean;
-  /** **现在是哪种情况** ✓ */
+  /** Which situation it is now */
   kind: 'ok' | 'port-unopenable' | 'no-reply' | 'connection-dead';
-  /** **一句话** ✓（**说人话** ✓ —— **别把「连接失败」和「板子没说话」混成一句** ✓） */
+  /** One sentence (plain language — do not merge "connection failed" and "the board said nothing" into one sentence) */
   message: string;
-  /** **下一步查什么** ✓（**空数组 = 没什么要提醒的** ✓） */
+  /** What to check next (an empty array means there is nothing to warn about) */
   hints: string[];
-  /** **多少个元操作可用** ✓（**这板有什么** ✓） */
+  /** How many meta operations are available (what this board has) */
   greenCount: number;
-  /** **多少个不可用** ✓ */
+  /** How many are unavailable */
   redCount: number;
-  /** **包落在哪** ✓（**成了才有** ✓） */
+  /** Where the pack landed (only present on success) */
   installedDir?: string;
-  /** **这块板的 id** ✓（**成了才有** ✓） */
+  /** The id of this board (only present on success) */
   boardId?: string;
 }
 
-/** 谁能执行一个操作（**卡片** / **agent** ✓） */
+/** Who may execute an operation (card / agent) */
 export type PermissionActor = 'card' | 'agent';
 
-/** 设置页权限区的一行 */
+/** One row of the permission area on the settings page */
 export interface PermissionRow {
-  /** 操作的键（`action:backlight.set` ✓） */
+  /** The key of the operation (`action:backlight.set`) */
   op: string;
-  /** 显示名 */
+  /** The display name */
   label: string;
-  /** 这一类（`action` / `workflow` / `host` ✓） */
+  /** The category (`action` / `workflow` / `host`) */
   kind: 'action' | 'workflow' | 'host';
-  /** 这一类里的说明（**人话** ✓） */
+  /** The explanation inside this category (plain language) */
   hint?: string;
-  /** 危险级别：`destructive` 不进整类授权（必须逐条打开） */
+  /** The danger level: `destructive` is not covered by a blanket permission (it has to be enabled entry by entry) */
   danger?: 'reversible' | 'destructive';
-  /** **卡片**能不能用 */
+  /** Whether a card may use it */
   card: boolean;
-  /** **agent** 能不能用 */
+  /** Whether an agent may use it */
   agent: boolean;
 }
 
-/** 一张卡片的一个实例 */
+/** One instance of a card */
 export interface CardInstanceInfo {
   instanceId: string;
   cardId: string;
-  /** 卡片的入口地址（`cockpit://card/<实例 id>/<entry>`） */
+  /** The entry address of the card (`cockpit://card/<instance id>/<entry>`) */
   url: string;
   connectionId: string | null;
-  /** 这张卡是不是有缺失的能力（降级） */
+  /** Whether this card has missing capabilities (degraded) */
   degraded: boolean;
   /**
-   * 卡片**自报的默认尺寸**（manifest 的 `layout.w/h`）。
+   * The default size the card reports for itself (the `layout.w/h` of the
+   * manifest).
    *
-   * 为什么要它：页面把卡「摆进主区」时得知道它该多大——
-   * manifest 是作者的意愿，**只有宿主读得到它** → 宿主在这里带出来。
+   * Why it is needed: when the page places the card into the main area it
+   * has to know how large it should be — the manifest expresses the
+   * author's intent and only the host can read it, so the host carries it
+   * out here.
    */
   layout?: { w: number; h: number; min_w?: number; min_h?: number };
 }
 
-/** 卡片的一个请求 */
+/** One request from a card */
 export interface CardRequest {
   instanceId: string;
-  /** 请求 id（回应时原样带回） */
+  /** The request id (echoed back verbatim in the response) */
   id: string;
-  /** 全名，如 `tags.get` */
+  /** The full name, e.g. `tags.get` */
   method: string;
   args: unknown;
 }
 
-/** 卡片的一个请求的回应 */
+/** The response to one request from a card */
 export interface CardResponse {
   id: string;
   ok: boolean;
@@ -219,33 +251,36 @@ export interface CardResponse {
 }
 
 /**
- * 一条 CSP 违规的详情。
+ * The details of one CSP violation.
  *
- * **纯数据**（跨进程边界的约定都在本文件里）。
- * 字段来自 DOM 的 `SecurityPolicyViolationEvent`。
+ * Pure data (all the conventions of the cross-process boundary live in this
+ * file). The fields come from the DOM `SecurityPolicyViolationEvent`.
  */
 export interface CardCspViolation {
-  /** 它想访问什么（内联脚本是 `inline`） */
+  /** What it wanted to access (an inline script is `inline`) */
   blockedURI: string;
-  /** 被违反的指令（如 `connect-src`） */
+  /** The directive that was violated (e.g. `connect-src`) */
   effectiveDirective: string;
-  /** 真正被违反的那条（`effectiveDirective` 的具体形式） */
+  /** The concrete form that was violated (the specific form of `effectiveDirective`) */
   violatedDirective: string;
-  /** 触发违规的文件（卡片自己的 URL） */
+  /** The file that triggered the violation (the card's own URL) */
   sourceFile: string;
-  /** 行号（0 = 没有） */
+  /** The line number (0 = none) */
   lineNumber: number;
-  /** 违规的那段代码（浏览器给的，可能为空） */
+  /** The offending piece of code (as the browser reports it, possibly empty) */
   sample: string;
 }
 
 /**
- * 校验一条 CSP 违规详情。
+ * Validates the details of one CSP violation.
  *
- * **为什么要有**：这份数据是**卡片给的**（卡片是 AI 写的任意网页）——
- * 跨进程之前必须收成**封闭形状**，否则 main 侧拿到什么都有。
+ * Why it exists: this data comes from the card (a card is an arbitrary web
+ * page written by an AI) — before it crosses the process boundary it has to
+ * be narrowed to a closed shape, otherwise main would receive anything at
+ * all.
  *
- * @returns 不合格就是 `null`（**不猜**——契约的「不猜」口径）
+ * @returns `null` when it does not qualify (never guess — the contract's
+ * "never guess" stance)
  */
 export function parseCardCspViolation(raw: unknown): CardCspViolation | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -267,23 +302,27 @@ export function parseCardCspViolation(raw: unknown): CardCspViolation | null {
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
 
 /**
- * 每个 invoke 通道的返回值。
+ * The return value of every invoke channel.
  *
- * **为什么包一层 `ok`**：主进程抛错时，Electron 会把错误包成
- * `Error invoking remote method 'x': <原错误>`。
- * 原错误如果是普通对象，`String(error)` 就是 `[object Object]`——
- * 用户看到的是 `[object Object]`，而「串口 COM3 被占用」这句话到不了眼前。
+ * Why it is wrapped in an `ok`: when the main process throws, Electron wraps
+ * the error into `Error invoking remote method 'x': <original error>`. If
+ * the original error is a plain object, `String(error)` is `[object Object]`
+ * — the user sees `[object Object]` and the sentence "serial port COM3 is
+ * busy" never reaches the screen.
  *
- * 所以主进程**不抛**，而是返回 `{ok:false, error:{code,message,…}}`；
- * preload 再还原成带错误码的异常抛给 renderer。
- * 错误码因此能活着过 IPC 边界，renderer 可以按 `code` 分支。
+ * So the main process does not throw; it returns
+ * `{ok:false, error:{code,message,…}}`, and preload turns that back into an
+ * exception carrying the error code and throws it to the renderer. The
+ * error code therefore survives the IPC boundary and the renderer can
+ * branch on `code`.
  */
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: AppErrorPayload };
 
 /**
- * 卡片与 renderer 能碰到的宿主能力。
+ * The host capabilities that cards and the renderer can reach.
  *
- * 新增方法时**同时**在上面的 `IPC` 里登记通道名。
+ * When a method is added, register the channel name in the `IPC` object
+ * above at the same time.
  */
 export interface CockpitApi {
   terminalOpen(profileId: string): Promise<{ sessionId: string }>;
@@ -297,166 +336,189 @@ export interface CockpitApi {
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
   connectionsList(): Promise<ConnectionInfo[]>;
   /**
-   * **切到某块板** ✓（界面「选板子」✓）。
+   * Switch to a given board (the board picker of the UI).
    *
-   * → **连不上就报错** ✓（**不静默地换一块板** ✗ —— 那就是「静默地做另一件事」✗）。
-   * → **交出去的是板的身份** ✓（`device_key` ✓）—— **不是连接 id** ✓。
+   * → If it cannot connect, it reports an error; it must not silently
+   *   switch to another board, because that would be silently doing
+   *   something else.
+   * → What it hands over is the identity of the board (`device_key`), not
+   *   the connection id.
    */
   devicesSelect(deviceKey: string): Promise<void>;
   /**
-   * 当前全部 tag 读数的快照。
+   * A snapshot of all current tag readings.
    *
-   * **读数只经 TagStore 出**（ADR-D22）——renderer 拿不到别处的副本。
+   * The readings only come out through TagStore (implementation-layer
+   * decision record ADR-D22) — the renderer cannot get a copy from
+   * anywhere else.
    */
   tagsReadings(): Promise<TagReading[]>;
   /**
-   * 听读数的变化。
+   * Listens for changes of the readings.
    *
-   * @returns 退订函数。
+   * @returns The unsubscribe function.
    */
   onTagChanged(cb: (reading: TagReading) => void): () => void;
   /**
-   * 取运行时的状态（连上了吗 / 为什么连不上）。
+   * Gets the state of the runtime (is it connected / why is it not).
    *
-   * **面板靠它说人话**：没有读数时，
-   * 「连不上：串口 COM3 被占用」与「等一个采样周期」是两回事。
+   * The panel relies on it to speak plainly: when there are no readings,
+   * "cannot connect: serial port COM3 is busy" and "waiting for a sampling
+   * interval" are two different things.
    */
   tagsStatus(): Promise<RuntimeStatus>;
-  /** 装着的卡片 */
+  /** The installed cards */
   cardsList(): Promise<CardInstanceInfo[]>;
-  /** 卡片实例连上了（main 开一个会话） */
+  /** A card instance has connected (main opens a session for it) */
   cardsHello(instanceId: string): Promise<void>;
-  /** 卡片的一个请求（**权限判定在 main**） */
+  /** One request from a card (the permission decision is made in main) */
   cardsRequest(req: CardRequest): Promise<CardResponse>;
-  /** 读布局 */
+  /** Reads the layout */
   layoutGet(): Promise<LayoutState>;
-  /** 存布局 */
+  /** Stores the layout */
   layoutSet(state: LayoutState): Promise<void>;
   /**
-   * **统一权限区**（设置页 ✓ · ADR-D47 ✓）。
+   * The unified permission area (the settings page · implementation-layer
+   * decision record ADR-D47).
    *
-   * → **一行一个操作** ✓ + **两种执行者** ✓（**卡片** ✓ / **agent** ✓）
-   * → **卡片写板子默认禁止** ✓（**C2** ✓）→ **要写板子的人在设置里打开** ✓。
+   * → One row per operation and two kinds of executor (card / agent)
+   * → Writing to the board from a card is forbidden by default (C2); the
+   *   person who wants to write to the board turns it on in the settings.
    */
   permissionsList(): Promise<PermissionRow[]>;
-  /** 改一条（**幂等** ✓） */
+  /** Changes one entry (idempotent) */
   permissionsSet(actor: PermissionActor, op: string, allowed: boolean): Promise<void>;
   /**
-   * **最近的流程运行**（**含还在跑的** ✓）。
+   * The recent workflow runs (including the ones still running).
    *
-   * → **宿主侧专有** ✓（契约 `05` §八·A **A4** ✓）→ 卡片与 agent 拿不到 ✓。
+   * → Host-side only (contract `docs/spec/05-workflow-pack.md` section 8·A,
+   *   item A4): neither cards nor agents can reach it.
    */
   workflowsRecent(): Promise<HostWorkflowRun[]>;
   /**
-   * **取消**一次流程运行（契约 `05` §八·A ✓）。
+   * Cancels one workflow run (contract `docs/spec/05-workflow-pack.md`
+   * section 8·A).
    *
-   * → **幂等** ✓（取消一个已结束的运行**状态一个字都不改** ✓ —— A5 ✓）。
-   * → **不承诺进程一定死** ✓（A1 ✓）—— 传输说了算 ✓。
+   * → It is idempotent: cancelling a run that has already finished does not
+   *   change a single character of its state (A5).
+   * → It does not promise that the process really dies (A1) — the transport
+   *   has the last word.
    */
   workflowsCancel(runId: string): Promise<{ runId: string }>;
 
   /**
-   * **接板向导**（docs/探索/02-想法一-接板向导.md ✓）。
+   * The board-setup wizard (see the wizard design note in the
+   * implementation-layer exploration notes).
    *
-   * ── 人只参与一步 ✓ ──
+   * ── The human takes part in one step only ──
    *
-   * → port = **串口号** ✓（**手动选** ✓ —— **不自动枚举** ✓ · 用户已定 ✓）
-   * → baudrate = **波特率** ✓（**不试** ✓ —— 用户已定 ✓）
-   * → boardName = **这块板叫什么** ✓（**给包起名** ✓）
+   * → port = the serial port name (picked by hand — no automatic
+   *   enumeration; the user has already decided)
+   * → baudrate = the baud rate (not probed — the user has already decided)
+   * → boardName = what this board is called (the name given to the pack)
    *
-   * → **只给宿主** ✓ —— **卡片与 agent 都拿不到** ✓。
+   * → Host-only: neither cards nor agents can reach it.
    */
   wizardRun(input: {
     port: string;
     baudrate: number;
     boardName: string;
-    /** **走哪条通道** ✓ —— 缺省 = 串口 ✓ */
+    /** Which transport to use — the default is serial */
     transport?: 'serial' | 'adb';
   }): Promise<WizardRunResult>;
-  /** 把外壳主题告诉 main：卡片重新加载时会拿到对应的 token */
+  /** Tells main about the shell theme: a card that reloads gets the matching tokens */
   setTheme(theme: 'dark' | 'light'): Promise<void>;
-  /** 一张卡的 CSP 违规 → main（进那张卡的运行时日志） */
+  /** A CSP violation in one card → main (it goes into the runtime log of that card) */
   cardsCsp(instanceId: string, detail: CardCspViolation): Promise<void>;
   /**
-   * 听 main 的推送（读数变化等）。
+   * Listens to the pushes of main (reading changes and the like).
    *
-   * @returns 退订函数。
+   * @returns The unsubscribe function.
    */
   onCardEvent(cb: (instanceId: string, payload: unknown) => void): () => void;
   /**
-   * 听「装着的卡片变了」（热插拔）。
+   * Listens for "the installed cards changed" (hot plug).
    *
-   * @returns 退订函数。
+   * @returns The unsubscribe function.
    */
   onCardsChanged(cb: () => void): () => void;
   /**
-   * 取一个 File 的**宿主绝对路径**。
+   * Gets the host absolute path of a File.
    *
-   * Electron 32 起 `File.path` 已被移除，受支持的做法是
-   * `webUtils.getPathForFile(file)`——它只能在渲染进程/preload 里调，
-   * 所以由 preload 代理。
+   * Since Electron 32 `File.path` has been removed; the supported way is
+   * `webUtils.getPathForFile(file)` — it can only be called in the renderer
+   * process or in preload, so preload proxies it.
    *
-   * 传 `file.name`（只有 basename）是不行的：那会让宿主在
-   * **自己的 CWD** 里找同名文件——要么失败，要么**传走另一个文件**
-   * （数据安全问题）。
+   * Passing `file.name` (the basename only) does not work: it would make
+   * the host look for a file of that name in its own CWD — which either
+   * fails or transfers a different file (a data safety problem).
    */
   getPathForFile(file: File): string;
 }
 
-/** 一个可用的连接：profile 的摘要 + 它的能力位 */
+/** One usable connection: a summary of the profile plus its capability bits */
 export interface ConnectionInfo {
   id: string;
   label: string;
   transport: TransportKind;
   boardPack: string | null;
   /**
-   * **这块板的标识** ✓（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+   * The identity of this board (the physical board and the connection are
+   * two separate layers — contract `docs/spec/02-board-pack.md` section
+   * 10.2).
    *
-   * → **同一块板的多条连接给同一个值** ✓ → 界面据此**按板子分组** ✓。
+   * → Several connections to the same board carry the same value, and the
+   *   UI groups by board because of it.
    */
   deviceKey: string;
   /**
-   * **它是当前运行时那条连接吗** ✓。
+   * Whether it is the connection the runtime currently uses.
    *
-   * → **与「有没有活连接」是两条判据** ✓（**不混** ✓）——
-   * 开着终端会话也算有活连接 ✓ 但**不是运行时那条** ✓。
+   * → This is a different criterion from "is there a live connection", and
+   *   the two are not mixed up: an open terminal session counts as a live
+   *   connection, but it is not the one the runtime uses.
    */
   current: boolean;
   capabilities: ConnectionCapabilities;
 }
 
-/** 传输种类。定义在 shared —— main 与 renderer 都要用，不许各抄一份 */
+/** The kind of transport. Defined in shared — main and renderer both need it and must not each keep a copy */
 export type TransportKind = 'serial' | 'adb' | 'ssh' | 'local';
 
 /**
- * **连接级能力位**。**UI 依能力降级**，不依传输名。
+ * The connection-level capability bits. The UI degrades by capability, not
+ * by transport name.
  *
- * 定义放在 shared 而不是 main/hal——renderer 要用它来决定
- * 「文件浏览器入口要不要禁用」，但 renderer 不能 import main。
+ * It is defined in shared rather than in main/hal — the renderer needs it
+ * to decide whether the file browser entry has to be disabled, but the
+ * renderer must not import main.
  *
- * ── 为什么叫「连接级」而不是「能力」 ──
+ * ── Why it is called "connection level" and not just "capabilities" ──
  *
- * 契约层（`docs/spec/02` §10.3）另有一套**板级能力**词表
- * （`shell` / `exec` / `stream` / `files`）。**那不是同一个轴**：
- * 板级说「这块板能做什么」，连接级说「**这条连接**能做什么」。
- * 串口传不了文件（事实 S7）但**板子**当然有文件通道——
- * 同一个词，两个意思。
+ * The contract layer (`docs/spec/02-board-pack.md` section 10.3) has
+ * another vocabulary of board-level capabilities (`shell` / `exec` /
+ * `stream` / `files`). That is not the same axis: the board level says
+ * what this board can do, the connection level says what this connection
+ * can do. A serial port cannot transfer files (device fact S7), but the
+ * board of course has a file channel — the same word, two meanings.
  *
- * 所以这里**必须**叫 `ConnectionCapabilities`：**名字撞车会让两套词混成一套**
- * （`docs/05` ADR-D24）。板级↔连接级的对照表见 `docs/spec/02` §10.3.2。
+ * That is why it must be called `ConnectionCapabilities` here: colliding
+ * names would merge the two vocabularies into one (implementation-layer
+ * decision record ADR-D24). The table comparing the board level with the
+ * connection level is in `docs/spec/02-board-pack.md` section 10.3.2.
  */
 export interface ConnectionCapabilities {
-  /** 能跑一条命令拿结果 */
+  /** Can run one command and get a result */
   exec: boolean;
-  /** 能开交互式终端（真 pty，有回显与 ANSI） */
+  /** Can open an interactive terminal (a real pty, with echo and ANSI) */
   pty: boolean;
-  /** 能做文件传输 */
+  /** Can transfer files */
   files: boolean;
-  /** exec 能否拿到退出码。串口为 false（事实 S5） */
+  /** Whether exec can return an exit code. False for serial (device fact S5) */
   exitCode: boolean;
 }
 
-/** 远端目录里的一个条目 */
+/** One entry in a remote directory */
 export interface FileEntry {
   name: string;
   path: string;

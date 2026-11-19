@@ -1,22 +1,26 @@
 /**
- * 主题的**种子层**：手挑的那几十个值。
+ * The seed layer of the theme: the few dozen values that were picked by
+ * hand.
  *
- * ── 这是整个视觉系统里**唯一**「人挑」的地方 ──
+ * ── This is the only place in the whole visual system where a human picks ──
  *
- * 换皮 = 改这里 → 重新推导 → 全应用（连卡片一起）跟着变。
- * 别的层（映射、别名）**不许出现色值**。
+ * Changing the skin = changing here → re-deriving → the whole application
+ * (cards included) follows. No other layer (the mapping, the aliases) may
+ * contain a colour value.
  *
- * ── 色值都实测过 ──
+ * ── The colour values are measured ──
  *
- * 暗色与浅色各自成一套，**不是把一套反过来**：
- * 语义色在白底上要压明度（`--warn` 在白底上 2.37:1 是**读不出来**的），
- * 在黑底上要提亮度。
- * 具体的对比度见 `docs/UI设计/01-UI设计总纲.md` §7.3，
- * 判据由 `tests/unit/theme/map.test.ts` 守着。
+ * Dark and light are two sets of their own, not one set turned inside out:
+ * a semantic colour has to have its lightness pushed down on a white
+ * background (`--warn` at 2.37:1 on white cannot be read) and its
+ * brightness pulled up on a black one. The exact contrast ratios are
+ * tabulated in the UI design specification in the implementation-layer
+ * design notes (section 7.3), and the criteria are guarded by
+ * `tests/unit/theme/map.test.ts`.
  */
 export type ThemeName = 'dark' | 'light';
 
-/** 暗色皮肤（v1 精做的那套） */
+/** The dark skin (the set that was carefully crafted in v1) */
 const DARK: Record<string, string> = {
   'bg-0': '#141414',
   'bg-1': '#1F1F1F',
@@ -42,7 +46,7 @@ const DARK: Record<string, string> = {
   'series-7': '#FA8C16',
 }
 
-/** 浅色皮肤（架构齐备，v1 不精做） */
+/** The light skin (the architecture is complete, but v1 did not craft it carefully) */
 const LIGHT: Record<string, string> = {
   'bg-0': '#F5F5F5',
   'bg-1': '#FFFFFF',
@@ -68,16 +72,18 @@ const LIGHT: Record<string, string> = {
   'series-7': '#D46B08',
 }
 
-/** 两套皮肤的种子 */
+/** The seeds of the two skins */
 export const SEEDS: Readonly<Record<ThemeName, Readonly<Record<string, string>>>> = {
   dark: DARK,
   light: LIGHT,
 };
 
 /**
- * 与皮肤**无关**的那部分：几何、字体、字号、间距。
+ * The part that is independent of the skin: geometry, fonts, type sizes and
+ * spacing.
  *
- * 它们不是「皮肤」，是**产品**——两套皮肤共用同一套。
+ * They are not the "skin", they are the product — both skins share the same
+ * ones.
  */
 export const GEOMETRY: Readonly<Record<string, string>> = {
   'radius-control': '4px',

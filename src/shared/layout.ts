@@ -1,41 +1,44 @@
 /**
- * 布局的**纯数据形状**（跨进程的那一份）。
+ * The pure data shape of the layout (the copy that crosses the process
+ * boundary).
  *
- * ── v3：一个布局，不再有「视图」 ──
+ * ── v3: one layout, no more "views" ──
  *
- * v2 是「每个视图各存一份」（总览/监控/调试/演示）。
- * 现在**视图这个概念整个退场**了：主区就是一张卡片网格，
- * 左二级是**卡片目录**，你点哪张才把它摆进来。
- * → 一份布局就够了（`units` = 主区摆了哪些）。
+ * v2 stored one copy per view (overview / monitoring / debugging / demo).
+ * The concept of a view has now left the stage entirely: the main area is
+ * a grid of cards, the second level on the left is the card catalogue, and
+ * a card is placed into it only when you click it. One layout is enough
+ * (`units` = which cards are placed in the main area).
  *
- * | 形状 | 字段 | 去向 |
+ * | Shape | Fields | What happens to it |
  * |---|---|---|
- * | **v3**（现在） | `version` `units` `density` `updatedAt` | — |
- * | v2 | `views[]` `activeViewId` | **取「当前视图」那份**；**其余视图的布局会丢**（视图退场了，没有地方放） |
- * | v1 | `units` `updatedAt` | 直接用 ✓ |
+ * | v3 (now) | `version` `units` `density` `updatedAt` | — |
+ * | v2 | `views[]` `activeViewId` | The copy of the "current view" is taken; the layouts of the other views are lost (the view has left the stage, there is nowhere to put them) |
+ * | v1 | `units` `updatedAt` | Used as it is |
  *
- * ── 退场的字段与它们去哪了 ──
+ * ── The retired fields and where they went ──
  *
- * | 退场 | 去向 |
+ * | Retired | Where it went |
  * |---|---|
- * | `views` / `activeViewId` | 视图没了 → 一个布局 |
- * | `config.hidden`（本视图隐藏的卡） | **「已摆放」= 在 `units` 里** → 不在 `units` 里的就是没摆进主区 |
- * | `config.tagFilter`（读数过滤） | **读数彻底交给卡片** → 宿主不再画读数 → 这个过滤没有消费者了 |
- * | `config.density` | 提为**全局** `density`（放设置页） |
+ * | `views` / `activeViewId` | There are no views any more → one layout |
+ * | `config.hidden` (the cards hidden in this view) | "Placed" means "in `units`", so whatever is not in `units` was not placed into the main area |
+ * | `config.tagFilter` (the filter on the readings) | The readings went to the cards entirely → the host does not draw readings any more → this filter has no consumer left |
+ * | `config.density` | Promoted to the global `density` (it lives on the settings page) |
  *
- * ── 旧文件读得出来 ──
+ * ── Old files can still be read ──
  *
- * 布局文件在用户目录里。**读不出来 = 用户白摆了一遍** → 所以
- * v1 与 v2 都要读得出来（v2 取当前视图那份）✓。
+ * The layout file lives in the user directory. Failing to read it means
+ * the user arranged everything for nothing, so both v1 and v2 have to be
+ * readable (v2 contributes the copy of the current view).
  */
 
-/** 布局里的一格 */
+/** One cell of the layout */
 export interface LayoutUnit {
-  /** 卡片 id */
+  /** The card id */
   cardId: string;
-  /** 这个格子绑的是哪条连接（`null` = 没有连接上下文） */
+  /** Which connection this cell is bound to (`null` = no connection context) */
   connectionId: string | null;
-  /** 格子坐标与尺寸（12 列网格） */
+  /** The position and the size of the cell (a grid of 12 columns) */
   x: number;
   y: number;
   w: number;
@@ -43,43 +46,48 @@ export interface LayoutUnit {
 }
 
 /**
- * 显示密度（**全局**，不是按视图的）。
+ * The display density (global, not per view).
  *
- * - `comfortable`：卡片有呼吸空间，行高 72
- * - `compact`：一屏多看几张，行高 48
+ * - `comfortable`: the cards have room to breathe, row height 72
+ * - `compact`: more cards fit on one screen, row height 48
  */
 export type ViewDensity = 'comfortable' | 'compact';
 
-/** 整个布局文件（v3） */
+/** The whole layout file (v3) */
 export interface LayoutState {
-  /** 格式版本；v1 没有这个字段，v2 是 `2` */
+  /** The format version; v1 has no such field, v2 is `2` */
   version: 3;
-  /** **主区摆了哪些卡**（没摆进来的卡不在这里） */
+  /** Which cards are placed in the main area (cards that were not placed are not here) */
   units: LayoutUnit[];
-  /** 显示密度（全局） */
+  /** The display density (global) */
   density: ViewDensity;
   /**
-   * **被提为全屏的那一格**（**没有就是 `null`** ✓）。
+   * The cell that has been promoted to full screen (`null` when there is
+   * none).
    *
-   * → **为什么是布局的一部分** ✓：契约 §2.5 说「`promote_card` **改的是布局**」✓
-   *   —— **全屏是一个布局状态** ✓，不是一次性的渲染指令 ✓。
-   * → **为什么宿主侧不直接算「铺满几行」** ✓：**它算不出来** ✓ ——
-   *   行高与视口高度**只有 renderer 知道** ✓（`ROW_HEIGHT` 是渲染层的常量 ✓）。
-   *   → **宿主记「谁要全屏」✓，渲染层算「铺几行」✓** —— **两边都不猜** ✓。
-   * → **可空** ✓（老布局文件没有这个字段 ✓ → 读出来是 `null` ✓ → 不是「坏了」✓）。
+   * → Why it is part of the layout: contract section 2.5 says that
+   *   `promote_card` changes the layout — full screen is a layout state, not
+   *   a one-off rendering instruction.
+   * → Why the host side does not compute "how many rows to fill" itself: it
+   *   cannot compute it — only the renderer knows the row height and the
+   *   viewport height (`ROW_HEIGHT` is a constant of the rendering layer).
+   *   → The host records "who wants to be full screen" and the rendering
+   *   layer computes "how many rows"; neither side guesses.
+   * → It is nullable: old layout files do not have this field, so it reads
+   *   as `null`, which does not mean "broken".
    */
   promoted?: LayoutUnit | null;
-  /** 最后一次保存的时刻（诊断用） */
+  /** The moment of the last save (for diagnostics) */
   updatedAt: number;
 }
 
-/** v1 的形状（`{units, updatedAt}`） */
+/** The shape of v1 (`{units, updatedAt}`) */
 export interface LegacyLayoutState {
   units?: unknown;
   updatedAt?: unknown;
 }
 
-/** v2 的形状（多视图） */
+/** The shape of v2 (multiple views) */
 export interface LegacyLayoutStateV2 {
   version?: 2;
   units?: unknown;
@@ -88,10 +96,10 @@ export interface LegacyLayoutStateV2 {
   views?: unknown;
 }
 
-/** 布局写入的输入形状：新格式或旧格式都收 */
+/** The input shape for writing a layout: both the new and the old formats are accepted */
 export type LayoutStateInput = LayoutState | LegacyLayoutState | LegacyLayoutStateV2;
 
-/** 一格是不是**形状对**的单元（布局文件是用户能碰的 → 进来之前要收形状） */
+/** Whether a cell is a unit of the right shape (the layout file is something the user can touch, so the shape has to be narrowed before it comes in) */
 export function isLayoutUnit(raw: unknown): raw is LayoutUnit {
   if (raw === null || typeof raw !== 'object') return false;
   const unit = raw as Record<string, unknown>;
@@ -102,27 +110,30 @@ export function isLayoutUnit(raw: unknown): raw is LayoutUnit {
   return isNumber('x') && isNumber('y') && isNumber('w') && isNumber('h');
 }
 
-/** 空布局（主区空的 —— 你自己摆） */
+/** An empty layout (the main area is empty — you place the cards yourself) */
 export function emptyLayout(now = 0): LayoutState {
   return { version: 3, units: [], density: 'comfortable', promoted: null, updatedAt: now };
 }
 
 /**
- * 把任意输入收成 v3 形状（**不抛**：读坏文件、读旧文件都走这里）。
+ * Narrows any input into the v3 shape (it never throws: a broken file and an
+ * old file both come through here).
  *
- * - **v3**：直接收
- * - **v2**（多视图）：取**当前视图**那份格子与密度。
- *   **其余视图的布局会丢** —— 「视图」这件事已经退场了（v3 只有一份布局，
- *   没有地方放第二个视图的格子）。
- *   → 这不是「合并」，是**只剩一份**；写清楚，免得有人以为数据还在。
- *   （没有存量：M5 没发版，见 `docs/17` 的 L5。）
- * - **v1**：`units` 直接用
+ * - v3: taken as it is
+ * - v2 (multiple views): the cells and the density of the "current view"
+ *   are taken. The layouts of the other views are lost — the concept of a
+ *   view has left the stage (v3 has one layout only and nowhere to put the
+ *   cells of a second view). This is not a "merge", it is "only one copy
+ *   is left"; it is spelled out so that nobody assumes the data is still
+ *   there. (There is no legacy data: M5 was never released, see L5 in the
+ *   implementation-layer ledger.)
+ * - v1: `units` is used as it is
  */
 export function normalizeLayout(raw: unknown, now = 0): LayoutState {
   if (raw === null || typeof raw !== 'object') return emptyLayout(now);
   const record = raw as Record<string, unknown>;
 
-  // v2：多视图 → 取「当前视图」那份
+  // v2: multiple views → take the copy of the "current view"
   if (Array.isArray(record['views'])) {
     const views = record['views'] as {
       id?: unknown;
@@ -145,7 +156,7 @@ export function normalizeLayout(raw: unknown, now = 0): LayoutState {
     };
   }
 
-  // v1 / v3：直接收
+  // v1 / v3: taken as it is
   return {
     version: 3,
     units: normalizeUnits(record['units']),
@@ -155,26 +166,28 @@ export function normalizeLayout(raw: unknown, now = 0): LayoutState {
   };
 }
 
-/** 换掉主区的格子（拖拽落盘走这里） */
+/** Replaces the cells of the main area (the drag writes through here) */
 export function withUnits(state: LayoutState, units: LayoutUnit[]): LayoutState {
   return { ...state, units: units.map((u) => ({ ...u })) };
 }
 
-/** 换密度（设置页改的走这里） */
+/** Replaces the density (the settings page changes it through here) */
 export function withDensity(state: LayoutState, density: ViewDensity): LayoutState {
   return { ...state, density };
 }
 
 /**
- * 一张卡的**默认格子**（摆进主区时用）。
+ * The default cell of a card (used when it is placed into the main area).
  *
- * 尺寸来自 manifest 自报的 `layout.w/h`（作者的心愿）；
- * 没报就用 3×2。
+ * The size comes from the `layout.w/h` the manifest reports for itself
+ * (the author's wish); without one it is 3×2.
  *
- * ── 为什么住在 `shared/` ──
+ * ── Why it lives in `shared/` ──
  *
- * 「摆进来时多大」是**两边都要知道**的事：宿主算默认、页面摆格子。
- * 放在一处 → 不会各写一个 3×2 然后慢慢漂移。
+ * "How large is it when it is placed" is something both sides have to
+ * know: the host computes the default and the page places the cell.
+ * Keeping it in one place means nobody writes a 3×2 of their own and lets
+ * the two drift apart slowly.
  */
 export function defaultUnit(
   cardId: string,
@@ -191,7 +204,7 @@ export function defaultUnit(
   };
 }
 
-/** 默认格：3×2 */
+/** The default cell: 3×2 */
 const DEFAULT_W = 3;
 const DEFAULT_H = 2;
 
@@ -205,10 +218,11 @@ function readDensity(raw: unknown): ViewDensity {
 }
 
 /**
- * 读「被提为全屏的那一格」✓。
+ * Reads "the cell that has been promoted to full screen".
  *
- * → **老布局文件没有这个字段** ✓ → **`null`** ✓（不是「坏了」✓）。
- * → **形状不对也是 `null`** ✓（不猜 ✓）。
+ * → Old layout files do not have this field, so the result is `null`
+ *   (which does not mean "broken").
+ * → A shape that does not fit yields `null` as well (never guess).
  */
 function readPromoted(raw: unknown): LayoutUnit | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;

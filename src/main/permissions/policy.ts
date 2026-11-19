@@ -2,40 +2,48 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 
 /**
- * **统一权限区**（用户 2026-11-16：「设置里面补一个统一的权限区域，
- * 所有元操作可以在这里设置是否有权限执行」✓ · **ADR-D47** ✓）。
+ * The unified permission area (the user on 2026-11-16: "add a unified
+ * permission area to the settings, so that every meta-operation can be given
+ * or denied permission here" ✓ · implementation decision record ADR-D47 ✓).
  *
- * ── 为什么要有它 ──
+ * ── Why it has to exist ──
  *
- * → 授权**散在好几个地方** ✗（装卡时问一次 ✓ · 跑流程前问一次 ✓ ·
- *   危险命令前问一次 ✓ · 执行前问一次 ✓）→ **「这个也要同意那个也要同意」** ✗。
- * → **一个地方** ✓：**设置里一列操作，每条一个开关** ✓ —— **想关就关** ✓。
- * → **不再有弹窗** ✓ —— **开关是可见的** ✓，弹窗是打断人的 ✓。
+ * → Authorization was scattered over several places ✗ (asked once when a
+ *   card is installed ✓ · asked once before running a workflow ✓ · asked once
+ *   before a dangerous command ✓ · asked once before executing ✓) → "this
+ *   needs consent and that needs consent" ✗.
+ * → One place ✓: a list of operations in the settings, one switch each ✓ —
+ *   you can turn one off whenever you want ✓.
+ * → No more pop-ups ✓ — a switch is visible ✓, a pop-up interrupts people ✓.
  *
- * ── 两种执行者（**分开** ✓）──
+ * ── Two kinds of actor (kept apart ✓) ──
  *
- * | 执行者 | 谁能触发 | 默认 |
+ * | Actor | Who can trigger it | Default |
  * |---|---|---|
- * | **卡片** | **界面上的卡** ✓（用户点它的按钮 ✓） | **写板子：禁止** ✓ · **触发流程：允许** ✓ |
- * | **agent** | **MCP 那条路** ✓（agent 调工具 ✓） | **允许** ✓（**危险的那类默认关** ✓ —— **两种执行者一个规矩** ✓） |
+ * | A card | A card in the UI ✓ (the user clicks its button ✓) | Writing to the board: forbidden ✓ · Triggering a workflow: allowed ✓ |
+ * | `agent` | The MCP route ✓ (the agent calls a tool ✓) | Allowed ✓ (the dangerous kind is off by default ✓ — one rule for both kinds of actor ✓) |
  *
- * → **卡片默认不许写板子** ✓ —— **这堵住了 C2** ✓：
- *   **宿主分不出「人点了卡片上的按钮」与「卡片自己的 JS 调了同一个 API」** ✗
- *   → 所以**默认不给** ✓ → **要写板子的人在设置里打开** ✓（**一次** ✓ · **可见** ✓）。
- * → **agent 那条路不受影响** ✓ —— **它自己那行开关说了算** ✓
- *   （**`confirm_action` 那套 2026-11-16 没了** ✓ · ADR-D48 ✓）。
+ * → Cards are not allowed to write to the board by default ✓ — that closes
+ *   C2 ✓:
+ *   the host cannot tell "a human clicked the button on a card" from "the
+ *   card's own JS called the same API" ✗
+ *   → so it is not granted by default ✓ → whoever wants to write to the board
+ *   turns it on in the settings ✓ (once ✓ · visible ✓).
+ * → The agent route is not affected ✓ — its own row of switches decides ✓
+ *   (the `confirm_action` scheme is gone as of 2026-11-16 ✓ · implementation
+ *   decision record ADR-D48 ✓).
  *
- * ── 操作的键 ──
+ * ── The key of an operation ──
  *
- * `action:<动作 id>` ✓ · `workflow:<流程 id>` ✓ · `host:<宿主操作>` ✓
- * → **带前缀** ✓ —— **免得动作 id 与流程 id 撞车** ✓。
+ * `action:<action id>` ✓ · `workflow:<workflow id>` ✓ · `host:<host operation>` ✓
+ * → With a prefix ✓ — so that an action id cannot collide with a workflow id ✓.
  */
 export type PermissionActor = 'card' | 'agent';
 
-/** 一类操作 */
+/** One kind of operation */
 export type PermissionKind = 'action' | 'workflow' | 'host';
 
-/** 操作键的前缀（**封闭** ✓） */
+/** The prefix of an operation key (closed ✓) */
 export const KIND_PREFIX: Record<PermissionKind, string> = {
   action: 'action:',
   workflow: 'workflow:',
@@ -43,13 +51,15 @@ export const KIND_PREFIX: Record<PermissionKind, string> = {
 };
 
 /**
- * **已知操作**（**由宿主填** ✓ —— **每换一块板就重算** ✓）。
+ * The known operations (filled in by the host ✓ — recomputed every time
+ * another board is plugged in ✓).
  *
- * → **带危险等级** ✓ —— **默认规则要靠它** ✓（「危险的动作默认关」✓）。
+ * → They carry a danger level ✓ — the default rules depend on it ✓
+ *   ("a dangerous action is off by default" ✓).
  */
 const KNOWN_OPS = new Map<string, PermissionOperation>();
 
-/** 宿主侧的操作（**固定的那几个** ✓ —— **每个都要能被关掉** ✓） */
+/** The host-side operations (the fixed ones ✓ — every one of them has to be switchable off ✓) */
 export const HOST_OPERATIONS = [
   'install_card',
   'uninstall_card',
@@ -57,62 +67,66 @@ export const HOST_OPERATIONS = [
 ] as const;
 
 /**
- * **默认**（**没设过的操作按这个来** ✓）。
+ * The defaults (an operation that was never set follows these ✓).
  *
- * → **卡片写板子：禁止** ✓（C2 ✓）
- * → **卡片触发流程：允许** ✓（**闸就是这行开关** ✓ —— 「编译上板」那张卡
- *   点一下就执行 ✓ —— **那正是用户要的** ✓）
- * → **agent：允许** ✓（**它那边也是同一行开关** ✓）
- * → **宿主操作：允许** ✓
+ * → A card writing to the board: forbidden ✓ (C2 ✓)
+ * → A card triggering a workflow: allowed ✓ (the gate is this switch ✓ —
+ *   the "compile onto the board" card executes on a single click ✓ — which
+ *   is exactly what the user wants ✓)
+ * → `agent`: allowed ✓ (its side has the same switch ✓)
+ * → Host operations: allowed ✓
  */
 export function defaultAllowed(
   actor: PermissionActor,
   op: string,
   dangerous = false,
 ): boolean {
-  // **危险的动作：默认关** ✓（**「开启权限默认知道危险性」** ✓ —— **打开它就是那一下知情** ✓）
+  // A dangerous action: off by default ✓ ("turning a permission on means you
+  // know it is dangerous" ✓ — turning it on is that informed consent ✓)
   if (dangerous) return false;
   if (actor === 'agent') return true;
-  // **卡片**：只有「写板子」这一类是禁止的 ✓
+  // A card: only the "write to the board" kind is forbidden ✓
   if (op.startsWith(KIND_PREFIX.action)) return false;
   return true;
 }
 
-/** 一条操作在设置里长什么样 */
+/** What one operation looks like in the settings */
 export interface PermissionOperation {
-  /** 操作的键（`action:backlight.set` ✓） */
+  /** The key of the operation (`action:backlight.set` ✓) */
   op: string;
-  /** 显示名 */
+  /** The display name */
   label: string;
-  /** 这一类 */
+  /** The kind */
   kind: PermissionKind;
-  /** 这一类里的说明（**人话** ✓） */
+  /** The explanation for this kind (in plain language ✓) */
   hint?: string;
-  /** **这个动作有多危险** ✓（**动作才有** ✓ —— **流程靠「存在即说明」** ✓） */
+  /** How dangerous this action is ✓ (only actions have this ✓ — a workflow relies on "its existence is the explanation" ✓) */
   danger?: 'reversible' | 'destructive';
 }
 
-/** 设置页要画的那张表（**一行一个开关** ✓） */
+/** The table the settings page draws (one switch per row ✓) */
 export interface PermissionRow extends PermissionOperation {
-  /** 卡片能不能用 */
+  /** Whether a card may use it */
   card: boolean;
-  /** agent 能不能用 */
+  /** Whether the agent may use it */
   agent: boolean;
 }
 
-/** 存盘的形状 */
+/** The shape of what is stored on disk */
 interface PolicyFile {
   card: Record<string, boolean>;
   agent: Record<string, boolean>;
 }
 
 /**
- * 权限账（**用户数据目录里** ✓ —— **机器专属的授权状态不进版本库** ✓）。
+ * The permission ledger (in the user data directory ✓ — the authorisation
+ * state of a specific machine does not go into the version control ✓).
  *
- * → **读不出来就算「默认」** ✓（**默认拒绝的是卡片写板子** ✓ —— **安全的那一边** ✓）。
+ * → If it cannot be read, it counts as "the defaults" ✓ (the default
+ *   forbids a card from writing to the board ✓ — the safe side ✓).
  */
 export class PermissionStore {
-  /** **这张表里有哪些操作**（**宿主每次列表时更新** ✓） */
+  /** Which operations this table holds (the host refreshes it on every listing ✓) */
   setKnown(operations: readonly PermissionOperation[]): void {
     KNOWN_OPS.clear();
     for (const operation of operations) KNOWN_OPS.set(operation.op, operation);
@@ -124,7 +138,7 @@ export class PermissionStore {
     this.load();
   }
 
-  /** 这个执行者能不能用这个操作 */
+  /** May this actor use this operation */
   allows(actor: PermissionActor, op: string): boolean {
     const explicit = this.policy[actor][op];
     if (explicit !== undefined) return explicit;
@@ -132,7 +146,7 @@ export class PermissionStore {
   }
 
 
-  /** 设一个（**幂等** ✓） */
+  /** Set one (idempotent ✓) */
   set(actor: PermissionActor, op: string, allowed: boolean): void {
     if (this.policy[actor][op] === allowed) return;
     this.policy[actor][op] = allowed;
@@ -140,25 +154,27 @@ export class PermissionStore {
   }
 
   /**
-   * **这个操作存在吗**（**设一个不存在的操作是不行的** ✓）。
+   * Does this operation exist (setting an operation that does not exist is
+   * not allowed ✓).
    *
-   * → **不查就会存下一堆垃圾键** ✓（**而且没人看得见** ✓）✓
+   * → Without the check a pile of junk keys would be stored ✓ (and nobody
+   *   would ever see them ✓) ✓
    */
   knows(op: string): boolean {
     return KNOWN_OPS.has(op);
   }
 
-  /** **这个操作有多危险** ✓（**设置页要写着** ✓ —— 「开启权限默认知道危险性」✓） */
+  /** How dangerous this operation is ✓ (the settings page has to say it ✓ — "turning a permission on means you know it is dangerous" ✓) */
   dangerOf(op: string): 'reversible' | 'destructive' | undefined {
     return KNOWN_OPS.get(op)?.danger;
   }
 
-  /** **它是不是危险动作** ✓（**默认关** ✓ —— **打开它就是那一下知情** ✓） */
+  /** Is it a dangerous action ✓ (off by default ✓ — turning it on is that informed consent ✓) */
   private isDangerous(op: string): boolean {
     return KNOWN_OPS.get(op)?.danger === 'destructive';
   }
 
-  /** 全部（**给设置页看** ✓ —— 显式的与默认的合成 ✓） */
+  /** All of them (for the settings page ✓ — the explicit ones merged with the defaults ✓) */
   rows(operations: readonly PermissionOperation[]): PermissionRow[] {
     return operations.map((operation) => ({
       ...operation,
@@ -174,7 +190,8 @@ export class PermissionStore {
       this.policy.card = { ...(parsed.card ?? {}) };
       this.policy.agent = { ...(parsed.agent ?? {}) };
     } catch {
-      // **读不出来 → 用默认** ✓（**默认里卡片写板子是禁止** ✓ —— 安全的那一边 ✓）
+      // It cannot be read → use the defaults ✓ (in the defaults a card
+      // writing to the board is forbidden ✓ — the safe side ✓)
       this.policy.card = {};
       this.policy.agent = {};
     }
