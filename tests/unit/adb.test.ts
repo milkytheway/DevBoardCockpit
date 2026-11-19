@@ -115,7 +115,7 @@ describe('AdbConnection.open', () => {
     const err = await openError(conn);
     expect(err.code).toBe('CONN_OPEN_FAILED');
     expect(err.message).toContain('abc');
-    expect(err.message).toContain('没有');   // 说清「在 adb devices 里没有」
+    expect(err.message).toContain('not in the adb devices list');   // says that it is not in the adb devices list
     // xyz 是 device 也不行：profile 钉的是 abc，它压根不在列表里
     const present = (err.detail as { present?: string[] }).present ?? [];
     expect(present).toEqual(['xyz']);

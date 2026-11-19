@@ -1,5 +1,5 @@
-# Board health check — **ask everything about "what state is this board in"
-# in one go**
+# Board health check — ask everything about "what state is this board in"
+# in one go
 #
 # ── Why it exists ──
 #
@@ -7,16 +7,16 @@
 # oddly, is always "how is it actually doing". Typing `adb shell` line by
 # line is slow, and it is easy to miss something.
 #
-# - This workflow **looks at everything there is to look at**, and **keeps
-#   the facts it can see in the output slots**
+# - This workflow looks at everything there is to look at, and keeps
+#   the facts it can see in the output slots
 #   (the host displays the output, so the user does not have to go to the
 #   board and check again).
 #
 # ── How the criteria are designed ──
 #
-# **Must pass** (not passing means the board has a problem) → `on_mismatch:
+# Must pass (not passing means the board has a problem) → `on_mismatch:
 # fail`
-# **Not necessarily passing** (no network cable / no TF card / the time is not
+# Not necessarily passing (no network cable / no TF card / the time is not
 # set) → `on_mismatch: continue`
 #   - It still reports "not passed" (visible in the timeline) but does not
 #     turn the whole health check into a failure.
@@ -24,7 +24,7 @@
 # ── Measured basis (2026-11-16 · real board ATK-DLRK3588) ──
 #
 #   The system time of the board is 1970-01-01 (no RTC reading, no NTP) →
-#   so `assert-clock` **fails on a new board** — that is exactly what it is
+#   so `assert-clock` fails on a new board — that is exactly what it is
 #   there to say.
 
 apiVersion: devboard/v1
@@ -55,7 +55,7 @@ steps:
     role: target
     # The model read with `cat` carries one trailing NUL (measured
     # 2026-11-16), and
-    #   splicing it into a command is **rejected by the injection guard**
+    #   splicing it into a command is rejected by the injection guard
     #   ("the path contains a newline or a null character"), which is
     #   correct.
     # - Strip it while reading (`tr -d`); do not rely on the downstream
@@ -152,19 +152,19 @@ steps:
 
   # ── Report-only verdicts ────────────────────────────────────────────
   #
-  # **Why this is not an `assert`**
+  # Why this is not an `assert`
   #
-  # The contract `spec/02` section 4.5 says it clearly: **`verify` is "poll
-  # the verification command until it succeeds or times out"**
+  # The contract `spec/02` section 4.5 says it clearly: `verify` is "poll
+  # the verification command until it succeeds or times out"
   # - It answers "when does this condition come true"
-  # - while "is the clock of the board right now" is a **one-shot static
-  #   judgement** (it does not "get better on its own after a while")
+  # - while "is the clock of the board right now" is a one-shot static
+  #   judgement (it does not "get better on its own after a while")
   # - Writing it with `verify` waits 10 seconds and then reports "the
   #   verification command did not succeed within 10000ms", which is a false
   #   statement (the command returned long ago, only with a non-zero exit
   #   code).
   #
-  # - **Use `exec` and put the conclusion into words**:
+  # - Use `exec` and put the conclusion into words:
   #   the facts are already in the two slots (`clock`), and here they get one
   #   sentence in plain language.
   - id: clock-verdict

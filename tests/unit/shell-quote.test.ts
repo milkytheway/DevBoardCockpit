@@ -28,12 +28,12 @@ describe('quotePath', () => {
   });
 
   it('路径里有换行就拒掉 —— 换行就是第二条命令', () => {
-    expect(() => quotePath('/root/a\nrm -rf /')).toThrow(/换行/);
-    expect(() => quotePath('/root/a\rrm -rf /')).toThrow(/换行/);
+    expect(() => quotePath('/root/a\nrm -rf /')).toThrow(/newline/);
+    expect(() => quotePath('/root/a\rrm -rf /')).toThrow(/newline/);
   });
 
   it('路径里有空字节也拒掉', () => {
-    expect(() => quotePath('/root/a\0b')).toThrow(/空字符/);
+    expect(() => quotePath('/root/a\0b')).toThrow(/NUL/);
   });
 
   it('错误是 AppError，带错误码', () => {

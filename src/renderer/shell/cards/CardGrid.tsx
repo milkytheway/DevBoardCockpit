@@ -5,6 +5,7 @@ import type { LayoutUnit, ViewDensity } from '../../../shared/layout';
 import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { CardShell } from './CardShell';
+import { useT, type Localised } from '../i18n';
 import { resolveLayout, slotKey, splitKey } from '../layout-utils';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -31,6 +32,14 @@ const MIN_H = 2;
 const ROW_HEIGHT: Record<ViewDensity, number> = { comfortable: 64, compact: 44 };
 /** How long the grid waits before it persists a drag. */
 const SAVE_DEBOUNCE_MS = 300;
+
+/** The wording of the grid, in both languages. */
+const strings = {
+  empty: {
+    'zh-Hans': '主区还没有卡片。左边「卡片」里点一张，它就摆进来。',
+    en: 'No cards in the work area yet. Pick one under "Cards" on the left and it lands here.',
+  },
+} satisfies Record<string, Localised>;
 
 const Grid = WidthProvider(GridLayout);
 
@@ -59,6 +68,7 @@ export function CardGrid({
   onRemove: (info: CardInstanceInfo) => void;
   onLayoutChange: (units: LayoutUnit[]) => void;
 }): JSX.Element {
+  const t = useT();
   const resolved = useMemo(() => resolveLayout(cards, units), [cards, units]);
 
   const layout = useMemo<Layout[]>(
@@ -113,9 +123,7 @@ export function CardGrid({
   if (cards.length === 0 || broker === null) {
     return (
       <div className="card-grid is-empty" data-testid="user-grid">
-        <p className="card-grid__empty">
-          主区还没有卡片。左边「卡片」里点一张，它就摆进来。
-        </p>
+        <p className="card-grid__empty">{t(strings.empty)}</p>
       </div>
     );
   }

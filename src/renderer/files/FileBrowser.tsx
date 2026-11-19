@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ConnectionCapabilities } from '../../shared/ipc-contract';
+import { useT, type Localised } from '../shell/i18n';
 
 /**
  * 双树文件浏览器。
@@ -21,6 +22,25 @@ import type { ConnectionCapabilities } from '../../shared/ipc-contract';
  * 两个箭头都不给，只留一句说明——不给入口，用户才知道是这条线不支持，
  * 而不是以为功能坏了。
  */
+
+/** The wording of the browser, in both languages. */
+const strings = {
+  noFileChannel: {
+    'zh-Hans': '这个连接不能传文件（串口没有文件通道）',
+    en: 'This connection cannot carry files (a serial port has no file channel)',
+  },
+  local: { 'zh-Hans': '本地', en: 'Local' },
+  chooseFile: { 'zh-Hans': '选文件（可拖进来）', en: 'Choose a file (or drop one here)' },
+  noneSelected: { 'zh-Hans': '未选择', en: 'Nothing selected' },
+  upload: { 'zh-Hans': '上传到远端', en: 'Upload to the remote' },
+  download: { 'zh-Hans': '从远端下载', en: 'Download from the remote' },
+  up: { 'zh-Hans': '上一级', en: 'One level up' },
+  refresh: { 'zh-Hans': '刷新', en: 'Refresh' },
+  refreshHint: {
+    'zh-Hans': '点「刷新」看远端目录',
+    en: 'Press "Refresh" to list the remote directory',
+  },
+} satisfies Record<string, Localised>;
 
 /** 远端目录里的一个条目（与 `shared/ipc-contract` 的 FileEntry 同形） */
 export interface RemoteEntry {
@@ -85,6 +105,7 @@ export function FileBrowser({
   const inputRef = useRef<HTMLInputElement | null>(null);
   /** 最近一次列目录请求的序号（用来丢掉过期响应） */
   const loadSeq = useRef(0);
+  const t = useT();
 
   /**
    * 列某个目录。
@@ -157,7 +178,7 @@ export function FileBrowser({
     return (
       <section className="cockpit-files">
         <p className="cockpit-files__disabled" data-testid="file-push-disabled">
-          这个连接不能传文件（串口没有文件通道）
+          {t(strings.noFileChannel)}
         </p>
       </section>
     );
@@ -180,14 +201,14 @@ export function FileBrowser({
       <div className="cockpit-files__trees">
         {/* ── 左：本地 ── */}
         <div className="cockpit-tree" data-testid="tree-local">
-          <div className="cockpit-tree__head">本地</div>
+          <div className="cockpit-tree__head">{t(strings.local)}</div>
           <label
             className="cockpit-files__label"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
             data-testid="file-drop"
           >
-            选文件（可拖进来）
+            {t(strings.chooseFile)}
             <input
               ref={inputRef}
               type="file"
@@ -198,7 +219,7 @@ export function FileBrowser({
           {selectedLocal ? (
             <p className="cockpit-tree__selected">{selectedLocal.name}</p>
           ) : (
-            <p className="cockpit-tree__hint">未选择</p>
+            <p className="cockpit-tree__hint">{t(strings.noneSelected)}</p>
           )}
         </div>
 
@@ -209,7 +230,7 @@ export function FileBrowser({
             data-testid="push-button"
             onClick={push}
             disabled={!selectedLocal}
-            title="上传到远端"
+            title={t(strings.upload)}
           >
             ↑
           </button>
@@ -218,7 +239,7 @@ export function FileBrowser({
             data-testid="pull-button"
             onClick={pull}
             disabled={!selectedRemote}
-            title="从远端下载"
+            title={t(strings.download)}
           >
             ↓
           </button>
@@ -236,7 +257,7 @@ export function FileBrowser({
                 data-testid="remote-up"
                 onClick={goUp}
                 disabled={busy}
-                title="上一级"
+                title={t(strings.up)}
               >
                 ↑
               </button>
@@ -246,7 +267,7 @@ export function FileBrowser({
                 onClick={() => void refresh()}
                 disabled={busy}
               >
-                刷新
+                {t(strings.refresh)}
               </button>
             </span>
           </div>
@@ -270,7 +291,7 @@ export function FileBrowser({
             ))}
           </ul>
           {remote.length === 0 && !busy ? (
-            <p className="cockpit-tree__hint">点「刷新」看远端目录</p>
+            <p className="cockpit-tree__hint">{t(strings.refreshHint)}</p>
           ) : null}
         </div>
       </div>

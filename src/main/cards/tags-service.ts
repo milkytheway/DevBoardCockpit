@@ -104,7 +104,7 @@ export class TagsService {
       unit: '',
       status: 'unavailable',
       reason: 'not_found',
-      detail: '这张卡没有这个 tag 的读权限',
+      detail: 'this card has no read permission for this tag',
       at: this.deps.now(),
       seq: 0,
     };

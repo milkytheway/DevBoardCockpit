@@ -130,8 +130,8 @@ function guessedOf(pack: BoardPack): GuessedNote[] {
     out.push({
       what: reader.id,
       why:
-        '**温区的归并是猜的** —— 通用包给的 `type_map` 是「常见名字」的猜测 ✓；' +
-        '**哪个温区是 SoC / GPU / NPU 要看这块板的手册才知道** ✓',
+        '**the grouping of the thermal zones is a guess** — the `type_map` of the generic pack is a guess at "common names" ✓;' +
+        '**which thermal zone is the SoC / GPU / NPU can only be known from the manual of this board** ✓',
       needsHuman: true,
     });
   }
@@ -176,9 +176,9 @@ export function instantiatePack(opts: InstantiateOptions): InstantiateResult {
     name: targetName,
     version: source.version,
     description:
-      `**自动探出来的初版包** ✓（从通用包「${source.id}」实例化 ✓）——` +
-      '**说得准的地方是事实** ✓（有没有 ✓ · 几个 ✓），' +
-      '**说得不准的地方是命名与语义** ⚠️（哪个温区是 SoC ✓ · 那要 agent 去补 ✓）',
+      `**the first-draft pack found automatically** ✓ (instantiated from the generic pack "${source.id}" ✓) — ` +
+      '**what it states accurately are facts** ✓ (whether it exists ✓ · how many ✓),' +
+      '**what it states inaccurately are the names and the semantics** ⚠️ (which thermal zone is the SoC ✓ · that an agent has to fill in ✓)',
     requires: { ...source.requires },
     ...(source.danger_floor_version !== undefined
       ? { danger_floor_version: source.danger_floor_version }

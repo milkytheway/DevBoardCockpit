@@ -60,7 +60,7 @@ describe('串口 exec 超时 → 说清楚「下一步查什么」', () => {
     // **统一 124 这条约定不许改**（事实 G1）
     expect(result.exitCode).toBe(124);
     expect(result.hint).toBeTruthy();
-    expect(result.hint).toContain('占用');
+    expect(result.hint).toContain('swallowed');
     expect(result.hint).toContain('COM7');
   });
 
@@ -70,6 +70,6 @@ describe('串口 exec 超时 → 说清楚「下一步查什么」', () => {
 
     const result = await conn.exec('echo hello', { timeoutMs: 30 });
 
-    expect(result.hint).toContain('串口');
+    expect(result.hint).toContain('serial port');
   });
 });

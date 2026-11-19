@@ -1,29 +1,29 @@
-# Network benchmark — **run one iperf3 between the board and the client
-# machine**
+# Network benchmark — run one iperf3 between the board and the client
+# machine
 #
 # ── Why the direction is "the board is the server" and not the other way
 #    round ──
 #
-# Measured 2026-11-16: **client machine → board works** (192.168.100.10 →
-# 192.168.5.100), **board → client machine does not** (`Network is
+# Measured 2026-11-16: client machine → board works (192.168.100.10 →
+# 192.168.5.100), board → client machine does not (`Network is
 # unreachable`, the two are not on the same subnet) →
-# **the server has to be on the board** (the client connects to it).
+# the server has to be on the board (the client connects to it).
 #
-# This workflow **requires iperf3 on the client machine** (manual section
+# This workflow requires iperf3 on the client machine (manual section
 # 2.11 says to run `sudo apt-get install iperf3` —
-#    measured 2026-11-16: the client machine **does not have it by default**
+#    measured 2026-11-16: the client machine does not have it by default
 #    → install it first).
 #
 # ── Which part of the link is measured ──
 #
 # client machine ↔ host ↔ board (the board is wired straight to a network
-# port of the host) → so this number **is the real capability of the network
-# port of the board** (limited by the client machine side).
-# Measured: **419 Mbits/sec** (a gigabit port).
+# port of the host) → so this number is the real capability of the network
+# port of the board (limited by the client machine side).
+# Measured: 419 Mbits/sec (a gigabit port).
 #
 # ── The server runs with `-1` (one-off) ──
 #
-# It **exits by itself** after one connection → no daemon is left behind
+# It exits by itself after one connection → no daemon is left behind
 # (measured: nothing left running afterwards).
 
 apiVersion: devboard/v1
@@ -50,7 +50,7 @@ roles:
     profile: ubuntu-ssh
 
 steps:
-  # ① Start the server (**one-off** — it exits after one connection)
+  # ① Start the server (one-off — it exits after one connection)
   - id: server
     kind: exec
     role: target
@@ -59,15 +59,15 @@ steps:
     readback:
       kind: command_ok
 
-  # ② The client measures (**the address comes from the role facts** — a
+  # ② The client measures (the address comes from the role facts — a
   #    workflow pack should not know the IP of the board)
   #
-  # **`| grep receiver` is not for looks** — it is **required**:
-  # the full output of iperf3 **is more than a dozen lines** → splicing it
-  # into the next command would be **rejected by the injection guard**
+  # `| grep receiver` is not for looks — it is required:
+  # the full output of iperf3 is more than a dozen lines → splicing it
+  # into the next command would be rejected by the injection guard
   # ("the path contains a newline or a null character"), which is correct.
-  # - **Take only the receiver line** (**one line** → it can be spliced into
-  #   a command), and that line **is the answer** (`... 424 Mbits/sec
+  # - Take only the receiver line (one line → it can be spliced into
+  #   a command), and that line is the answer (`... 424 Mbits/sec
   #   receiver`, measured).
   - id: measure
     kind: exec
@@ -78,7 +78,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ③ The result counts only if it holds the "receiver" line (**one line** →
+  # ③ The result counts only if it holds the "receiver" line (one line →
   #    it can be spliced into a command)
   - id: assert-receiver
     kind: assert
@@ -93,14 +93,14 @@ steps:
   # ④ Clean up: if the client never connected, the server is still running
   #    → remove it (no leftovers)
   #
-  # **`-x` (exact process name match) is required**, **`-f` must not be
-  # used**
-  #   — `pkill -f "iperf3 -s"` matches the **whole command line**, and
-  #   **the pattern itself appears in the command line of that very shell**
-  #   → **it kills itself**
-  #   (measured 2026-11-16: the command produced **no output at all** and a
+  # `-x` (exact process name match) is required, `-f` must not be
+  # used
+  #   — `pkill -f "iperf3 -s"` matches the whole command line, and
+  #   the pattern itself appears in the command line of that very shell
+  #   → it kills itself
+  #   (measured 2026-11-16: the command produced no output at all and a
   #   non-zero exit code — a textbook self-kill).
-  # - `-x iperf3` matches the **process name** only → it cannot reach the
+  # - `-x iperf3` matches the process name only → it cannot reach the
   #   shell (measured).
   - id: cleanup
     kind: exec

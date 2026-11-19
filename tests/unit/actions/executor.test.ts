@@ -187,7 +187,7 @@ describe('执行器 · 回读的验证命令也要过地板', () => {
       readback: { kind: 'verify', command: 'rm -rf /' },
     };
     const h = harness({ action: dangerous });
-    await expect(invokeAction(dangerous, { value: 128 }, h.deps)).rejects.toThrow(/危险地板/);
+    await expect(invokeAction(dangerous, { value: 128 }, h.deps)).rejects.toThrow(/danger floor/);
     // **那条危险命令没发出去** ✓
     expect(h.executed.some((c) => c.includes('rm -rf'))).toBe(false);
   });

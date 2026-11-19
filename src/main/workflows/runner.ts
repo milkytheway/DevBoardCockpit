@@ -344,11 +344,11 @@ async function runExec(
   started: number,
 ): Promise<WorkflowStage> {
   if (role === undefined || step.cmd === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `exec 步 ${step.id} 缺 role 或 cmd`);
+    throw makeError('IPC_INVALID_PAYLOAD', `exec step ${step.id} is missing role or cmd`);
   }
   const command = substituteCommand(step.cmd, substitution);
   const profileId = ctx.pack.roles[role]?.profile;
-  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
+  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
 
   // **合成一个动作定义** → 走 M6 的七步链（不新造第二条执行路径 ✓）
   const action: ActionDef = {
@@ -459,14 +459,14 @@ async function runAction(
   started: number,
 ): Promise<WorkflowStage> {
   if (role === undefined || step.action === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `action 步 ${step.id} 缺 role 或 action`);
+    throw makeError('IPC_INVALID_PAYLOAD', `action step ${step.id} is missing role or action`);
   }
   const def = ctx.deps.actionDef?.(step.action);
   if (def === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `板型包里没有这个动作：${step.action}`);
+    throw makeError('IPC_INVALID_PAYLOAD', `the board pack has no such action: ${step.action}`);
   }
   const profileId = ctx.pack.roles[role]?.profile;
-  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
+  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
 
   // 参数：按动作自己的 schema 校验（**不信任包的自述** ✓）
   //
@@ -511,10 +511,10 @@ async function runDiscover(
   started: number,
 ): Promise<WorkflowStage> {
   if (role === undefined || step.pattern === undefined || step.out === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `discover 步 ${step.id} 缺 role / pattern / out`);
+    throw makeError('IPC_INVALID_PAYLOAD', `discover step ${step.id} is missing role / pattern / out`);
   }
   const profileId = ctx.pack.roles[role]?.profile;
-  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
+  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
   // **目录用值模式**（路径不该被引号包住——`list()` 拿的是路径，不是 shell 片段 ✓）
   const dir = substituteValue(step.dir ?? '.', substitution);
   // **规则也是值模式**（文件名与排除表都是名字，不是 shell 片段 ✓）
@@ -528,7 +528,7 @@ async function runDiscover(
     }),
   );
   if (found.length === 0) {
-    const detail = `在 ${dir} 里没找到 ${pattern}`;
+    const detail = `${pattern} was not found in ${dir}`;
     const auditId = ctx.deps.audit({
       at: started,
       actor: `workflow:${ctx.pack.id}`,
@@ -561,7 +561,7 @@ async function runDiscover(
     ok: true,
     verified: true,
     value: found.join(','),
-    detail: `找到 ${found.length} 个`,
+    detail: `found ${found.length}`,
   });
   return {
     stepId: step.id,
@@ -628,13 +628,13 @@ async function cleanupPartialTransfer(
       cleaned: false,
       note:
         before === 'there'
-          ? '目的地原本就有那个文件，没动它'
-          : '查不到目的地有没有那个文件，没动它',
+          ? 'the destination already had that file, it was left alone'
+          : 'it could not be determined whether the destination had that file, it was left alone',
     };
   }
   const after = await destinationState(ctx, role, path);
   if (after !== 'there') {
-    return { cleaned: false, note: '目的地没有留下半截文件' };
+    return { cleaned: false, note: 'the destination has no half-written file' };
   }
   const profileId = ctx.pack.roles[role]?.profile as string;
   const command = `rm -f -- ${quotePath(path)}`;
@@ -656,9 +656,9 @@ async function cleanupPartialTransfer(
     inputs: { ...ctx.inputs },
     ok,
     verified: ok,
-    detail: ok ? '清掉了传输留下的半截文件' : '没能清掉那个半截文件',
+    detail: ok ? 'the half-written file left by the transfer was removed' : 'the half-written file could not be removed',
   });
-  return { cleaned: ok, note: ok ? '清掉了传输留下的半截文件' : '没能清掉那个半截文件' };
+  return { cleaned: ok, note: ok ? 'the half-written file left by the transfer was removed' : 'the half-written file could not be removed' };
 }
 
 /** 一个 `file.transfer` 步：搬运（命令在**源**目标上跑） */
@@ -670,11 +670,11 @@ async function runTransfer(
   started: number,
 ): Promise<WorkflowStage> {
   if (endpoints === undefined || step.cmd === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `file.transfer 步 ${step.id} 缺 from / to / cmd`);
+    throw makeError('IPC_INVALID_PAYLOAD', `file.transfer step ${step.id} is missing from / to / cmd`);
   }
   const fromRole = step.from?.role as string;
   const profileId = ctx.pack.roles[fromRole]?.profile;
-  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${fromRole} 没绑定 profile`);
+  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${fromRole} has no profile bound to it`);
 
   const command = substituteCommand(step.cmd, substitution);
   const action: ActionDef = {
@@ -718,7 +718,7 @@ async function runTransfer(
   // （尖兵 Q3 的原型 ✓ —— 板子上「文件在、没生效」这件事**要看得见** ✓）
   const transferredButUnverified = outcome.ok && cross !== undefined && !cross.ok;
   const detail = transferredButUnverified
-    ? `传了，未验成：${cross.detail ?? '判据没过'}（目的地有一个未确认的文件）`
+    ? `transferred but not verified: ${cross.detail ?? 'the criterion did not pass'} (the destination holds an unconfirmed file)`
     : (failed?.detail ?? residueNote);
   return {
     stepId: step.id,
@@ -759,7 +759,7 @@ async function runReadbackOnRole(
   substitution: SubstitutionContext,
 ): Promise<ReadbackResult> {
   const profileId = ctx.pack.roles[role]?.profile;
-  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${role} 没绑定 profile`);
+  if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
   const profile = ctx.deps.profileFor(profileId);
   const hasExitCode = profile === undefined ? true : capabilitiesFor(profile).exitCode;
 
@@ -784,7 +784,7 @@ async function runReadbackOnRole(
         if (floor.verdict === 'destructive') {
           throw makeError(
             'PACK_INVALID',
-            `跨目标判据的命令命中危险地板（${floor.why ?? '危险命令'}），不执行`,
+            `the command of the cross-target criterion hits the danger floor (${floor.why ?? 'dangerous command'}), not executed`,
             { detail: { command, pattern: floor.pattern } },
           );
         }
@@ -807,7 +807,7 @@ async function runAssert(
 ): Promise<WorkflowStage> {
   const readRole = step.readback?.role ?? role;
   if (readRole === undefined) {
-    throw makeError('IPC_INVALID_PAYLOAD', `${step.kind} 步 ${step.id} 没说在哪个角色上读`);
+    throw makeError('IPC_INVALID_PAYLOAD', `the ${step.kind} step ${step.id} does not say which role to read on`);
   }
   const result = await runReadbackOnRole(ctx, readRole, step.readback, substitution);
 
@@ -915,7 +915,7 @@ async function resolveEndpoints(
     outputs: ctx.outputs,
   };
   const from = step.from?.path === undefined ? undefined : substituteValue(step.from.path, substitution);
-  if (from === undefined) throw makeError('IPC_INVALID_PAYLOAD', `file.transfer 步 ${step.id} 缺 from.path`);
+  if (from === undefined) throw makeError('IPC_INVALID_PAYLOAD', `file.transfer step ${step.id} is missing from.path`);
 
   let to: string | undefined;
   if (step.to?.path !== undefined) {
@@ -923,7 +923,7 @@ async function resolveEndpoints(
   } else if (step.to?.placement !== undefined) {
     const roleName = step.to.role;
     const profileId = ctx.pack.roles[roleName]?.profile;
-    if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `角色 ${roleName} 没绑定 profile`);
+    if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${roleName} has no profile bound to it`);
     // **落位目录要问目标机器**（内核模块的路径里有版本号 ✓）
     //
     // → **但只有 `kernel-module` 需要问** ✓（`user-program` 的落位是固定路径 ✓
@@ -941,7 +941,7 @@ async function resolveEndpoints(
     const dir = placementDir(step.to.placement as 'kernel-module', { kernel_release: release });
     to = `${dir}${basenameOf(from)}`;
   }
-  if (to === undefined) throw makeError('IPC_INVALID_PAYLOAD', `file.transfer 步 ${step.id} 缺目的地`);
+  if (to === undefined) throw makeError('IPC_INVALID_PAYLOAD', `file.transfer step ${step.id} is missing its destination`);
   return { from, to };
 }
 
@@ -956,7 +956,7 @@ function toReadbackDef(
   substitution: SubstitutionContext,
 ): ReadbackDef {
   if (readback === undefined) {
-    return { kind: 'none', consequence: '这个步骤没有声明判据' };
+    return { kind: 'none', consequence: 'this step declares no criterion' };
   }
   const def: Record<string, unknown> = {};
   if (readback.tag !== undefined) {

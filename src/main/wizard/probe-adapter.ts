@@ -23,7 +23,7 @@ import type { ProbeOutcome } from './instantiate';
 function detailOf(report: ProbeReaderReport): string {
   if (report.problems.length === 0) return '';
   if (report.problems.length === 1) return report.problems[0] ?? '';
-  return `${report.problems.length} 个问题：${report.problems.join('；')}`;
+  return `${report.problems.length} problems: ${report.problems.join('; ')}`;
 }
 
 /**

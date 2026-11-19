@@ -31,10 +31,13 @@ import { slotKey } from './layout-utils';
 import { secondaryGroupsFor } from './nav';
 import { applyTheme, readStoredTheme, readXtermTheme, type XtermTheme } from './theme';
 import {
+  interpolate,
   LocaleContext,
+  pick,
   readStoredLocale,
   storeLocale,
   type Locale,
+  type Localised,
 } from './i18n';
 import type { ActivityLevel, DetailTarget, PageId } from './types';
 import { useTerminal } from './useTerminal';
@@ -66,15 +69,62 @@ const FILE_HOST: FileTransferHost = {
   pull: (connectionId, remotePath) => window.cockpit.filesPull(connectionId, remotePath, ''),
 };
 
-const PAGE_TITLE: Record<PageId, string> = {
-  workbench: '工作台',
-  terminal: '终端',
-  files: '文件传输',
-  logs: '运行日志',
-  library: '卡片库',
-  wizard: '向导',
-  settings: '设置',
+const PAGE_TITLE: Record<PageId, Localised> = {
+  workbench: { 'zh-Hans': '工作台', en: 'Workbench' },
+  terminal: { 'zh-Hans': '终端', en: 'Terminal' },
+  files: { 'zh-Hans': '文件传输', en: 'File transfer' },
+  logs: { 'zh-Hans': '运行日志', en: 'Run log' },
+  library: { 'zh-Hans': '卡片库', en: 'Card library' },
+  wizard: { 'zh-Hans': '向导', en: 'Wizard' },
+  settings: { 'zh-Hans': '设置', en: 'Settings' },
 };
+
+/**
+ * The wording of the shell, in both languages.
+ *
+ * The shell draws the provider for the locale, so it cannot read it back
+ * from the context — it picks the pair itself.
+ */
+const strings = {
+  pinCard: { 'zh-Hans': '置顶卡片：{card}', en: 'Pinned the card: {card}' },
+  unpinCard: { 'zh-Hans': '取消置顶卡片：{card}', en: 'Unpinned the card: {card}' },
+  switchedBoard: { 'zh-Hans': '已切到板子：{board}', en: 'Switched to the board: {board}' },
+  placedCard: {
+    'zh-Hans': '把卡片摆进主区：{card}',
+    en: 'Placed the card in the work area: {card}',
+  },
+  openWorkbench: { 'zh-Hans': '打开工作台', en: 'Open the workbench' },
+  openTerminal: { 'zh-Hans': '打开终端', en: 'Open the terminal' },
+  openFiles: { 'zh-Hans': '打开文件', en: 'Open the files' },
+  openLogs: { 'zh-Hans': '打开日志', en: 'Open the logs' },
+  openLibrary: { 'zh-Hans': '打开卡片库', en: 'Open the card library' },
+  openWizard: { 'zh-Hans': '打开接板向导', en: 'Open the board wizard' },
+  openSettings: { 'zh-Hans': '打开设置', en: 'Open the settings' },
+  lightTheme: { 'zh-Hans': '切换到浅色主题', en: 'Switch to the light theme' },
+  darkTheme: { 'zh-Hans': '切换到深色主题', en: 'Switch to the dark theme' },
+  rescanCards: { 'zh-Hans': '重新扫描卡片目录', en: 'Rescan the card directory' },
+  closeDetail: { 'zh-Hans': '关闭详情', en: 'Close the detail panel' },
+  expandSecondary: { 'zh-Hans': '展开二级栏', en: 'Expand the secondary sidebar' },
+  uploading: { 'zh-Hans': '正在上传 {name} …', en: 'Uploading {name} …' },
+  pushed: { 'zh-Hans': '已推送 {name} → {path}', en: 'Pushed {name} → {path}' },
+  downloading: { 'zh-Hans': '正在下载 {path} …', en: 'Downloading {path} …' },
+  pulled: {
+    'zh-Hans': '已拉取 {remote} → {local}',
+    en: 'Pulled {remote} → {local}',
+  },
+  wizardInstalled: {
+    'zh-Hans': '接板向导生成了一个新包',
+    en: 'The board wizard produced a new pack',
+  },
+  diagnosticsCopied: {
+    'zh-Hans': '已复制诊断 JSON 到剪贴板',
+    en: 'Copied the diagnostics JSON to the clipboard',
+  },
+  clipboardFailed: {
+    'zh-Hans': '复制失败：剪贴板不可用。',
+    en: 'Copy failed: the clipboard is unavailable.',
+  },
+} satisfies Record<string, Localised>;
 
 function readStoredSecondary(): boolean {
   try {
@@ -122,6 +172,13 @@ export function Shell(): JSX.Element {
   const [pinnedCardIds, setPinnedCardIds] = useState<string[]>(readStoredPins);
 
   const reportError = useCallback((message: string) => setError(message), []);
+  // The shell owns the provider for the locale, so it picks the pair itself
+  // rather than reading it back from the context it just supplied.
+  const t = useCallback(
+    (text: Localised, values?: Record<string, string | number>): string =>
+      interpolate(pick(text, locale), values),
+    [locale],
+  );
   const { activity, log } = useActivity();
   const { connections, refresh: refreshConnections } = useConnections(reportError);
   const runtime = useRuntime();
@@ -129,7 +186,7 @@ export function Shell(): JSX.Element {
   const { rows: permissionRows, set: setPermission } = usePermissions(reportError);
   const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
   const broker = useBroker();
-  const terminal = useTerminal(connections, reportError, log);
+  const terminal = useTerminal(connections, reportError, log, locale);
   const tagStream = useTagStream();
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
@@ -189,9 +246,14 @@ export function Shell(): JSX.Element {
           ? current.filter((id) => id !== cardId)
           : [...current, cardId],
       );
-      log('info', `${pinnedCardIds.includes(cardId) ? '取消置顶' : '置顶'}卡片：${cardId}`);
+      log(
+        'info',
+        t(pinnedCardIds.includes(cardId) ? strings.unpinCard : strings.pinCard, {
+          card: cardId,
+        }),
+      );
     },
-    [log, pinnedCardIds],
+    [log, pinnedCardIds, t],
   );
 
   const goPage = useCallback((target: PageId) => {
@@ -219,14 +281,14 @@ export function Shell(): JSX.Element {
         .devicesSelect(deviceKey)
         .then(() => {
           refreshConnections();
-          log('info', `已切到板子：${deviceKey}`);
+          log('info', t(strings.switchedBoard, { board: deviceKey }));
         })
         .catch((cause: unknown) => {
           setError(cause instanceof Error ? cause.message : String(cause));
         })
         .finally(() => setSelecting(false));
     },
-    [log, refreshConnections],
+    [log, refreshConnections, t],
   );
 
   // The cards that are **placed** in the main area right now.
@@ -259,9 +321,9 @@ export function Shell(): JSX.Element {
   const handlePlace = useCallback(
     (card: CardInstanceInfo) => {
       placeCard(card);
-      log('info', `把卡片摆进主区：${card.cardId}`);
+      log('info', t(strings.placedCard, { card: card.cardId }));
     },
-    [placeCard, log],
+    [placeCard, log, t],
   );
 
   // ── keyboard ──
@@ -302,16 +364,21 @@ export function Shell(): JSX.Element {
       close();
     };
     const list: Command[] = [
-      { id: 'page-workbench', label: '打开工作台', run: go('workbench') },
-      { id: 'page-terminal', label: '打开终端', shortcut: 'Ctrl `', run: go('terminal') },
-      { id: 'page-files', label: '打开文件', run: go('files') },
-      { id: 'page-logs', label: '打开日志', run: go('logs') },
-      { id: 'page-library', label: '打开卡片库', run: go('library') },
-      { id: 'page-wizard', label: '打开接板向导', run: go('wizard') },
-      { id: 'page-settings', label: '打开设置', run: go('settings') },
+      { id: 'page-workbench', label: strings.openWorkbench, run: go('workbench') },
+      {
+        id: 'page-terminal',
+        label: strings.openTerminal,
+        shortcut: 'Ctrl `',
+        run: go('terminal'),
+      },
+      { id: 'page-files', label: strings.openFiles, run: go('files') },
+      { id: 'page-logs', label: strings.openLogs, run: go('logs') },
+      { id: 'page-library', label: strings.openLibrary, run: go('library') },
+      { id: 'page-wizard', label: strings.openWizard, run: go('wizard') },
+      { id: 'page-settings', label: strings.openSettings, run: go('settings') },
       {
         id: 'toggle-theme',
-        label: theme === 'dark' ? '切换到浅色主题' : '切换到深色主题',
+        label: theme === 'dark' ? strings.lightTheme : strings.darkTheme,
         run: () => {
           toggleTheme();
           close();
@@ -319,10 +386,10 @@ export function Shell(): JSX.Element {
       },
       {
         id: 'refresh-cards',
-        label: '重新扫描卡片目录',
+        label: strings.rescanCards,
         run: () => {
           refresh();
-          log('info', '重新扫描卡片目录');
+          log('info', t(strings.rescanCards));
           close();
         },
       },
@@ -330,7 +397,7 @@ export function Shell(): JSX.Element {
     if (detail !== null) {
       list.push({
         id: 'close-detail',
-        label: '关闭详情',
+        label: strings.closeDetail,
         run: () => {
           setDetail(null);
           close();
@@ -338,7 +405,7 @@ export function Shell(): JSX.Element {
       });
     }
     return list;
-  }, [detail, goPage, log, refresh, theme, toggleTheme]);
+  }, [detail, goPage, log, refresh, t, theme, toggleTheme]);
 
   const secondary = useMemo(
     () =>
@@ -419,8 +486,8 @@ export function Shell(): JSX.Element {
             type="button"
             className="secondary-reopen"
             onClick={() => setSecondaryOpen(true)}
-            title="展开二级栏"
-            aria-label="展开二级栏"
+            title={t(strings.expandSecondary)}
+            aria-label={t(strings.expandSecondary)}
           >
             <ChevronIcon size={14} />
           </button>
@@ -469,27 +536,29 @@ export function Shell(): JSX.Element {
                 onPush={(file, remotePath) => {
                   const session = terminal.activeSession;
                   if (session === null) return;
-                  setTransferNote(`正在上传 ${file.name} …`);
+                  setTransferNote(t(strings.uploading, { name: file.name }));
                   void uploadFile(FILE_HOST, session.sessionId, file, remotePath)
                     .then(() => {
-                      setTransferNote(`已推送 ${file.name} → ${remotePath}`);
-                      log('info', `已推送 ${file.name} → ${remotePath}`);
+                      setTransferNote(t(strings.pushed, { name: file.name, path: remotePath }));
+                      log('info', t(strings.pushed, { name: file.name, path: remotePath }));
                     })
                     .catch((cause: unknown) => {
                       setTransferNote(null);
-                      setError(describeError(cause));
+                      setError(describeError(cause, locale));
                     });
                 }}
                 onPull={(connectionId, remotePath) => {
-                  setTransferNote(`正在下载 ${remotePath} …`);
+                  setTransferNote(t(strings.downloading, { path: remotePath }));
                   void downloadFile(FILE_HOST, connectionId, remotePath)
                     .then((localPath) => {
-                      setTransferNote(`已拉取 ${remotePath} → ${localPath}`);
-                      log('info', `已拉取 ${remotePath} → ${localPath}`);
+                      setTransferNote(
+                        t(strings.pulled, { remote: remotePath, local: localPath }),
+                      );
+                      log('info', t(strings.pulled, { remote: remotePath, local: localPath }));
                     })
                     .catch((cause: unknown) => {
                       setTransferNote(null);
-                      setError(describeError(cause));
+                      setError(describeError(cause, locale));
                     });
                 }}
               />
@@ -519,7 +588,7 @@ export function Shell(): JSX.Element {
                 onInstalled={() => {
                   refreshConnections();
                   refresh();
-                  log('info', '接板向导生成了一个新包');
+                  log('info', t(strings.wizardInstalled));
                 }}
               />
             ) : null}
@@ -570,11 +639,11 @@ export function Shell(): JSX.Element {
             const text = JSON.stringify(payload, null, 2);
             if (navigator.clipboard?.writeText) {
               void navigator.clipboard.writeText(text).then(
-                () => log('info', '已复制诊断 JSON 到剪贴板'),
-                () => setError('复制失败：剪贴板不可用。'),
+                () => log('info', t(strings.diagnosticsCopied)),
+                () => setError(t(strings.clipboardFailed)),
               );
             } else {
-              setError('复制失败：剪贴板不可用。');
+              setError(t(strings.clipboardFailed));
             }
           }}
         />

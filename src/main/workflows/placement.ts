@@ -24,11 +24,11 @@ export const PLACEMENTS = {
     /** 目录模板；`{kernel_release}` 由宿主按目标机器的实际内核版本填 */
     dir: '/usr/lib/modules/{kernel_release}/extra/',
     /** 人话说明（写进错误信息与时间线） */
-    doc: '内核模块 → /usr/lib/modules/<版本>/extra/（放置规范 §4 硬规矩 1）',
+    doc: 'kernel module → /usr/lib/modules/<version>/extra/ (placement spec §4, hard rule 1)',
   },
   'user-program': {
     dir: '/usr/local/bin/',
-    doc: '用户态可执行文件 → /usr/local/bin/',
+    doc: 'user-space executable → /usr/local/bin/',
   },
 } as const;
 

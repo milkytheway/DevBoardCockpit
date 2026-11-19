@@ -76,7 +76,7 @@ export function authorize(
 ): AuthorizationResult {
   // 1) Is this action in the granted set
   if (!Object.prototype.hasOwnProperty.call(granted.actions, action.id)) {
-    return { verdict: 'denied', detail: `动作「${action.id}」没有获得授权` };
+    return { verdict: 'denied', detail: `action "${action.id}" was not granted` };
   }
 
     // 2) The parameter domain: the guard is the line the pack author drew ✓
@@ -99,7 +99,7 @@ export function authorize(
       return {
         verdict: 'denied',
         param: name,
-        detail: `参数「${name}」超出了这个动作允许的范围（${describeRange(range)}）`,
+        detail: `parameter "${name}" is outside the range this action allows (${describeRange(range)})`,
       };
     }
   }
@@ -112,5 +112,5 @@ function describeRange(range: { min?: number; max?: number }): string {
   if (range.min !== undefined && range.max !== undefined) return `${range.min} .. ${range.max}`;
   if (range.min !== undefined) return `≥ ${range.min}`;
   if (range.max !== undefined) return `≤ ${range.max}`;
-  return '（没有限制）';
+  return '(no limit)';
 }

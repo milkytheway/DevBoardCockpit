@@ -111,11 +111,11 @@ async function readTagForm(
 ): Promise<ReadbackResult> {
   const tag = spec.tag;
   if (typeof tag !== 'string' || tag.length === 0) {
-    return { ok: false, verified: false, reason: 'failed', detail: '回读没有说读哪个 tag' };
+    return { ok: false, verified: false, reason: 'failed', detail: 'the readback does not say which tag to read' };
   }
   const reading = await deps.readTag(tag);
   if (reading === undefined) {
-    return { ok: false, verified: false, reason: 'not_found', detail: `读不到 ${tag}` };
+    return { ok: false, verified: false, reason: 'not_found', detail: `cannot read ${tag}` };
   }
   if (reading.status !== 'ok') {
     // Not ok means "cannot be confirmed as in effect" —
@@ -127,7 +127,7 @@ async function readTagForm(
       reason: 'failed',
       status: reading.status,
       actual: reading.value,
-      detail: reading.detail ?? `${tag} 的状态是 ${reading.status}，不能算确认生效`,
+      detail: reading.detail ?? `the status of ${tag} is ${reading.status}, so it cannot count as confirmed`,
     };
   }
   if (spec.expect === undefined) {
@@ -142,7 +142,7 @@ async function readTagForm(
       reason: 'readback_mismatch',
       expected,
       actual: reading.value,
-      detail: '回读到的值与期望不符',
+      detail: 'the value read back does not match the expectation',
     };
   }
   return { ok: true, verified: true, value: reading.value, unit: reading.unit, status: reading.status };
@@ -157,7 +157,7 @@ async function readFileForm(
   const path = substitute(String(spec.path ?? ''), params.raw);
   const content = await deps.readFile(path);
   if (content === null) {
-    return { ok: false, verified: false, reason: 'not_found', detail: `读不到 ${path}` };
+    return { ok: false, verified: false, reason: 'not_found', detail: `cannot read ${path}` };
   }
   const actual = content.trim();
   const expected = substitute(String(spec.expect ?? ''), params.raw);
@@ -177,7 +177,7 @@ async function readFileForm(
       reason: 'readback_mismatch',
       expected,
       actual,
-      detail: '回读到的值与期望不符',
+      detail: 'the value read back does not match the expectation',
     };
   }
   return { ok: true, verified: true, value: actual, detail: `${path} = ${actual}` };
@@ -193,14 +193,14 @@ function commandOkForm(
       ok: false,
       verified: false,
       reason: 'unsupported_transport',
-      detail: '这条连接没有退出码（串口），command_ok 用不了',
+      detail: 'this connection has no exit code (serial), command_ok cannot be used',
     };
   }
   if (actionResult === undefined) {
-    return { ok: false, verified: false, reason: 'failed', detail: '没有动作的执行结果可比' };
+    return { ok: false, verified: false, reason: 'failed', detail: 'there is no execution result of the action to compare with' };
   }
   if (actionResult.timedOut) {
-    return { ok: false, verified: false, reason: 'timeout', detail: '动作那条命令超时了' };
+    return { ok: false, verified: false, reason: 'timeout', detail: 'the command of the action timed out' };
   }
   // It was cancelled → the exit code is `null` ✓ (neither 0 nor 124 ✓)
   // → Without looking at this flag it would fall into the "returned non-zero"
@@ -208,7 +208,7 @@ function commandOkForm(
   // → Reporting "the readback does not match" would be a lie ✗ (a human
   //   calling it off ≠ the board not obeying ✓)
   if (actionResult.cancelled === true) {
-    return { ok: false, verified: false, reason: 'cancelled', detail: '动作那条命令被取消了' };
+    return { ok: false, verified: false, reason: 'cancelled', detail: 'the command of the action was cancelled' };
   }
   if (actionResult.exitCode !== 0) {
     return {
@@ -217,10 +217,10 @@ function commandOkForm(
       reason: 'readback_mismatch',
       expected: 0,
       actual: actionResult.exitCode,
-      detail: actionResult.stderr.trim() || '动作那条命令返回非零',
+      detail: actionResult.stderr.trim() || 'the command of the action returned non-zero',
     };
   }
-  return { ok: true, verified: true, value: actionResult.exitCode, detail: '命令返回 0' };
+  return { ok: true, verified: true, value: actionResult.exitCode, detail: 'the command returned 0' };
 }
 
 /** Form 4: run a second verification command, polling until it succeeds or times out */
@@ -234,7 +234,7 @@ async function verifyForm(
       ok: false,
       verified: false,
       reason: 'unsupported_transport',
-      detail: '这条连接没有退出码（串口），verify 用不了',
+      detail: 'this connection has no exit code (serial), verify cannot be used',
     };
   }
   const command = substitute(String(spec.command ?? ''), params.encoded);
@@ -244,14 +244,14 @@ async function verifyForm(
   for (;;) {
     const result = await deps.exec(command);
     if (!result.timedOut && result.exitCode === 0) {
-      return { ok: true, verified: true, value: 0, detail: '验证命令返回 0' };
+      return { ok: true, verified: true, value: 0, detail: 'the verification command returned 0' };
     }
     if (Date.now() >= deadline) {
       return {
         ok: false,
         verified: false,
         reason: 'timeout',
-        detail: `验证命令在 ${timeoutMs}ms 内没成功`,
+        detail: `the verification command did not succeed within ${timeoutMs}ms`,
       };
     }
     await sleep(100);
@@ -291,14 +291,14 @@ export async function runReadback(
       return {
         ok: true,
         verified: false,
-        detail: spec.consequence ?? '这个动作没有可回读的状态',
+        detail: spec.consequence ?? 'this action has no readable state',
       };
     default:
       return {
         ok: false,
         verified: false,
         reason: 'failed',
-        detail: `不知道的回读形式：${kind}`,
+        detail: `unknown readback form: ${kind}`,
       };
   }
 }

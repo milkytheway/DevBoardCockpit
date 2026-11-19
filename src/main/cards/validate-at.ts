@@ -58,7 +58,7 @@ export function validateCardAt(input: ValidateCardInput): McpValidateResult {
           severity: 'error',
           rule: 10,
           path: 'manifest.json',
-          message: '这个目录里没有 manifest.json',
+          message: 'there is no manifest.json in this directory',
         },
       ],
       warnings: [],

@@ -119,7 +119,7 @@ export class RoundTripQueue {
       // queueing turns "stuck" into "stale data", and that is the hardest to
       // diagnose.
       return Promise.reject(
-        makeError('CONN_BUSY', `往返队列已满（${this.maxPending} 条在排队），这次不排队`, {
+        makeError('CONN_BUSY', `the round trip queue is full (${this.maxPending} are queued), this one is not queued`, {
           detail: { kind, pending: this.pending },
         }),
       );
@@ -205,7 +205,7 @@ export class RoundTripQueue {
         const waited = this.now() - entry.enqueuedAt;
         if (waited > entry.deadlineMs) {
           entry.reject(
-            makeError('CONN_BUSY', `排队 ${waited}ms 超过 deadline（${entry.deadlineMs}ms），这次不执行`, {
+            makeError('CONN_BUSY', `queued for ${waited}ms, over the deadline (${entry.deadlineMs}ms), not executed this time`, {
               detail: { kind, waited, deadlineMs: entry.deadlineMs },
             }),
           );

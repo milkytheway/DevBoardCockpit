@@ -152,9 +152,9 @@ export class TagRuntime {
     const errs = errorsOf(validatePack(binding.pack));
     if (errs.length > 0) {
       this.state = 'error';
-      this.detail = `板型包「${binding.pack.id}」没过校验：${errs
-        .map((e) => `规则 ${e.rule} · ${e.path}`)
-        .join('；')}`;
+      this.detail = `board pack "${binding.pack.id}" did not pass validation: ${errs
+        .map((e) => `rule ${e.rule} · ${e.path}`)
+        .join('; ')}`;
       await this.closeConnection();
       return this.status;
     }
@@ -191,7 +191,7 @@ export class TagRuntime {
   async runTransaction<T>(fn: (connection: Connection) => Promise<T>): Promise<T> {
     const connection = this.connection;
     if (connection === undefined) {
-      throw new AppError('CONN_CLOSED', '运行时还没连上任何连接');
+      throw new AppError('CONN_CLOSED', 'the runtime is not connected to any connection yet');
     }
     return this.queue.run('action-verify', () => fn(connection));
   }
@@ -386,7 +386,7 @@ export function pickCandidates(profiles: ConnectionProfile[]): RuntimeCandidate[
  */
 export function isPortBusy(detail: string, code?: string): boolean {
   if (code === 'PORT_BUSY') return true;
-  return /被占用|EBUSY|EACCES/i.test(detail);
+  return /is busy|EBUSY|EACCES/i.test(detail);
 }
 
 /**
@@ -422,12 +422,12 @@ export async function startWithRetry(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   if (candidates.length === 0) {
-    return { state: 'error', detail: '没有带板型包的连接（候选为空）' };
+    return { state: 'error', detail: 'no connection carries a board pack (the candidate list is empty)' };
   }
 
   /** 端口被占的候选：占着端口的是别的程序，重试它没有意义 */
   const skipped = new Set<string>();
-  let last: RuntimeStatus = { state: 'error', detail: '没有试过任何候选' };
+  let last: RuntimeStatus = { state: 'error', detail: 'no candidate was tried' };
 
   // 轮次 = 1（立刻）+ 每个退避档位之后再来一轮
   for (let round = 0; round <= RETRY_BACKOFF_MS.length; round += 1) {

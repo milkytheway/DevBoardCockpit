@@ -1,12 +1,12 @@
 # Golden sample · User space program: compile on the client machine →
-# **transfer straight to the board** → place → run → look at the output
+# transfer straight to the board → place → run → look at the output
 #
 # ── How it differs from the kernel module one ──
 #
 # ① The placement differs (`user-program` → `/usr/local/bin/`);
-# ② **The executable needs chmod +x** (rule P4 of docs/02 section 3.5);
-# ③ **The last step is "run it and look at the output"** — not a
-#    measurement but the **output of the command**
+# ② The executable needs chmod +x (rule P4 of docs/02 section 3.5);
+# ③ The last step is "run it and look at the output" — not a
+#    measurement but the output of the command
 #    → the criterion is `verify` (run it once and look at the exit code).
 
 apiVersion: devboard/v1
@@ -69,7 +69,7 @@ steps:
       placement: user-program
     cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 600000
-    # **The destination path goes into this slot** (the two later steps use
+    # The destination path goes into this slot (the two later steps use
     # it)
     out: dest
     readback:
@@ -78,7 +78,7 @@ steps:
       command: "test -f {to.path}"
       timeout_ms: 30000
 
-  # **The executable needs chmod +x** (rule P4 of docs/02 section 3.5)
+  # The executable needs chmod +x (rule P4 of docs/02 section 3.5)
   - id: make-executable
     kind: exec
     role: target

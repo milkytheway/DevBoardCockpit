@@ -30,21 +30,21 @@ function failingConnection(err: unknown): Connection {
 
 describe('第一个真相 · **故障分类** ✓（**认错误码** ✓）', () => {
   it('**`CONN_OPEN_FAILED` → 串口打不开** ✓（**不是「板子没说话」** ✓）', async () => {
-    const err = new AppError('CONN_OPEN_FAILED', '打不开串口 COM99');
+    const err = new AppError('CONN_OPEN_FAILED', 'cannot open serial port COM99');
     const truth = await firstTruthOf(failingConnection(err));
-    expect(truth.kind, '**打不开**与「打开」差一个字 ✓ → 认错误码才分得对 ✓').toBe(
+    expect(truth.kind, '**cannot open**与「open」差一个字 ✓ → 认错误码才分得对 ✓').toBe(
       'port-unopenable',
     );
   });
 
   it('**`PORT_BUSY` → 串口打不开** ✓（**被占用是同一个故障** ✓）', async () => {
-    const err = new AppError('PORT_BUSY', '串口 COM3 被占用');
+    const err = new AppError('PORT_BUSY', 'serial port COM3 is busy');
     const truth = await firstTruthOf(failingConnection(err));
     expect(truth.kind).toBe('port-unopenable');
   });
 
-  it('**中文消息「打不开」也要认** ✓（**兜底** ✓）', async () => {
-    const truth = await firstTruthOf(failingConnection(new Error('打不开串口 COM99')));
+  it('**英文消息「cannot open」也要认** ✓（**兜底** ✓）', async () => {
+    const truth = await firstTruthOf(failingConnection(new Error('cannot open serial port COM99')));
     expect(truth.kind).toBe('port-unopenable');
   });
 
@@ -61,13 +61,13 @@ describe('第一个真相 · **故障分类** ✓（**认错误码** ✓）', ()
 
   it('**超时 → 板子没说话** ✓（**不是「打不开」** ✓）', async () => {
     const truth = await firstTruthOf(
-      failingConnection(new AppError('CONN_TIMEOUT', '串口 COM3 一次往返超时')),
+      failingConnection(new AppError('CONN_TIMEOUT', 'serial port COM3 timed out on one round trip')),
     );
     expect(truth.kind).toBe('no-reply');
   });
 
   it('**别的错 → 板子没说话** ✓（**不乱归** ✓）', async () => {
-    const truth = await firstTruthOf(failingConnection(new Error('板子挂了两根线')));
+    const truth = await firstTruthOf(failingConnection(new Error('the board has two cables plugged in')));
     expect(truth.kind).toBe('no-reply');
   });
 });

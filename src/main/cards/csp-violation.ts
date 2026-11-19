@@ -16,11 +16,11 @@ import type { CardCspViolation } from '../../shared/ipc-contract';
  * 写成英文的 "CSP violation" 谁也看不懂——**卡片作者要照着改，agent 要照着判**。
  */
 export function cspViolationMessage(violation: CardCspViolation): string {
-  const directive = violation.effectiveDirective || violation.violatedDirective || '（未知指令）';
-  const target = violation.blockedURI === '' ? '（没有地址）' : violation.blockedURI;
+  const directive = violation.effectiveDirective || violation.violatedDirective || '(unknown directive)';
+  const target = violation.blockedURI === '' ? '(no address)' : violation.blockedURI;
   const where =
     violation.sourceFile === ''
       ? ''
-      : `（${violation.sourceFile}${violation.lineNumber > 0 ? ` 第 ${violation.lineNumber} 行` : ''}）`;
-  return `CSP 违规：${directive} —— 想访问 ${target}，被宿主的 CSP 拒绝 ${where}`.trim();
+      : ` (${violation.sourceFile}${violation.lineNumber > 0 ? ` line ${violation.lineNumber}` : ''})`;
+  return `CSP violation: ${directive} — it wanted to access ${target}, the host CSP refused it ${where}`.trim();
 }

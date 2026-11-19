@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { WizardPage } from '../../src/renderer/shell/pages/WizardPage';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 import type { WizardRequest } from '../../src/renderer/shell/pages/WizardPage';
 import type { WizardRunResult } from '../../src/shared/ipc-contract';
 
@@ -14,6 +15,14 @@ const BASE: WizardRunResult = {
   installedDir: 'C:\\Users\\Administrator\\AppData\\Roaming\\devboard\\boards\\my-board',
   boardId: 'my-board',
 };
+
+/**
+ * **中文分支** ✓ —— 页面文案有中英两个分支，这里把语言钉在中文上，
+ * 断言里的期望值就是**中文分支的文案** ✓。
+ */
+function renderZh(ui: JSX.Element): ReturnType<typeof render> {
+  return render(<LocaleContext.Provider value="zh-Hans">{ui}</LocaleContext.Provider>);
+}
 
 function pendingRun(): (input: WizardRequest) => Promise<WizardRunResult> {
   return vi.fn(
@@ -29,7 +38,7 @@ function fill(port = 'COM7', name = '我的板'): void {
 describe('接板向导页', () => {
   it('**只有三个字段**，ADB 时串口与波特率变灰但不消失', () => {
     const run = pendingRun();
-    const { container } = render(<WizardPage run={run} />);
+    const { container } = renderZh(<WizardPage run={run} />);
 
     expect(container.querySelectorAll('.wizard-field input').length).toBe(3);
     expect(screen.queryByText(/扫描|自动枚举/)).toBeNull();
@@ -43,7 +52,7 @@ describe('接板向导页', () => {
 
   it('**串口提交的是人填的值**，跑时按钮禁用并说出正在做什么', () => {
     const run = pendingRun();
-    const { container } = render(<WizardPage run={run} />);
+    const { container } = renderZh(<WizardPage run={run} />);
     fill('COM7', '我的板');
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
@@ -62,7 +71,7 @@ describe('接板向导页', () => {
 
   it('**ADB 提交不拿串口和波特率**（宿主会忽略，但界面别装作用得上）', () => {
     const run = pendingRun();
-    render(<WizardPage run={run} />);
+    renderZh(<WizardPage run={run} />);
     fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: '我的板' } });
     fireEvent.click(screen.getByRole('button', { name: 'ADB' }));
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
@@ -79,7 +88,7 @@ describe('接板向导页', () => {
     vi.useFakeTimers();
     try {
       const run = pendingRun();
-      const { container } = render(<WizardPage run={run} />);
+      const { container } = renderZh(<WizardPage run={run} />);
       fill();
       fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
 
@@ -97,7 +106,7 @@ describe('接板向导页', () => {
   it('**成功**：主视觉、可用数、包路径、初版说明，并通知外壳刷新', async () => {
     const run = vi.fn(() => Promise.resolve(BASE));
     const onInstalled = vi.fn();
-    const { container } = render(<WizardPage run={run} onInstalled={onInstalled} />);
+    const { container } = renderZh(<WizardPage run={run} onInstalled={onInstalled} />);
     fill();
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
@@ -126,7 +135,7 @@ describe('接板向导页', () => {
         installedDir: undefined,
       }),
     );
-    const { container } = render(<WizardPage run={run} />);
+    const { container } = renderZh(<WizardPage run={run} />);
     fill('COM9');
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
@@ -148,7 +157,7 @@ describe('接板向导页', () => {
         installedDir: undefined,
       }),
     );
-    const { container } = render(<WizardPage run={run} />);
+    const { container } = renderZh(<WizardPage run={run} />);
     fill();
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
@@ -172,7 +181,7 @@ describe('接板向导页', () => {
         installedDir: undefined,
       }),
     );
-    render(<WizardPage run={run} />);
+    renderZh(<WizardPage run={run} />);
     fill();
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));

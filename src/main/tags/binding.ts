@@ -167,7 +167,7 @@ export async function resolvePack(opts: ResolvePackOptions): Promise<PackBinding
         return {
           pack: null,
           source: 'none',
-          reason: `连接指名了板型包「${opts.boardPackId}」，但 ${candidate} 里的 board.yaml 读不出来`,
+          reason: `the connection names the board pack "${opts.boardPackId}", but board.yaml cannot be read in ${candidate}`,
         };
       }
     }
@@ -175,8 +175,8 @@ export async function resolvePack(opts: ResolvePackOptions): Promise<PackBinding
       pack: null,
       source: 'none',
       reason:
-        `连接指名了板型包「${opts.boardPackId}」，但 ` +
-        `${packDirs.map((d) => join(d, namedId)).join(' 与 ')} 里都没有 board.yaml`,
+        `the connection names the board pack "${opts.boardPackId}", but ` +
+        `none of ${packDirs.map((d) => join(d, namedId)).join(' and ')} holds a board.yaml`,
     };
   }
 
@@ -193,14 +193,14 @@ export async function resolvePack(opts: ResolvePackOptions): Promise<PackBinding
     return {
       pack: null,
       source: 'none',
-      reason: `这块板没有板型包（型号「${model}」没匹配上任何一个包）`,
+      reason: `this board has no board pack (the model "${model}" matches none of the packs)`,
     };
   }
   return {
     pack: null,
     source: 'none',
     reason:
-      `有**多个**板型包都匹配型号「${model}」（${hits.map((p) => p.id).join(' / ')}）` +
-      '——不猜，请让连接指明要哪一个',
+      `**several** board packs match the model "${model}" (${hits.map((p) => p.id).join(' / ')})` +
+      '— never guess, let the connection name the one it wants',
   };
 }

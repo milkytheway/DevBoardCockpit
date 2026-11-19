@@ -112,7 +112,7 @@ export class TerminalManager {
   async open(profileId: string): Promise<{ sessionId: string }> {
     const profile = this.opts.listProfiles().find((p) => p.id === profileId);
     if (!profile) {
-      throw makeError('TERM_NOT_FOUND', `找不到连接 ${profileId}`, {
+      throw makeError('TERM_NOT_FOUND', `no such connection ${profileId}`, {
         detail: { profileId },
       });
     }
@@ -301,7 +301,7 @@ export class TerminalManager {
   private require(sessionId: string): LiveSession {
     const live = this.sessions.get(sessionId);
     if (!live) {
-      throw makeError('TERM_NOT_FOUND', `会话不存在 ${sessionId}`, { detail: { sessionId } });
+      throw makeError('TERM_NOT_FOUND', `no such session ${sessionId}`, { detail: { sessionId } });
     }
     return live;
   }

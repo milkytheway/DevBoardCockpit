@@ -87,9 +87,9 @@ export function projectRunStatus(status: WorkflowRunStatus): CardWorkflowStatus 
  */
 export function workflowReasonOf(err: unknown): CardWorkflowReason {
   const message = err instanceof Error ? err.message : String(err);
-  if (message.includes('没有被授权')) return 'denied';
-  if (message.includes('没有这个流程包')) return 'not_found';
-  if (message.includes('正在跑')) return 'busy';
-  if (message.includes('参数') || message.includes('invalid_params')) return 'invalid_params';
+  if (message.includes('not authorized')) return 'denied';
+  if (message.includes('no such workflow pack')) return 'not_found';
+  if (message.includes('is running')) return 'busy';
+  if (message.includes('parameter') || message.includes('invalid_params')) return 'invalid_params';
   return 'failed';
 }

@@ -3,16 +3,43 @@ import type { ConnectionInfo } from '../../../shared/ipc-contract';
 import type { TerminalTab } from '../types';
 import { TerminalView } from '../../terminal/TerminalView';
 import type { XtermTheme } from '../theme';
+import { useT, type Localised } from '../i18n';
 import { CloseIcon, TerminalIcon } from '../Icons';
 
 type TerminalLayout = 'single' | 'split' | 'quad';
 
 const CAPACITY: Record<TerminalLayout, number> = { single: 1, split: 2, quad: 4 };
 
-const LAYOUTS: { id: TerminalLayout; label: string; hint: string }[] = [
-  { id: 'single', label: '单窗', hint: '一次看一个会话，其余留在左侧' },
-  { id: 'split', label: '左右', hint: '两个会话并排' },
-  { id: 'quad', label: '四宫', hint: '最多四个会话同时看' },
+/**
+ * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ *
+ * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ */
+const strings = {
+  title: { 'zh-Hans': '终端', en: 'Terminal' },
+  layoutGroup: { 'zh-Hans': '终端排列', en: 'Terminal layout' },
+  layoutSingle: { 'zh-Hans': '单窗', en: 'Single' },
+  layoutSingleHint: { 'zh-Hans': '一次看一个会话，其余留在左侧', en: 'One session at a time, the rest stay on the left' },
+  layoutSplit: { 'zh-Hans': '左右', en: 'Split' },
+  layoutSplitHint: { 'zh-Hans': '两个会话并排', en: 'Two sessions side by side' },
+  layoutQuad: { 'zh-Hans': '四宫', en: 'Quad' },
+  layoutQuadHint: { 'zh-Hans': '最多四个会话同时看', en: 'Up to four sessions at once' },
+  sessionsInPanes: { 'zh-Hans': '个会话在窗格里', en: 'sessions in the panes' },
+  emptyTitle: { 'zh-Hans': '还没有终端会话', en: 'No terminal session yet' },
+  emptyBody: {
+    'zh-Hans': '左边「连接方式」里点一个连接就能开——会话会一直留着，切回来不丢历史。',
+    en: 'Pick a connection under "Connections" on the left to open one — the session stays open and keeps its history when you come back.',
+  },
+  makeActive: { 'zh-Hans': '把这个会话设为当前会话', en: 'Make this the current session' },
+  current: { 'zh-Hans': '当前', en: 'Current' },
+  closeSession: { 'zh-Hans': '关闭会话', en: 'Close the session' },
+  closeSessionPrefix: { 'zh-Hans': '关闭', en: 'Close' },
+} satisfies Record<string, Localised>;
+
+const LAYOUTS: { id: TerminalLayout; label: Localised; hint: Localised }[] = [
+  { id: 'single', label: strings.layoutSingle, hint: strings.layoutSingleHint },
+  { id: 'split', label: strings.layoutSplit, hint: strings.layoutSplitHint },
+  { id: 'quad', label: strings.layoutQuad, hint: strings.layoutQuadHint },
 ];
 
 /**
@@ -52,6 +79,7 @@ export function TerminalPage({
   onSelectSession: (sessionId: string) => void;
   onCloseSession: (sessionId: string) => void;
 }): JSX.Element {
+  const t = useT();
   const [layout, setLayout] = useState<TerminalLayout>('single');
   const [paneIds, setPaneIds] = useState<string[]>([]);
   const capacity = CAPACITY[layout];
@@ -76,24 +104,24 @@ export function TerminalPage({
     <div className="page page--terminal">
       <header className="page-head page-head--compact">
         <div className="page-head__text">
-          <h1 className="page-head__title">终端</h1>
+          <h1 className="page-head__title">{t(strings.title)}</h1>
         </div>
         {sessions.length > 0 ? (
           <div className="page-head__actions">
             <span className="page-head__hint">
-              {paneIds.length} / {sessions.length} 个会话在窗格里
+              {paneIds.length} / {sessions.length} {t(strings.sessionsInPanes)}
             </span>
-            <div className="segmented" role="group" aria-label="终端排列">
+            <div className="segmented" role="group" aria-label={t(strings.layoutGroup)}>
               {LAYOUTS.map((option) => (
                 <button
                   key={option.id}
                   type="button"
                   className={layout === option.id ? 'is-active' : ''}
                   aria-pressed={layout === option.id}
-                  title={option.hint}
+                  title={t(option.hint)}
                   onClick={() => setLayout(option.id)}
                 >
-                  {option.label}
+                  {t(option.label)}
                 </button>
               ))}
             </div>
@@ -106,8 +134,8 @@ export function TerminalPage({
           <span className="page-empty__icon" aria-hidden>
             <TerminalIcon size={26} />
           </span>
-          <h2>还没有终端会话</h2>
-          <p>左边「连接方式」里点一个连接就能开——会话会一直留着，切回来不丢历史。</p>
+          <h2>{t(strings.emptyTitle)}</h2>
+          <p>{t(strings.emptyBody)}</p>
         </div>
       ) : (
         <div
@@ -135,18 +163,18 @@ export function TerminalPage({
                       type="button"
                       className="terminal__tab"
                       onClick={() => onSelectSession(session.sessionId)}
-                      title="把这个会话设为当前会话"
+                      title={t(strings.makeActive)}
                     >
                       <TerminalIcon size={12} />
                       <span className="terminal__tab-label">{session.label}</span>
                       <span className="terminal__tab-id mono">{session.sessionId.slice(0, 6)}</span>
-                      {isActive ? <span className="terminal__tab-active">当前</span> : null}
+                      {isActive ? <span className="terminal__tab-active">{t(strings.current)}</span> : null}
                     </button>
                     <button
                       type="button"
                       className="terminal__pane-close"
-                      aria-label={`关闭 ${session.label}`}
-                      title="关闭会话"
+                      aria-label={`${t(strings.closeSessionPrefix)} ${session.label}`}
+                      title={t(strings.closeSession)}
                       onClick={() => onCloseSession(session.sessionId)}
                     >
                       <CloseIcon size={12} />

@@ -1,29 +1,29 @@
-# Camera capture — **take one picture with a MIPI CSI camera and keep it on
-# the board**
+# Camera capture — take one picture with a MIPI CSI camera and keep it on
+# the board
 #
 # ── How the node is chosen ──
 #
-# Manual section 2.8 gives the **silkscreen ↔ /dev/videoX** mapping (measured:
+# Manual section 2.8 gives the silkscreen ↔ /dev/videoX mapping (measured:
 # the name of all four nodes is
-# `rkisp_mainpath` → **the model cannot be recognised** → **only the
-# silkscreen mapping identifies them**):
+# `rkisp_mainpath` → the model cannot be recognised → only the
+# silkscreen mapping identifies them):
 #
 #   MIPI CSI1 → /dev/video62
 #   MIPI CSI2 → /dev/video71
 #   MIPI CSI3 → /dev/video44
 #   MIPI CSI4 → /dev/video53
 #
-# - The workflow **lists the available nodes** (`v4l2-ctl --list-devices` is
+# - The workflow lists the available nodes (`v4l2-ctl --list-devices` is
 #   available on the board) →
-#   the user **sees what there is** first, and only then decides which one to
+#   the user sees what there is first, and only then decides which one to
 #   capture.
 #
 # ── What happens with no camera attached ──
 #
-# **It fails honestly** (measured 2026-11-16: with no camera attached gst
+# It fails honestly (measured 2026-11-16: with no camera attached gst
 # reports `not-negotiated (-4)`)
-# → the criterion "the file is not empty" **does not pass** → the step is red
-# → it **does not pretend a picture was taken**.
+# → the criterion "the file is not empty" does not pass → the step is red
+# → it does not pretend a picture was taken.
 
 apiVersion: devboard/v1
 kind: Workflow
@@ -53,17 +53,17 @@ roles:
     profile: board-adb
 
 steps:
-  # ① List them first (**let the user see what there is** — not being able
+  # ① List them first (let the user see what there is — not being able
   #   to recognise the model is a fact of this board)
   #
-  # **Not `v4l2-ctl --list-devices`** — it **opens every device node**
-  #   → a node whose camera is not plugged in makes it **fail as a whole**
+  # Not `v4l2-ctl --list-devices` — it opens every device node
+  #   → a node whose camera is not plugged in makes it fail as a whole
   #   (measured 2026-11-16: `Failed to open /dev/video0: No such device` →
   #   non-zero exit code).
-  # - **Read sysfs instead** (**touches no device node** → there is always
+  # - Read sysfs instead (touches no device node → there is always
   #   output).
   #
-  # Only the `rkisp*` ones are picked — those are the **real capture nodes**
+  # Only the `rkisp*` ones are picked — those are the real capture nodes
   # (the rest are CIF stream / scaler / tooling nodes, which are of no use
   # for a capture).
   - id: list-devices
@@ -84,7 +84,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ③ The file really is not empty (**red with no camera** — honest)
+  # ③ The file really is not empty (red with no camera — honest)
   - id: assert-image
     kind: assert
     role: target

@@ -122,7 +122,7 @@ export function serialProfileOf(input: WizardInput, boardId: string): Connection
     return parseProfile(
       {
         id: `wizard-${boardId}`,
-        label: `向导 · ADB`,
+        label: `Wizard · ADB`,
         transport: 'adb',
         // **指名通用包** ✓ → 「连接指名了某个包」那条路**根本不看 match** ✓
         board_pack: 'generic-linux',
@@ -135,7 +135,7 @@ export function serialProfileOf(input: WizardInput, boardId: string): Connection
   return parseProfile(
     {
       id: `wizard-${boardId}`,
-      label: `向导 · ${input.port}`,
+      label: `Wizard · ${input.port}`,
       transport: 'serial',
       // **指名通用包** ✓ → 「连接指名了某个包」那条路**根本不看 match** ✓
       board_pack: 'generic-linux',
@@ -168,7 +168,7 @@ export function firstTruthOf(
         return {
           ok: false,
           kind: 'no-reply',
-          detail: '连上了，但命令没有回包',
+          detail: 'it connected, but the command got no reply',
           // **传输层的话要带出来** ✓（串口知道「回包被别的程序吃了」✓ —— **别丢** ✗）
           ...(result.hint !== undefined ? { hint: result.hint } : {}),
         };
@@ -176,7 +176,7 @@ export function firstTruthOf(
       return {
         ok: false,
         kind: 'no-reply',
-        detail: `命令返回了 ${result.exitCode ?? '?'}，但没有内容`,
+        detail: `the command returned ${result.exitCode ?? '?'}, but there was no content`,
       };
     })
     .catch((err: unknown): FirstTruth => {
@@ -192,7 +192,7 @@ export function firstTruthOf(
         return { ok: false, kind: 'port-unopenable', detail: message };
       }
       // **文本只当兜底** ✓（错误码之外的错 ✓）
-      if (/打不开|打开|被占用|ENOENT|EBUSY|Access|denied/i.test(message)) {
+      if (/cannot open|not open|is busy|ENOENT|EBUSY|Access|denied/i.test(message)) {
         return { ok: false, kind: 'port-unopenable', detail: message };
       }
       return { ok: false, kind: 'no-reply', detail: message };
@@ -222,7 +222,7 @@ export async function runWizard(
     return {
       ok: false,
       firstTruth: { ok: false, kind: 'port-unopenable', detail: message },
-      message: `**串口打不开** ✓ —— ${message}`,
+      message: `**the serial port cannot be opened** ✓ —— ${message}`,
     };
   }
 
@@ -234,7 +234,7 @@ export async function runWizard(
     return {
       ok: false,
       firstTruth: { ok: false, kind: 'port-unopenable', detail: message },
-      message: `**串口打不开** ✓ —— ${message}`,
+      message: `**the serial port cannot be opened** ✓ —— ${message}`,
     };
   }
 
@@ -249,8 +249,8 @@ export async function runWizard(
       ...(truth.hint !== undefined ? { hint: truth.hint } : {}),
       message:
         truth.kind === 'port-unopenable'
-          ? `**串口打不开** ✓ —— ${truth.detail}`
-          : `**板子没说话** ✓ —— ${truth.detail}`,
+          ? `**the serial port cannot be opened** ✓ —— ${truth.detail}`
+          : `**the board said nothing** ✓ —— ${truth.detail}`,
     };
   }
 
@@ -289,8 +289,8 @@ export async function runWizard(
     pack: result.pack,
     installedDir: dir,
     message:
-      `好了 ✓ —— **${report.readers.filter((r) => r.ok).length} 个元操作可用** ✓ · ` +
-      `**包落在** ${dir}`,
+      `done ✓ —— **${report.readers.filter((r) => r.ok).length} meta-operations are usable** ✓ · ` +
+      `**the pack is at** ${dir}`,
   };
 }
 
@@ -304,7 +304,7 @@ export function writeProfile(profilesRoot: string, boardId: string, input: Wizar
   const transport = input.transport ?? 'serial';
   const profile = {
     id: `board-${boardId}`,
-    label: `板子 · ${input.boardName}`,
+    label: `Board · ${input.boardName}`,
     transport,
     board_pack: boardId,
     device_key: boardId,

@@ -171,7 +171,7 @@ describe('假设备 · 终端会话', () => {
     session.onData((chunk: string) => chunks.push(chunk));
     const text = chunks.join('');
     // **终端上必须明说这是合成数据**（不然有人会把假数当真数看）
-    expect(text).toContain('合成数据');
+    expect(text).toContain('synthetic data');
     expect(text).toContain('cockpit-fake-device/1');
     h.close();
   });
@@ -205,9 +205,9 @@ describe('假设备 · 终端会话', () => {
   it('假设备现在**有盘了**，但**没有的东西照样报错**（报告成功却不传 = 骗人）', async () => {
     const h = makeHarness();
     // 盘上没有这个文件 → **报错**，不是「报告成功却什么都没传」
-    await expect(h.connection.pull('/tmp/nothing-here', join(dir, 'y'))).rejects.toThrow(/假设备/);
+    await expect(h.connection.pull('/tmp/nothing-here', join(dir, 'y'))).rejects.toThrow(/fake device/);
     // 本机没有这个文件 → **报错**
-    await expect(h.connection.push(join(dir, 'not-there'), '/tmp/')).rejects.toThrow(/本机没有/);
+    await expect(h.connection.push(join(dir, 'not-there'), '/tmp/')).rejects.toThrow(/on this host/);
     h.close();
   });
 });

@@ -161,17 +161,17 @@ export class AdbConnection implements Connection {
       const row = rows.find((r) => r.serial === serial);
       if (!row) {
         const present = rows.map((r) => r.serial);
-        const detail = present.length > 0 ? present.join(', ') : '（没有设备）';
+        const detail = present.length > 0 ? present.join(', ') : '(no device)';
         throw makeError(
           'CONN_OPEN_FAILED',
-          `profile 指定的 serial 在 adb devices 里没有：${serial}（当前设备：${detail}）`,
+          `the serial pinned by the profile is not in the adb devices list: ${serial} (the current devices: ${detail})`,
           { detail: { serial, present, raw: out } },
         );
       }
       if (row.state !== 'device') {
         throw makeError(
           'CONN_OPEN_FAILED',
-          `profile 指定的设备 ${serial} 状态是「${row.stateText}」，不是 device`,
+          `the device ${serial} pinned by the profile is in the state "${row.stateText}", not device`,
           { detail: { serial, state: row.state, stateText: row.stateText, raw: out } },
         );
       }
@@ -180,8 +180,8 @@ export class AdbConnection implements Connection {
       const connected = rows.filter((r) => r.state === 'device');
       if (connected.length === 0) {
         const states = rows.map((r) => r.stateText);
-        const detail = states.length > 0 ? states.join(', ') : '（没有设备）';
-        throw makeError('CONN_OPEN_FAILED', `adb 没有处于 device 状态的设备：${detail}`, {
+        const detail = states.length > 0 ? states.join(', ') : '(no device)';
+        throw makeError('CONN_OPEN_FAILED', `adb has no device in the device state: ${detail}`, {
           detail: { states, raw: out },
         });
       }
@@ -196,7 +196,7 @@ export class AdbConnection implements Connection {
 
   async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.opened) {
-      throw makeError('CONN_CLOSED', 'ADB 连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the ADB connection is not open', { detail: { id: this.id } });
     }
     return this.runner(this.adbPath, adbArgs(this.profile, ['shell', command]), {
       timeoutMs: opts?.timeoutMs,
@@ -212,7 +212,7 @@ export class AdbConnection implements Connection {
   async pull(remotePath: string, localPath: string): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['pull', remotePath, localPath]));
     if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `download failed: ${remotePath}`, {
         detail: { remotePath, localPath, stderr: result.stderr },
       });
     }
@@ -222,7 +222,7 @@ export class AdbConnection implements Connection {
   async push(localPath: string, remotePath: string): Promise<void> {
     const result = await this.runner(this.adbPath, adbArgs(this.profile, ['push', localPath, remotePath]));
     if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `upload failed: ${localPath}`, {
         detail: { localPath, remotePath, stderr: result.stderr },
       });
     }
@@ -245,7 +245,7 @@ export class AdbConnection implements Connection {
   async list(remotePath: string): Promise<FileEntry[]> {
     const result = await this.exec(`ls -la ${quotePath(remotePath)}`);
     if (result.exitCode !== 0) {
-      throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `listing the directory failed: ${remotePath}`, {
         detail: { remotePath, stderr: result.stderr },
       });
     }
@@ -262,7 +262,7 @@ export class AdbConnection implements Connection {
 
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.opened) {
-      throw makeError('CONN_CLOSED', 'ADB 连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the ADB connection is not open', { detail: { id: this.id } });
     }
     return new AdbSession(this, this.log);
   }

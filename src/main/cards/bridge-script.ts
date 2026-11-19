@@ -79,7 +79,7 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   'use strict';
   const INSTANCE_ID = ${JSON.stringify(instanceId)};
   let port = null;
-  /** 端口到了就 resolve 它（没到就一直等——但**有上限**） */
+  /** The port arrived → resolve it (if it never arrives we keep waiting, but there is an upper bound) */
   let portWaiters = [];
   const PORT_TIMEOUT_MS = 10000;
   let seq = 0;
@@ -87,17 +87,19 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   const subs = new Map();
 
   /**
-   * 等端口。
+   * Wait for the port.
    *
-   * ── 为什么不能「端口没到就立刻回 not_connected」──
+   * ── Why it must not answer not_connected as soon as the port is missing ──
    *
-   * 端口是**握手之后**才到的（页面 → iframe 的 postMessage），
-   * 而卡片的脚本**先跑**、端口**后到**是常态
-   *（尤其**热更新装进来的卡**：iframe 刚建好，脚本立刻跑，端口还在路上）。
+   * The port arrives after the handshake (page → iframe postMessage), while
+   * the card's script runs first — the port arriving later is the normal case
+   * (especially for a card installed by hot reload: the iframe is just built,
+   * the script runs immediately, and the port is still on its way).
    *
-   * → 立刻回 not_connected = 卡片**静默地什么都不做** ✗
-   *   （AI 写的卡片最常犯的错：加载时直接调 API）。
-   * → 所以**等它**；等到上限还没来，才回 not_connected ✓。
+   * → Answering not_connected right away means the card silently does nothing.
+   *   (The most common mistake in an AI-written card: it calls the API while loading.)
+   * → So we wait for it; only when the upper bound passes without the port do we
+   *   answer not_connected.
    */
   function whenPort() {
     if (port !== null) return Promise.resolve(port);
@@ -120,9 +122,9 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   }
 
   function ask(method, args) {
-    // **端口已经在 → 同步发出去**（老行为不变：请求当场就在路上）
+    // The port is already there → send it right away (the old behaviour is unchanged: the request is on its way immediately)
     if (port !== null) return post(method, args);
-    // 端口还没到 → **等它**（热更新装进来的卡最常踩这个）
+    // The port has not arrived yet → wait for it (a card installed by hot reload hits this most often)
     return whenPort().then((p) => {
       if (p === null) return { ok: false, reason: 'not_connected' };
       return post(method, args);
@@ -136,8 +138,8 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     const args = { subscriptionId: subId };
     args[argName] = value;
     return ask(method, args).then((res) => {
-      // 宿主拒了（没权限 / 订阅数超限）→ **本地也别留着这个回调**：
-      // 否则卡片这边的表只增不减（RF-4：一张卡不能把自己的内存吃满）
+      // The host refused it (no permission / too many subscriptions) → do not keep the callback here either:
+      // otherwise the table on the card side only ever grows (RF-4: a card must not eat all its own memory)
       if (res && res.ok === false) subs.delete(subId);
       return res;
     });
@@ -148,7 +150,7 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     if (!data || data.type !== 'cockpit-port') return;
     port = event.ports && event.ports[0];
     if (!port) return;
-    // **端口到了 → 唤醒在等的那些调用**（它们等的就是这个）
+    // The port arrived → wake up the calls that are waiting (the port is what they were waiting for)
     const waiters = portWaiters;
     portWaiters = [];
     for (const resolve of waiters) resolve(port);
@@ -162,13 +164,13 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
       const resolve = pending.get(payload.id);
       if (!resolve) return;
       pending.delete(payload.id);
-      // **解包**：卡片要拿到的是「值」，不是传输信封。
+      // Unwrap: the card must get the value, not the transport envelope.
       //
-      // 契约 §7.7 的用法是：
+      // The usage in contract §7.7 is:
       //   const caps = await cockpit.capabilities();
       //   // { apiVersion: 'devboard/v1', methods: […], … }
-      // 直接把信封（{ id, ok, value }）交给卡片的话，
-      // caps.methods 是 undefined → 卡片以为宿主什么都不支持。
+      // Handing the envelope ({ id, ok, value }) to the card would leave
+      // caps.methods undefined, and the card would think the host supports nothing.
       resolve(payload.ok ? payload.value : { ok: false, reason: payload.reason || 'failed' });
     };
   });
@@ -177,7 +179,7 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
     return new Proxy(target, {
       get(obj, prop) {
         if (prop in obj) return obj[prop];
-        // 同上：then 不能是函数（thenable 会让 await 永远挂着）
+        // Same here: then must not be a function (a thenable makes await hang forever)
         if (typeof prop !== 'string' || prop === 'then' || prop === 'catch' || prop === 'finally') {
           return undefined;
         }
@@ -189,11 +191,11 @@ export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string 
   const cockpit = {};
 ${direct}
 ${namespaces}
-  // **顶层也包一层 Proxy**：不认识的名字回 unknown_method（而不是 TypeError）
+  // The top level is wrapped in a Proxy as well: an unknown name answers unknown_method (instead of a TypeError)
   window.cockpit = new Proxy(cockpit, {
     get(obj, prop) {
       if (prop in obj) return obj[prop];
-      // then 是 **thenable** 的钩子：返回函数会让 await cockpit 永远挂着
+      // then is the thenable hook: returning a function would make await cockpit hang forever
       if (typeof prop !== 'string' || prop === 'then' || prop === 'catch' || prop === 'finally') {
         return undefined;
       }

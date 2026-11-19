@@ -77,12 +77,12 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
 
   /* ── 规则 1：apiVersion ── */
   if (!(KNOWN_API_VERSIONS as readonly string[]).includes(manifest.apiVersion)) {
-    error(1, 'apiVersion', `不认识契约版本「${manifest.apiVersion}」`);
+    error(1, 'apiVersion', `unknown contract version "${manifest.apiVersion}"`);
   }
 
   /* ── 规则 2：id 全局唯一 ── */
   if (ctx.installedCardIds.includes(manifest.id)) {
-    error(2, 'id', `已经装着一张 id 为「${manifest.id}」的卡片`);
+    error(2, 'id', `a card with the id "${manifest.id}" is already installed`);
   }
 
   /* ── 规则 3：requires ⊆ permissions（按模式覆盖判定，契约 §2.2）──
@@ -91,12 +91,12 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   const perms = manifest.permissions;
   for (const tag of requires.tags ?? []) {
     if (!permissionCovers(perms, tag)) {
-      error(3, 'requires.tags', `「${tag}」没有被 permissions.read 覆盖`);
+      error(3, 'requires.tags', `"${tag}" is not covered by permissions.read`);
     }
   }
   for (const actionId of requires.actions ?? []) {
     if (!perms.write.includes(actionId)) {
-      error(3, 'requires.actions', `动作「${actionId}」没有出现在 permissions.write 里`);
+      error(3, 'requires.actions', `action "${actionId}" does not appear in permissions.write`);
     }
   }
   // **流程 id 同理**（评审 35 的 V2-C2 ✓）：
@@ -104,14 +104,14 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   // （否则规则 3 有个例外口子 = 「愿望可以超出授权」✗）
   for (const workflowId of requires.workflows ?? []) {
     if (!(perms.workflows ?? []).includes(workflowId)) {
-      error(3, 'requires.workflows', `流程「${workflowId}」没有出现在 permissions.workflows 里`);
+      error(3, 'requires.workflows', `workflow "${workflowId}" does not appear in permissions.workflows`);
     }
   }
 
   /* ── 规则 4：读权限里的 tag 必须在核心词表或 custom.* 下 ── */
   for (const tag of perms.read) {
     if (!isCoreTag(tag) && !tag.startsWith('custom.')) {
-      error(4, 'permissions.read', `「${tag}」既不在核心词表里，也不是 custom.* 下`);
+      error(4, 'permissions.read', `"${tag}" is neither in the core vocabulary nor under custom.*`);
     }
   }
 
@@ -120,7 +120,7 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   const writeIds: string[] = [];
   for (const id of perms.write) {
     if (id.includes('*')) {
-      error(6, 'permissions.write', `写权限只支持精确的动作 id，「${id}」是通配`);
+      error(6, 'permissions.write', `write permissions only accept exact action ids, "${id}" is a wildcard`);
     } else {
       writeIds.push(id);
     }
@@ -129,9 +129,9 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   /* ── 规则 5：写权限里的动作，当前板型包要有 ── */
   for (const id of writeIds) {
     if (ctx.availableActions === null) {
-      warn(5, 'permissions.write', `动作「${id}」**未验证**（连不上板，没法确认板型包里有它）`);
+      warn(5, 'permissions.write', `action "${id}" is **unverified** (the board cannot be reached, so the board pack cannot be confirmed to have it)`);
     } else if (!ctx.availableActions.includes(id)) {
-      error(5, 'permissions.write', `当前板型包里没有动作「${id}」`);
+      error(5, 'permissions.write', `the current board pack has no action "${id}"`);
     }
   }
 
@@ -142,16 +142,16 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
   const workflowIds: string[] = [];
   for (const id of perms.workflows ?? []) {
     if (id.includes('*')) {
-      error(14, 'permissions.workflows', `流程权限只支持精确 id，「${id}」是通配`);
+      error(14, 'permissions.workflows', `workflow permissions only accept exact ids, "${id}" is a wildcard`);
     } else {
       workflowIds.push(id);
     }
   }
   for (const id of workflowIds) {
     if (ctx.availableWorkflows === null) {
-      warn(14, 'permissions.workflows', `流程「${id}」**未验证**（离线，没法确认宿主里有没有它）`);
+      warn(14, 'permissions.workflows', `workflow "${id}" is **unverified** (offline, so the host cannot be confirmed to have it)`);
     } else if (!ctx.availableWorkflows.includes(id)) {
-      error(14, 'permissions.workflows', `宿主里没有流程「${id}」`);
+      error(14, 'permissions.workflows', `the host has no workflow "${id}"`);
     }
   }
 
@@ -160,10 +160,10 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     if (action.target === undefined) {
       // 视图内动作：它**不碰板子**，所以不该出现在写权限里
       if (perms.write.includes(action.id)) {
-        error(12, `actions[${index}].id`, `视图内动作「${action.id}」不该出现在 permissions.write 里`);
+        error(12, `actions[${index}].id`, `the view-local action "${action.id}" must not appear in permissions.write`);
       }
     } else if (!perms.write.includes(action.target)) {
-      error(7, `actions[${index}].target`, `板型动作「${action.target}」不在 permissions.write 里`);
+      error(7, `actions[${index}].target`, `the board action "${action.target}" is not in permissions.write`);
     }
   }
 
@@ -175,16 +175,16 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     const minW = layout.min_w ?? 1;
     const minH = layout.min_h ?? 1;
     if (w < 1 || w > GRID_COLUMNS || h < 1) {
-      error(8, 'layout', `w/h 必须在 1..${GRID_COLUMNS} 之间（收到 w=${w} h=${h}）`);
+      error(8, 'layout', `w/h must be between 1 and ${GRID_COLUMNS} (got w=${w} h=${h})`);
     }
     if (minW > w || minH > h) {
-      error(8, 'layout', `min_w/min_h 不能大于 w/h（收到 ${minW}×${minH} vs ${w}×${h}）`);
+      error(8, 'layout', `min_w/min_h must not be greater than w/h (got ${minW}×${minH} vs ${w}×${h})`);
     }
   }
 
   /* ── 规则 9：entry 文件存在 ── */
   if (!ctx.fileExists(manifest.entry)) {
-    error(9, 'entry', `入口文件「${manifest.entry}」不存在`);
+    error(9, 'entry', `the entry file "${manifest.entry}" does not exist`);
   }
 
   /* ── 规则 11 / 13 的复查（结构性的两条，解析器已经挡过一道）── */
@@ -192,17 +192,17 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     const raw = action as unknown as Record<string, unknown>;
     for (const forbidden of ['danger', 'readback']) {
       if (forbidden in raw) {
-        error(11, `actions[${index}].${forbidden}`, `卡片不许声明 ${forbidden}（那归板型包管）`);
+        error(11, `actions[${index}].${forbidden}`, `a card must not declare ${forbidden} (that belongs to the board pack)`);
       }
     }
     for (const [key, param] of Object.entries(action.params ?? {})) {
       const p = param as unknown as Record<string, unknown>;
       const type = p['type'];
       if (typeof type !== 'string' || !(PARAM_TYPES as readonly string[]).includes(type)) {
-        error(13, `actions[].params.${key}.type`, `参数类型不认识：${String(type)}`);
+        error(13, `actions[].params.${key}.type`, `unknown parameter type: ${String(type)}`);
       }
       if (type === 'string' && p['maxLength'] === undefined) {
-        error(13, `actions[].params.${key}`, 'string 参数必须声明 maxLength');
+        error(13, `actions[].params.${key}`, 'a string parameter must declare maxLength');
       }
     }
   }

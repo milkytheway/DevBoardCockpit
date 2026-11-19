@@ -108,25 +108,25 @@ export function wizardStepOf(state: WizardState): WizardStep {
  *   → **说清楚这一点，人就不会往「板子死了」的方向查** ✓）。
  */
 const PORT_HINTS = [
-  '**串口最常踩的坑：有别的程序正独占着那个口** ✓',
-  '  （本机的 `serial-server.py` 就会把回包吃掉 ✓ —— 板子是活的、串口是通的 ✓，',
-  '    但应用自己的 exec 永远收不到 ✓ —— 于是每个 reader 都报「超时」✓。）',
-  '  先停掉那个进程，再重试 ✓。',
+  '**the most common serial trap: another program is holding the port exclusively** ✓',
+  '  (the local `serial-server.py` swallows the replies ✓ — the board is alive, the serial link is fine ✓,',
+  '    but the exec of the application itself never receives anything ✓ — so every reader reports "timeout" ✓.)',
+  '  stop that process first, then retry ✓.',
 ];
 
 /** **打开但没回话** → 说「板子没说话」✓ */
 const NO_REPLY_HINTS = [
-  '**板子没说话** —— 连上了，但它没回话 ✓。',
-  '  最常见的三种原因 ✓：',
-  '  ① **波特率不对** ✓（串口工具里换几个常见的波特率试试 ✓ —— **这块板是 1500000** ✓）；',
-  '  ② **这个口不是调试口** ✓（插错口了 ✓）；',
-  '  ③ **回包被别的程序吃掉了** ✓（有程序独占着那个口 ✓）。',
+  '**the board said nothing** — it is connected, but it did not reply ✓.',
+  '  the three most common reasons ✓:',
+  '  ① **the baud rate is wrong** ✓ (try a few common baud rates in a serial tool ✓ — **this board is 1500000** ✓);',
+  '  ② **this port is not the debug port** ✓ (the wrong port was plugged in ✓);',
+  '  ③ **the replies are swallowed by another program** ✓ (something holds the port exclusively ✓).',
 ];
 
 /** **乱码** → 说波特率 ✓ */
 const WRONG_BAUD_HINTS = [
-  '**有回包但像乱码** —— 波特率不对 ✓。',
-  '  串口工具里换几个常见的波特率试试 ✓ —— **这块板是 1500000** ✓。',
+  '**there are replies but they look like garbage** — the baud rate is wrong ✓.',
+  '  try a few common baud rates in a serial tool ✓ — **this board is 1500000** ✓.',
 ];
 
 /**
@@ -140,10 +140,10 @@ export function describeWizard(state: WizardState): WizardDescription {
   if (state.step === 'choose-serial') {
     return {
       kind: 'ok',
-      message: '选一个串口和波特率 —— 这是整个向导里你唯一必须做的事 ✓',
+      message: 'choose a serial port and a baud rate — this is the only thing you have to do in the whole wizard ✓',
       hints: [
-        '**不知道波特率？** ✓ 这块板是 **1500000** ✓（`docs/02` 事实 ✓）。',
-        '**COM 口从设备管理器看** ✓（CH343 USB-UART ✓ —— 常见的是 COM3 ✓）。',
+        '**do not know the baud rate?** ✓ this board is **1500000** ✓ (a fact from `docs/02` ✓).',
+        '**the COM port is in the device manager** ✓ (CH343 USB-UART ✓ — COM3 is common ✓).',
       ],
       next: 'first-truth',
     };
@@ -153,12 +153,12 @@ export function describeWizard(state: WizardState): WizardDescription {
   if (state.step === 'first-truth') {
     const truth = state.firstTruth;
     if (truth === undefined) {
-      return { kind: 'ok', message: '正在建立第一个真相 ✓', hints: [], next: null };
+      return { kind: 'ok', message: 'establishing the first truth ✓', hints: [], next: null };
     }
     if (truth.ok) {
       return {
         kind: 'ok',
-        message: `第一个真相成立 ✓ —— ${truth.detail}`,
+        message: `the first truth holds ✓ —— ${truth.detail}`,
         hints: [],
         next: 'probe-generic',
       };
@@ -166,7 +166,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     if (truth.kind === 'port-unopenable') {
       return {
         kind: 'port-unopenable',
-        message: `**串口打不开** ✓ —— ${truth.detail}`,
+        message: `**the serial port cannot be opened** ✓ —— ${truth.detail}`,
         hints: PORT_HINTS,
         next: null,
       };
@@ -174,7 +174,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     if (truth.kind === 'wrong-baud') {
       return {
         kind: 'wrong-baud',
-        message: `**有回包但像乱码** ✓ —— ${truth.detail}`,
+        message: `**there are replies but they look like garbage** ✓ —— ${truth.detail}`,
         hints: WRONG_BAUD_HINTS,
         next: null,
       };
@@ -182,7 +182,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     // **没回话** ✓ —— **明确不说「连接失败」** ✓
     return {
       kind: 'no-reply',
-      message: `**板子没说话** ✓ —— ${truth.detail}（**连上了，只是它没回话** ✓）`,
+      message: `**the board said nothing** ✓ —— ${truth.detail} (**it is connected, it just did not reply** ✓)`,
       // **传输层的 hint 要排第一** ✓ —— **它说的是最准的那条** ✓
       // （串口 HAL 自己知道「回包被别的程序吃掉了」✓ → **别压在后面** ✗）
       hints:
@@ -199,7 +199,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     const green = outcomes.filter((o) => o.ok).map((o) => o.readerId);
     const red = outcomes
       .filter((o) => !o.ok)
-      .map((o) => ({ readerId: o.readerId, detail: o.problems.join('；') }));
+      .map((o) => ({ readerId: o.readerId, detail: o.problems.join('; ') }));
     const summary: TruthTable = { green, red };
 
     // **一个数都没出来** → **那是连接的问题** ✓（不是 reader 的问题 ✓）
@@ -207,11 +207,11 @@ export function describeWizard(state: WizardState): WizardDescription {
       return {
         kind: 'connection-dead',
         message:
-          '**一个数都没出来** ✓ —— **多半不是那些元操作的问题** ✓，' +
-          '**是这条连接一次都没通** ✓',
+          '**not a single number came out** ✓ —— **it is most likely not the problem of those meta-operations** ✓, ' +
+          '**this connection never came up once** ✓',
         hints: [
-          '**先查连接本身** ✓（能不能连上 ✓ · 板子在不在 ✓），**再查元操作** ✓。',
-          '**串口最常踩的坑：有别的程序正独占着那个口** ✓。',
+          '**check the connection itself first** ✓ (can it connect ✓ · is the board there ✓), **then check the meta-operations** ✓.',
+          '**the most common serial trap: another program is holding the port exclusively** ✓.',
         ],
         next: null,
         summary,
@@ -220,11 +220,11 @@ export function describeWizard(state: WizardState): WizardDescription {
     return {
       kind: 'ok',
       message:
-        `试完了 ✓ —— **${green.length} 个绿** ✓（这板有 ✓）· ` +
-        `**${red.length} 个红** ✓（这板没有 / 读法不对 ✓）`,
+        `done ✓ —— **${green.length} green** ✓ (this board has them ✓) · ` +
+        `**${red.length} red** ✓ (this board does not have them / the reading is wrong ✓)`,
       hints:
         red.length > 0
-          ? ['**红的那些** ✓ → **实例化时会被删掉** ✓（「绿的留、红的删」✓）。']
+          ? ['**the red ones** ✓ → **they are dropped when the pack is instantiated** ✓ ("keep the green, drop the red" ✓).']
           : [],
       next: 'instantiate',
       summary,
@@ -235,17 +235,17 @@ export function describeWizard(state: WizardState): WizardDescription {
   if (state.step === 'instantiate') {
     return {
       kind: 'ok',
-      message: '正在把它变成这块板的包 ✓（并留一份来路 ✓）',
+      message: 'turning it into the pack of this board ✓ (and keeping a copy of its provenance ✓)',
       hints: [],
       next: 'done',
     };
   }
   return {
     kind: 'ok',
-    message: '好了 ✓ —— 这块板现在有自己的包了 ✓',
+    message: 'done ✓ —— this board now has a pack of its own ✓',
     hints: [
-      '**那是自动探出来的初版包** ✓：**说得准的地方是事实** ✓（有没有 ✓ · 几个 ✓），',
-      '**说得不准的地方是命名与语义** ⚠️（哪个温区是 SoC ✓ · 那要 agent 去补 ✓）。',
+      '**that is the first-draft pack found automatically** ✓: **what it states accurately are facts** ✓ (whether it exists ✓ · how many ✓),',
+      '**what it states inaccurately are the names and the semantics** ⚠️ (which thermal zone is the SoC ✓ · that an agent has to fill in ✓).',
     ],
     next: null,
   };

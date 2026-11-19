@@ -32,7 +32,7 @@ export interface ExecRunner {
 function reasonForError(err: unknown): ReasonCode {
   if (err instanceof AppError && err.code === 'CONN_TIMEOUT') return 'timeout';
   const message = err instanceof Error ? err.message : String(err);
-  if (/timeout|timed out|超时/i.test(message)) return 'timeout';
+  if (/timeout|timed out/i.test(message)) return 'timeout';
   return 'service_down';
 }
 
@@ -61,7 +61,7 @@ export class TagSampler {
   private findReader(readerId: string): ReaderDef {
     const reader = [...this.pack.readers, ...this.pack.custom].find((r) => r.id === readerId);
     if (reader === undefined) {
-      throw makeError('PACK_INVALID', `包里没有 reader「${readerId}」`, {
+      throw makeError('PACK_INVALID', `the pack has no reader "${readerId}"`, {
         detail: { readerId, pack: this.pack.id },
       });
     }
@@ -76,7 +76,7 @@ export class TagSampler {
   async sampleGroup(groupId: string): Promise<void> {
     const group = this.pack.poll_groups.find((g) => g.id === groupId);
     if (group === undefined) {
-      throw makeError('PACK_INVALID', `包里没有轮询组「${groupId}」`, {
+      throw makeError('PACK_INVALID', `the pack has no poll group "${groupId}"`, {
         detail: { groupId, pack: this.pack.id },
       });
     }
@@ -92,7 +92,7 @@ export class TagSampler {
     for (const r of readers) {
       const kind = getKind(r.kind);
       if (kind === undefined) {
-        throw makeError('PACK_INVALID', `reader「${r.id}」的 kind「${r.kind}」不在 v1 的清单里`, {
+        throw makeError('PACK_INVALID', `the kind "${r.kind}" of reader "${r.id}" is not in the v1 list`, {
           detail: { readerId: r.id, kind: r.kind },
         });
       }
@@ -102,7 +102,7 @@ export class TagSampler {
           r,
           'unavailable',
           'service_down',
-          '脚本还没推到板子上（运行时没给 remote_path）——推脚本是运行时的事（契约 §3.3）',
+          'the script has not been pushed to the board yet (the runtime did not give a remote_path) — pushing the script is the runtime\'s job (contract §3.3)',
         );
         skipped.add(r.id);
         continue;
@@ -118,7 +118,7 @@ export class TagSampler {
       const result = await this.connection.exec(groupCommand.command);
       if (result.timedOut) {
         // 传输层可能带了「下一步查什么」（串口超时的头号嫌疑是**端口被别的程序占用**）
-        const detail = result.hint ?? '这次往返超时了（事实 G1：统一 124）';
+        const detail = result.hint ?? 'this round trip timed out (Fact G1: 124 in every case)';
         for (const reader of readers) {
           this.reportRoundTripFailure(reader, 'timeout', detail);
         }
@@ -142,7 +142,7 @@ export class TagSampler {
       const section = sections.get(reader.id);
       if (section === null || section === undefined) {
         // 这一段没跑起来（marker 没出现）
-        this.reportRoundTripFailure(reader, 'service_down', '这一段没有回包');
+        this.reportRoundTripFailure(reader, 'service_down', 'there is no reply for this section');
         continue;
       }
       if (!section.complete) {
@@ -153,7 +153,7 @@ export class TagSampler {
           reader,
           'error',
           'parse_error',
-          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',
+          'this section got no end marker — the board only replied halfway (half data is not published)',
         );
         continue;
       }

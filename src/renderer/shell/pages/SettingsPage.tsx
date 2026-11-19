@@ -82,6 +82,7 @@ const strings = {
   noWorkflowPack: { 'zh-Hans': '还没有安装流程包', en: 'No workflow pack is installed yet' },
   openToCards: { 'zh-Hans': '条对卡片开放', en: 'open to cards' },
   destructiveNote: { 'zh-Hans': '危险动作需逐条打开：', en: 'Destructive actions have to be enabled one by one: ' },
+  listSeparator: { 'zh-Hans': '、', en: ', ' },
   dangerBadge: { 'zh-Hans': '危险', en: 'Dangerous' },
   switchLabelCard: { 'zh-Hans': '卡片', en: 'Card' },
   cardGrant: { 'zh-Hans': '卡片授权', en: 'card access' },
@@ -318,7 +319,7 @@ export function SettingsPage({
                 {destructive.length > 0 ? (
                   <p className="perm-master__note">
                     {t(strings.destructiveNote)}
-                    {destructive.map((row) => row.label).join('、')}
+                    {destructive.map((row) => row.label).join(t(strings.listSeparator))}
                   </p>
                 ) : null}
               </div>

@@ -1,22 +1,22 @@
-# Golden sample · Kernel module: compile on the client machine → **transfer
-# straight to the board** → place → modprobe
+# Golden sample · Kernel module: compile on the client machine → transfer
+# straight to the board → place → modprobe
 #
 # ── What this sample proves ──
 #
-# ① **The artefact is not a hard-coded file name**: `discover` finds `*.ko`
+# ① The artefact is not a hard-coded file name: `discover` finds `*.ko`
 #    (not `hello.ko`);
-# ② **The placement follows the rules of the board**: `placement:
+# ② The placement follows the rules of the board: `placement:
 #    kernel-module` → the host resolves it to
-#    `/usr/lib/modules/<version>/extra/` (**not** hard-coded in the pack, so
+#    `/usr/lib/modules/<version>/extra/` (not hard-coded in the pack, so
 #    another board does not change this line);
-# ③ **Straight transfer**: the transfer command runs on the **source role
-#    (the client machine)**;
-# ④ **A criterion across two roles**: the `readback` of the transfer step
-#    **names role: target**
+# ③ Straight transfer: the transfer command runs on the source role
+#    (the client machine);
+# ④ A criterion across two roles: the `readback` of the transfer step
+#    names role: target
 #    → "is that file really on the board now" (this is what the readback of
 #    a board pack cannot verify, so the workflow layer has to speak this
 #    vocabulary itself);
-# ⑤ **Load by name, not by path**: `modprobe <name>`,
+# ⑤ Load by name, not by path: `modprobe <name>`,
 #    never `insmod /path/x.ko` (rule P2 of docs/02 section 3.5).
 
 apiVersion: devboard/v1
@@ -52,21 +52,21 @@ steps:
   - id: compile
     kind: exec
     role: build
-    # **`cd` rather than `make -C`** (hit on a real board on 2026-11-15):
+    # `cd` rather than `make -C` (hit on a real board on 2026-11-15):
     # this Makefile computes `M=` (the module directory of the kernel tree)
-    # from `$(PWD)`, and **`make -C` only changes the current directory of
-    # make, not the `PWD` environment variable**
+    # from `$(PWD)`, and `make -C` only changes the current directory of
+    # make, not the `PWD` environment variable
     # → it builds `/home/alientek/Makefile` instead (measured error).
     # - The default target is `all` (`modules` is a target of the kernel tree,
     #   not of this project).
     cmd: "cd {input:build_dir}/{input:project} && make"
     timeout_ms: 1800000
-    # **The criterion of a successful build is the command returning 0** (a
+    # The criterion of a successful build is the command returning 0 (a
     # build is not a measurement on the board)
     readback:
       kind: command_ok
 
-  # ② Artefact discovery (**by rule, no hard-coded file name**)
+  # ② Artefact discovery (by rule, no hard-coded file name)
   - id: artifacts
     kind: discover
     role: build
@@ -75,8 +75,8 @@ steps:
     exclude: ["*.o", "*.mod", "*.mod.c", "*.cmd", "*.order", "*.tmp", ".tmp_*"]
     out: artifacts
 
-  # ③ **Straight transfer**: the transfer command runs on the **source role
-  #    (the client machine)**; the host resolves the destination from the
+  # ③ Straight transfer: the transfer command runs on the source role
+  #    (the client machine); the host resolves the destination from the
   #    placement
   - id: deliver
     kind: file.transfer
@@ -88,10 +88,10 @@ steps:
       placement: kernel-module
     cmd: "scp {from.path} {role:target.user}@{role:target.host}:{to.path}"
     timeout_ms: 1800000
-    # **The destination path goes into this slot** (later steps use it:
+    # The destination path goes into this slot (later steps use it:
     # `modprobe` does not need it, but a user space program does)
     out: dest
-    # **The criterion names a role** → it reads on the **board**: "did that
+    # The criterion names a role → it reads on the board: "did that
     # file really arrive"
     readback:
       kind: verify
@@ -99,7 +99,7 @@ steps:
       command: "test -f {to.path}"
       timeout_ms: 30000
 
-  # ④ Install and load by name (**not insmod**; `depmod -a` runs first)
+  # ④ Install and load by name (not insmod; `depmod -a` runs first)
   - id: load
     kind: exec
     role: target
@@ -108,7 +108,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ⑤ Confirm that it is really loaded (**ask the board on the board**: is it
+  # ⑤ Confirm that it is really loaded (ask the board on the board: is it
   #    in `lsmod`)
   - id: assert-loaded
     kind: assert

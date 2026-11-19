@@ -94,7 +94,7 @@ interface Ctx {
 }
 
 function fail(ctx: Ctx, message: string, detail?: Record<string, unknown>): never {
-  throw makeError('PACK_INVALID', `卡片包 ${ctx.source}：${message}`, {
+  throw makeError('PACK_INVALID', `card pack ${ctx.source}: ${message}`, {
     detail: { source: ctx.source, ...(detail ?? {}) },
   });
 }
@@ -109,7 +109,7 @@ function checkKeys(
   for (const key of Object.keys(obj)) {
     if (!allowed.includes(key)) {
       const where = path ? `${path} ` : '';
-      fail(ctx, `${where}字段不认识（可能是拼错的）：${key}`, { path, field: key });
+      fail(ctx, `unknown field${where} (it may be misspelled): ${key}`, { path, field: key });
     }
   }
 }
@@ -123,32 +123,32 @@ function requireKeys(
   for (const key of required) {
     if (!(key in obj) || obj[key] === undefined) {
       const where = path ? `${path} ` : '';
-      fail(ctx, `${where}缺少必填字段：${key}`, { path, field: key });
+      fail(ctx, `${where}missing required field: ${key}`, { path, field: key });
     }
   }
 }
 
 function asObject(ctx: Ctx, value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    fail(ctx, `${path}必须是一个对象`, { path });
+    fail(ctx, `${path} must be an object`, { path });
   }
   return value as Record<string, unknown>;
 }
 
 function asString(ctx: Ctx, value: unknown, path: string): string {
-  if (typeof value !== 'string') fail(ctx, `${path}必须是字符串`, { path });
+  if (typeof value !== 'string') fail(ctx, `${path} must be a string`, { path });
   return value;
 }
 
 function asNumber(ctx: Ctx, value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    fail(ctx, `${path}必须是一个数字`, { path });
+    fail(ctx, `${path} must be a number`, { path });
   }
   return value;
 }
 
 function asStringArray(ctx: Ctx, value: unknown, path: string): string[] {
-  if (!Array.isArray(value)) fail(ctx, `${path}必须是一个数组`, { path });
+  if (!Array.isArray(value)) fail(ctx, `${path} must be an array`, { path });
   return value.map((v, i) => asString(ctx, v, `${path}[${i}]`));
 }
 
@@ -159,7 +159,7 @@ function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   requireKeys(ctx, obj, path, ['type']);
   const type = asString(ctx, obj['type'], `${path}.type`);
   if (!(PARAM_TYPES as readonly string[]).includes(type)) {
-    fail(ctx, `${path}.type 不认识：${type}（封闭取值：${PARAM_TYPES.join(' / ')}）`, {
+    fail(ctx, `${path}.type is unknown: ${type} (the closed value set: ${PARAM_TYPES.join(' / ')})`, {
       path,
       field: 'type',
     });
@@ -177,7 +177,7 @@ function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   if (type === 'string') {
     // **没有上限的字符串参数就是注入面**（契约 §2.4）
     if (param.maxLength === undefined) {
-      fail(ctx, `${path} 是 string，必须声明 maxLength（没有上限的字符串参数就是注入面）`, {
+      fail(ctx, `${path} is a string, it must declare maxLength (a string parameter without an upper bound is an injection surface)`, {
         path,
         field: 'maxLength',
       });
@@ -185,13 +185,13 @@ function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   }
   if (type === 'enum') {
     if (obj['values'] === undefined) {
-      fail(ctx, `${path} 是 enum，必须声明 values（取值由包作者写死并被校验）`, {
+      fail(ctx, `${path} is an enum, it must declare values (the values are written down by the pack author and validated)`, {
         path,
         field: 'values',
       });
     }
     const values = asStringArray(ctx, obj['values'], `${path}.values`);
-    if (values.length === 0) fail(ctx, `${path}.values 不能为空`, { path, field: 'values' });
+    if (values.length === 0) fail(ctx, `${path}.values must not be empty`, { path, field: 'values' });
     param.values = values;
   }
   return param;
@@ -233,7 +233,7 @@ export function parseManifest(raw: unknown, source: string): CardManifest {
   requireKeys(ctx, obj, '', TOP_REQUIRED);
 
   const kind = asString(ctx, obj['kind'], 'kind');
-  if (kind !== 'Card') fail(ctx, `kind 必须是 Card（收到的是 ${kind}）`, { path: 'kind' });
+  if (kind !== 'Card') fail(ctx, `kind must be Card (got ${kind})`, { path: 'kind' });
 
   const manifest: CardManifest = {
     apiVersion: asString(ctx, obj['apiVersion'], 'apiVersion'),
@@ -288,7 +288,7 @@ export function parseManifest(raw: unknown, source: string): CardManifest {
   };
 
   if (obj['actions'] !== undefined) {
-    if (!Array.isArray(obj['actions'])) fail(ctx, 'actions 必须是一个数组', { path: 'actions' });
+    if (!Array.isArray(obj['actions'])) fail(ctx, 'actions must be an array', { path: 'actions' });
     manifest.actions = obj['actions'].map((a, i) => parseAction(ctx, a, `actions[${i}]`));
   }
 

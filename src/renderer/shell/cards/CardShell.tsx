@@ -5,14 +5,18 @@ import type { CardBroker } from '../../cards/broker';
 import { UserCard } from '../../cards/user-card';
 import { cardLook } from '../cards';
 import { CardGlyph } from '../CardGlyph';
-import { pick, useLocale } from '../i18n';
+import { pick, useLocale, useT, type Localised } from '../i18n';
 
 
 const strings = {
   notConnected: { 'zh-Hans': '未连接', en: 'not connected' },
   degraded: { 'zh-Hans': '降级运行', en: 'degraded' },
   running: { 'zh-Hans': '运行中', en: 'running' },
-};
+  dragHint: { 'zh-Hans': '拖动改变位置，单击看详情', en: 'Drag to move, click for the details' },
+  cardMenu: { 'zh-Hans': '卡片菜单', en: 'Card menu' },
+  viewDetail: { 'zh-Hans': '查看详情', en: 'View the details' },
+  removeCard: { 'zh-Hans': '从主区拿走', en: 'Take it out of the work area' },
+} satisfies Record<string, Localised>;
 
 /**
  * The host-drawn chrome around one card.
@@ -55,6 +59,7 @@ export function CardShell({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const downRef = useRef<{ x: number; y: number } | null>(null);
   const look = cardLook(info.cardId);
+  const t = useT();
   const locale = useLocale();
 
   // Close the menu when the pointer goes down anywhere else. `pointerdown`
@@ -80,7 +85,7 @@ export function CardShell({
           className="cockpit-card__handle"
           data-cockpit-drag-handle="true"
           data-card-id={info.cardId}
-          title="拖动改变位置，单击看详情"
+          title={t(strings.dragHint)}
           onPointerDown={(event) => {
             downRef.current = { x: event.clientX, y: event.clientY };
           }}
@@ -109,14 +114,14 @@ export function CardShell({
               {pick(look.note, locale)}
               {info.connectionId
                 ? ` · ${info.connectionId.slice(0, 10)}`
-                : ` · ${strings.notConnected['zh-Hans']}`}
+                : ` · ${pick(strings.notConnected, locale)}`}
             </span>
           </span>
         </div>
         <span
           className={`state-chip state-chip--dot${info.degraded ? ' state-chip--warn' : ' state-chip--ok'}`}
-          title={info.degraded ? strings.degraded['zh-Hans'] : strings.running['zh-Hans']}
-          aria-label={info.degraded ? strings.degraded['zh-Hans'] : strings.running['zh-Hans']}
+          title={info.degraded ? pick(strings.degraded, locale) : pick(strings.running, locale)}
+          aria-label={info.degraded ? pick(strings.degraded, locale) : pick(strings.running, locale)}
         >
           <span className={`live-dot live-dot--${info.degraded ? 'warn' : 'ok'}`} aria-hidden />
         </span>
@@ -124,9 +129,9 @@ export function CardShell({
           <button
             type="button"
             className="icon-btn icon-btn--quiet"
-            aria-label="卡片菜单"
+            aria-label={t(strings.cardMenu)}
             aria-expanded={menuOpen}
-            title="卡片菜单"
+            title={t(strings.cardMenu)}
             onClick={() => setMenuOpen((open) => !open)}
           >
             ⋯
@@ -141,7 +146,7 @@ export function CardShell({
                   onOpenDetail(info);
                 }}
               >
-                查看详情
+                {t(strings.viewDetail)}
               </button>
               <button
                 type="button"
@@ -152,7 +157,7 @@ export function CardShell({
                   onRemove(info);
                 }}
               >
-                从主区拿走
+                {t(strings.removeCard)}
               </button>
             </div>
           ) : null}

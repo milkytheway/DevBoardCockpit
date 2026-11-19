@@ -51,8 +51,8 @@ export function checkFloorArgv(argv: string[]): FloorVerdict {
     ...match,
     verdict: 'ok',
     warning:
-      '命令没有命中危险地板的任何一条 —— **匹配不上不等于安全**：' +
-      '表里没有的模式按包的声明走，但这条要记进审计',
+      'the command hits none of the danger floor rules — **not matching does not mean safe**: ' +
+      'a pattern that is not in the table follows what the pack declares, but this one has to go into the audit log',
   };
 }
 

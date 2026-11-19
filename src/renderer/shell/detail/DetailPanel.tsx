@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../../shared/ipc-contract';
 import type { TagReading } from '../../../shared/tag-reading';
 import { cardLook } from '../cards';
-import { pick, useLocale } from '../i18n';
+import { interpolate, pick, useLocale, useT, type Locale, type Localised } from '../i18n';
 import { CloseIcon, CopyIcon } from '../Icons';
 import type { ActivityEntry, DetailTarget } from '../types';
 
@@ -19,6 +19,97 @@ import type { ActivityEntry, DetailTarget } from '../types';
  * manifest, its runtime log) is said out loud instead of being faked.
  */
 type DetailTab = 'capture' | 'raw' | 'activity';
+
+/**
+ * The wording of the panel, in both languages.
+ *
+ * The panel is drawn from the shell's data, so it carries its own text and
+ * resolves it against the active locale.
+ */
+const strings = {
+  detail: { 'zh-Hans': '详情', en: 'Detail' },
+  detailViews: { 'zh-Hans': '详情视图', en: 'Detail views' },
+  close: { 'zh-Hans': '关闭详情', en: 'Close the detail panel' },
+  resize: { 'zh-Hans': '拖动调整宽度', en: 'Drag to resize' },
+  tabCapture: { 'zh-Hans': '采集', en: 'Capture' },
+  tabRaw: { 'zh-Hans': '原始读数', en: 'Raw readings' },
+  tabActivity: { 'zh-Hans': '活动', en: 'Activity' },
+  sessionTitle: { 'zh-Hans': '终端 · {label}', en: 'Terminal · {label}' },
+  copyDiagnostics: { 'zh-Hans': '复制诊断', en: 'Copy diagnostics' },
+  removeCard: { 'zh-Hans': '从主区拿走', en: 'Take it out of the work area' },
+  sessionManaged: {
+    'zh-Hans': '会话由二级栏管理',
+    en: 'The session is managed from the sidebar',
+  },
+  samplingFrom: { 'zh-Hans': '采样来自 {connection}', en: 'Sampled from {connection}' },
+  connectionNotReady: {
+    'zh-Hans': '当前连接未就绪',
+    en: 'The current connection is not ready',
+  },
+  tagCount: { 'zh-Hans': '{count} 个位号', en: '{count} tags' },
+  tagsNotPublished: {
+    'zh-Hans': '位号清单未公开',
+    en: 'The tag list is not published',
+  },
+  captureBehaviour: { 'zh-Hans': '采集行为', en: 'Capture behaviour' },
+  unknownCard: {
+    'zh-Hans':
+      '这张卡不在内置映射里：宿主只把卡片文件交给 iframe，不向 renderer 暴露 manifest。 下面展示的是宿主公开的实时 tag 流，按最近一次采样排序。',
+    en: 'This card is not in the built-in mapping: the host hands the card file to the iframe and does not expose the manifest to the renderer. What follows is the live tag stream the host publishes, newest sample first.',
+  },
+  notSampled: { 'zh-Hans': '未采样', en: 'Not sampled' },
+  observed: {
+    'zh-Hans':
+      '观测到 {count} 次采样 · 原始值来自 TagStore，卡片内的显示是它自己的加工',
+    en: '{count} samples observed · the raw values come from the TagStore; the card does its own rendering of them',
+  },
+  instance: { 'zh-Hans': '实例', en: 'Instance' },
+  connection: { 'zh-Hans': '连接', en: 'Connection' },
+  layout: { 'zh-Hans': '布局', en: 'Layout' },
+  state: { 'zh-Hans': '状态', en: 'State' },
+  notConnected: { 'zh-Hans': '未连接', en: 'Not connected' },
+  degradedRun: {
+    'zh-Hans': '降级运行（manifest 有错）',
+    en: 'Degraded run (the manifest has errors)',
+  },
+  healthy: { 'zh-Hans': '正常', en: 'Healthy' },
+  sandbox: { 'zh-Hans': '沙箱', en: 'Sandbox' },
+  storageHosted: { 'zh-Hans': '存储 · 宿主代管', en: 'Storage · hosted by the host' },
+  latestRaw: { 'zh-Hans': '最新原始值', en: 'Latest raw values' },
+  tagCountLabel: { 'zh-Hans': '{count} 个 tag', en: '{count} tags' },
+  sampleStream: { 'zh-Hans': '采样流水', en: 'Sample stream' },
+  entryCount: { 'zh-Hans': '{count} 条', en: '{count} entries' },
+  noSamples: {
+    'zh-Hans': '还没有采样。等运行时连上，这里会按时间倒序长出来。',
+    en: 'No samples yet. Once the runtime connects, they grow here newest first.',
+  },
+  streamHint: {
+    'zh-Hans':
+      '流水是 renderer 内存里的最近样本（每 tag 最多 120 条）；宿主侧的完整历史尚没有 IPC。',
+    en: 'The stream is the recent samples in the renderer memory (up to 120 per tag); the full history on the host side has no IPC yet.',
+  },
+  activity: { 'zh-Hans': '活动', en: 'Activity' },
+  noActivity: {
+    'zh-Hans': '还没有这张卡的相关活动。宿主侧的卡片运行时日志在 M6 的日志面板里接。',
+    en: 'No activity for this card yet. The card runtime log on the host side lands in the M6 log panel.',
+  },
+  statusOk: { 'zh-Hans': '正常', en: 'Ok' },
+  statusStale: { 'zh-Hans': '已过时', en: 'Stale' },
+  statusUnavailable: { 'zh-Hans': '不可用', en: 'Unavailable' },
+  statusError: { 'zh-Hans': '读取失败', en: 'Read failed' },
+  statusWaiting: { 'zh-Hans': '等待采样', en: 'Waiting for a sample' },
+  booleanOn: { 'zh-Hans': '开', en: 'on' },
+  booleanOff: { 'zh-Hans': '关', en: 'off' },
+  justNow: { 'zh-Hans': '刚刚', en: 'just now' },
+  secondsAgo: { 'zh-Hans': '{seconds} 秒前', en: '{seconds} s ago' },
+  minutesAgo: { 'zh-Hans': '{minutes} 分钟前', en: '{minutes} min ago' },
+  session: { 'zh-Hans': '会话', en: 'Session' },
+  name: { 'zh-Hans': '名称', en: 'Name' },
+  sessionHint: {
+    'zh-Hans': '终端输出在终端页；这里只显示会话身份。',
+    en: 'The terminal output is on the terminal page; only the session identity is shown here.',
+  },
+} satisfies Record<string, Localised>;
 
 export function DetailPanel({
   target,
@@ -63,39 +154,47 @@ export function DetailPanel({
   );
 
   const scoped = useActivityScope(target, activity);
+  const t = useT();
+  const locale = useLocale();
 
   if (target === null) return null;
 
   const isCard = target.kind === 'card';
   const look = isCard ? cardLook(target.card.cardId) : null;
-  const locale = useLocale();
 
   return (
-    <aside className="detail" style={{ width }} aria-label="详情">
-      <div className="detail__resize" onPointerDown={startResize} title="拖动调整宽度" />
+    <aside className="detail" style={{ width }} aria-label={t(strings.detail)}>
+      <div className="detail__resize" onPointerDown={startResize} title={t(strings.resize)} />
       <header className="detail__head">
         <div className="detail__heading">
           <span className="detail__eyebrow">{isCard ? 'CARD INSTANCE' : 'TERMINAL SESSION'}</span>
           <h2 className="detail__title">
-            {isCard ? pick(look?.name, locale) : `终端 · ${target.session.label}`}
+            {isCard
+              ? pick(look?.name, locale)
+              : t(strings.sessionTitle, { label: target.session.label })}
           </h2>
           <p className="detail__sub">
             {isCard ? target.card.cardId : target.session.sessionId.slice(0, 8)}
             {isCard && target.card.connectionId ? ` · ${target.card.connectionId}` : null}
           </p>
         </div>
-        <button type="button" className="icon-btn icon-btn--quiet" aria-label="关闭详情" onClick={onClose}>
+        <button
+          type="button"
+          className="icon-btn icon-btn--quiet"
+          aria-label={t(strings.close)}
+          onClick={onClose}
+        >
           <CloseIcon size={14} />
         </button>
       </header>
 
       {isCard ? (
-        <div className="detail__tabs" role="tablist" aria-label="详情视图">
+        <div className="detail__tabs" role="tablist" aria-label={t(strings.detailViews)}>
           {(
             [
-              ['capture', '采集'],
-              ['raw', '原始读数'],
-              ['activity', '活动'],
+              ['capture', strings.tabCapture],
+              ['raw', strings.tabRaw],
+              ['activity', strings.tabActivity],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -106,7 +205,7 @@ export function DetailPanel({
               className={tab === id ? 'is-active' : ''}
               onClick={() => setTab(id)}
             >
-              {label}
+              {pick(label, locale)}
             </button>
           ))}
         </div>
@@ -130,7 +229,7 @@ export function DetailPanel({
       <footer className="detail__foot">
         <button type="button" className="btn btn--ghost btn--sm" onClick={onCopyDiagnostics}>
           <CopyIcon size={14} />
-          复制诊断
+          {t(strings.copyDiagnostics)}
         </button>
         {isCard ? (
           <button
@@ -138,10 +237,10 @@ export function DetailPanel({
             className="btn btn--danger btn--sm"
             onClick={() => onRemoveCard(target.card)}
           >
-            从主区拿走
+            {t(strings.removeCard)}
           </button>
         ) : (
-          <span className="detail__foot-hint">会话由二级栏管理</span>
+          <span className="detail__foot-hint">{t(strings.sessionManaged)}</span>
         )}
       </footer>
     </aside>
@@ -178,6 +277,7 @@ function CardDetail({
   activity: ActivityEntry[];
 }): JSX.Element {
   const look = cardLook(card.cardId);
+  const t = useT();
   const locale = useLocale();
   const latest = useMemo(() => {
     const map = new Map<string, TagReading>();
@@ -205,9 +305,13 @@ function CardDetail({
         <div>
           <p className="detail__hero-title">{pick(look.note, locale)}</p>
           <p className="detail__hero-sub">
-            {card.connectionId ? `采样来自 ${card.connectionId}` : '当前连接未就绪'} ·
-            {' '}
-            {look.tags.length > 0 ? `${look.tags.length} 个位号` : '位号清单未公开'}
+            {card.connectionId
+              ? t(strings.samplingFrom, { connection: card.connectionId })
+              : t(strings.connectionNotReady)}
+            {' · '}
+            {look.tags.length > 0
+              ? t(strings.tagCount, { count: look.tags.length })
+              : t(strings.tagsNotPublished)}
           </p>
         </div>
       </section>
@@ -215,12 +319,9 @@ function CardDetail({
       {tab === 'capture' ? (
         <>
           <section className="detail__section">
-            <h3 className="detail__section-title">采集行为</h3>
+            <h3 className="detail__section-title">{t(strings.captureBehaviour)}</h3>
             {look.tags.length === 0 ? (
-              <p className="detail__empty">
-                这张卡不在内置映射里：宿主只把卡片文件交给 iframe，不向 renderer 暴露 manifest。
-                下面展示的是宿主公开的实时 tag 流，按最近一次采样排序。
-              </p>
+              <p className="detail__empty">{t(strings.unknownCard)}</p>
             ) : null}
             <ul className="detail__tags">
               {cardTags.map((tag) => {
@@ -233,45 +334,43 @@ function CardDetail({
                       {tag}
                     </span>
                     <span className={`detail__tag-value${reading ? ` is-${reading.status}` : ''}`}>
-                      {reading ? formatReading(reading) : '—'}
+                      {reading ? formatReading(reading, locale) : '—'}
                     </span>
                     <span className="detail__tag-meta">
-                      {reading ? statusLabel(reading) : '未采样'}
-                      {reading ? ` · ${ageText(reading.at)}` : ''}
+                      {reading ? statusLabel(reading, locale) : t(strings.notSampled)}
+                      {reading ? ` · ${ageText(reading.at, locale)}` : ''}
                       {cadence === null ? '' : ` · ${cadence}`}
                     </span>
                   </li>
                 );
               })}
             </ul>
-            <p className="detail__hint">
-              观测到 {sampleCount} 次采样 · 原始值来自 TagStore，卡片内的显示是它自己的加工
-            </p>
+            <p className="detail__hint">{t(strings.observed, { count: sampleCount })}</p>
           </section>
 
           <section className="detail__section">
-            <h3 className="detail__section-title">实例</h3>
+            <h3 className="detail__section-title">{t(strings.instance)}</h3>
             <dl className="kv kv--compact">
-              <dt>连接</dt>
-              <dd className="mono">{card.connectionId ?? '未连接'}</dd>
-              <dt>实例</dt>
+              <dt>{t(strings.connection)}</dt>
+              <dd className="mono">{card.connectionId ?? t(strings.notConnected)}</dd>
+              <dt>{t(strings.instance)}</dt>
               <dd className="mono">{card.instanceId.slice(0, 12)}</dd>
-              <dt>布局</dt>
+              <dt>{t(strings.layout)}</dt>
               <dd className="mono">
                 {card.layout ? `${card.layout.w} × ${card.layout.h}` : '—'}
               </dd>
-              <dt>状态</dt>
-              <dd>{card.degraded ? '降级运行（manifest 有错）' : '正常'}</dd>
+              <dt>{t(strings.state)}</dt>
+              <dd>{card.degraded ? t(strings.degradedRun) : t(strings.healthy)}</dd>
             </dl>
           </section>
 
           <section className="detail__section">
-            <h3 className="detail__section-title">沙箱</h3>
+            <h3 className="detail__section-title">{t(strings.sandbox)}</h3>
             <div className="sandbox-grid">
               <span className="sandbox-pill">sandbox=&quot;allow-scripts&quot;</span>
               <span className="sandbox-pill">opaque origin</span>
               <span className="sandbox-pill">CSP · connect-src none</span>
-              <span className="sandbox-pill">存储 · 宿主代管</span>
+              <span className="sandbox-pill">{t(strings.storageHosted)}</span>
             </div>
           </section>
         </>
@@ -281,7 +380,8 @@ function CardDetail({
         <>
           <section className="detail__section">
             <h3 className="detail__section-title">
-              最新原始值 <span>{cardTags.length} 个 tag</span>
+              {t(strings.latestRaw)}{' '}
+              <span>{t(strings.tagCountLabel, { count: cardTags.length })}</span>
             </h3>
             <pre className="detail__json">
               {JSON.stringify(
@@ -296,30 +396,29 @@ function CardDetail({
 
           <section className="detail__section">
             <h3 className="detail__section-title">
-              采样流水 <span>{rawEvents.length} 条</span>
+              {t(strings.sampleStream)}{' '}
+              <span>{t(strings.entryCount, { count: rawEvents.length })}</span>
             </h3>
             {rawEvents.length === 0 ? (
-              <p className="detail__empty">还没有采样。等运行时连上，这里会按时间倒序长出来。</p>
+              <p className="detail__empty">{t(strings.noSamples)}</p>
             ) : (
               <ul className="detail__events">
                 {rawEvents.map((reading) => (
                   <li key={`${reading.tag}:${reading.seq}:${reading.at}`} className="detail__event">
                     <time className="mono">{clock(reading.at)}</time>
                     <span className={`detail__event-status is-${reading.status}`}>
-                      {statusLabel(reading)}
+                      {statusLabel(reading, locale)}
                     </span>
                     <span className="detail__event-tag mono" title={reading.tag}>
                       {reading.tag}
                     </span>
-                    <span className="detail__event-value">{formatReading(reading)}</span>
+                    <span className="detail__event-value">{formatReading(reading, locale)}</span>
                     <span className="detail__event-seq mono">#{reading.seq}</span>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="detail__hint">
-              流水是 renderer 内存里的最近样本（每 tag 最多 120 条）；宿主侧的完整历史尚没有 IPC。
-            </p>
+            <p className="detail__hint">{t(strings.streamHint)}</p>
           </section>
         </>
       ) : null}
@@ -327,12 +426,10 @@ function CardDetail({
       {tab === 'activity' ? (
         <section className="detail__section">
           <h3 className="detail__section-title">
-            活动 <span>{activity.length}</span>
+            {t(strings.activity)} <span>{activity.length}</span>
           </h3>
           {activity.length === 0 ? (
-            <p className="detail__empty">
-              还没有这张卡的相关活动。宿主侧的卡片运行时日志在 M6 的日志面板里接。
-            </p>
+            <p className="detail__empty">{t(strings.noActivity)}</p>
           ) : (
             <ul className="detail__activity">
               {activity.slice(0, 20).map((entry) => (
@@ -366,9 +463,11 @@ function observedCadence(history: readonly TagReading[]): string | null {
 }
 
 /** The raw value, formatted for a human but without the five-state paint. */
-export function formatReading(reading: TagReading): string {
+export function formatReading(reading: TagReading, locale: Locale): string {
   if (reading.value === null) return '—';
-  if (typeof reading.value === 'boolean') return reading.value ? '开' : '关';
+  if (typeof reading.value === 'boolean') {
+    return reading.value ? pick(strings.booleanOn, locale) : pick(strings.booleanOff, locale);
+  }
   if (typeof reading.value === 'string') return reading.value;
   const value = reading.value;
   switch (reading.unit) {
@@ -396,26 +495,28 @@ export function formatReading(reading: TagReading): string {
   }
 }
 
-function statusLabel(reading: TagReading): string {
+function statusLabel(reading: TagReading, locale: Locale): string {
   switch (reading.status) {
     case 'ok':
-      return '正常';
+      return pick(strings.statusOk, locale);
     case 'stale':
-      return '已过时';
+      return pick(strings.statusStale, locale);
     case 'unavailable':
-      return '不可用';
+      return pick(strings.statusUnavailable, locale);
     case 'error':
-      return '读取失败';
+      return pick(strings.statusError, locale);
     default:
-      return '等待采样';
+      return pick(strings.statusWaiting, locale);
   }
 }
 
-function ageText(at: number): string {
+function ageText(at: number, locale: Locale): string {
   const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (seconds < 2) return '刚刚';
-  if (seconds < 60) return `${seconds} 秒前`;
-  return `${Math.floor(seconds / 60)} 分钟前`;
+  if (seconds < 2) return pick(strings.justNow, locale);
+  if (seconds < 60) return interpolate(pick(strings.secondsAgo, locale), { seconds });
+  return interpolate(pick(strings.minutesAgo, locale), {
+    minutes: Math.floor(seconds / 60),
+  });
 }
 
 function clock(at: number): string {
@@ -430,18 +531,19 @@ function SessionDetail({
 }: {
   session: { sessionId: string; profileId: string; label: string };
 }): JSX.Element {
+  const t = useT();
   return (
     <section className="detail__section">
-      <h3 className="detail__section-title">会话</h3>
+      <h3 className="detail__section-title">{t(strings.session)}</h3>
       <dl className="kv kv--compact">
-        <dt>名称</dt>
+        <dt>{t(strings.name)}</dt>
         <dd>{session.label}</dd>
         <dt>profile</dt>
         <dd className="mono">{session.profileId}</dd>
-        <dt>会话</dt>
+        <dt>{t(strings.session)}</dt>
         <dd className="mono">{session.sessionId.slice(0, 12)}</dd>
       </dl>
-      <p className="detail__hint">终端输出在终端页；这里只显示会话身份。</p>
+      <p className="detail__hint">{t(strings.sessionHint)}</p>
     </section>
   );
 }

@@ -36,7 +36,7 @@ export const THERMAL_ZONE: ReaderKind = {
   },
   parse(raw, args, _ctx) {
     if (isBlank(raw)) {
-      return missing('温度 zone 读不到（路径不对？）');
+      return missing('the thermal zone cannot be read (is the path wrong?)');
     }
     const map = argMap(args, 'type_map');
     const samples: Record<string, number | string | boolean> = {};
@@ -59,7 +59,7 @@ export const THERMAL_ZONE: ReaderKind = {
     }
 
     if (Object.keys(samples).length === 0) {
-      return error('parse_error', '一个温度 zone 都没认出来（type_map 对不上？路径没读对？）');
+      return error('parse_error', 'not a single thermal zone was recognised (does the type_map not match? was the path read wrong?)');
     }
     return ok(samples);
   },

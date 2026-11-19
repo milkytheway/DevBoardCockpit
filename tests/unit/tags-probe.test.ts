@@ -151,7 +151,7 @@ describe('probeHint · 探针红了的时候给一句「下一步查什么」', 
   it('**一个数都没出来** → 提示「这条连接没通」，不是「reader 有问题」', () => {
     const hint = probeHint(allEmpty as never, 'adb');
     expect(hint).toBeTruthy();
-    expect(hint).toContain('连接');
+    expect(hint).toContain('connection');
   });
 
   it('走**串口**时提示「别的程序独占着那个口」', () => {

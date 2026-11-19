@@ -59,11 +59,11 @@ export function substituteCommand(text: string, ctx: SubstitutionContext): strin
   out = out.replace(/\{output:([^}.]+)(\.name)?\}/g, (_match, slot: string, attr?: string) => {
     const value = ctx.outputs[slot];
     if (value === undefined) return `{output:${slot}}`;
-    return attr === '.name' ? quoteShellValue(basenameWithoutExt(value), '产物名') : quoteShellValue(value, '路径');
+    return attr === '.name' ? quoteShellValue(basenameWithoutExt(value), 'artefact name') : quoteShellValue(value, 'path');
   });
   out = out.replace(/\{(from|to)\.path\}/g, (_match, which: 'from' | 'to') => {
     const value = ctx.endpoints?.[which];
-    return value === undefined ? `{${which}.path}` : quoteShellValue(value, '路径');
+    return value === undefined ? `{${which}.path}` : quoteShellValue(value, 'path');
   });
   // ── 角色事实：**也要包引号** ──
   //
@@ -75,7 +75,7 @@ export function substituteCommand(text: string, ctx: SubstitutionContext): strin
     if (facts === undefined) return `{role:${role}.${fact}}`;
     const value = (facts as unknown as Record<string, unknown>)[fact];
     if (value === undefined) return `{role:${role}.${fact}}`;
-    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), '连接事实');
+    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), 'connection fact');
   });
   return out;
 }

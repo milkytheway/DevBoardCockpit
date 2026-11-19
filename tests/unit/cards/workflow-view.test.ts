@@ -83,37 +83,37 @@ describe('流程状态给卡片的那一份（V3-M7）', () => {
 
 describe('卡片侧流程失败的理由码（**封闭** ✓）', () => {
   it('**没授权 → denied** ✓', () => {
-    expect(workflowReasonOf(new Error('这张卡没有被授权跑流程「demo.run」'))).toBe('denied');
+    expect(workflowReasonOf(new Error('this card is not authorized to run the workflow "demo.run"'))).toBe('denied');
   });
 
   it('**「没批准」那一档没了** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓ —— **流程包存在即说明** ✓）', () => {
     // **不再有 `not_approved` 这个码** ✓ → **一律当 `failed`** ✓
     // （**不许把原话泄给卡片** ✓ —— **也不许凭空造一个码** ✓）
-    expect(workflowReasonOf(new Error('这个流程包还没有被批准'))).toBe('failed');
+    expect(workflowReasonOf(new Error('this workflow pack has not been approved'))).toBe('failed');
   });
 
   it('**没有这个包 → not_found** ✓', () => {
-    expect(workflowReasonOf(new Error('没有这个流程包：demo.run'))).toBe('not_found');
+    expect(workflowReasonOf(new Error('no such workflow pack: demo.run'))).toBe('not_found');
   });
 
   it('**正在跑 → busy** ✓', () => {
-    expect(workflowReasonOf(new Error('流程「demo.run」正在跑'))).toBe('busy');
+    expect(workflowReasonOf(new Error('workflow "demo.run" is running'))).toBe('busy');
   });
 
   it('**别的一律 failed** ✓（**不许把原话泄给卡片** ✓）', () => {
-    expect(workflowReasonOf(new Error('路径 /etc/passwd 打不开'))).toBe('failed');
-    expect(workflowReasonOf(new Error('路径 /etc/passwd 打不开'))).not.toContain('/etc');
+    expect(workflowReasonOf(new Error('the path /etc/passwd cannot be opened'))).toBe('failed');
+    expect(workflowReasonOf(new Error('the path /etc/passwd cannot be opened'))).not.toContain('/etc');
   });
 
   it('**理由码是封闭的** ✓（**就那几个** ✓ —— **不许多出 `not_approved`** ✓）', () => {
     const codes = new Set<string>();
     for (const message of [
-      '这张卡没有被授权跑流程「demo.run」',
-      '这个流程包还没有被批准',
-      '没有这个流程包：demo.run',
-      '流程「demo.run」正在跑',
-      '参数不对',
-      '路径 /etc/passwd 打不开',
+      'this card is not authorized to run the workflow "demo.run"',
+      'this workflow pack has not been approved',
+      'no such workflow pack: demo.run',
+      'workflow "demo.run" is running',
+      'the parameter is wrong',
+      'the path /etc/passwd cannot be opened',
     ]) {
       codes.add(workflowReasonOf(new Error(message)));
     }

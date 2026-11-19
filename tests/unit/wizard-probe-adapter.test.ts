@@ -35,7 +35,7 @@ describe('探针 → 实例化 · **那座桥** ✓', () => {
     const one = outcomesOf([report('led', false, ['路径不对'])])[0];
     expect(one?.detail).toBe('路径不对');
     const many = outcomesOf([report('led', false, ['甲', '乙', '丙'])])[0];
-    expect(many?.detail).toContain('3 个问题');
+    expect(many?.detail).toContain('3 problems');
     expect(many?.detail).toContain('甲');
   });
 

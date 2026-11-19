@@ -147,6 +147,7 @@ const strings = {
     en: 'This board is 1500000; other boards follow their manual',
   },
   boardName: { 'zh-Hans': '板子名字', en: 'Board name' },
+  boardNamePlaceholder: { 'zh-Hans': '我的 RK3588 板', en: 'My RK3588 board' },
   boardNameHint: {
     'zh-Hans': '之后它会成为包名和板的 id，中文也可以用；名字只影响叫法，不影响探到的能力。',
     en: 'It becomes the pack name and the board id afterwards; Chinese is fine. The name only affects what it is called, not the capabilities that are probed.',
@@ -567,7 +568,7 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
                   name="boardName"
                   aria-label={t(strings.boardName)}
                   value={boardName}
-                  placeholder="我的 RK3588 板"
+                  placeholder={t(strings.boardNamePlaceholder)}
                   disabled={phase === 'running'}
                   autoComplete="off"
                   spellCheck={false}

@@ -33,20 +33,20 @@ export const DEVFREQ_LOAD: ReaderKind = {
   },
   parse(raw, _args, _ctx) {
     if (isBlank(raw)) {
-      return missing('devfreq 的 load 文件读不到（路径不对？）');
+      return missing('the devfreq load file cannot be read (is the path wrong?)');
     }
     const text = raw.trim();
     const m = /^(\d+(?:\.\d+)?)@(\d+)Hz$/.exec(text);
     if (m === null) {
       return error(
         'parse_error',
-        `devfreq 的 load 文件格式不对（期望「<duty>@<freq>Hz」，实际是「${text}」）`,
+        `the devfreq load file has the wrong format (expected "<duty>@<freq>Hz", it is "${text}")`,
       );
     }
     const duty = Number(m[1]);
     const freq = Number(m[2]);
     if (!Number.isFinite(duty) || !Number.isFinite(freq)) {
-      return error('parse_error', 'devfreq 的 load 文件里有读不出来的数');
+      return error('parse_error', 'the devfreq load file contains a number that cannot be read');
     }
     return ok({ duty, freq_hz: freq });
   },

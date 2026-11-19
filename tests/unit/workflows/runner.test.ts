@@ -798,7 +798,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
     // **说清楚「传了，未验成」** ✓（尖兵 Q3 的原型 ✓ —— 板子上现在是什么状态要看得见 ✓）
     const stage = result.stages.find((s) => s.stepId === 'deliver');
-    expect(stage?.detail).toContain('传了');
+    expect(stage?.detail).toContain('transferred but not verified');
   });
 
   it('**清理路径必须编码**（`to.path` 是包给的 ✓ —— 不编码就是一条注入面 ✓）', async () => {

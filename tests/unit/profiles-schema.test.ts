@@ -14,7 +14,7 @@ describe('parseProfile', () => {
 
   it('未知顶层字段报错（封闭 schema）', () => {
     expect(() => parseProfile({ id: 'x', label: 'x', transport: 'local', options: {}, oops: 1 }, 'test'))
-      .toThrow(/未知字段/);
+      .toThrow(/Unknown field/);
   });
 
   it('adb 的 pty 为 true 时报错（事实 A1）', () => {

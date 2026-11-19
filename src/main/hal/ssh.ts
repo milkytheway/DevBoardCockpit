@@ -35,7 +35,7 @@ function readPrivateKey(path: string): Buffer {
   try {
     return readFileSync(path);
   } catch (err) {
-    throw makeError('CONN_OPEN_FAILED', `读不了私钥文件 ${path}`, {
+    throw makeError('CONN_OPEN_FAILED', `cannot read the private key file ${path}`, {
       detail: { path, cause: err instanceof Error ? err.message : String(err) },
     });
   }
@@ -54,7 +54,7 @@ export interface SshConnectOptions {
 export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
   const host = profile.options['host'];
   if (typeof host !== 'string' || host.length === 0) {
-    throw makeError('IPC_INVALID_PAYLOAD', "SSH 连接缺少 'host'", {
+    throw makeError('IPC_INVALID_PAYLOAD', "the SSH connection has no 'host'", {
       detail: { source: profile.id, field: 'host' },
     });
   }
@@ -183,7 +183,7 @@ export class SshConnection implements Connection {
           this.lastError = err;
         } else {
           reject(
-            makeError('CONN_OPEN_FAILED', `SSH 连不上 ${this.opts.host}:${this.opts.port}`, {
+            makeError('CONN_OPEN_FAILED', `cannot reach the SSH host ${this.opts.host}:${this.opts.port}`, {
               detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level },
             }),
           );
@@ -205,7 +205,7 @@ export class SshConnection implements Connection {
 
   async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.client) {
-      throw makeError('CONN_CLOSED', 'SSH 连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the SSH connection is not open', { detail: { id: this.id } });
     }
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     const startedAt = Date.now();
@@ -293,7 +293,7 @@ export class SshConnection implements Connection {
         if (err) {
           clearTimeout(timer);
           opts?.signal?.removeEventListener('abort', onAbort);
-          reject(makeError('CONN_OPEN_FAILED', `SSH 执行失败：${err.message}`, {
+          reject(makeError('CONN_OPEN_FAILED', `SSH execution failed: ${err.message}`, {
             detail: { host: this.opts.host, cause: err.message },
           }));
           return;
@@ -317,7 +317,7 @@ export class SshConnection implements Connection {
       await new Promise<void>((resolve, reject) => {
         sftp.fastGet(remotePath, localPath, (err) => {
           if (err) {
-            reject(makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+            reject(makeError('FILE_TRANSFER_FAILED', `download failed: ${remotePath}`, {
               detail: { remotePath, localPath, cause: err.message },
             }));
             return;
@@ -345,7 +345,7 @@ export class SshConnection implements Connection {
       await new Promise<void>((resolve, reject) => {
         sftp.fastPut(localPath, target, (err) => {
           if (err) {
-            reject(makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+            reject(makeError('FILE_TRANSFER_FAILED', `upload failed: ${localPath}`, {
               detail: { localPath, remotePath, target, cause: err.message },
             }));
             return;
@@ -372,7 +372,7 @@ export class SshConnection implements Connection {
       const entries = await new Promise<SftpDirEntry[]>((resolve, reject) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) {
-            reject(makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+            reject(makeError('FILE_TRANSFER_FAILED', `listing the directory failed: ${remotePath}`, {
               detail: { remotePath, cause: err.message },
             }));
             return;
@@ -393,12 +393,12 @@ export class SshConnection implements Connection {
   private openSftp(): Promise<SFTPWrapper> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
-        reject(makeError('CONN_CLOSED', 'SSH 连接未打开'));
+        reject(makeError('CONN_CLOSED', 'the SSH connection is not open'));
         return;
       }
       this.client.sftp((err, sftp) => {
         if (err) {
-          reject(makeError('FILE_TRANSFER_FAILED', `开 sftp 失败：${err.message}`, {
+          reject(makeError('FILE_TRANSFER_FAILED', `opening sftp failed: ${err.message}`, {
             detail: { host: this.opts.host, cause: err.message },
           }));
           return;
@@ -410,7 +410,7 @@ export class SshConnection implements Connection {
 
   async openSession(opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.client) {
-      throw makeError('CONN_CLOSED', 'SSH 连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the SSH connection is not open', { detail: { id: this.id } });
     }
     // The shell() of ssh2 is **asynchronous**: the channel only arrives after
     // one round trip. Checking the channel synchronously is bound to yield
@@ -424,7 +424,7 @@ export class SshConnection implements Connection {
     return new Promise((resolve, reject) => {
       this.client!.shell({ term: 'xterm-256color', cols, rows }, (err, ch) => {
         if (err) {
-          reject(makeError('CONN_OPEN_FAILED', `SSH 开 shell 失败：${err.message}`, {
+          reject(makeError('CONN_OPEN_FAILED', `opening the SSH shell failed: ${err.message}`, {
             detail: { host: this.opts.host, cause: err.message },
           }));
           return;

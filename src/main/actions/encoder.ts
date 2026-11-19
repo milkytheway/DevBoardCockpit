@@ -34,7 +34,7 @@ export interface EncodedParams {
 
 /** The parameter is invalid */
 function invalid(param: string, message: string): Error {
-  return makeError('IPC_INVALID_PAYLOAD', `参数「${param}」${message}`, {
+  return makeError('IPC_INVALID_PAYLOAD', `parameter "${param}" ${message}`, {
     detail: { param },
   });
 }
@@ -42,10 +42,10 @@ function invalid(param: string, message: string): Error {
 /** The value falls outside min/max → reject it */
 function checkRange(param: string, value: number, spec: PackParam): void {
   if (spec.min !== undefined && value < spec.min) {
-    throw invalid(param, `超出范围（最小 ${spec.min}）`);
+    throw invalid(param, `is out of range (minimum ${spec.min})`);
   }
   if (spec.max !== undefined && value > spec.max) {
-    throw invalid(param, `超出范围（最大 ${spec.max}）`);
+    throw invalid(param, `is out of range (maximum ${spec.max})`);
   }
 }
 
@@ -63,45 +63,45 @@ function encodeValue(param: string, spec: PackParam, raw: unknown): string {
   switch (spec.type) {
     case 'integer': {
       if (typeof raw !== 'number' || !Number.isInteger(raw)) {
-        throw invalid(param, '要 integer（整数）');
+        throw invalid(param, 'must be an integer');
       }
       checkRange(param, raw, spec);
       return String(raw);
     }
     case 'number': {
       if (typeof raw !== 'number' || !Number.isFinite(raw)) {
-        throw invalid(param, '要 number（数字）');
+        throw invalid(param, 'must be a number');
       }
       checkRange(param, raw, spec);
       return String(raw);
     }
     case 'boolean': {
       if (typeof raw !== 'boolean') {
-        throw invalid(param, '要 boolean（布尔值）');
+        throw invalid(param, 'must be a boolean');
       }
       return raw ? 'true' : 'false';
     }
     case 'enum': {
       if (typeof raw !== 'string') {
-        throw invalid(param, '要字符串');
+        throw invalid(param, 'must be a string');
       }
       const values = spec.values ?? [];
       if (!values.includes(raw)) {
-        throw invalid(param, `的取值必须是这些之一：${values.join(' / ')}`);
+        throw invalid(param, `must be one of these values: ${values.join(' / ')}`);
       }
       return raw;
     }
     case 'string': {
       if (typeof raw !== 'string') {
-        throw invalid(param, '要字符串');
+        throw invalid(param, 'must be a string');
       }
       if (spec.maxLength !== undefined && raw.length > spec.maxLength) {
-        throw invalid(param, `长度超过 maxLength（最多 ${spec.maxLength} 个字符）`);
+        throw invalid(param, `is longer than maxLength (at most ${spec.maxLength} characters)`);
       }
       if (spec.pattern !== undefined && !new RegExp(spec.pattern).test(raw)) {
-        throw invalid(param, `不匹配 pattern（${spec.pattern}）`);
+        throw invalid(param, `does not match pattern (${spec.pattern})`);
       }
-      return quoteShellValue(raw, '参数值');
+      return quoteShellValue(raw, 'parameter value');
     }
   }
 }
@@ -124,7 +124,7 @@ export function encodeParams(
     const has = Object.prototype.hasOwnProperty.call(values, name);
     const raw = has ? values[name] : spec.default;
     if (raw === undefined) {
-      throw invalid(name, '缺少这个参数（也没有 default）');
+      throw invalid(name, 'is missing (and there is no default)');
     }
     encoded[name] = encodeValue(name, spec, raw);
   }
@@ -133,7 +133,7 @@ export function encodeParams(
   // typo? or deliberately smuggling one in?) — neither should be let through.
   for (const name of Object.keys(values)) {
     if (!Object.prototype.hasOwnProperty.call(schema, name)) {
-      throw invalid(name, '没有声明这个参数');
+      throw invalid(name, 'is not declared');
     }
   }
   return encoded;
@@ -152,7 +152,7 @@ export function renderCommand(template: string, encoded: Record<string, string>)
   return template.replace(PLACEHOLDER, (_match, name: string) => {
     const value = encoded[name];
     if (value === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `命令模板里的占位「{${name}}」没有声明`, {
+      throw makeError('IPC_INVALID_PAYLOAD', `the placeholder "{${name}}" in the command template is not declared`, {
         detail: { param: name },
       });
     }

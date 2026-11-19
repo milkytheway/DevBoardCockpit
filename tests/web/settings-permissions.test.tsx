@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SettingsPage } from '../../src/renderer/shell/pages/SettingsPage';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 import type { PermissionRow } from '../../src/shared/ipc-contract';
 
 /**
@@ -46,21 +47,27 @@ const ROWS: PermissionRow[] = [
   { op: 'host:install_card', label: 'install_card', kind: 'host', card: true, agent: true },
 ];
 
+/**
+ * **中文分支** ✓ —— 页面文案有中英两个分支，这里把语言钉在中文上，
+ * 断言里的期望值就是**中文分支的文案** ✓。
+ */
 function renderPage(onPermission = vi.fn(), onLocale = vi.fn()) {
   const view = render(
-    <SettingsPage
-      theme="dark"
-      onTheme={() => undefined}
-      density="comfortable"
-      onDensity={() => undefined}
-      cardsCount={8}
-      connectionsCount={5}
-      onRefreshCards={() => undefined}
-      permissions={ROWS}
-      onPermission={onPermission}
-      locale="zh-Hans"
-      onLocale={onLocale}
-    />,
+    <LocaleContext.Provider value="zh-Hans">
+      <SettingsPage
+        theme="dark"
+        onTheme={() => undefined}
+        density="comfortable"
+        onDensity={() => undefined}
+        cardsCount={8}
+        connectionsCount={5}
+        onRefreshCards={() => undefined}
+        permissions={ROWS}
+        onPermission={onPermission}
+        locale="zh-Hans"
+        onLocale={onLocale}
+      />
+    </LocaleContext.Provider>,
   );
   return { onPermission, onLocale, container: view.container };
 }

@@ -111,7 +111,7 @@ describe('选板子', () => {
   it('**没有这个设备 → not_found** ✓（**不猜** ✓）', async () => {
     const rt = runtime({});
     const result = await selectDevice(ATK, 'atk-99', rt.deps);
-    expect(result).toEqual({ ok: false, reason: 'not_found', detail: '没有这个设备：atk-99' });
+    expect(result).toEqual({ ok: false, reason: 'not_found', detail: 'no such device: atk-99' });
     expect(rt.attempts).toEqual([]);
   });
 

@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectionInfo } from '../../shared/ipc-contract';
+import { interpolate, pick, type Locale, type Localised } from './i18n';
 import type { TerminalTab } from './types';
 import type { ReportError } from './data';
+
+/** The wording of the terminal hook, in both languages. */
+const strings = {
+  sessionEnded: {
+    'zh-Hans': '终端会话结束（退出码 {code}）：{session}',
+    en: 'Terminal session ended (exit code {code}): {session}',
+  },
+  noExitCode: { 'zh-Hans': '无', en: 'none' },
+  openedTerminal: { 'zh-Hans': '打开终端：{label}', en: 'Opened the terminal: {label}' },
+  openedAnother: {
+    'zh-Hans': '又开了一个终端：{label}',
+    en: 'Opened another terminal: {label}',
+  },
+} satisfies Record<string, Localised>;
 
 /**
  * Terminal sessions.
@@ -26,6 +41,7 @@ export function useTerminal(
   connections: ConnectionInfo[],
   reportError: ReportError,
   log: (level: 'info' | 'warn' | 'error', message: string) => void,
+  locale: Locale,
 ): {
   sessions: TerminalTab[];
   activeSessionId: string | null;
@@ -54,6 +70,10 @@ export function useTerminal(
   report.current = reportError;
   const logRef = useRef(log);
   logRef.current = log;
+  // The exit event arrives from the host, not from a React event, so the
+  // locale it is phrased in has to be read from a ref rather than a closure.
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
 
   // Output and exit events arrive from the host, not from a React event.
   useEffect(() => {
@@ -70,9 +90,13 @@ export function useTerminal(
       pendingRef.current.set(sessionId, pending.slice(-200));
     });
     const offExit = api.onTerminalExit((sessionId, exitCode) => {
+      const current = localeRef.current;
       logRef.current(
         exitCode === 0 ? 'info' : 'warn',
-        `终端会话结束（退出码 ${exitCode === null ? '无' : exitCode}）：${sessionId.slice(0, 8)}`,
+        interpolate(pick(strings.sessionEnded, current), {
+          code: exitCode === null ? pick(strings.noExitCode, current) : exitCode,
+          session: sessionId.slice(0, 8),
+        }),
       );
       setSessions((previous) => {
         const remaining = previous.filter((session) => session.sessionId !== sessionId);
@@ -111,7 +135,10 @@ export function useTerminal(
         .then(({ sessionId }) => {
           setSessions((previous) => [...previous, { sessionId, profileId, label }]);
           setActiveSessionId(sessionId);
-          logRef.current('info', `打开终端：${label}`);
+          logRef.current(
+            'info',
+            interpolate(pick(strings.openedTerminal, localeRef.current), { label }),
+          );
         })
         .catch((cause: unknown) =>
           report.current(cause instanceof Error ? cause.message : String(cause)),
@@ -130,7 +157,10 @@ export function useTerminal(
         .then(({ sessionId }) => {
           setSessions((previous) => [...previous, { sessionId, profileId, label }]);
           setActiveSessionId(sessionId);
-          logRef.current('info', `又开了一个终端：${label}`);
+          logRef.current(
+            'info',
+            interpolate(pick(strings.openedAnother, localeRef.current), { label }),
+          );
         })
         .catch((cause: unknown) =>
           report.current(cause instanceof Error ? cause.message : String(cause)),

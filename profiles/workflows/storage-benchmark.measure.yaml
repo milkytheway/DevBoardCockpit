@@ -1,22 +1,22 @@
-# Storage benchmark — **write once and read once, report two numbers**
+# Storage benchmark — write once and read once, report two numbers
 #
 # ── Why the write and the read are measured separately ──
 #
 # On an eMMC the write and the read differ by an order of magnitude (measured
-# 2026-11-16: write **235 MB/s** · read **345 MB/s**) → **reporting a single
-# number would mislead**.
+# 2026-11-16: write 235 MB/s · read 345 MB/s) → reporting a single
+# number would mislead.
 #
 # ── The write benchmark has to use `conv=fdatasync` ──
 #
-# Without it dd returns as soon as the write is done — **that measures "the
-# speed into the cache"**, not "the speed onto the medium". Manual section
+# Without it dd returns as soon as the write is done — that measures "the
+# speed into the cache", not "the speed onto the medium". Manual section
 # 2.14.2 says the same.
 #
 # ── Where it writes ──
 #
-# **A file under the mount point** (not a block device — writing a block
+# A file under the mount point (not a block device — writing a block
 # device hits the danger floor).
-# It is **deleted afterwards** (no litter left behind).
+# It is deleted afterwards (no litter left behind).
 
 apiVersion: devboard/v1
 kind: Workflow
@@ -51,23 +51,23 @@ roles:
     profile: board-adb
 
 steps:
-  # ① Write benchmark (**fdatasync** — otherwise the speed into the cache
+  # ① Write benchmark (fdatasync — otherwise the speed into the cache
   #    is what gets measured)
   - id: write
     kind: exec
     role: target
-    # **The statistics of `dd` go to stderr** (measured) → without merging
-    #   them the **output slot stays empty**
+    # The statistics of `dd` go to stderr (measured) → without merging
+    #   them the output slot stays empty
     #   (the executor takes stdout only — the contract `spec/04` section 2.4
     #   says stdout).
-    # - **Merge them yourself** (`2>&1`).
+    # - Merge them yourself (`2>&1`).
     cmd: "dd if=/dev/zero of={input:mountpoint}/.cockpit-bench bs=1024k count={input:size_mb} conv=fdatasync 2>&1"
     timeout_ms: 600000
     out: write_result
     readback:
       kind: command_ok
 
-  # ② Read benchmark (**hdparm** — it reads the block device itself)
+  # ② Read benchmark (hdparm — it reads the block device itself)
   - id: read
     kind: exec
     role: target
@@ -77,7 +77,7 @@ steps:
     readback:
       kind: command_ok
 
-  # ③ Clean up (**no half written file left behind**)
+  # ③ Clean up (no half written file left behind)
   - id: cleanup
     kind: exec
     role: target

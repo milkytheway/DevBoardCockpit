@@ -178,7 +178,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(result.errors.some((e) => e.rule === 5)).toBe(false);
     const warning = result.warnings.find((w) => w.rule === 5);
     expect(warning).toBeTruthy();
-    expect(warning?.message).toMatch(/未验证/);
+    expect(warning?.message).toMatch(/unverified/);
   });
 
   it('规则 6：写权限里不许通配符', () => {

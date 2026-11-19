@@ -72,7 +72,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         },
         'x.json',
       ),
-    ).toThrow(/双写会漂移/);
+    ).toThrow(/makes it drift/);
   });
 
   it('**local 传输的 profile 不许带 `options.ssh`** ✓（它是宿主自己 ✓）', () => {
@@ -86,7 +86,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         },
         'x.json',
       ),
-    ).toThrow(/宿主自己/);
+    ).toThrow(/the host itself/);
   });
 
   it('**`options.ssh` 的形状封闭** ✓（未知键报错 ✓ —— **报的是内层那个键** ✓）', () => {
@@ -100,7 +100,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         },
         'x.json',
       ),
-    ).toThrow(/未知字段 'key'/);
+    ).toThrow(/Unknown field 'key'/);
   });
 
   it('**`options.ssh.host` 必填** ✓', () => {
@@ -114,7 +114,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         },
         'x.json',
       ),
-    ).toThrow(/host 必填/);
+    ).toThrow(/host is required/);
   });
 
   it('**未知顶层字段报错** ✓（`device_key` 之外的还是报错 ✓）', () => {
@@ -123,7 +123,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
         { id: 'x', label: 'x', transport: 'adb', options: {}, board: 'atk' },
         'x.json',
       ),
-    ).toThrow(/未知字段 'board'/);
+    ).toThrow(/Unknown field 'board'/);
   });
 
   it('**`deviceKeyOf` 是取值的唯一入口** ✓（**缺省回落到 id** ✓）', () => {

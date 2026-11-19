@@ -85,7 +85,7 @@ export async function runWizardForHost(
     return {
       ok: false,
       kind: 'no-reply',
-      message: `**向导没跑完** ✓ —— ${message}`,
+      message: `**the wizard did not finish** ✓ —— ${message}`,
       hints: [],
       greenCount: 0,
       redCount: 0,

@@ -55,7 +55,7 @@ export async function selectDevice(
 ): Promise<DeviceSelectResult> {
   const candidates = profiles.filter((profile) => deviceKeyOf(profile) === deviceKey);
   if (candidates.length === 0) {
-    return { ok: false, reason: 'not_found', detail: `没有这个设备：${deviceKey}` };
+    return { ok: false, reason: 'not_found', detail: `no such device: ${deviceKey}` };
   }
 
   // ── Already on that board → do not reconnect ✓ ──
@@ -74,12 +74,12 @@ export async function selectDevice(
     if (status.state === 'running') {
       return { ok: true, profileId: profile.id, reused: false };
     }
-    failures.push(`${profile.id}（${profile.label}）：${status.detail ?? status.state}`);
+    failures.push(`${profile.id} (${profile.label}): ${status.detail ?? status.state}`);
   }
 
   return {
     ok: false,
     reason: 'connect_failed',
-    detail: `连不上这块板（试了 ${candidates.length} 条连接）：${failures.join('；')}`,
+    detail: `cannot connect to this board (tried ${candidates.length} connections): ${failures.join('; ')}`,
   };
 }

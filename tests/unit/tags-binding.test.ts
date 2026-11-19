@@ -190,7 +190,7 @@ describe('resolvePack · 连接指名 + 自动识别兜底', () => {
       expect(binding.source).toBe('none');
       expect(binding.pack).toBeNull();
       expect(binding.reason).toBeTruthy();
-      expect(binding.reason).toContain('板型包');
+      expect(binding.reason).toContain('board pack');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -211,7 +211,7 @@ describe('resolvePack · 连接指名 + 自动识别兜底', () => {
 
       expect(binding.source).toBe('none');
       expect(binding.pack).toBeNull();
-      expect(binding.reason).toContain('多个');
+      expect(binding.reason).toContain('several');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

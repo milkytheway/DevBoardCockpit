@@ -177,7 +177,7 @@ export class WorkflowService {
     // → 两个流程同时抢一条串口会**串台** ✓（事实 S1 ✓）
     for (const existing of this.runs.values()) {
       if (existing.workflowId === id && existing.state === 'running') {
-        throw makeError('IPC_INVALID_PAYLOAD', `流程「${id}」正在跑（同一个流程同时只允许一次）`, {
+        throw makeError('IPC_INVALID_PAYLOAD', `workflow "${id}" is running (only one run of the same workflow at a time)`, {
           detail: { workflowId: id, runId: existing.runId },
         });
       }
@@ -220,7 +220,7 @@ export class WorkflowService {
   cancel(runId: string): { runId: string } {
     const status = this.runs.get(runId);
     if (status === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
+      throw makeError('IPC_INVALID_PAYLOAD', `no such run: ${runId}`, { detail: { runId } });
     }
     // **已经结束的运行 → 状态一个字都不改** ✓
     // （幂等 ✓ —— 取消不能把 `done` 改成 `cancelled` ✗）
@@ -240,7 +240,7 @@ export class WorkflowService {
       params: { runId },
       ok: true,
       verified: true,
-      detail: '人叫停了这次运行',
+      detail: 'a human called this run off',
     });
     return { runId };
   }
@@ -312,7 +312,7 @@ export class WorkflowService {
   status(runId: string): WorkflowRunStatus {
     const found = this.runs.get(runId);
     if (found === undefined) {
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这次运行：${runId}`, { detail: { runId } });
+      throw makeError('IPC_INVALID_PAYLOAD', `no such run: ${runId}`, { detail: { runId } });
     }
     return found;
   }

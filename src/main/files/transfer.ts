@@ -20,7 +20,7 @@ export interface FileTransfer {
 /** 连接不支持文件传输时抛错 */
 export function assertTransferAllowed(caps: ConnectionCapabilities): void {
   if (!caps.files) {
-    throw makeError('FILE_TRANSFER_FAILED', '该连接不支持文件传输');
+    throw makeError('FILE_TRANSFER_FAILED', 'this connection does not support file transfer');
   }
 }
 
@@ -52,7 +52,7 @@ export class TransferService implements FileTransfer {
     if (localPath.length === 0) {
       // 空路径会让 `adb pull <remote> ''` / `copyFile(remote, '')` 直接失败，
       // 而且失败信息毫无意义。**宿主必须先定好落盘位置。**
-      throw makeError('FILE_TRANSFER_FAILED', '没有本地落盘路径', {
+      throw makeError('FILE_TRANSFER_FAILED', 'there is no local destination path', {
         detail: { remotePath },
       });
     }
@@ -64,7 +64,7 @@ export class TransferService implements FileTransfer {
   async push(connectionId: string, localPath: string, remotePath: string): Promise<void> {
     const conn = this.require(connectionId);
     if (localPath.length === 0) {
-      throw makeError('FILE_TRANSFER_FAILED', '没有本地源路径', { detail: { remotePath } });
+      throw makeError('FILE_TRANSFER_FAILED', 'there is no local source path', { detail: { remotePath } });
     }
     await conn.push(localPath, remotePath);
   }
@@ -73,7 +73,7 @@ export class TransferService implements FileTransfer {
   private require(connectionId: string): Connection {
     const conn = this.opts.getConnection(connectionId);
     if (!conn) {
-      throw makeError('CONN_CLOSED', `连接不存在 ${connectionId}`, { detail: { connectionId } });
+      throw makeError('CONN_CLOSED', `the connection does not exist: ${connectionId}`, { detail: { connectionId } });
     }
     assertTransferAllowed(conn.capabilities());
     return conn;

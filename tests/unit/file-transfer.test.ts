@@ -5,7 +5,7 @@ import type { ConnectionCapabilities, Connection } from '../../src/main/hal/conn
 describe('assertTransferAllowed', () => {
   it('串口不支持文件传输（事实 S7）', () => {
     expect(() => assertTransferAllowed({ exec: true, pty: true, files: false, exitCode: false }))
-      .toThrow(/不支持文件传输/);
+      .toThrow(/does not support file transfer/);
   });
   it('支持 files 的连接放行', () => {
     expect(() => assertTransferAllowed({ exec: true, pty: true, files: true, exitCode: true })).not.toThrow();
@@ -75,7 +75,7 @@ describe('TransferService 的分派', () => {
     const conn = fakeConnection({ pull });
 
     const svc = new TransferService({ getConnection: () => conn });
-    await expect(svc.pull('c', '/root/a.txt', '')).rejects.toThrow(/本地落盘路径/);
+    await expect(svc.pull('c', '/root/a.txt', '')).rejects.toThrow(/local destination path/);
     expect(pull).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe('TransferService 的分派', () => {
     const conn = fakeConnection({ push });
 
     const svc = new TransferService({ getConnection: () => conn });
-    await expect(svc.push('c', '', '/root/a.txt')).rejects.toThrow(/本地源路径/);
+    await expect(svc.push('c', '', '/root/a.txt')).rejects.toThrow(/local source path/);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,7 @@ describe('TransferService 的分派', () => {
     });
 
     const svc = new TransferService({ getConnection: () => conn });
-    await expect(svc.pull('c', '/a', 'b')).rejects.toThrow(/不支持文件传输/);
+    await expect(svc.pull('c', '/a', 'b')).rejects.toThrow(/does not support file transfer/);
   });
 
   it('连接不存在时报错', async () => {

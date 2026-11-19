@@ -8,6 +8,13 @@
  * failure becomes visible — and it is a component of its own so it can be
  * tested on its own (the shell around it is a lot of moving parts).
  */
+import { useT, type Localised } from './i18n';
+
+/** The wording of the bar, in both languages. */
+const strings = {
+  dismiss: { 'zh-Hans': '知道了', en: 'Got it' },
+} satisfies Record<string, Localised>;
+
 export function ErrorBar({
   message,
   onDismiss,
@@ -16,12 +23,13 @@ export function ErrorBar({
   message: string | null;
   onDismiss: () => void;
 }): JSX.Element | null {
+  const t = useT();
   if (message === null) return null;
   return (
     <div className="shell-error" role="alert">
       <span>{message}</span>
       <button type="button" className="btn btn--ghost btn--sm" onClick={onDismiss}>
-        知道了
+        {t(strings.dismiss)}
       </button>
     </div>
   );

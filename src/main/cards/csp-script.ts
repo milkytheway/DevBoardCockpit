@@ -49,7 +49,7 @@ export function cspScriptFor(instanceId: string): string {
     try {
       parent.postMessage({ type: 'cockpit-csp', instanceId: INSTANCE_ID, detail: detail }, '*');
     } catch (err) {
-      // 报不出去就算了——**不能因为报告失败把卡片搞崩**
+      // If the report cannot get out, so be it — **a failed report must not take the card down**
     }
   }
   document.addEventListener('securitypolicyviolation', function (event) {

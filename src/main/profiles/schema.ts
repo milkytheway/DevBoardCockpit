@@ -189,11 +189,11 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * @param source Where it came from (the file path), written into the detail of the error so that it can be located
  */
 export function parseProfile(raw: unknown, source: string): ConnectionProfile {
-  if (!isRecord(raw)) fail('profile 必须是一个对象', source);
+  if (!isRecord(raw)) fail('profile must be an object', source);
 
   for (const key of Object.keys(raw)) {
     if (!TOP_LEVEL_KEYS.includes(key as (typeof TOP_LEVEL_KEYS)[number])) {
-      fail(`未知字段 '${key}'`, source, { key });
+      fail(`Unknown field '${key}'`, source, { key });
     }
   }
 
@@ -201,15 +201,15 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   const label = raw['label'];
   const transport = raw['transport'];
 
-  if (typeof id !== 'string' || id.length === 0) fail('id 必须是非空字符串', source);
-  if (typeof label !== 'string' || label.length === 0) fail('label 必须是非空字符串', source);
+  if (typeof id !== 'string' || id.length === 0) fail('id must be a non-empty string', source);
+  if (typeof label !== 'string' || label.length === 0) fail('label must be a non-empty string', source);
   if (typeof transport !== 'string' || !TRANSPORTS.includes(transport as TransportKind)) {
-    fail(`transport 必须是 ${TRANSPORTS.join(' / ')} 之一`, source, { transport });
+    fail(`transport must be one of ${TRANSPORTS.join(' / ')}`, source, { transport });
   }
 
   const spec = TRANSPORT_SPECS[transport as TransportKind];
   const rawOptions = raw['options'];
-  if (!isRecord(rawOptions)) fail('options 必须是一个对象', source);
+  if (!isRecord(rawOptions)) fail('options must be an object', source);
 
   // A transport conflict on `options.ssh` ✓ — judged before the "unknown
   // field" check ✓
@@ -217,57 +217,57 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
   // that it is a conflict and not a typo ✓)
   if (rawOptions['ssh'] !== undefined) {
     if (transport === 'ssh') {
-      fail('options.ssh 不许带：这条连接自己就是那个 SSH 端点（双写会漂移）', source, {
+      fail('options.ssh must not carry this: the connection is that SSH endpoint itself (writing it twice makes it drift)', source, {
         transport,
       });
     }
     if (transport === 'local') {
-      fail('options.ssh 不许带：local 是宿主自己，没有背后的板子', source, { transport });
+      fail('options.ssh must not carry this: local is the host itself, there is no board behind it', source, { transport });
     }
   }
 
   for (const key of Object.keys(rawOptions)) {
     if (!spec.required.includes(key) && !spec.optional.includes(key)) {
-      fail(`未知字段 '${key}'`, source, { key, transport });
+      fail(`Unknown field '${key}'`, source, { key, transport });
     }
   }
   for (const key of spec.required) {
     if (rawOptions[key] === undefined) {
-      fail(`缺少必填字段 '${key}'`, source, { key, transport });
+      fail(`Missing required field '${key}'`, source, { key, transport });
     }
   }
 
   // The closed shape of `options.ssh` itself ✓
   const sshFact = rawOptions['ssh'];
   if (sshFact !== undefined) {
-    if (!isRecord(sshFact)) fail('options.ssh 必须是一个对象', source);
+    if (!isRecord(sshFact)) fail('options.ssh must be an object', source);
     for (const key of Object.keys(sshFact)) {
       if (!SSH_FACT_KEYS.includes(key as (typeof SSH_FACT_KEYS)[number])) {
-        fail(`未知字段 '${key}'`, source, { key, in: 'options.ssh' });
+        fail(`Unknown field '${key}'`, source, { key, in: 'options.ssh' });
       }
     }
     const host = sshFact['host'];
     if (typeof host !== 'string' || host.length === 0) {
-      fail('options.ssh 的 host 必填（非空字符串）', source);
+      fail('options.ssh host is required (a non-empty string)', source);
     }
     if (sshFact['port'] !== undefined && typeof sshFact['port'] !== 'number') {
-      fail('options.ssh 的 port 必须是数字', source);
+      fail('options.ssh port must be a number', source);
     }
     if (sshFact['username'] !== undefined && typeof sshFact['username'] !== 'string') {
-      fail('options.ssh 的 username 必须是字符串', source);
+      fail('options.ssh username must be a string', source);
     }
   }
 
   // Fact A1: adb does not use a PTY (`adb shell -t -t` on Windows arrives one line late)
   if (transport === 'adb' && rawOptions['pty'] === true) {
-    fail("adb 的 pty 必须是 false：adb shell -t -t 在 Windows 上会晚一条（事实 A1）", source);
+    fail("the pty of adb must be false: adb shell -t -t arrives one command late on Windows (Fact A1)", source);
   }
 
   const options: Record<string, unknown> = { ...spec.defaults, ...rawOptions };
 
   const boardPack = raw['board_pack'];
   if (boardPack !== undefined && boardPack !== null && typeof boardPack !== 'string') {
-    fail('board_pack 必须是字符串或 null', source);
+    fail('board_pack must be a string or null', source);
   }
 
   // `device_key` ✓ — absent = the profile id ✓
@@ -276,7 +276,7 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     rawDeviceKey !== undefined &&
     (typeof rawDeviceKey !== 'string' || rawDeviceKey.length === 0)
   ) {
-    fail('device_key 必须是非空字符串', source);
+    fail('device_key must be a non-empty string', source);
   }
   const deviceKey = rawDeviceKey !== undefined ? (rawDeviceKey as string) : id;
 

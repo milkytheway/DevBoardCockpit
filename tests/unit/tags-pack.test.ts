@@ -143,7 +143,7 @@ describe('parseBoardPack · 未知字段必须报错（规则 10 / 24）', () =>
 
   it('错误消息说明「可能是拼错的」——这是给人看的提示', () => {
     const yaml = MINIMAL.replace('requires:', 'requirez:');
-    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/拼错/);
+    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/misspelled/);
   });
 
   it('错误消息带路径（readers[0] 这种）', () => {
@@ -163,17 +163,17 @@ describe('parseBoardPack · 未知字段必须报错（规则 10 / 24）', () =>
 describe('parseBoardPack · 缺字段与类型不对', () => {
   it('缺 apiVersion 报错，消息里带字段名', () => {
     const yaml = MINIMAL.replace('apiVersion: devboard/v1\n', '');
-    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/缺少必填字段 apiVersion/);
+    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/missing required field apiVersion/);
   });
 
   it('缺 id 报错', () => {
     const yaml = MINIMAL.replace('id: tiny\n', '');
-    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/缺少必填字段 id/);
+    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/missing required field id/);
   });
 
   it('缺 poll_groups 报错', () => {
     const yaml = MINIMAL.replace(/poll_groups:[\s\S]*?readers: \[cpu\]\n/, '');
-    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/缺少必填字段 poll_groups/);
+    expect(() => parseBoardPack(yaml, 'tiny/board.yaml')).toThrow(/missing required field poll_groups/);
   });
 
   it('interval_ms 是字符串报错（类型不对不能当 0）', () => {

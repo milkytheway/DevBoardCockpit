@@ -156,7 +156,7 @@ export class FakeConnection implements Connection {
           stderr: '',
           durationMs: 5000,
           timedOut: true,
-          hint: '模拟一次往返超时（假设备）',
+          hint: 'simulating one round trip timeout (fake device)',
         };
       }
     }
@@ -194,7 +194,7 @@ export class FakeConnection implements Connection {
   async pull(remotePath: string, localPath: string): Promise<void> {
     const content = this.fs.read(remotePath);
     if (content === null) {
-      throw makeError('CONN_OPEN_FAILED', `假设备上没有 ${remotePath}（没有可拉的远端文件）`);
+      throw makeError('CONN_OPEN_FAILED', `there is no ${remotePath} on the fake device (no remote file to pull)`);
     }
     mkdirSync(dirname(localPath), { recursive: true });
     writeFileSync(localPath, content);
@@ -208,7 +208,7 @@ export class FakeConnection implements Connection {
    */
   async push(localPath: string, remotePath: string): Promise<void> {
     if (!existsSync(localPath)) {
-      throw makeError('CONN_OPEN_FAILED', `本机没有 ${localPath}（推不上去）`);
+      throw makeError('CONN_OPEN_FAILED', `there is no ${localPath} on this host (nothing to push)`);
     }
     const target = remotePath.endsWith('/')
       ? `${remotePath}${basename(localPath)}`
@@ -295,7 +295,7 @@ class FakeShellSession extends Session {
     // ① 终端上**明说这是合成数据**（不然有人会把假数当真数看）；
     // ② 标记串因此**留在产物里**，构建自检才验得到它
     //    （导出但没人用的常量会被 rollup 摇掉——检查就成了摆设）。
-    this.emit(`⚠ 合成数据（${FAKE_DEVICE_MARKER}）—— 不是真板子；输入 help 看能做什么\r\n`);
+    this.emit(`⚠ synthetic data (${FAKE_DEVICE_MARKER}) — this is not a real board; type help to see what it can do\r\n`);
   }
 
   /** The session ended by itself (the user typed `exit`). */

@@ -135,14 +135,14 @@ export class WorkflowRegistry {
         try {
           raw = readFileSync(path, 'utf8');
         } catch (err) {
-          this.warn(`跳过读不了的流程包 ${path}：${err instanceof Error ? err.message : String(err)}`);
+          this.warn(`skipping the workflow pack that cannot be read ${path}: ${err instanceof Error ? err.message : String(err)}`);
           continue;
         }
         let pack: WorkflowPack;
         try {
           pack = parseWorkflow(yaml.load(raw), path);
         } catch (err) {
-          this.warn(`跳过坏的流程包 ${path}：${err instanceof Error ? err.message : String(err)}`);
+          this.warn(`skipping the broken workflow pack ${path}: ${err instanceof Error ? err.message : String(err)}`);
           continue;
         }
         const digest = digestOf(raw);
@@ -194,7 +194,7 @@ export class WorkflowRegistry {
     if (found === undefined) {
       // **带上机器可读的 reason** ✓（MCP 那一层要把它回给 agent ✓ —— 契约 §四 ✓；
       // 不然只能靠中文消息猜 ✓ —— 那是「解析错误消息」的坏味道 ✗）
-      throw makeError('IPC_INVALID_PAYLOAD', `没有这个流程包：${id}`, {
+      throw makeError('IPC_INVALID_PAYLOAD', `no such workflow pack: ${id}`, {
         detail: { id, reason: 'not_found' },
       });
     }

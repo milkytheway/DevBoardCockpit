@@ -52,12 +52,12 @@ describe('运行时候选筛选', () => {
 
 describe('端口被占的判据', () => {
   it('认得出 PORT_BUSY 的错误码', () => {
-    expect(isPortBusy('串口 COM3 被占用', 'PORT_BUSY')).toBe(true);
+    expect(isPortBusy('serial port COM3 is busy', 'PORT_BUSY')).toBe(true);
   });
 
   it('认不出别的失败', () => {
     expect(isPortBusy('adb: device offline')).toBe(false);
-    expect(isPortBusy('连不上', 'CONN_OPEN_FAILED')).toBe(false);
+    expect(isPortBusy('cannot connect', 'CONN_OPEN_FAILED')).toBe(false);
   });
 });
 
@@ -113,7 +113,7 @@ describe('起运行时的重试', () => {
     };
     const status = await startWithRetry(runtime, [], { sleep: async () => undefined });
     expect(status.state).toBe('error');
-    expect(status.detail).toMatch(/没有/);
+    expect(status.detail).toMatch(/no connection carries a board pack/);
   });
 
   it('端口被占的候选不再重试（占着端口的是别的程序，等它退出才有用）', async () => {

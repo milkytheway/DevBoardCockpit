@@ -1,28 +1,28 @@
-# Vendor factory self check — **run the check scripts Alientek wrote**
+# Vendor factory self check — run the check scripts Alientek wrote
 #
 # ── Why use it instead of rewriting our own ──
 #
-# The board **already carries** a factory self check:
+# The board already carries a factory self check:
 # `/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/`
 # (measured · it is the one the factory test app uses · the vendor runs it on
 # every board).
 #
-# - **Do not write another one** — that would leave two measures of "the
+# - Do not write another one — that would leave two measures of "the
 #   check" in play, ours and the vendor's.
-# - Call its scripts directly — **the check items are the factory ones**.
+# - Call its scripts directly — the check items are the factory ones.
 #
 # ── Two levels: "must pass" and "report" ──
 #
-# The scripts **fail because a peripheral is not plugged in** (measured: eth1
+# The scripts fail because a peripheral is not plugged in (measured: eth1
 # with no network cable → exit 1; no TF card → `hdparm -t /dev/mmcblk1p1`
 # fails).
-# - That **does not mean the board is broken** → use `on_mismatch: continue`
+# - That does not mean the board is broken → use `on_mismatch: continue`
 #   (it still reports "not passed" in the timeline, so the user sees it).
 #
-# `mic_test.sh` / `loudspeaker_test.sh` are **not** in the list —
-#    they are `for i in {1..1000}` **infinite loops** (measured from the
-#    script contents) → one run takes tens of minutes → they are **left
-#    out**.
+# `mic_test.sh` / `loudspeaker_test.sh` are not in the list —
+#    they are `for i in {1..1000}` infinite loops (measured from the
+#    script contents) → one run takes tens of minutes → they are left
+#    out.
 
 apiVersion: devboard/v1
 kind: Workflow
@@ -32,8 +32,8 @@ name: Vendor factory self check
 version: 1.0.0
 description: Call the factory check scripts that ship on the board; the items that must pass (CPU frequency / wired network / WiFi / Bluetooth) report an error when they fail, and the items whose peripheral is missing are only reported.
 
-# This one has **no parameters** — everything it checks is fixed
-# (but the `inputs` key **has to be there**, the shape of a workflow pack is
+# This one has no parameters — everything it checks is fixed
+# (but the `inputs` key has to be there, the shape of a workflow pack is
 # closed)
 inputs: {}
 
@@ -76,11 +76,11 @@ steps:
     readback:
       kind: command_ok
 
-  # ── Report only (a missing peripheral is a **fact**, not a fault) ──
+  # ── Report only (a missing peripheral is a fact, not a fault) ──
   #
-  # **Also no `assert` here** — the reason is the same as in the health
+  # Also no `assert` here — the reason is the same as in the health
   # check: `verify` is "wait until it holds", while "is this peripheral
-  # plugged in" is a **one-shot fact**.
+  # plugged in" is a one-shot fact.
   # - Run it once and write the conclusion into the output slot (the user
   #   sees which peripheral is absent).
   - id: eth1

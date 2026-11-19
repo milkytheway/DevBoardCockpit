@@ -85,7 +85,7 @@ interface Ctx {
 }
 
 function fail(ctx: Ctx, message: string, detail?: Record<string, unknown>): never {
-  throw makeError('PACK_INVALID', `板型包 ${ctx.id}：${message}`, {
+  throw makeError('PACK_INVALID', `board pack ${ctx.id}: ${message}`, {
     detail: { source: ctx.source, ...(detail ?? {}) },
   });
 }
@@ -93,36 +93,36 @@ function fail(ctx: Ctx, message: string, detail?: Record<string, unknown>): neve
 /** 给「实际是什么」一句人话 */
 function describe(value: unknown): string {
   if (value === null) return 'null';
-  if (value === undefined) return '没有';
-  if (Array.isArray(value)) return '列表';
-  if (typeof value === 'object') return '一段（映射）';
+  if (value === undefined) return 'none';
+  if (Array.isArray(value)) return 'a list';
+  if (typeof value === 'object') return 'a mapping';
   return typeof value;
 }
 
 function asObject(ctx: Ctx, value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    fail(ctx, `${path} 必须是一段（映射），实际是 ${describe(value)}`, { path });
+    fail(ctx, `${path} must be a mapping, it is ${describe(value)}`, { path });
   }
   return value as Record<string, unknown>;
 }
 
 function asArray(ctx: Ctx, value: unknown, path: string): unknown[] {
   if (!Array.isArray(value)) {
-    fail(ctx, `${path} 必须是列表，实际是 ${describe(value)}`, { path });
+    fail(ctx, `${path} must be a list, it is ${describe(value)}`, { path });
   }
   return value;
 }
 
 function asString(ctx: Ctx, value: unknown, path: string): string {
   if (typeof value !== 'string') {
-    fail(ctx, `${path} 必须是字符串，实际是 ${describe(value)}`, { path });
+    fail(ctx, `${path} must be a string, it is ${describe(value)}`, { path });
   }
   return value;
 }
 
 function asNumber(ctx: Ctx, value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    fail(ctx, `${path} 必须是数字，实际是 ${describe(value)}`, { path });
+    fail(ctx, `${path} must be a number, it is ${describe(value)}`, { path });
   }
   return value;
 }
@@ -145,7 +145,7 @@ function checkKeys(
   for (const key of Object.keys(obj)) {
     if (!allowed.includes(key)) {
       const where = path ? `${path} ` : '';
-      fail(ctx, `${where}字段不认识（可能是拼错的）：${key}`, { path, field: key });
+      fail(ctx, `unknown field${where} (it may be misspelled): ${key}`, { path, field: key });
     }
   }
 }
@@ -158,7 +158,7 @@ function requireKeys(
 ): void {
   for (const key of required) {
     if (!(key in obj) || obj[key] === undefined) {
-      fail(ctx, `缺少必填字段 ${key}`, { path, field: key });
+      fail(ctx, `missing required field ${key}`, { path, field: key });
     }
   }
 }
@@ -273,7 +273,7 @@ function parseAction(ctx: Ctx, raw: unknown, path: string): ActionDef {
   if (danger !== 'reversible' && danger !== 'destructive') {
     // 契约 §4.2：**只有两档**。这里不是「27 条规则」之一，
     // 但它是**类型**的一部分——`danger` 的取值域写死在类型里。
-    fail(ctx, `${path}.danger 只能是 reversible 或 destructive，实际是「${danger}」`, {
+    fail(ctx, `${path}.danger must be reversible or destructive, it is "${danger}"`, {
       path: `${path}.danger`,
     });
   }
@@ -303,13 +303,13 @@ export function parseBoardPack(text: string, source = 'board.yaml'): BoardPack {
   try {
     raw = parseYaml(text);
   } catch (err) {
-    throw makeError('PACK_INVALID', `板型包 ${source}：YAML 解析失败——${String(err)}`, {
+    throw makeError('PACK_INVALID', `board pack ${source}: YAML parsing failed — ${String(err)}`, {
       detail: { source },
     });
   }
 
   if (raw === undefined || raw === null) {
-    throw makeError('PACK_INVALID', `板型包 ${source}：文件是空的`, { detail: { source } });
+    throw makeError('PACK_INVALID', `board pack ${source}: the file is empty`, { detail: { source } });
   }
 
   const obj = asObject({ source, id: source }, raw, '');
@@ -322,7 +322,7 @@ export function parseBoardPack(text: string, source = 'board.yaml'): BoardPack {
 
   const kind = asString(ctx, obj['kind'], 'kind');
   if (kind !== 'BoardPack') {
-    fail(ctx, `kind 必须是 BoardPack，实际是「${kind}」`, { path: 'kind' });
+    fail(ctx, `kind must be BoardPack, it is "${kind}"`, { path: 'kind' });
   }
 
   const requiresRaw = asObject(ctx, obj['requires'], 'requires');
@@ -391,7 +391,7 @@ export function loadBoardPack(dir: string): BoardPack {
   try {
     text = readFileSync(file, 'utf8');
   } catch {
-    throw makeError('PACK_INVALID', `板型包 ${dir}：找不到 ${file}`, {
+    throw makeError('PACK_INVALID', `board pack ${dir}: ${file} not found`, {
       detail: { dir, file },
     });
   }

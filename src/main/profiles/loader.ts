@@ -47,7 +47,7 @@ export function loadProfiles(opts: LoadProfilesOptions): ConnectionProfile[] {
         const profile = parseProfile(parsed, path);
         merged.set(profile.id, profile);
       } catch (err) {
-        warn(`跳过坏的 profile ${path}：${err instanceof Error ? err.message : String(err)}`);
+        warn(`skipping the broken profile ${path}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   };
@@ -64,8 +64,8 @@ export function loadProfiles(opts: LoadProfilesOptions): ConnectionProfile[] {
   //   typo ✓)
   for (const conflict of deviceKeyConflicts(list)) {
     warn(
-      `device_key '${conflict.device_key}' 同时声明了板型包 ${conflict.board_packs.join(' / ')}` +
-        `（牵涉 ${conflict.profile_ids.join(' / ')}）—— 一块板只有一个型号 ✓`,
+      `device_key '${conflict.device_key}' declares the board packs ${conflict.board_packs.join(' / ')} at the same time` +
+        `(${conflict.profile_ids.join(' / ')} are involved) — one board has exactly one model ✓`,
     );
   }
 

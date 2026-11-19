@@ -27,7 +27,7 @@ export const MEMINFO: ReaderKind = {
   },
   parse(raw, _args, _ctx) {
     if (isBlank(raw)) {
-      return missing('/proc/meminfo 读不到（路径不对？）');
+      return missing('/proc/meminfo cannot be read (is the path wrong?)');
     }
     let totalKb = 0;
     // **NaN 而不是 0**：0 是一个合法的取值（「一点都不可用」），
@@ -43,7 +43,7 @@ export const MEMINFO: ReaderKind = {
     }
 
     if (!Number.isFinite(totalKb) || totalKb <= 0) {
-      return error('parse_error', '/proc/meminfo 里没有可用的 MemTotal');
+      return error('parse_error', '/proc/meminfo has no usable MemTotal');
     }
     if (!Number.isFinite(availableKb) || availableKb < 0) {
       // **不许拿 0 顶上**（N2）：没有 MemAvailable 就不知道「可用」是多少，
@@ -51,13 +51,13 @@ export const MEMINFO: ReaderKind = {
       // 那是最坏的那种假数。
       return error(
         'parse_error',
-        '/proc/meminfo 里没有 MemAvailable（不能拿 0 顶上——那会让占用率变成 100%）',
+        '/proc/meminfo has no MemAvailable (0 cannot stand in for it — that would turn the usage into 100%)',
       );
     }
     if (availableKb > totalKb) {
       return error(
         'out_of_domain',
-        `MemAvailable（${availableKb} kB）比 MemTotal（${totalKb} kB）还大`,
+        `MemAvailable (${availableKb} kB) is larger than MemTotal (${totalKb} kB)`,
       );
     }
 

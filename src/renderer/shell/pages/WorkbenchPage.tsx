@@ -3,7 +3,32 @@ import type { LayoutUnit, ViewDensity } from '../../../shared/layout';
 import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { CardGrid } from '../cards/CardGrid';
+import { useT, type Localised } from '../i18n';
 import { ActivityIcon, GridIcon, LayersIcon, RefreshIcon } from '../Icons';
+
+/**
+ * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ *
+ * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ */
+const strings = {
+  title: { 'zh-Hans': '总览', en: 'Overview' },
+  densityGroup: { 'zh-Hans': '卡片密度', en: 'Card density' },
+  comfortable: { 'zh-Hans': '舒适', en: 'Comfortable' },
+  comfortableHint: { 'zh-Hans': '舒适：更大的卡片行高', en: 'Comfortable: taller card rows' },
+  compact: { 'zh-Hans': '紧凑', en: 'Compact' },
+  compactHint: { 'zh-Hans': '紧凑：一屏放更多卡片', en: 'Compact: more cards on one screen' },
+  rescanHint: { 'zh-Hans': '重新扫描卡片目录', en: 'Rescan the card directories' },
+  refresh: { 'zh-Hans': '刷新', en: 'Refresh' },
+  cardLibrary: { 'zh-Hans': '卡片库', en: 'Card library' },
+  emptyTitle: { 'zh-Hans': '把仪表台拼出来', en: 'Assemble the dashboard' },
+  emptyBody: {
+    'zh-Hans': '卡片是文件，不是插件。去卡片库挑一张——CPU、内存、温度、板卡身份，或者让 AI 写一张新的。',
+    en: 'Cards are files, not plugins. Pick one in the card library — CPU, memory, temperature, board identity — or let the AI write a new one.',
+  },
+  openLibrary: { 'zh-Hans': '打开卡片库', en: 'Open the card library' },
+  layoutAutosaves: { 'zh-Hans': '布局自动保存', en: 'The layout saves itself' },
+} satisfies Record<string, Localised>;
 
 /**
  * The workbench: **the main area is the cards, and nothing else**.
@@ -47,43 +72,44 @@ export function WorkbenchPage({
   onDensity: (density: ViewDensity) => void;
   onRefreshCards: () => void;
 }): JSX.Element {
+  const t = useT();
   return (
     <div className="page page--workbench">
       <header className="page-head page-head--compact">
         <div className="page-head__text">
-          <h1 className="page-head__title">总览</h1>
+          <h1 className="page-head__title">{t(strings.title)}</h1>
         </div>
         <div className="page-head__actions">
-          <div className="segmented segmented--density" role="group" aria-label="卡片密度">
+          <div className="segmented segmented--density" role="group" aria-label={t(strings.densityGroup)}>
             <button
               type="button"
               className={density === 'comfortable' ? 'is-active' : ''}
               onClick={() => onDensity('comfortable')}
-              title="舒适：更大的卡片行高"
+              title={t(strings.comfortableHint)}
             >
-              舒适
+              {t(strings.comfortable)}
             </button>
             <button
               type="button"
               className={density === 'compact' ? 'is-active' : ''}
               onClick={() => onDensity('compact')}
-              title="紧凑：一屏放更多卡片"
+              title={t(strings.compactHint)}
             >
-              紧凑
+              {t(strings.compact)}
             </button>
           </div>
           <button
             type="button"
             className="btn btn--ghost btn--sm"
             onClick={onRefreshCards}
-            title="重新扫描卡片目录"
+            title={t(strings.rescanHint)}
           >
             <RefreshIcon size={14} />
-            刷新
+            {t(strings.refresh)}
           </button>
           <button type="button" className="btn btn--primary btn--sm" onClick={onOpenLibrary}>
             <LayersIcon size={14} />
-            卡片库
+            {t(strings.cardLibrary)}
           </button>
         </div>
       </header>
@@ -96,18 +122,15 @@ export function WorkbenchPage({
             <span className="workbench-empty__tile workbench-empty__tile--three" />
             <GridIcon size={26} />
           </div>
-          <h2>把仪表台拼出来</h2>
-          <p>
-            卡片是文件，不是插件。去卡片库挑一张——CPU、内存、温度、板卡身份，
-            或者让 AI 写一张新的。
-          </p>
+          <h2>{t(strings.emptyTitle)}</h2>
+          <p>{t(strings.emptyBody)}</p>
           <div className="workbench-empty__actions">
             <button type="button" className="btn btn--primary" onClick={onOpenLibrary}>
               <LayersIcon size={15} />
-              打开卡片库
+              {t(strings.openLibrary)}
             </button>
             <span className="workbench-empty__hint">
-              <ActivityIcon size={14} /> 布局自动保存
+              <ActivityIcon size={14} /> {t(strings.layoutAutosaves)}
             </span>
           </div>
         </div>

@@ -1,6 +1,33 @@
 import type { ConnectionCapabilities } from '../../../shared/ipc-contract';
 import { FileBrowser } from '../../files/FileBrowser';
+import { useT, type Localised } from '../i18n';
 import { FolderIcon } from '../Icons';
+
+/**
+ * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ *
+ * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ */
+const strings = {
+  title: { 'zh-Hans': '文件传输', en: 'File transfer' },
+  readySubtitle: {
+    'zh-Hans': '本地 ↔ 板端 · 通过当前终端连接传输',
+    en: 'Local ↔ board · through the current terminal connection',
+  },
+  notReadySubtitle: {
+    'zh-Hans': '传输要走一个终端连接：先在终端页开一个',
+    en: 'A transfer needs a terminal connection: open one on the terminal page first',
+  },
+  emptyTitle: { 'zh-Hans': '还没有可传输的会话', en: 'No session to transfer with yet' },
+  emptyBody: {
+    'zh-Hans': '在终端页开一个连接，回到这里就能看到两端的文件树。',
+    en: 'Open a connection on the terminal page and both file trees show up here.',
+  },
+  emptyNote: {
+    'zh-Hans': '串口 / ADB / SSH：传输需要连接背后的文件能力。',
+    en: 'Serial / ADB / SSH: a transfer needs the file capability behind the connection.',
+  },
+} satisfies Record<string, Localised>;
 
 /**
  * The files page: transfer files with a live session.
@@ -26,17 +53,16 @@ export function FilesPage({
   onPull: (connectionId: string, remotePath: string) => void;
   note?: string | null;
 }): JSX.Element {
+  const t = useT();
   const ready = sessionId !== null && capabilities !== null;
   return (
     <div className="page page--files">
       <header className="page-head">
         <div className="page-head__text">
           <span className="page-head__eyebrow">FILES</span>
-          <h1 className="page-head__title">文件传输</h1>
+          <h1 className="page-head__title">{t(strings.title)}</h1>
           <p className="page-head__sub">
-            {ready
-              ? '本地 ↔ 板端 · 通过当前终端连接传输'
-              : '传输要走一个终端连接：先在终端页开一个'}
+            {ready ? t(strings.readySubtitle) : t(strings.notReadySubtitle)}
           </p>
         </div>
         <div className="page-head__actions">
@@ -61,9 +87,9 @@ export function FilesPage({
           <span className="page-empty__icon" aria-hidden>
             <FolderIcon size={26} />
           </span>
-          <h2>还没有可传输的会话</h2>
-          <p>在终端页开一个连接，回到这里就能看到两端的文件树。</p>
-          <p className="dim">串口 / ADB / SSH：传输需要连接背后的文件能力。</p>
+          <h2>{t(strings.emptyTitle)}</h2>
+          <p>{t(strings.emptyBody)}</p>
+          <p className="dim">{t(strings.emptyNote)}</p>
         </div>
       )}
     </div>

@@ -61,8 +61,8 @@ describe('向导 · **「没回话」≠「连接失败」** ✓', () => {
       firstTruth: { ok: false, kind: 'no-reply', detail: '连上了但命令没有回包' },
     });
     expect(r.kind).toBe('no-reply');
-    expect(r.message).toContain('没说话');
-    expect(r.message).not.toContain('连接失败');
+    expect(r.message).toContain('said nothing');
+    expect(r.message).not.toContain('connection failed');
   });
 
   it('**没回话要说清最常见的原因** ✓（**串口被别的程序占着** ✓ —— `docs/02` 事实 ✓）', () => {

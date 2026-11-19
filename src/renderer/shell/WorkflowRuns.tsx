@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { HostWorkflowRun } from '../../shared/ipc-contract';
+import { interpolate, pick, useLocale, useT, type Locale, type Localised } from './i18n';
 
 /**
  * **运行中的流程**（契约 `05` §八·A ✓）—— **宿主侧唯一的「停」入口** ✓。
@@ -23,9 +24,23 @@ import type { HostWorkflowRun } from '../../shared/ipc-contract';
  * → **不给百分比** ✓（契约 **B2** ✓ —— 传输的百分比是猜的 ✗；「已经 42 秒」是事实 ✓）
  * → 一个「停」按钮 ✓（**就一个** ✓ —— 多个运行就多个 chip ✓ 但每个只一个按钮 ✓）
  */
+
+/** The wording of the strip, in both languages. */
+const strings = {
+  finishing: { 'zh-Hans': '收尾', en: 'Finishing' },
+  stop: { 'zh-Hans': '停', en: 'Stop' },
+  stopTitle: {
+    'zh-Hans': '停掉这次运行（不承诺进程一定死 —— 那取决于传输）',
+    en: 'Stop this run (the process is not guaranteed to die — that depends on the transport)',
+  },
+  elapsedSeconds: { 'zh-Hans': '{seconds} 秒', en: '{seconds} s' },
+  elapsedMinutes: { 'zh-Hans': '{minutes} 分 {seconds} 秒', en: '{minutes} min {seconds} s' },
+} satisfies Record<string, Localised>;
 export function WorkflowRuns(): JSX.Element | null {
   const [runs, setRuns] = useState<HostWorkflowRun[]>([]);
   const [, forceTick] = useState(0);
+  const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     const api = window.cockpit;
@@ -64,8 +79,8 @@ export function WorkflowRuns(): JSX.Element | null {
           <span className="runs__dot" aria-hidden />
           <span className="runs__name">{run.workflowId}</span>
           <span className="runs__step">
-            {run.current === null ? '收尾' : run.current.stepId}
-            {run.current === null ? '' : ` · ${elapsed(run.current.at)}`}
+            {run.current === null ? t(strings.finishing) : run.current.stepId}
+            {run.current === null ? '' : ` · ${elapsed(run.current.at, locale)}`}
           </span>
           <button
             type="button"
@@ -73,9 +88,9 @@ export function WorkflowRuns(): JSX.Element | null {
             onClick={() => {
               void window.cockpit?.workflowsCancel(run.runId).catch(() => undefined);
             }}
-            title="停掉这次运行（不承诺进程一定死 —— 那取决于传输）"
+            title={t(strings.stopTitle)}
           >
-            停
+            {t(strings.stop)}
           </button>
         </div>
       ))}
@@ -84,9 +99,12 @@ export function WorkflowRuns(): JSX.Element | null {
 }
 
 /** 「已经跑了多久」—— **算出来的** ✓（契约 B2 ✓：不给百分比 ✓） */
-function elapsed(since: number): string {
+function elapsed(since: number, locale: Locale): string {
   const seconds = Math.max(0, Math.round((Date.now() - since) / 1000));
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return interpolate(pick(strings.elapsedSeconds, locale), { seconds });
   const minutes = Math.floor(seconds / 60);
-  return `${minutes} 分 ${seconds % 60} 秒`;
+  return interpolate(pick(strings.elapsedMinutes, locale), {
+    minutes,
+    seconds: seconds % 60,
+  });
 }

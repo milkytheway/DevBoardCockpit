@@ -120,7 +120,7 @@ describe('流程包注册表 · 取包', () => {
   it('**没有这个包** → 报错（说清楚是哪一种 ✓）', () => {
     const reg = registry();
     reg.scan();
-    expect(() => reg.require('nobody')).toThrow(/没有这个流程包/);
+    expect(() => reg.require('nobody')).toThrow(/no such workflow pack/);
   });
 
   it('**列表里列出全部** ✓（**不再过滤「没批过的」** ✓ —— 用户要看得见）', () => {

@@ -90,7 +90,7 @@ export function installInstantiatedPack(opts: InstallPackOptions): { dir: string
   const dir = join(opts.boardsRoot, opts.pack.id);
   const yamlPath = join(dir, 'board.yaml');
   if (existsSync(yamlPath) && opts.overwrite !== true) {
-    throw new Error(`那里已经有一份包了（${yamlPath}）—— 不悄悄覆盖 ✓`);
+    throw new Error(`there is already a pack there (${yamlPath}) — it is not silently overwritten ✓`);
   }
   mkdirSync(dir, { recursive: true });
   const yaml = dump(packToYamlShape(opts.pack), { indent: 2, lineWidth: 100, noRefs: true });

@@ -243,7 +243,7 @@ describe('流程服务 · 只认 id，不认路径', () => {
 
   it('**没有这个流程** → 报错（说清楚 ✓）', () => {
     const { svc } = service();
-    expect(() => svc.start('nobody', {})).toThrow(/没有这个流程包/);
+    expect(() => svc.start('nobody', {})).toThrow(/no such workflow pack/);
   });
 });
 
@@ -278,7 +278,7 @@ describe('流程服务 · 流程包的闸（**存在即说明** ✓ —— ADR-D
     const h = service();
     const { runId } = h.svc.start('demo.run', { project: 'x' });
     // **还在跑** → 第二次要被拒 ✓
-    expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/正在跑/);
+    expect(() => h.svc.start('demo.run', { project: 'x' })).toThrow(/is running/);
     // 等它跑完 → 就能再跑 ✓
     for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
       await new Promise((r) => setTimeout(r, 10));
@@ -418,7 +418,7 @@ describe('流程服务 · 流程包的闸（**存在即说明** ✓ —— ADR-D
 
   it('**取消一个不存在的运行 → 报错** ✓', () => {
     const { svc } = service();
-    expect(() => svc.cancel('wf-nope')).toThrow(/没有这次运行/);
+    expect(() => svc.cancel('wf-nope')).toThrow(/no such run/);
   });
 });
 
@@ -445,7 +445,7 @@ describe('流程服务 · 长任务 = run_id + 轮询', () => {
 
   it('**没有这次运行** → 报错', () => {
     const { svc } = service();
-    expect(() => svc.status('wf-nope')).toThrow(/没有这次运行/);
+    expect(() => svc.status('wf-nope')).toThrow(/no such run/);
   });
 
   it('每次运行**一行审计**（追责 ✓）', async () => {

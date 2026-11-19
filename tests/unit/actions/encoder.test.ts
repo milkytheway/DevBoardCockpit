@@ -90,11 +90,11 @@ describe('参数编码 · 负例（运行时**不信任包与调用方的自述*
     () => encodeParams({ p: schema }, { p: value });
 
   it('enum 的值不在 values 里 → 拒掉', () => {
-    expect(bad(SCHEMA.mode!, 'turbo')).toThrow(/values|取值/);
+    expect(bad(SCHEMA.mode!, 'turbo')).toThrow(/values/);
   });
 
   it('integer 收到字符串 → 拒掉（不因为「看起来像数字」就放行）', () => {
-    expect(bad(SCHEMA.fps!, '30')).toThrow(/integer|整数/);
+    expect(bad(SCHEMA.fps!, '30')).toThrow(/integer/);
   });
 
   it('number 收到 NaN → 拒掉', () => {
@@ -106,12 +106,12 @@ describe('参数编码 · 负例（运行时**不信任包与调用方的自述*
   });
 
   it('integer 超出 min/max → 拒掉', () => {
-    expect(bad(SCHEMA.fps!, 0)).toThrow(/范围|min|max/);
-    expect(bad(SCHEMA.fps!, 999)).toThrow(/范围|min|max/);
+    expect(bad(SCHEMA.fps!, 0)).toThrow(/out of range/);
+    expect(bad(SCHEMA.fps!, 999)).toThrow(/out of range/);
   });
 
   it('string 超 maxLength → 拒掉（没有上限的字符串参数就是注入面）', () => {
-    expect(bad(SCHEMA.model!, 'x'.repeat(33))).toThrow(/maxLength|长度/);
+    expect(bad(SCHEMA.model!, 'x'.repeat(33))).toThrow(/maxLength/);
   });
 
   it('string 不匹配 pattern → 拒掉', () => {
@@ -119,19 +119,19 @@ describe('参数编码 · 负例（运行时**不信任包与调用方的自述*
   });
 
   it('string 里有换行 → 拒掉（串口是一行一条命令，事实 S6）', () => {
-    expect(bad(SCHEMA.model!, 'a\nb')).toThrow(/换行/);
+    expect(bad(SCHEMA.model!, 'a\nb')).toThrow(/newline/);
   });
 
   it('缺值且没有 default → 拒掉', () => {
-    expect(() => encodeParams({ model: SCHEMA.model! }, {})).toThrow(/缺少|缺/);
+    expect(() => encodeParams({ model: SCHEMA.model! }, {})).toThrow(/is missing/);
   });
 
   it('多出来的参数 → 拒掉（调用方塞了一个没声明的参数）', () => {
-    expect(() => encodeParams({ fps: SCHEMA.fps! }, { fps: 30, extra: 'x' })).toThrow(/没有声明/);
+    expect(() => encodeParams({ fps: SCHEMA.fps! }, { fps: 30, extra: 'x' })).toThrow(/is not declared/);
   });
 
   it('模板里的占位没有声明 → 拒掉（不信任包的模板）', () => {
-    expect(() => renderCommand('run {undeclared}', { model: "'x'" })).toThrow(/占位|声明/);
+    expect(() => renderCommand('run {undeclared}', { model: "'x'" })).toThrow(/placeholder/);
   });
 
   it('错误是 AppError，带错误码', () => {

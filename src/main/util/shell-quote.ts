@@ -36,9 +36,9 @@ import { makeError } from '../../shared/errors';
  * @param what What this value is (the error message has to say: a path? a
  * parameter value?)
  */
-export function quoteShellValue(value: string, what = '值'): string {
+export function quoteShellValue(value: string, what = 'value'): string {
   if (/[\r\n\0]/.test(value)) {
-    throw makeError('IPC_INVALID_PAYLOAD', `${what}里有换行或空字符，拒绝拼进命令`, {
+    throw makeError('IPC_INVALID_PAYLOAD', `${what} contains a newline or a NUL character, refusing to splice it into a command`, {
       detail: { value },
     });
   }
@@ -53,7 +53,7 @@ export function quoteShellValue(value: string, what = '值'): string {
  * command in.
  */
 export function quotePath(path: string): string {
-  return quoteShellValue(path, '路径');
+  return quoteShellValue(path, 'path');
 }
 
 /**

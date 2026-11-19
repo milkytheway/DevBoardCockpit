@@ -56,7 +56,7 @@ describe('流程包 · 解析', () => {
   });
 
   it('**description / version 之外的字段一律不认**（封闭 schema）', () => {
-    expectInvalid({ ...MINIMAL, extra: 1 }, /未知字段/);
+    expectInvalid({ ...MINIMAL, extra: 1 }, /Unknown field/);
   });
 
   it('apiVersion 只认 devboard/v1（**与板型包、卡片 manifest 同一套词汇** ✓）', () => {
@@ -103,7 +103,7 @@ describe('流程包 · 解析', () => {
           { id: 'a', kind: 'exec', role: 'build', cmd: 'echo 2' },
         ],
       },
-      /重复/,
+      /is a duplicate/,
     );
   });
 });
@@ -159,26 +159,26 @@ describe('流程包 · inputs 的封闭类型表', () => {
   it('**非法的正则 → 报错**（不是运行时才炸 ✓）', () => {
     expectInvalid(
       { ...MINIMAL, inputs: { x: { type: 'string', maxLength: 10, pattern: '[' } } },
-      /不是合法的正则/,
+      /is not a valid regular expression/,
     );
   });
 
   it('**`default` 自己也要合法**（宿主不能预填一个非法值 ✓）', () => {
     // 数字的 default 落在域外
-    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', min: 0, max: 10, default: 99 } } }, /高于 max/);
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', min: 0, max: 10, default: 99 } } }, /is above max/);
     // 枚举的 default 不在 values 里
-    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'enum', values: ['a'], default: 'b' } } }, /values 里的某一项/);
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'enum', values: ['a'], default: 'b' } } }, /one of the values/);
     // 字符串的 default 超过 maxLength
     expectInvalid(
       { ...MINIMAL, inputs: { x: { type: 'string', maxLength: 3, default: 'toolong' } } },
-      /超过 maxLength/,
+      /exceeds maxLength/,
     );
     // 类型不对
-    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', default: 'abc' } } }, /必须是数字/);
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'integer', default: 'abc' } } }, /must be a number/);
   });
 
   it('unknown 字段在 input 里也不认', () => {
-    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'string', maxLength: 4, foo: 1 } } }, /未知字段/);
+    expectInvalid({ ...MINIMAL, inputs: { x: { type: 'string', maxLength: 4, foo: 1 } } }, /Unknown field/);
   });
 });
 
@@ -191,7 +191,7 @@ describe('流程包 · roles', () => {
   it('**profile 只能引用已有的 profile id，不许覆写字段**', () => {
     expectInvalid(
       { ...MINIMAL, roles: { build: { purpose: 'x', profile: 'ubuntu-ssh', options: {} } } },
-      /未知字段/,
+      /Unknown field/,
     );
   });
 
@@ -387,12 +387,12 @@ describe('流程包 · 判据（复用 M6 的五形式 + 「在哪个 role 上�
   it('**形式 1（tag）在流程层不支持**（tag 属于板型包的核心词表 → 流程层查不了）', () => {
     expectInvalid(
       { ...MINIMAL, steps: [{ id: 'a', kind: 'await', role: 'target', readback: { tag: 'cpu.usage' } }] },
-      /暂不支持形式 1/,
+      /do not support form 1/,
     );
   });
 
   it('`await` / `assert` **必须说得出在哪个角色上读**', () => {
-    expectInvalid({ ...MINIMAL, steps: [{ id: 'a', kind: 'await', readback: { kind: 'command_ok' } }] }, /角色/);
+    expectInvalid({ ...MINIMAL, steps: [{ id: 'a', kind: 'await', readback: { kind: 'command_ok' } }] }, /role/);
   });
 
   it('**判据可以指名 role**（跨目标的验证就靠它）', () => {

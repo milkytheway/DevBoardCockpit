@@ -1,5 +1,6 @@
 import type { ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
+import { pick, type Locale, type Localised } from './i18n';
 
 /**
  * The shell's wording helpers.
@@ -15,44 +16,73 @@ import type { RuntimeStatus } from '../../shared/runtime-status';
 
 export type ReadingTone = 'ok' | 'warn' | 'danger' | 'unknown' | 'muted';
 
+/**
+ * The wording of this module, in both languages.
+ *
+ * These helpers are data, not components: they cannot read the React
+ * context, so they hand back a localised pair and the caller resolves it
+ * where it is drawn.
+ */
+const strings = {
+  serial: { 'zh-Hans': '串口', en: 'Serial' },
+  local: { 'zh-Hans': '本机', en: 'Local' },
+  unbound: { 'zh-Hans': '未绑定连接', en: 'No connection bound' },
+  sampling: { 'zh-Hans': '采样中', en: 'Sampling' },
+  noPack: { 'zh-Hans': '未识别板型', en: 'Board pack not recognised' },
+  failed: { 'zh-Hans': '连接失败', en: 'Connection failed' },
+  idle: { 'zh-Hans': '空闲', en: 'Idle' },
+  notStarted: { 'zh-Hans': '未开始采样', en: 'Sampling has not started' },
+  unknownError: { 'zh-Hans': '未知错误', en: 'Unknown error' },
+} satisfies Record<string, Localised>;
+
+/** A word that is the same in both languages. */
+function both(text: string): Localised {
+  return { 'zh-Hans': text, en: text };
+}
+
 export function shortId(id: string): string {
   return id.length <= 8 ? id : id.slice(0, 8);
 }
 
-export function transportLabel(transport: ConnectionInfo['transport']): string {
+export function transportLabel(transport: ConnectionInfo['transport']): Localised {
   switch (transport) {
     case 'serial':
-      return '串口';
+      return strings.serial;
     case 'adb':
-      return 'ADB';
+      return both('ADB');
     case 'ssh':
-      return 'SSH';
+      return both('SSH');
     case 'local':
-      return '本机';
+      return strings.local;
     default:
-      return transport;
+      return both(transport);
   }
 }
 
 export interface RuntimeText {
   tone: ReadingTone;
-  label: string;
-  detail: string;
+  label: Localised;
+  detail: Localised;
 }
 
 export function runtimeText(status: RuntimeStatus, connections: ConnectionInfo[]): RuntimeText {
   const profile = connections.find((c) => c.id === status.profileId);
-  const target = profile ? profile.label : (status.profileId ?? '未绑定连接');
+  const target: Localised = profile
+    ? both(profile.label)
+    : status.profileId !== undefined
+      ? both(status.profileId)
+      : strings.unbound;
+  const detail = status.detail !== undefined ? both(status.detail) : target;
   switch (status.state) {
     case 'running':
-      return { tone: 'ok', label: '采样中', detail: target };
+      return { tone: 'ok', label: strings.sampling, detail: target };
     case 'no-pack':
-      return { tone: 'warn', label: '未识别板型', detail: status.detail ?? target };
+      return { tone: 'warn', label: strings.noPack, detail };
     case 'error':
-      return { tone: 'danger', label: '连接失败', detail: status.detail ?? target };
+      return { tone: 'danger', label: strings.failed, detail };
     case 'idle':
     default:
-      return { tone: 'muted', label: '空闲', detail: status.detail ?? '未开始采样' };
+      return { tone: 'muted', label: strings.idle, detail: status.detail !== undefined ? detail : strings.notStarted };
   }
 }
 
@@ -70,12 +100,12 @@ export function capabilitiesText(info: ConnectionInfo | undefined): string {
 }
 
 /** Turn an unknown rejection into a sentence a engineer can act on. */
-export function describeError(cause: unknown): string {
+export function describeError(cause: unknown, locale: Locale): string {
   if (cause instanceof Error) return cause.message;
   if (typeof cause === 'string') return cause;
   try {
     return JSON.stringify(cause);
   } catch {
-    return '未知错误';
+    return pick(strings.unknownError, locale);
   }
 }

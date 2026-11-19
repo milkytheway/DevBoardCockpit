@@ -259,7 +259,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function checkKeys(ctx: Ctx, obj: Record<string, unknown>, allowed: readonly string[], path: string): void {
   for (const key of Object.keys(obj)) {
     if (!allowed.includes(key)) {
-      fail(`未知字段 '${key}'`, ctx.source, { path: `${ctx.path}${path}${path ? '.' : ''}${key}` });
+      fail(`Unknown field '${key}'`, ctx.source, { path: `${ctx.path}${path}${path ? '.' : ''}${key}` });
     }
   }
 }
@@ -284,7 +284,7 @@ function workflowId(value: unknown, ctx: Ctx): string {
   const id = nonEmptyString(value, 'id', ctx);
   if (!WORKFLOW_ID_PATTERN.test(id)) {
     fail(
-      `id 必须是「名字.名字」（两段 · 小写字母数字 · 段内可带连字符 —— 例如 hello-kernel.build-run）✓ —— 收到「${id}」`,
+      `id must be "name.name" (two segments · lowercase letters and digits · a segment may contain hyphens — for example hello-kernel.build-run) ✓ — got "${id}"`,
       ctx.source,
       { path: ctx.path },
     );
@@ -294,7 +294,7 @@ function workflowId(value: unknown, ctx: Ctx): string {
 
 function nonEmptyString(value: unknown, what: string, ctx: Ctx): string {
   if (typeof value !== 'string' || value.length === 0) {
-    fail(`${what} 必须是非空字符串`, ctx.source, { path: ctx.path });
+    fail(`${what} must be a non-empty string`, ctx.source, { path: ctx.path });
   }
   return value;
 }
@@ -356,14 +356,14 @@ export function placeholdersOf(text: string): PlaceholderUse[] {
  */
 export function parseWorkflow(raw: unknown, source: string): WorkflowPack {
   const ctx: Ctx = { source, path: '' };
-  if (!isRecord(raw)) fail('流程包必须是一个对象', source);
+  if (!isRecord(raw)) fail('The workflow pack must be an object', source);
   checkKeys(ctx, raw, TOP_KEYS, '');
 
   if (raw['apiVersion'] !== KNOWN_API_VERSION) {
-    fail(`apiVersion 必须是 ${KNOWN_API_VERSION}（与板型包、卡片 manifest 同一套版本词汇 ✓）`, source);
+    fail(`apiVersion must be ${KNOWN_API_VERSION} (the same version vocabulary as board packs and card manifests ✓)`, source);
   }
   if (raw['kind'] !== 'Workflow') {
-    fail(`kind 必须是 Workflow（收到的是 ${String(raw['kind'])}）`, source);
+    fail(`kind must be Workflow (got ${String(raw['kind'])})`, source);
   }
 
   const pack: WorkflowPack = {
@@ -386,36 +386,36 @@ export function parseWorkflow(raw: unknown, source: string): WorkflowPack {
 }
 
 function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
-  if (!isRecord(raw)) fail('inputs 必须是一个对象', ctx.source);
+  if (!isRecord(raw)) fail('inputs must be an object', ctx.source);
   const out: Record<string, WorkflowInputDef> = {};
   for (const [name, value] of Object.entries(raw)) {
     const sub: Ctx = { source: ctx.source, path: `inputs.${name}` };
-    if (!isRecord(value)) fail(`inputs.${name} 必须是一个对象`, ctx.source);
+    if (!isRecord(value)) fail(`inputs.${name} must be an object`, ctx.source);
     checkKeys(sub, value, INPUT_KEYS, '');
     const type = value['type'];
     if (typeof type !== 'string' || !INPUT_TYPES.includes(type as WorkflowInputType)) {
-      fail(`inputs.${name}.type 必须是 ${INPUT_TYPES.join(' / ')} 之一`, ctx.source);
+      fail(`inputs.${name}.type must be one of ${INPUT_TYPES.join(' / ')}`, ctx.source);
     }
     const def: WorkflowInputDef = { type: type as WorkflowInputType };
     if (value['required'] !== undefined) {
-      if (typeof value['required'] !== 'boolean') fail(`inputs.${name}.required 必须是布尔`, ctx.source);
+      if (typeof value['required'] !== 'boolean') fail(`inputs.${name}.required must be a boolean`, ctx.source);
       def.required = value['required'];
     }
     if (value['maxLength'] !== undefined) {
-      if (typeof value['maxLength'] !== 'number') fail(`inputs.${name}.maxLength 必须是数字`, ctx.source);
+      if (typeof value['maxLength'] !== 'number') fail(`inputs.${name}.maxLength must be a number`, ctx.source);
       def.maxLength = value['maxLength'];
     }
     if (value['min'] !== undefined) {
-      if (typeof value['min'] !== 'number') fail(`inputs.${name}.min 必须是数字`, ctx.source);
+      if (typeof value['min'] !== 'number') fail(`inputs.${name}.min must be a number`, ctx.source);
       def.min = value['min'];
     }
     if (value['max'] !== undefined) {
-      if (typeof value['max'] !== 'number') fail(`inputs.${name}.max 必须是数字`, ctx.source);
+      if (typeof value['max'] !== 'number') fail(`inputs.${name}.max must be a number`, ctx.source);
       def.max = value['max'];
     }
     if (value['values'] !== undefined) {
       if (!Array.isArray(value['values']) || value['values'].some((v) => typeof v !== 'string')) {
-        fail(`inputs.${name}.values 必须是字符串数组`, ctx.source);
+        fail(`inputs.${name}.values must be an array of strings`, ctx.source);
       }
       def.values = value['values'] as string[];
     }
@@ -429,7 +429,7 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
         new RegExp(pattern);
       } catch (err) {
         fail(
-          `inputs.${name}.pattern 不是合法的正则：${err instanceof Error ? err.message : String(err)}`,
+          `inputs.${name}.pattern is not a valid regular expression: ${err instanceof Error ? err.message : String(err)}`,
           ctx.source,
         );
       }
@@ -440,10 +440,10 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
     }
     // enum 必须有 values；string / path 必须有 maxLength（不然是开口的）
     if (def.type === 'enum' && (def.values === undefined || def.values.length === 0)) {
-      fail(`inputs.${name} 是 enum → 必须给 values（封闭取值表）`, ctx.source);
+      fail(`inputs.${name} is enum → it must declare values (a closed value set)`, ctx.source);
     }
     if ((def.type === 'string' || def.type === 'path') && def.maxLength === undefined) {
-      fail(`inputs.${name} 是 ${def.type} → 必须给 maxLength（不许开口）`, ctx.source);
+      fail(`inputs.${name} is ${def.type} → it must declare maxLength (no unbounded strings)`, ctx.source);
     }
     // **default 自己也要合法** ✓（它会被当成真的值用 ✓）
     if (def.default !== undefined) checkDefault(def, name, ctx);
@@ -464,38 +464,38 @@ function checkDefault(def: WorkflowInputDef, name: string, ctx: Ctx): void {
     case 'integer':
     case 'number': {
       if (typeof value !== 'number' || !Number.isFinite(value)) {
-        fail(`inputs.${name}.default 必须是数字（type: ${def.type}）`, ctx.source);
+        fail(`inputs.${name}.default must be a number (type: ${def.type})`, ctx.source);
       }
       if (def.min !== undefined && value < def.min) {
-        fail(`inputs.${name}.default 低于 min（${def.min}）`, ctx.source);
+        fail(`inputs.${name}.default is below min (${def.min})`, ctx.source);
       }
       if (def.max !== undefined && value > def.max) {
-        fail(`inputs.${name}.default 高于 max（${def.max}）`, ctx.source);
+        fail(`inputs.${name}.default is above max (${def.max})`, ctx.source);
       }
       return;
     }
     case 'boolean': {
       if (typeof value !== 'boolean') {
-        fail(`inputs.${name}.default 必须是布尔`, ctx.source);
+        fail(`inputs.${name}.default must be a boolean`, ctx.source);
       }
       return;
     }
     case 'enum': {
       if (typeof value !== 'string' || !(def.values ?? []).includes(value)) {
-        fail(`inputs.${name}.default 必须是 values 里的某一项`, ctx.source);
+        fail(`inputs.${name}.default must be one of the values`, ctx.source);
       }
       return;
     }
     case 'string':
     case 'path': {
       if (typeof value !== 'string') {
-        fail(`inputs.${name}.default 必须是字符串`, ctx.source);
+        fail(`inputs.${name}.default must be a string`, ctx.source);
       }
       if (def.maxLength !== undefined && value.length > def.maxLength) {
-        fail(`inputs.${name}.default 超过 maxLength（${def.maxLength}）`, ctx.source);
+        fail(`inputs.${name}.default exceeds maxLength (${def.maxLength})`, ctx.source);
       }
       if (def.pattern !== undefined && !new RegExp(def.pattern).test(value)) {
-        fail(`inputs.${name}.default 不匹配 pattern`, ctx.source);
+        fail(`inputs.${name}.default does not match pattern`, ctx.source);
       }
       return;
     }
@@ -503,31 +503,31 @@ function checkDefault(def: WorkflowInputDef, name: string, ctx: Ctx): void {
 }
 
 function parseRoles(raw: unknown, ctx: Ctx): Record<string, WorkflowRole> {
-  if (!isRecord(raw)) fail('roles 必须是一个对象', ctx.source);
+  if (!isRecord(raw)) fail('roles must be an object', ctx.source);
   const out: Record<string, WorkflowRole> = {};
   for (const [name, value] of Object.entries(raw)) {
     const sub: Ctx = { source: ctx.source, path: `roles.${name}` };
-    if (!isRecord(value)) fail(`roles.${name} 必须是一个对象`, ctx.source);
+    if (!isRecord(value)) fail(`roles.${name} must be an object`, ctx.source);
     checkKeys(sub, value, ROLE_KEYS, '');
     out[name] = {
       purpose: nonEmptyString(value['purpose'], `roles.${name}.purpose`, ctx),
       profile: nonEmptyString(value['profile'], `roles.${name}.profile`, ctx),
     };
   }
-  if (Object.keys(out).length === 0) fail('roles 不能是空的（流程总要有个目标）', ctx.source);
+  if (Object.keys(out).length === 0) fail('roles must not be empty (a workflow always needs a target)', ctx.source);
   return out;
 }
 
 function parseSteps(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowStep[] {
-  if (!Array.isArray(raw) || raw.length === 0) fail('steps 必须是非空数组', ctx.source);
+  if (!Array.isArray(raw) || raw.length === 0) fail('steps must be a non-empty array', ctx.source);
   const out: WorkflowStep[] = [];
   const seen = new Set<string>();
   for (const [i, value] of raw.entries()) {
     const sub: Ctx = { source: ctx.source, path: `steps[${i}]` };
-    if (!isRecord(value)) fail(`steps[${i}] 必须是一个对象`, ctx.source);
+    if (!isRecord(value)) fail(`steps[${i}] must be an object`, ctx.source);
     checkKeys(sub, value, STEP_KEYS, '');
     const step = parseStep(value, pack, sub);
-    if (seen.has(step.id)) fail(`steps[${i}].id '${step.id}' 重复了`, ctx.source);
+    if (seen.has(step.id)) fail(`steps[${i}].id '${step.id}' is a duplicate`, ctx.source);
     seen.add(step.id);
     out.push(step);
   }
@@ -538,24 +538,24 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   const id = nonEmptyString(raw['id'], 'step.id', ctx);
   const kind = raw['kind'];
   if (typeof kind !== 'string' || !STEP_KINDS.includes(kind as WorkflowStepKind)) {
-    fail(`step.kind 必须是 ${STEP_KINDS.join(' / ')} 之一`, ctx.source);
+    fail(`step.kind must be one of ${STEP_KINDS.join(' / ')}`, ctx.source);
   }
   const step: WorkflowStep = { id, kind: kind as WorkflowStepKind };
 
   if (raw['role'] !== undefined) {
     step.role = nonEmptyString(raw['role'], 'step.role', ctx);
     if (!Object.hasOwn(pack.roles, step.role)) {
-      fail(`step.role '${step.role}' 没人声明过`, ctx.source, { path: ctx.path });
+      fail(`step.role '${step.role}' was never declared`, ctx.source, { path: ctx.path });
     }
   }
   if (raw['cmd'] !== undefined) step.cmd = nonEmptyString(raw['cmd'], 'step.cmd', ctx);
   if (raw['timeout_ms'] !== undefined) {
-    if (typeof raw['timeout_ms'] !== 'number') fail('step.timeout_ms 必须是数字', ctx.source);
+    if (typeof raw['timeout_ms'] !== 'number') fail('step.timeout_ms must be a number', ctx.source);
     step.timeout_ms = raw['timeout_ms'];
   }
   if (raw['action'] !== undefined) step.action = nonEmptyString(raw['action'], 'step.action', ctx);
   if (raw['params'] !== undefined) {
-    if (!isRecord(raw['params'])) fail('step.params 必须是一个对象', ctx.source);
+    if (!isRecord(raw['params'])) fail('step.params must be an object', ctx.source);
     const params: Record<string, string> = {};
     for (const [k, v] of Object.entries(raw['params'])) {
       params[k] = nonEmptyString(v, `step.params.${k}`, ctx);
@@ -568,7 +568,7 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   if (raw['pattern'] !== undefined) step.pattern = nonEmptyString(raw['pattern'], 'step.pattern', ctx);
   if (raw['exclude'] !== undefined) {
     if (!Array.isArray(raw['exclude']) || raw['exclude'].some((v) => typeof v !== 'string')) {
-      fail('step.exclude 必须是字符串数组', ctx.source);
+      fail('step.exclude must be an array of strings', ctx.source);
     }
     step.exclude = raw['exclude'] as string[];
   }
@@ -577,14 +577,14 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   if (raw['danger'] !== undefined) {
     const danger = raw['danger'];
     if (danger !== 'reversible' && danger !== 'destructive') {
-      fail("step.danger 必须是 'reversible' 或 'destructive'", ctx.source);
+      fail("step.danger must be 'reversible' or 'destructive'", ctx.source);
     }
     step.danger = danger;
   }
   if (raw['on_mismatch'] !== undefined) {
     const value = raw['on_mismatch'];
     if (value !== 'fail' && value !== 'continue') {
-      fail("step.on_mismatch 必须是 'fail' 或 'continue'", ctx.source);
+      fail("step.on_mismatch must be 'fail' or 'continue'", ctx.source);
     }
     step.on_mismatch = value;
   }
@@ -594,43 +594,43 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
   // → 不拦的后果 ✓：不可逆的步可以声明「不验证」✗ → **照样执行** ✓（**今天不再问人** ✓）
   //   → 时间线报 `ok:true / verified:false` ✓ → 界面把「根本没验证」说成「成功了」✗
   if (step.danger === 'destructive' && step.readback?.kind === 'none') {
-    fail('destructive 的步不许用 readback.kind: none（不可逆动作不能「不验证」✓ —— 同 02 §4.4.1 ✓）', ctx.source);
+    fail('a destructive step must not use readback.kind: none (an irreversible action cannot go unverified ✓ — same as 02 §4.4.1 ✓)', ctx.source);
   }
 
   // ── 每种 kind 的必填 ──
   switch (step.kind) {
     case 'exec':
-      if (step.role === undefined) fail('exec 步必须有 role', ctx.source);
-      if (step.cmd === undefined) fail('exec 步必须有 cmd', ctx.source);
+      if (step.role === undefined) fail('an exec step must declare role', ctx.source);
+      if (step.cmd === undefined) fail('an exec step must declare cmd', ctx.source);
       break;
     case 'discover':
-      if (step.role === undefined) fail('discover 步必须有 role', ctx.source);
-      if (step.pattern === undefined) fail('discover 步必须有 pattern（产物不写死文件名）', ctx.source);
-      if (step.out === undefined) fail('discover 步必须有 out（发现结果进哪个槽）', ctx.source);
+      if (step.role === undefined) fail('a discover step must declare role', ctx.source);
+      if (step.pattern === undefined) fail('a discover step must declare pattern (the artefact must not hardcode a file name)', ctx.source);
+      if (step.out === undefined) fail('a discover step must declare out (which slot the discovery result goes into)', ctx.source);
       break;
     case 'file.transfer':
-      if (step.from === undefined) fail('file.transfer 步必须有 from', ctx.source);
+      if (step.from === undefined) fail('a file.transfer step must declare from', ctx.source);
       // **from.path 是必填** ✓（契约 §4.4 ✓）——
       // → 不在这里收住 ✓ → 运行时才炸 ✓（而且炸在**步外** ✓ → 时间线上一行都没有 ✗）
       if (step.from.path === undefined) {
-        fail('file.transfer 步的 from 必须有 path（源端的路径）', ctx.source);
+        fail('the from of a file.transfer step must declare path (the path on the source side)', ctx.source);
       }
-      if (step.to === undefined) fail('file.transfer 步必须有 to', ctx.source);
+      if (step.to === undefined) fail('a file.transfer step must declare to', ctx.source);
       if (step.cmd === undefined) {
-        fail('file.transfer 步必须有 cmd（传输命令模板；它在**源**目标上跑）', ctx.source);
+        fail('a file.transfer step must declare cmd (the transfer command template; it runs on the **source** target)', ctx.source);
       }
       break;
     case 'action':
-      if (step.role === undefined) fail('action 步必须有 role', ctx.source);
-      if (step.action === undefined) fail('action 步必须有 action（动作 id）', ctx.source);
+      if (step.role === undefined) fail('an action step must declare role', ctx.source);
+      if (step.action === undefined) fail('an action step must declare action (the action id)', ctx.source);
       break;
     case 'await':
     case 'assert':
-      if (step.readback === undefined) fail(`${step.kind} 步必须有 readback`, ctx.source);
+      if (step.readback === undefined) fail(`an ${step.kind} step must declare readback`, ctx.source);
       // **必须说得出「在哪个角色上读」**（自己的 role 或判据的 role ✓）
       // ——不然「默认读哪」就是猜的 ✗（两条独立评审都点了这一条 ✓）。
       if (step.role === undefined && step.readback.role === undefined) {
-        fail(`${step.kind} 步必须说得出在哪个角色上读（step.role 或 readback.role）`, ctx.source);
+        fail(`an ${step.kind} step must say which role to read on (step.role or readback.role)`, ctx.source);
       }
       break;
   }
@@ -644,11 +644,11 @@ function parseEndpoint(
   ctx: Ctx,
   what: 'from' | 'to',
 ): WorkflowEndpoint {
-  if (!isRecord(raw)) fail(`step.${what} 必须是一个对象`, ctx.source);
+  if (!isRecord(raw)) fail(`step.${what} must be an object`, ctx.source);
   checkKeys(ctx, raw, ENDPOINT_KEYS, '');
   const role = nonEmptyString(raw['role'], `step.${what}.role`, ctx);
   if (!Object.hasOwn(pack.roles, role)) {
-    fail(`step.${what}.role '${role}' 没人声明过`, ctx.source, { path: ctx.path });
+    fail(`step.${what}.role '${role}' was never declared`, ctx.source, { path: ctx.path });
   }
   const endpoint: WorkflowEndpoint = { role };
   if (raw['path'] !== undefined) endpoint.path = nonEmptyString(raw['path'], `step.${what}.path`, ctx);
@@ -656,20 +656,20 @@ function parseEndpoint(
     const placement = nonEmptyString(raw['placement'], `step.${what}.placement`, ctx);
     if (!isPlacement(placement)) {
       fail(
-        `step.${what}.placement '${placement}' 不在封闭词表里（${PLACEMENT_IDS.join(' / ')}）`,
+        `step.${what}.placement '${placement}' is not in the closed vocabulary (${PLACEMENT_IDS.join(' / ')})`,
         ctx.source,
       );
     }
     endpoint.placement = placement;
   }
   if (what === 'to' && endpoint.path === undefined && endpoint.placement === undefined) {
-    fail('step.to 必须有 path 或 placement（目的地三形态：path / placement / ask）', ctx.source);
+    fail('step.to must declare path or placement (three forms of destination: path / placement / ask)', ctx.source);
   }
   return endpoint;
 }
 
 function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowReadback {
-  if (!isRecord(raw)) fail('step.readback 必须是一个对象', ctx.source);
+  if (!isRecord(raw)) fail('step.readback must be an object', ctx.source);
   checkKeys(ctx, raw, READBACK_KEYS, '');
   const out: WorkflowReadback = {};
 
@@ -679,7 +679,7 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
     // tag 是**板型包的核心词表**里的东西（`spec/02` §六 ✓），
     // 而流程层**没有板型包** → 查不了它是不是真 tag ✗
     // → 与其「收下再悄悄丢掉 role」，**直接报错** ✓（两条独立评审都点了这一条 ✓）。
-    fail('流程的判据暂不支持形式 1（tag）：tag 属于板型包的核心词表，流程层查不了', ctx.source);
+    fail('workflow criteria do not support form 1 (tag) yet: a tag belongs to the core vocabulary of the board pack, which the workflow layer cannot look up', ctx.source);
   }
 
   const kind = raw['kind'];
@@ -689,18 +689,18 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
     kind !== 'verify' &&
     kind !== 'none'
   ) {
-    fail('readback.kind 必须是 file_equals / command_ok / verify / none 之一（形式 1 用 tag）', ctx.source);
+    fail('readback.kind must be one of file_equals / command_ok / verify / none (form 1 uses tag)', ctx.source);
   }
   out.kind = kind;
   if (raw['expect'] !== undefined) out.expect = nonEmptyString(raw['expect'], 'readback.expect', ctx);
   if (raw['path'] !== undefined) out.path = nonEmptyString(raw['path'], 'readback.path', ctx);
   if (raw['tolerance'] !== undefined) {
-    if (typeof raw['tolerance'] !== 'number') fail('readback.tolerance 必须是数字', ctx.source);
+    if (typeof raw['tolerance'] !== 'number') fail('readback.tolerance must be a number', ctx.source);
     out.tolerance = raw['tolerance'];
   }
   if (raw['command'] !== undefined) out.command = nonEmptyString(raw['command'], 'readback.command', ctx);
   if (raw['timeout_ms'] !== undefined) {
-    if (typeof raw['timeout_ms'] !== 'number') fail('readback.timeout_ms 必须是数字', ctx.source);
+    if (typeof raw['timeout_ms'] !== 'number') fail('readback.timeout_ms must be a number', ctx.source);
     out.timeout_ms = raw['timeout_ms'];
   }
   if (raw['consequence'] !== undefined) {
@@ -709,20 +709,20 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
   if (raw['role'] !== undefined) {
     const role = nonEmptyString(raw['role'], 'readback.role', ctx);
     if (!Object.hasOwn(pack.roles, role)) {
-      fail(`readback.role '${role}' 没人声明过`, ctx.source, { path: ctx.path });
+      fail(`readback.role '${role}' was never declared`, ctx.source, { path: ctx.path });
     }
     out.role = role;
   }
 
   // 各形式的必填（与 spec/02 §4.4 一致）
   if (kind === 'file_equals' && (out.path === undefined || out.expect === undefined)) {
-    fail('readback 形式 2（file_equals）必须有 path 与 expect', ctx.source);
+    fail('readback form 2 (file_equals) must declare path and expect', ctx.source);
   }
   if (kind === 'verify' && out.command === undefined) {
-    fail('readback 形式 4（verify）必须有 command', ctx.source);
+    fail('readback form 4 (verify) must declare command', ctx.source);
   }
   if (kind === 'none' && (out.consequence === undefined || out.consequence.length === 0)) {
-    fail('readback 形式 5（none）必须有非空的 consequence', ctx.source);
+    fail('readback form 5 (none) must declare a non-empty consequence', ctx.source);
   }
   return out;
 }
@@ -754,17 +754,17 @@ function checkPlaceholders(pack: WorkflowPack, ctx: Ctx): void {
       for (const use of placeholdersOf(text)) {
         if (use.kind === 'input') {
           if (!Object.hasOwn(pack.inputs, use.name)) {
-            fail(`steps[${i}] 里的 {input:${use.name}} 指向没声明过的 input`, ctx.source);
+            fail(`{input:${use.name}} in steps[${i}] points at an input that was never declared`, ctx.source);
           }
           continue;
         }
         if (use.kind === 'role') {
           if (!Object.hasOwn(pack.roles, use.name)) {
-            fail(`steps[${i}] 里的 {role:${use.name}...} 指向没声明过的 role`, ctx.source);
+            fail(`{role:${use.name}...} in steps[${i}] points at a role that was never declared`, ctx.source);
           }
           if (use.fact === undefined || !(ROLE_FACTS as readonly string[]).includes(use.fact)) {
             fail(
-              `steps[${i}] 里的 {role:${use.name}.${use.fact ?? ''}} 的事实名不在封闭表里（${ROLE_FACTS.join(' / ')}）`,
+              `the fact name in {role:${use.name}.${use.fact ?? ''}} in steps[${i}] is not in the closed table (${ROLE_FACTS.join(' / ')})`,
               ctx.source,
             );
           }
@@ -772,12 +772,12 @@ function checkPlaceholders(pack: WorkflowPack, ctx: Ctx): void {
         }
         if (use.kind === 'from' || use.kind === 'to') {
           if (step.kind !== 'file.transfer') {
-            fail(`steps[${i}] 里的 {${use.kind}:${use.name}} 只有 file.transfer 步才有`, ctx.source);
+            fail(`{${use.kind}:${use.name}} in steps[${i}] is only available in a file.transfer step`, ctx.source);
           }
           continue;
         }
         if (!produced.has(use.name)) {
-          fail(`steps[${i}] 里的 {output:${use.name}} 指向没产出过的槽`, ctx.source);
+          fail(`{output:${use.name}} in steps[${i}] points at a slot that was never produced`, ctx.source);
         }
       }
     }

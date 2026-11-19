@@ -372,7 +372,7 @@ describe('采样器', () => {
     const gpu = store.get('gpu.usage')!;
     expect(gpu.status).toBe('error');
     expect(gpu.value).toBeNull();
-    expect(gpu.detail).toContain('只回了一半');
+    expect(gpu.detail).toContain('halfway');
     // 别的 reader 照常
     expect(store.get('cpu.usage')).toBeDefined();
   });

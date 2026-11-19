@@ -36,6 +36,7 @@ vi.mock('@xterm/addon-fit', () => ({
 
 import { ErrorBar } from '../../src/renderer/shell/ErrorBar';
 import { FilesPage } from '../../src/renderer/shell/pages/FilesPage';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 import { uploadFile, type FileTransferHost } from '../../src/renderer/shell/files';
 import { makeError } from '../../src/shared/errors';
 
@@ -88,14 +89,17 @@ describe('文件页', () => {
     };
 
     render(
-      <FilesPage
-        sessionId="s1"
-        capabilities={CAPS}
-        onPush={(file, remotePath) => {
-          void uploadFile(host, 's1', file, remotePath);
-        }}
-        onPull={() => undefined}
-      />,
+      // **中文分支** ✓ —— 页面文案有中英两个分支，这里把语言钉在中文上。
+      <LocaleContext.Provider value="zh-Hans">
+        <FilesPage
+          sessionId="s1"
+          capabilities={CAPS}
+          onPush={(file, remotePath) => {
+            void uploadFile(host, 's1', file, remotePath);
+          }}
+          onPull={() => undefined}
+        />
+      </LocaleContext.Provider>,
     );
 
     const input = await screen.findByTestId('file-input');
@@ -110,12 +114,15 @@ describe('文件页', () => {
 
   it('没有会话时明说「需要先开一个会话」（而不是空白页）', () => {
     render(
-      <FilesPage
-        sessionId={null}
-        capabilities={null}
-        onPush={() => undefined}
-        onPull={() => undefined}
-      />,
+      // **中文分支** ✓ —— 页面文案有中英两个分支，这里把语言钉在中文上。
+      <LocaleContext.Provider value="zh-Hans">
+        <FilesPage
+          sessionId={null}
+          capabilities={null}
+          onPush={() => undefined}
+          onPull={() => undefined}
+        />
+      </LocaleContext.Provider>,
     );
     expect(screen.getByText(/会话/).textContent).toContain('会话');
   });

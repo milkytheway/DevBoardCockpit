@@ -48,7 +48,7 @@ export function fakeProfileIds(env: NodeJS.ProcessEnv = process.env): string[] {
 export function fakeProfile(id: string = FAKE_PROFILE_ID): ConnectionProfile {
   return {
     id,
-    label: id === FAKE_PROFILE_ID ? '假板子 · 合成数据' : `假目标 · ${id} · 合成数据`,
+    label: id === FAKE_PROFILE_ID ? 'fake board · synthetic data' : `fake target · ${id} · synthetic data`,
     // **假装自己是一个 ssh 目标**（能力位与 `local` 一样 ✓）：
     // 流程层有一条硬规矩「**角色不许绑到 `local`**」——
     // `local` 是**宿主自己的 shell** ✗，假设备也不该走那条路 ✓。

@@ -125,18 +125,18 @@ export const PROC_STAT: ReaderKind = {
    */
   parse(raw, _args, ctx) {
     if (isBlank(raw)) {
-      return missing('/proc/stat 读不到（路径不对？）');
+      return missing('/proc/stat cannot be read (is the path wrong?)');
     }
     const at = raw.indexOf(CPUINFO_SEPARATOR);
     if (at < 0) {
-      return error('parse_error', `输出里找不到「${CPUINFO_SEPARATOR}」这一段（取数片段与解析对不上？）`);
+      return error('parse_error', `the output has no "${CPUINFO_SEPARATOR}" section (do the fetch fragment and the parser disagree?)`);
     }
     const statText = raw.slice(0, at);
     const cpuinfoText = raw.slice(at + CPUINFO_SEPARATOR.length);
 
     const { total, cores } = parseProcStat(statText);
     if (total === undefined) {
-      return error('parse_error', '/proc/stat 里没有 cpu 汇总行');
+      return error('parse_error', '/proc/stat has no cpu summary line');
     }
 
     const prev = ctx.state['proc_stat'] as ProcStatSnapshot | undefined;
@@ -155,7 +155,7 @@ export const PROC_STAT: ReaderKind = {
       // 计数器**倒退** = 板子重启过 → 值不可信。
       // 重置基准，如实报「读不出来」，**不报负数**（RF-3）。
       ctx.state['proc_stat'] = { total, cores } satisfies ProcStatSnapshot;
-      return error('parse_error', '计数器倒退了——板子重启过？');
+      return error('parse_error', 'a counter went backwards — did the board reboot?');
     }
     if (dTotal === 0) {
       // **窗口太短**（两次采样之间一个 tick 都没过）：算不出占用率。
@@ -172,7 +172,7 @@ export const PROC_STAT: ReaderKind = {
       // 计数器只回绕一部分字段时就会算出 >100。
       return error(
         'out_of_domain',
-        `算出来的占用率是 ${usage}（不在 0..100）——计数器可能只回绕了一部分字段`,
+        `the computed usage is ${usage} (not within 0..100) — the counters may only have wrapped around for some of the fields`,
       );
     }
     samples['usage'] = usage;
@@ -185,7 +185,7 @@ export const PROC_STAT: ReaderKind = {
       if (dc <= 0 || db < 0) continue;
       const pct = (db / dc) * 100;
       if (outOfRange(pct)) {
-        return error('out_of_domain', `核 ${index} 算出来的占用率是 ${pct}（不在 0..100）`);
+        return error('out_of_domain', `the computed usage of core ${index} is ${pct} (not within 0..100)`);
       }
       samples[`core.${index}.usage`] = pct;
     }

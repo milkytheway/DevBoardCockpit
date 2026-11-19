@@ -1,13 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
+import { pick, useLocale, useT, type Localised } from './i18n';
 import { CloseIcon, SearchIcon } from './Icons';
 
+/**
+ * A command the palette can run.
+ *
+ * The label is a localised pair, because the palette is drawn from the
+ * shell's data and cannot read the React context itself.
+ */
 export interface Command {
   id: string;
-  label: string;
-  hint?: string;
+  label: Localised;
+  hint?: Localised;
   shortcut?: string;
   run: () => void;
 }
+
+/** The wording of the palette, in both languages. */
+const strings = {
+  palette: { 'zh-Hans': '命令面板', en: 'Command palette' },
+  placeholder: { 'zh-Hans': '搜索视图、页面、命令…', en: 'Search views, pages, commands…' },
+  search: { 'zh-Hans': '命令搜索', en: 'Command search' },
+  close: { 'zh-Hans': '关闭命令面板', en: 'Close the command palette' },
+  noMatch: { 'zh-Hans': '没有匹配的命令', en: 'No matching command' },
+} satisfies Record<string, Localised>;
 
 export function CommandPalette({
   open,
@@ -21,6 +37,8 @@ export function CommandPalette({
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +53,9 @@ export function CommandPalette({
   const filtered = commands.filter((command) => {
     const q = query.trim().toLowerCase();
     if (q.length === 0) return true;
-    return (command.label + ' ' + (command.hint ?? '')).toLowerCase().includes(q);
+    const label = pick(command.label, locale);
+    const hint = command.hint === undefined ? '' : pick(command.hint, locale);
+    return (label + ' ' + hint).toLowerCase().includes(q);
   });
 
   const execute = (command: Command | undefined): void => {
@@ -54,7 +74,7 @@ export function CommandPalette({
         className="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="命令面板"
+        aria-label={t(strings.palette)}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette__input">
@@ -62,8 +82,8 @@ export function CommandPalette({
           <input
             ref={inputRef}
             value={query}
-            placeholder="搜索视图、页面、命令…"
-            aria-label="命令搜索"
+            placeholder={t(strings.placeholder)}
+            aria-label={t(strings.search)}
             onChange={(event) => {
               setQuery(event.target.value);
               setIndex(0);
@@ -85,7 +105,7 @@ export function CommandPalette({
             }}
           />
           <kbd>Esc</kbd>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="关闭命令面板">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t(strings.close)}>
             <CloseIcon size={13} />
           </button>
         </div>
@@ -98,13 +118,17 @@ export function CommandPalette({
                 onMouseEnter={() => setIndex(itemIndex)}
                 onClick={() => execute(command)}
               >
-                <span>{command.label}</span>
-                {command.hint ? <span className="palette__hint">{command.hint}</span> : null}
+                <span>{pick(command.label, locale)}</span>
+                {command.hint ? (
+                  <span className="palette__hint">{pick(command.hint, locale)}</span>
+                ) : null}
                 {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
               </button>
             </li>
           ))}
-          {filtered.length === 0 ? <li className="palette__empty">没有匹配的命令</li> : null}
+          {filtered.length === 0 ? (
+            <li className="palette__empty">{t(strings.noMatch)}</li>
+          ) : null}
         </ul>
       </div>
     </div>

@@ -219,7 +219,7 @@ export async function invokeAction(
       ...(deps.execSignal === undefined ? {} : { signal: deps.execSignal }),
     });
     const result = await runReadback(
-      action.readback ?? { kind: 'none', consequence: '这个动作没有声明回读' },
+      action.readback ?? { kind: 'none', consequence: 'this action declares no readback' },
       { raw: params, encoded },
       {
         readTag: deps.readTag,
@@ -243,7 +243,7 @@ export async function invokeAction(
           if (verifyFloor.verdict === 'destructive') {
             throw makeError(
               'PACK_INVALID',
-              `回读的验证命令命中危险地板（${verifyFloor.why ?? '危险命令'}），不执行`,
+              `the verification command of the readback hits the danger floor (${verifyFloor.why ?? 'dangerous command'}), not executed`,
               { detail: { command: cmd, pattern: verifyFloor.pattern } },
             );
           }
@@ -265,7 +265,7 @@ export async function invokeAction(
       ok: false,
       verified: false,
       reason: 'cancelled',
-      detail: '这次执行被取消了',
+      detail: 'this execution was cancelled',
     };
     record(cancelledOutcome);
     return cancelledOutcome;

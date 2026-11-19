@@ -41,16 +41,16 @@ export const SCRIPT: ReaderKind = {
   },
   parse(raw, _args, _ctx) {
     if (isBlank(raw)) {
-      return missing('脚本没有输出（脚本没推上去？跑失败了吗？）');
+      return missing('the script produced no output (was it not pushed? did it fail?)');
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return error('parse_error', '脚本输出不是合法 JSON');
+      return error('parse_error', 'the script output is not valid JSON');
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return error('parse_error', '脚本输出不是一个 JSON 对象');
+      return error('parse_error', 'the script output is not a JSON object');
     }
 
     const samples: Record<string, number | string | boolean> = {};
@@ -61,7 +61,7 @@ export const SCRIPT: ReaderKind = {
       }
     }
     if (Object.keys(samples).length === 0) {
-      return error('parse_error', '脚本输出里一个能用的 sample 都没有');
+      return error('parse_error', 'the script output has no usable sample at all');
     }
     return ok(samples);
   },

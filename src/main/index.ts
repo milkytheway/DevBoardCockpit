@@ -158,14 +158,14 @@ function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Conne
   const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
   if (route === 'fake' && fakeModule !== null) {
     // ⚠️ Fake device: everything it produces is synthetic data (see `hal/fake/`)
-    console.warn(`[FAKE] 合成数据已启用（COCKPIT_FAKE=${FAKE_MODE}）`);
+    console.warn(`[FAKE] synthetic data is enabled (COCKPIT_FAKE=${FAKE_MODE})`);
     return new fakeModule.FakeConnection({ now: () => Date.now(), log, profile });
   }
   if (route === 'refuse') {
     // Explicit refusal, never a fallback to a real connection: the 'fake
     // board' profile has transport `local` — falling back there lands on the
     // developer's own shell.
-    throw makeError('CONN_OPEN_FAILED', '假设备没载入成功（不拿真的本机连接顶替）', {
+    throw makeError('CONN_OPEN_FAILED', 'the fake device did not load (it does not fall back to a real local connection)', {
       detail: { profileId: profile.id },
     });
   }
@@ -405,7 +405,7 @@ function permissionOperations(): PermissionOperation[] {
       kind: 'action',
       danger: action.danger === 'destructive' ? 'destructive' : 'reversible',
       // The danger level is only information ✓ (the gate is the switch ✓ — implementation decision record ADR-D48 ✓)
-      ...(action.danger === 'destructive' ? { hint: '破坏性动作' } : {}),
+      ...(action.danger === 'destructive' ? { hint: 'destructive action' } : {}),
     });
   }
   for (const flow of workflowRegistry.list()) {
@@ -415,7 +415,7 @@ function permissionOperations(): PermissionOperation[] {
       op: `workflow:${flow.id}`,
       label: flow.name,
       kind: 'workflow',
-      ...(plan === undefined ? {} : { hint: `${plan.steps.length} 步 · ${plan.roles.length} 台机器` }),
+      ...(plan === undefined ? {} : { hint: `${plan.steps.length} steps · ${plan.roles.length} machines` }),
     });
   }
   for (const op of HOST_OPERATIONS) {
@@ -498,7 +498,7 @@ async function startMcpServer(): Promise<void> {
     });
   } catch (err) {
     // Failing to start must not block the app ✓ (the MCP server is for agents ✓ — if it breaks, the GUI still works ✓)
-    console.error(`[MCP] server 起不来：${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[MCP] the server does not come up: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -643,7 +643,7 @@ handle(IPC.cardsHello, (instanceId) => {
   const id = String(instanceId);
   const cardId = cards.registry.cardOfInstance(id);
   if (cardId === null) {
-    throw makeError('PACK_INVALID', `没有登记过的卡片实例：${id}`);
+    throw makeError('PACK_INVALID', `card instance not registered: ${id}`);
   }
   // v1 has only one connection context (contract §7.8: injected by the host)
   cards.sessions.open(id, cardId, runtime.status.profileId ?? null);
@@ -710,7 +710,7 @@ handle(IPC.permissionsSet, (actor, op, allowed) => {
   const key = String(op);
   // An operation that does not exist must not be settable ✓ (otherwise the ledger accumulates junk keys nobody can see ✓)
   if (!permissions.knows(key)) {
-    throw makeError('IPC_INVALID_PAYLOAD', `没有这个操作：${key}`);
+    throw makeError('IPC_INVALID_PAYLOAD', `no such operation: ${key}`);
   }
   permissions.set(String(actor) as PermissionActor, key, Boolean(allowed));
 });
@@ -962,7 +962,7 @@ app.whenReady().then(async () => {
   // fewer board for the person debugging, not an application that will not
   // open.
   await loadFakeDevice().catch((err: unknown) => {
-    console.error(`[FAKE] 假设备载入失败：${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[FAKE] the fake device failed to load: ${err instanceof Error ? err.message : String(err)}`);
   });
 
   createWindow();

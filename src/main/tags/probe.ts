@@ -62,7 +62,7 @@ export function judgeReader(
   for (const r of readings) {
     const known = declared.some((pattern) => matchTagPattern(pattern, r.tag));
     if (!known) {
-      problems.push(`多了一个 tag：${r.tag}（包里没声明）`);
+      problems.push(`one tag too many: ${r.tag} (the pack does not declare it)`);
     }
   }
 
@@ -73,15 +73,15 @@ export function judgeReader(
     // 但**一个都没有**就是缺（这条声明白写了）。
     const got = readings.some((r) => matchTagPattern(pattern, r.tag));
     if (!got) {
-      problems.push(`少了一个 tag：${pattern}`);
+      problems.push(`one tag missing: ${pattern}`);
     }
   }
 
   // 3. 状态必须都是 ok
   for (const r of readings) {
     if (r.status === 'ok') continue;
-    const detail = r.detail ? `（${r.detail}）` : '';
-    problems.push(`tag ${r.tag} 的状态是 ${r.status}${detail}——探针要的是真值`);
+    const detail = r.detail ? ` (${r.detail})` : '';
+    problems.push(`the status of tag ${r.tag} is ${r.status}${detail} — the probe wants a real reading`);
   }
 
   return {
@@ -185,16 +185,16 @@ export function probeHint(report: ProbeReport, transport: string): string | null
 
   if (transport === 'serial') {
     return [
-      '一个数都没出来 —— **多半不是 reader 的问题，是这条连接一次都没通**。',
-      '  串口最常踩的坑：**有别的程序正独占着那个口**（本机是 COM3）。',
-      '  （计划 1 验收留下的 serial-server.py 就会把回包吃掉：板子是活的、串口是通的，',
-      '    但应用自己的 exec 永远收不到 —— 于是每个 reader 都报「超时」。）',
-      '  先停掉那个进程，再重跑。',
+      'not a single number came out — **it is most likely not the problem of the reader, this connection never came up once**.',
+      '  the most common serial trap: **another program is holding the port exclusively** (COM3 on this host).',
+      '  (the serial-server.py left by the Plan 1 acceptance run swallows the reply: the board is alive, the serial line is fine,',
+      '    but the exec of the application itself never receives anything — so every reader reports "timeout").)',
+      '  stop that process first, then run it again.',
     ].join('\n');
   }
   return [
-    '一个数都没出来 —— **多半不是 reader 的问题，是这条连接一次都没通**。',
-    '  先查连接本身（能不能连上、板子在不在），再查 reader。',
+    'not a single number came out — **it is most likely not the problem of the reader, this connection never came up once**.',
+    '  check the connection itself first (can it connect, is the board there), then check the reader.',
   ].join('\n');
 }
 

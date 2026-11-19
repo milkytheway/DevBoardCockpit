@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConnectionInfo } from '../../shared/ipc-contract';
 import { boardsOf } from './devices';
+import { useT, type Localised } from './i18n';
 import { ChevronIcon } from './Icons';
 
 /**
@@ -22,6 +23,17 @@ import { ChevronIcon } from './Icons';
  *
  * → **一次只连一块板** ✓（`O11` / `O18` ✓）→ 「选板」= **宿主换一块板** ✓。
  */
+
+/** The wording of the picker, in both languages. */
+const strings = {
+  pickTitle: { 'zh-Hans': '选择要操作的板子', en: 'Choose the board to work with' },
+  board: { 'zh-Hans': '板子', en: 'Board' },
+  boards: { 'zh-Hans': '板子', en: 'Boards' },
+  noBoard: { 'zh-Hans': '没有板', en: 'No board' },
+  notConnected: { 'zh-Hans': '未连接', en: 'Not connected' },
+  noBoards: { 'zh-Hans': '没有可用的板', en: 'No boards available' },
+  current: { 'zh-Hans': '当前', en: 'Current' },
+} satisfies Record<string, Localised>;
 export function DevicePicker({
   connections,
   onSelect,
@@ -38,6 +50,7 @@ export function DevicePicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const boards = boardsOf(connections);
   const currentBoard = boards.find((board) => board.current) ?? null;
+  const t = useT();
 
   // ── 点外面就关掉 · Esc 也关掉 ──
   useEffect(() => {
@@ -64,14 +77,14 @@ export function DevicePicker({
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        title="选择要操作的板子"
+        title={t(strings.pickTitle)}
         disabled={busy}
       >
-        <span className="device-picker__label">板子</span>
+        <span className="device-picker__label">{t(strings.board)}</span>
         {boards.length === 0 ? (
-          <span className="device-picker__value dim">没有板</span>
+          <span className="device-picker__value dim">{t(strings.noBoard)}</span>
         ) : currentBoard === null ? (
-          <span className="device-picker__value dim">未连接</span>
+          <span className="device-picker__value dim">{t(strings.notConnected)}</span>
         ) : (
           <span className="device-picker__value mono">{currentBoard.deviceKey}</span>
         )}
@@ -79,8 +92,10 @@ export function DevicePicker({
       </button>
 
       {open ? (
-        <div className="device-picker__menu" role="listbox" aria-label="板子">
-          {boards.length === 0 ? <p className="device-picker__empty">没有可用的板</p> : null}
+        <div className="device-picker__menu" role="listbox" aria-label={t(strings.boards)}>
+          {boards.length === 0 ? (
+            <p className="device-picker__empty">{t(strings.noBoards)}</p>
+          ) : null}
           {boards.map((board) => (
             <button
               key={board.deviceKey}
@@ -96,7 +111,7 @@ export function DevicePicker({
             >
               <span className={`dot ${board.current ? 'dot--ok' : 'dot--muted'}`} aria-hidden />
               <span className="device-picker__key mono">{board.deviceKey}</span>
-              {board.current ? <span className="device-picker__now">当前</span> : null}
+              {board.current ? <span className="device-picker__now">{t(strings.current)}</span> : null}
             </button>
           ))}
         </div>

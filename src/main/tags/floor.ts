@@ -33,22 +33,22 @@ interface FloorEntry {
 }
 
 const FLOOR_ENTRIES: readonly FloorEntry[] = [
-  { pattern: 'reboot', why: '重启' },
-  { pattern: 'shutdown', why: '关机' },
-  { pattern: 'poweroff', why: '关机' },
-  { pattern: 'halt', why: '停机' },
-  { pattern: 'flash*', why: '刷写存储' },
+  { pattern: 'reboot', why: 'reboot' },
+  { pattern: 'shutdown', why: 'shut down' },
+  { pattern: 'poweroff', why: 'shut down' },
+  { pattern: 'halt', why: 'halt' },
+  { pattern: 'flash*', why: 'flash storage' },
   // `erase` / `burn` 是**精确匹配**：契约没有给它们前缀例句，
   // 而 `erase_cache` / `burn_count` 是**无害**的常见名——
   // 前缀匹配在这里制造的是**假阳性**，不是堵洞。
-  { pattern: 'erase', why: '擦除存储' },
-  { pattern: 'burn', why: '烧写存储' },
-  { pattern: 'upgrade', why: '升级' },
+  { pattern: 'erase', why: 'erase storage' },
+  { pattern: 'burn', why: 'burn storage' },
+  { pattern: 'upgrade', why: 'upgrade' },
   // `mkfs*` 而不是 `mkfs`：`mkfs.ext4` 与 `mkfs` 是**同一个操作**。
   // 契约 §5.2 的表写的是 `mkfs`，但 §5.2.1 的前缀规则（`flash*` 命中
   // `flash_uboot`）说明带后缀的同义命令也算——**地板是下限，不许有洞**。
   // 这条差异记在 `docs/06` C10，由用户拍板。
-  { pattern: 'mkfs*', why: '格式化' },
+  { pattern: 'mkfs*', why: 'format' },
 ];
 
 /** 裸写块设备的目标路径（前缀匹配） */
@@ -174,7 +174,7 @@ function matchDd(tokens: string[]): FloorMatch | null {
     }
   }
   if (target !== undefined && isBlockDevice(target)) {
-    return { matched: true, pattern: `dd → ${target}`, why: '裸写块设备' };
+    return { matched: true, pattern: `dd → ${target}`, why: 'write a raw block device' };
   }
   return null;
 }
@@ -197,7 +197,7 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
     const p = normalizePath(t);
     // `/*` 展开后就是根目录下的全部条目——**等价于 `/`**
     if (p === '/' || p === '/*') {
-      return { matched: true, pattern: 'rm -rf /', why: '删根' };
+      return { matched: true, pattern: 'rm -rf /', why: 'delete the root' };
     }
   }
   return null;
@@ -206,10 +206,10 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
 /** `iptables -F` / `nft flush ruleset` —— 清空防火墙规则 */
 function matchFirewall(tokens: string[]): FloorMatch | null {
   if (baseName(tokens[0] ?? '') === 'iptables' && tokens.slice(1).includes('-F')) {
-    return { matched: true, pattern: 'iptables -F', why: '清空防火墙规则' };
+    return { matched: true, pattern: 'iptables -F', why: 'flush the firewall rules' };
   }
   if (baseName(tokens[0] ?? '') === 'nft' && tokens[1] === 'flush' && tokens[2] === 'ruleset') {
-    return { matched: true, pattern: 'nft flush ruleset', why: '清空防火墙规则' };
+    return { matched: true, pattern: 'nft flush ruleset', why: 'flush the firewall rules' };
   }
   return null;
 }

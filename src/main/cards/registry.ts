@@ -73,7 +73,7 @@ export class CardRegistry {
           severity: 'error',
           rule: 10,
           path: 'manifest.json',
-          message: `manifest 读不出来：${err instanceof Error ? err.message : String(err)}`,
+          message: `the manifest cannot be read: ${err instanceof Error ? err.message : String(err)}`,
         };
         const previous = this.byCard.get(entry.cardId);
         if (previous !== undefined) {

@@ -11,7 +11,7 @@ import {
 import { CardGlyph } from './CardGlyph';
 import { cardToneVar } from './cards';
 import type { SecondaryGroup, SecondaryItem } from './nav';
-import { pick, useLocale, useT } from './i18n';
+import { pick, useLocale, useT, type Localised } from './i18n';
 
 const STORAGE_KEY = 'devboard.collapsedSections';
 
@@ -27,8 +27,8 @@ function readCollapsed(): Set<string> {
 }
 
 export interface SecondaryStatus {
-  label: string;
-  detail: string;
+  label: Localised;
+  detail: Localised;
   tone: 'ok' | 'warn' | 'danger' | 'muted';
 }
 
@@ -62,6 +62,7 @@ const strings = {
   expandNamed: { 'zh-Hans': '展开 {name}', en: 'Expand {name}' },
   collapseNamed: { 'zh-Hans': '折叠 {name}', en: 'Collapse {name}' },
   pinned: { 'zh-Hans': '置顶', en: 'Pinned' },
+  pageOptions: { 'zh-Hans': '页面选项', en: 'Page options' },
 };
 
 export function Secondary({
@@ -70,7 +71,7 @@ export function Secondary({
   groups,
   onCollapse,
 }: {
-  title: string;
+  title: Localised;
   status: SecondaryStatus;
   groups: SecondaryGroup[];
   onCollapse: () => void;
@@ -78,7 +79,7 @@ export function Secondary({
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
   const t = useT();
   const locale = useLocale();
-  const pinnedLabel = '置顶';
+  const pinnedLabel = { 'zh-Hans': '置顶', en: 'Pinned' };
 
   useEffect(() => {
     try {
@@ -98,17 +99,17 @@ export function Secondary({
   };
 
   return (
-    <aside className="secondary" aria-label="页面选项">
+    <aside className="secondary" aria-label={t(strings.pageOptions)}>
       <header className="secondary__head">
         <div className="secondary__heading">
-          <h2 className="secondary__page">{title}</h2>
+          <h2 className="secondary__page">{pick(title, locale)}</h2>
           <span
             className={`secondary__status secondary__status--${status.tone}`}
-            title={`${status.label} · ${status.detail}`}
+            title={`${pick(status.label, locale)} · ${pick(status.detail, locale)}`}
           >
             <span className={`live-dot live-dot--${status.tone}`} aria-hidden />
-            <span className="secondary__status-label">{status.label}</span>
-            <span className="secondary__status-detail">{status.detail}</span>
+            <span className="secondary__status-label">{pick(status.label, locale)}</span>
+            <span className="secondary__status-detail">{pick(status.detail, locale)}</span>
           </span>
         </div>
         <button
@@ -160,7 +161,7 @@ export function Secondary({
                         <li key={`${item.id}-heading`} className="secondary__section">
                           <SectionHeading
                             label={pick(item.section, locale)}
-                            pinned={item.section?.['zh-Hans'] === pinnedLabel}
+                            pinned={item.section?.['zh-Hans'] === pinnedLabel['zh-Hans']}
                             collapsed
                             onToggle={() => toggle(`section:${sectionKey}`)}
                           />
@@ -173,7 +174,7 @@ export function Secondary({
                           <li className="secondary__section">
                             <SectionHeading
                               label={pick(item.section, locale)}
-                              pinned={item.section?.['zh-Hans'] === pinnedLabel}
+                              pinned={item.section?.['zh-Hans'] === pinnedLabel['zh-Hans']}
                               collapsed={false}
                               onToggle={() => toggle(`section:${sectionKey}`)}
                             />

@@ -30,37 +30,37 @@ export const EXEC_REGEX: ReaderKind = {
   },
   parse(raw, args, _ctx) {
     if (isBlank(raw)) {
-      return missing('命令没有输出（跑失败了吗？）');
+      return missing('the command produced no output (did it fail?)');
     }
     const pattern = argStr(args, 'pattern');
     let re: RegExp;
     try {
       re = new RegExp(pattern);
     } catch {
-      return error('parse_error', `正则表达式「${pattern}」编译不过`);
+      return error('parse_error', `the regular expression "${pattern}" does not compile`);
     }
 
     const m = re.exec(raw);
     if (m === null) {
-      return error('parse_error', `输出里没有「${pattern}」匹配的东西`);
+      return error('parse_error', `the output has nothing matching "${pattern}"`);
     }
     const text = (m[1] ?? m[0] ?? '').trim();
     if (text.length === 0) {
-      return error('parse_error', '匹配到了但是捕获组是空的');
+      return error('parse_error', 'it matched, but the capture group is empty');
     }
 
     const format = argStr(args, 'format');
     if (format === 'integer') {
       const value = Number(text);
       if (!Number.isInteger(value)) {
-        return error('parse_error', `「${text}」不是整数`);
+        return error('parse_error', `"${text}" is not an integer`);
       }
       return ok({ value });
     }
     if (format === 'number' || format === 'float') {
       const value = Number(text);
       if (!Number.isFinite(value)) {
-        return error('parse_error', `「${text}」不是数字`);
+        return error('parse_error', `"${text}" is not a number`);
       }
       return ok({ value });
     }

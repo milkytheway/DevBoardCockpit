@@ -125,7 +125,7 @@ export function fakeFilesystem(profileId: string): VirtualFs {
   const created = new VirtualFs();
   // **给这块盘放两个惯例文件**——文件浏览器一打开就有东西看
   // （以前那是 `list()` 硬编出来的两个条目；现在它们**真的在盘上**）。
-  created.write('/README.txt', '这是假板子（fake board）。这里的一切都是合成数据。\n');
+  created.write('/README.txt', 'This is a fake board. Everything here is synthetic data.\n');
   created.write('/etc/hostname', 'fake-board\n');
   FILESYSTEMS.set(profileId, created);
   return created;

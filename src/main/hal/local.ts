@@ -58,7 +58,7 @@ export class LocalConnection implements Connection {
 
   async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.opened) {
-      throw makeError('CONN_CLOSED', '本机连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the local connection is not open', { detail: { id: this.id } });
     }
     const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
     const args = process.platform === 'win32' ? ['/c', command] : ['-c', command];
@@ -93,7 +93,7 @@ export class LocalConnection implements Connection {
     try {
       dirents = await readdir(dir, { withFileTypes: true });
     } catch (err) {
-      throw makeError('FILE_TRANSFER_FAILED', `列目录失败：${remotePath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `listing the directory failed: ${remotePath}`, {
         detail: { remotePath, resolved: dir, cause: err instanceof Error ? err.message : String(err) },
       });
     }
@@ -128,7 +128,7 @@ export class LocalConnection implements Connection {
     try {
       await copyFile(remotePath, localPath);
     } catch (err) {
-      throw makeError('FILE_TRANSFER_FAILED', `下载失败：${remotePath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `download failed: ${remotePath}`, {
         detail: { remotePath, localPath, cause: err instanceof Error ? err.message : String(err) },
       });
     }
@@ -146,7 +146,7 @@ export class LocalConnection implements Connection {
     try {
       await copyFile(localPath, target);
     } catch (err) {
-      throw makeError('FILE_TRANSFER_FAILED', `上传失败：${localPath}`, {
+      throw makeError('FILE_TRANSFER_FAILED', `upload failed: ${localPath}`, {
         detail: { localPath, remotePath, target, cause: err instanceof Error ? err.message : String(err) },
       });
     }
@@ -154,7 +154,7 @@ export class LocalConnection implements Connection {
 
   async openSession(opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.opened) {
-      throw makeError('CONN_CLOSED', '本机连接未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the local connection is not open', { detail: { id: this.id } });
     }
     // A real pty (node-pty) — not the stub that only records logs
     return createLocalPtySession(this.log, { cols: opts?.cols ?? 80, rows: opts?.rows ?? 24 });

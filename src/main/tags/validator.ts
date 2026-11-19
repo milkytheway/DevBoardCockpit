@@ -136,7 +136,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(
           1,
           `${path}.provides[${i}].tag`,
-          `tag「${p.tag}」不在核心词表里，也不是本包的 custom 命名空间（custom.${pack.id}.*）`,
+          `tag "${p.tag}" is neither in the core vocabulary nor in this pack's custom namespace (custom.${pack.id}.*)`,
         );
       }
     });
@@ -154,7 +154,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       const a = tagEntries[i]!;
       const b = tagEntries[j]!;
       if (patternsOverlap(a.tag, b.tag)) {
-        err(2, b.path, `tag「${b.tag}」与 ${a.path} 的「${a.tag}」会撞车（运行时两个 reader 会写到同一个 tag 上）`);
+        err(2, b.path, `tag "${b.tag}" collides with "${a.tag}" at ${a.path} (at runtime two readers would write to the same tag)`);
       }
     }
   }
@@ -168,7 +168,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(
           7,
           `${path}.provides[${i}]`,
-          `tag「${p.tag}」有 ${tagStars} 个通配段，sample「${p.sample}」有 ${sampleStars} 个——必须一样多`,
+          `tag "${p.tag}" has ${tagStars} wildcard segment(s), sample "${p.sample}" has ${sampleStars} — they must be the same number`,
         );
       }
     });
@@ -185,7 +185,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(
           3,
           `${path}.provides[${i}].tag`,
-          `devfreq_load 的 duty 是**时钟占空比**（空闲时读 100），不能绑到「${p.tag}」上`,
+          `the duty of devfreq_load is the **clock duty cycle** (it reads 100 when idle), so it must not be bound to "${p.tag}"`,
         );
       }
       if (measure !== 'utilization') {
@@ -199,8 +199,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
           4,
           `${path}.provides[${i}].tag`,
           measure === undefined
-            ? `绑到「${p.tag}」却没有声明 measure——「没说是利用率」不能当成「是利用率」`
-            : `绑到「${p.tag}」但 measure 是「${String(measure)}」——必须是 utilization`,
+            ? `bound to "${p.tag}" but measure is not declared — "not declared as utilisation" is not the same as "declared as utilisation"`
+            : `bound to "${p.tag}" but measure is "${String(measure)}" — it must be utilization`,
         );
       }
     }
@@ -211,7 +211,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     if (reader.kind !== 'proc_stat') continue;
     const ok = reader.provides.some((p) => p.tag === 'cpu.usage' && p.sample === 'usage');
     if (!ok) {
-      err(5, `${path}.provides`, 'proc_stat 必须把 usage 绑到 cpu.usage（首读 pending 的语义靠这一条）');
+      err(5, `${path}.provides`, 'proc_stat must bind usage to cpu.usage (the pending semantics of the first read depend on this rule)');
     }
   }
 
@@ -221,7 +221,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   for (const { reader, path } of readers) {
     const kind = getKind(reader.kind);
     if (kind === undefined) {
-      err(6, `${path}.kind`, `kind「${reader.kind}」不在 v1 的清单里（契约 §2.4）`);
+      err(6, `${path}.kind`, `kind "${reader.kind}" is not in the v1 list (contract §2.4)`);
       continue;
     }
 
@@ -232,7 +232,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(
           6,
           `${path}.provides[${i}].sample`,
-          `sample「${p.sample}」不是 kind「${kind.id}」能产出的（它能产出：${kind.samples.join(' / ')}）`,
+          `sample "${p.sample}" cannot be produced by kind "${kind.id}" (it can produce: ${kind.samples.join(' / ')})`,
         );
       }
     }
@@ -240,7 +240,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     const args = reader.args ?? {};
     for (const key of Object.keys(args)) {
       if (!(key in kind.params)) {
-        err(8, `${path}.args.${key}`, `kind「${kind.id}」没有这个参数（它有：${Object.keys(kind.params).join(' / ')}）`);
+        err(8, `${path}.args.${key}`, `kind "${kind.id}" has no such parameter (it has: ${Object.keys(kind.params).join(' / ')})`);
         continue;
       }
       // **取值**也要合 schema：`measure: utilzation` 这种拼错，
@@ -252,7 +252,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
           err(
             8,
             `${path}.args.${key}`,
-            `kind「${kind.id}」的「${key}」只接受这些值：${spec.values.join(' / ')}（实际是「${value}」）`,
+            `"${key}" of kind "${kind.id}" only accepts these values: ${spec.values.join(' / ')} (it is "${value}")`,
           );
         }
       }
@@ -260,12 +260,12 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
 
     for (const [name, spec] of Object.entries(kind.params)) {
       if (spec.required === true && args[name] === undefined) {
-        err(9, `${path}.args.${name}`, `kind「${kind.id}」的「${name}」是必填参数`);
+        err(9, `${path}.args.${name}`, `"${name}" is a required parameter of kind "${kind.id}"`);
       }
       if (spec.oneOf !== undefined) {
         const given = spec.oneOf.some((k) => args[k] !== undefined);
         if (!given) {
-          err(9, `${path}.args`, `「${spec.oneOf.join('」或「')}」至少要给一个`);
+          err(9, `${path}.args`, `at least one of ${spec.oneOf.join(' / ')} must be given`);
         }
       }
     }
@@ -274,13 +274,13 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   // ── 规则 11 · match.models 非空字符串列表；match.mode 只能是 exact/substring ──
   if (pack.match !== undefined) {
     if (pack.match.models.length === 0) {
-      err(11, 'match.models', 'models 不能是空列表（自动识别靠它）');
+      err(11, 'match.models', 'models must not be an empty list (automatic detection relies on it)');
     }
     for (const [i, m] of pack.match.models.entries()) {
-      if (m.length === 0) err(11, `match.models[${i}]`, '型号不能是空串');
+      if (m.length === 0) err(11, `match.models[${i}]`, 'a model must not be an empty string');
     }
     if (pack.match.mode !== 'exact' && pack.match.mode !== 'substring') {
-      err(11, 'match.mode', `mode 只能是 exact 或 substring，实际是「${pack.match.mode}」`);
+      err(11, 'match.mode', `mode must be exact or substring, it is "${pack.match.mode}"`);
     }
   }
 
@@ -300,14 +300,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     ]);
     for (const name of used) {
       if (!declared.includes(name)) {
-        err(13, `${path}.command`, `占位 {${name}} 对应的参数没有声明`);
+        err(13, `${path}.command`, `the parameter for placeholder {${name}} is not declared`);
       }
     }
 
     // 规则 14 · 声明了但没用的参数是死参数
     for (const name of declared) {
       if (!used.has(name)) {
-        err(14, `${path}.params.${name}`, `参数「${name}」声明了但没在命令或回读里用到`);
+        err(14, `${path}.params.${name}`, `parameter "${name}" is declared but never used in the command or the readback`);
       }
     }
 
@@ -315,22 +315,22 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     for (const [name, spec] of Object.entries(action.params ?? {})) {
       const at = `${path}.params.${name}`;
       if (!PARAM_TYPES.has(spec.type)) {
-        err(20, at, `type「${spec.type}」不是封闭类型表里的值（${[...PARAM_TYPES].join(' / ')}）`);
+        err(20, at, `type "${spec.type}" is not a value of the closed type table (${[...PARAM_TYPES].join(' / ')})`);
         continue;
       }
       if (spec.type === 'enum') {
         if (spec.values === undefined || spec.values.length === 0) {
-          err(20, at, 'enum 必须有非空的 values');
+          err(20, at, 'enum must have non-empty values');
         }
       }
       if (spec.type === 'string' && spec.maxLength === undefined) {
-        err(20, at, 'string 参数必须声明 maxLength（没有上限的字符串参数就是注入面）');
+        err(20, at, 'a string parameter must declare maxLength (a string parameter without an upper bound is an injection surface)');
       }
     }
 
     // 规则 21 · 占位不得自带引号
     for (const m of action.command.matchAll(/['"]\{([A-Za-z_][A-Za-z0-9_]*)\}['"]/g)) {
-      err(21, `${path}.command`, `占位 {${m[1]}} 自带引号——引号由运行时统一编码，叠加会出错`);
+      err(21, `${path}.command`, `placeholder {${m[1]}} carries its own quotes — the runtime encodes quotes uniformly, so stacking them breaks`);
     }
 
     // 规则 22 · guard 必须是 params 声明域的子集
@@ -338,37 +338,37 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       const at = `${path}.guard.${name}`;
       const param = action.params?.[name];
       if (param === undefined) {
-        err(22, at, `guard 引用了没有声明的参数「${name}」`);
+        err(22, at, `guard references a parameter that is not declared: "${name}"`);
         continue;
       }
       if (guard.min !== undefined && param.min !== undefined && guard.min < param.min) {
-        err(22, at, `guard 的下界 ${guard.min} 小于参数声明域的下界 ${param.min}（guard 只能缩小）`);
+        err(22, at, `the lower bound ${guard.min} of guard is below the lower bound ${param.min} of the parameter declaration (a guard can only narrow)`);
       }
       if (guard.max !== undefined && param.max !== undefined && guard.max > param.max) {
-        err(22, at, `guard 的上界 ${guard.max} 大于参数声明域的上界 ${param.max}（guard 只能缩小）`);
+        err(22, at, `the upper bound ${guard.max} of guard is above the upper bound ${param.max} of the parameter declaration (a guard can only narrow)`);
       }
     }
 
     // 规则 23 · readback.kind 属于封闭枚举
     const kind = action.readback?.kind;
     if (kind !== undefined && !READBACK_KINDS.has(kind)) {
-      err(23, `${path}.readback.kind`, `kind「${kind}」不是回读形式里的值（${[...READBACK_KINDS].join(' / ')}）`);
+      err(23, `${path}.readback.kind`, `kind "${kind}" is not a value of the readback forms (${[...READBACK_KINDS].join(' / ')})`);
     }
 
     // 规则 27 · 每个 action 必须有 readback；none 必须带非空 consequence
     if (action.readback === undefined) {
-      err(27, `${path}.readback`, '每个动作都必须声明 readback（没有可回读状态就显式写 kind: none）');
+      err(27, `${path}.readback`, 'every action must declare a readback (if there is no readable state, write kind: none explicitly)');
     } else if (kind === 'none') {
       const consequence = action.readback.consequence;
       if (typeof consequence !== 'string' || consequence.trim().length === 0) {
-        err(27, `${path}.readback.consequence`, 'kind: none 必须带一个非空的 consequence（用户批准的是「我知道它会做这件事」）');
+        err(27, `${path}.readback.consequence`, 'kind: none must carry a non-empty consequence (what the user approves is "I know it will do this")');
       } else {
         // **逐动作 warning**（ADR-D25 决策 6、契约 §4.4.1 第四条规矩）：
         // 「想偷懒跳过回读的包作者会立刻看到一串警告——**这个可见性就是主要防线**」。
         warn(
           27,
           `${path}.readback`,
-          '这个动作没有可观测状态（kind: none）——用户批准的是「我知道它会做这件事」',
+          'this action has no observable state (kind: none) — what the user approves is "I know it will do this"',
         );
       }
     }
@@ -376,7 +376,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     // 规则 15 · destructive 的回读形式：不得用 command_ok，也不得用 none
     if (action.danger === 'destructive' && action.readback !== undefined) {
       if (kind === 'command_ok' || kind === 'none') {
-        err(15, `${path}.readback.kind`, `destructive 的动作不能用 ${kind}（不可逆动作不能盲发）`);
+        err(15, `${path}.readback.kind`, `a destructive action must not use ${kind} (an irreversible action must not be fired blindly)`);
       }
     }
 
@@ -385,14 +385,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     if (readbackTag !== undefined) {
       const ok = providedTags.some((t) => matchTagPattern(t, readbackTag));
       if (!ok) {
-        err(12, `${path}.readback.tag`, `tag「${readbackTag}」不是本包提供的 tag（闭环断了）`);
+        err(12, `${path}.readback.tag`, `tag "${readbackTag}" is not a tag this pack provides (the closed loop is broken)`);
       }
     }
 
     // 规则 16 · 命中危险地板的命令必须声明为 destructive
     const floor = matchDangerFloor(action.command);
     if (floor.matched && action.danger !== 'destructive') {
-      err(16, `${path}.command`, `命令命中危险地板（${floor.pattern}，${floor.why}），必须声明为 destructive`);
+      err(16, `${path}.command`, `the command hits the danger floor (${floor.pattern}, ${floor.why}), so it must be declared as destructive`);
     }
   });
 
@@ -400,16 +400,16 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   for (const { reader, path } of readers) {
     const groups = pack.poll_groups.filter((g) => g.readers.includes(reader.id));
     if (groups.length === 0) {
-      err(17, path, `reader「${reader.id}」不属于任何 poll group（没组 = 没有往返 = 永远读不到）`);
+      err(17, path, `reader "${reader.id}" belongs to no poll group (no group means no round trip means it is never read)`);
     } else if (groups.length > 1) {
-      err(17, path, `reader「${reader.id}」属于 ${groups.length} 个 poll group（只能是恰好一个）`);
+      err(17, path, `reader "${reader.id}" belongs to ${groups.length} poll groups (it must belong to exactly one)`);
     }
   }
   for (const [gi, group] of pack.poll_groups.entries()) {
     for (const [ri, rid] of group.readers.entries()) {
       const known = readers.some((r) => r.reader.id === rid);
       if (!known) {
-        err(17, `poll_groups[${gi}].readers[${ri}]`, `组里写着 reader「${rid}」，但包里没有这个 reader`);
+        err(17, `poll_groups[${gi}].readers[${ri}]`, `the group lists reader "${rid}", but the pack has no such reader`);
       }
     }
   }
@@ -417,14 +417,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   // ── 规则 18 · poll group 的 interval_ms 不低于 200 ──
   pack.poll_groups.forEach((group, gi) => {
     if (group.interval_ms < 200) {
-      err(18, `poll_groups[${gi}].interval_ms`, `采样间隔 ${group.interval_ms}ms 太密（低于 200ms 会打爆板子）`);
+      err(18, `poll_groups[${gi}].interval_ms`, `the sampling interval ${group.interval_ms}ms is too tight (below 200ms it overwhelms the board)`);
     }
   });
 
   // ── 规则 19 · exec_regex / script 存在时打印警告 ──
   for (const { reader, path } of readers) {
     if (reader.kind === 'exec_regex' || reader.kind === 'script') {
-      warn(19, path, `kind「${reader.kind}」在板子上执行任意代码（它的执行事件进审计日志）`);
+      warn(19, path, `kind "${reader.kind}" runs arbitrary code on the board (its execution events go into the audit log)`);
     }
   }
 
@@ -449,8 +449,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       err(
         28,
         path,
-        `这个 reader 的取数命令命中了危险地板（${floor.why ?? '危险命令'}）——` +
-          '板型包直接生效，所以这里必须拦住',
+        `the fetch command of this reader hits the danger floor (${floor.why ?? 'dangerous command'}) — ` +
+          'a board pack takes effect directly, so this has to be blocked here',
       );
     }
   }
@@ -471,8 +471,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(
           29,
           `${path}.args.${key}`,
-          `这个值里有 shell 元字符「${hit}」——reader 的取数片段会被拼进 shell（` +
-            '一个元字符就是第二条命令）',
+          `this value contains the shell metacharacter "${hit}" — the fetch fragment of the reader is spliced into a shell command (` +
+            'one metacharacter is a second command)',
         );
       }
     }
@@ -494,8 +494,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       err(
         30,
         `${path}.args.command`,
-        `命令里有「${base}」——它是解释器 / 下载器 / 提权器，` +
-          '包装起来就绕过了危险地板（地板表匹配的是词，不是语义）',
+        `the command contains "${base}" — it is an interpreter / downloader / privilege escalator, ` +
+          'and wrapping it bypasses the danger floor (the floor table matches words, not semantics)',
       );
       break;
     }
@@ -508,7 +508,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   //   → **那是一个还没开的洞** ✓ → **不许用** ✓（**别留一个「将来会开」的洞** ✓）。
   for (const { reader, path } of readers) {
     if (reader.kind !== 'script') continue;
-    err(31, `${path}.kind`, 'kind「script」执行的是脚本正文（地板看不见它）——板型包里不许用');
+    err(31, `${path}.kind`, 'kind "script" runs the script body (the floor cannot see it) — it is not allowed in a board pack');
   }
 
   // ── 规则 24 · danger_floor_version 必须是已知版本 ──
@@ -516,21 +516,21 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     err(
       24,
       'danger_floor_version',
-      `地板表版本 ${pack.danger_floor_version} 不认识（当前只有 ${DANGER_FLOOR_VERSION}）`,
+      `danger floor version ${pack.danger_floor_version} is unknown (the current one is ${DANGER_FLOOR_VERSION})`,
     );
   }
 
   // ── 规则 25 / 26 · requires.capabilities 的封闭词表与已实现能力集 ──
   pack.requires.capabilities.forEach((cap, i) => {
     if (!isBoardCapability(cap)) {
-      err(25, `requires.capabilities[${i}]`, `能力「${cap}」不在板级词表里（shell / exec / stream / files）`);
+      err(25, `requires.capabilities[${i}]`, `capability "${cap}" is not in the board-level vocabulary (shell / exec / stream / files)`);
       return;
     }
     if (!isImplementedCapability(cap)) {
       err(
         26,
         `requires.capabilities[${i}]`,
-        `能力「${cap}」当前**给不出来**（Stream 契约还没写，声明了就是承诺一个不存在的交付）`,
+        `capability "${cap}" cannot be delivered **right now** (the Stream contract is not written yet, declaring it promises a delivery that does not exist)`,
       );
     }
   });

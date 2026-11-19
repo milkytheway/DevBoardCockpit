@@ -189,11 +189,11 @@ export class SerialConnection implements Connection {
       const busy = code === 'EBUSY' || /busy|denied/i.test(message);
       if (busy) {
         // RF-5: name the port that is busy instead of a vague "open failed"
-        throw makeError('PORT_BUSY', `串口 ${String(port)} 被占用`, {
+        throw makeError('PORT_BUSY', `serial port ${String(port)} is busy`, {
           detail: { port: String(port) },
         });
       }
-      throw makeError('CONN_OPEN_FAILED', `打不开串口 ${String(port)}`, {
+      throw makeError('CONN_OPEN_FAILED', `cannot open serial port ${String(port)}`, {
         detail: { port: String(port), cause: message },
       });
     }
@@ -229,7 +229,7 @@ export class SerialConnection implements Connection {
    */
   async exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
     if (!this.port) {
-      throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the serial port is not open', { detail: { id: this.id } });
     }
     if (this.busy) {
       // Concurrent round trips on the same connection = crosstalk. Better to
@@ -237,7 +237,7 @@ export class SerialConnection implements Connection {
       // **It is not a timeout, it is a "rejection"**: the two must not share
       // a code — the UI cannot tell "waited long and got nothing" from
       // "this line is busy".
-      throw makeError('CONN_BUSY', '这条连接上还有命令在跑', {
+      throw makeError('CONN_BUSY', 'a command is still running on this connection', {
         detail: { id: this.id, command },
       });
     }
@@ -301,10 +301,10 @@ export class SerialConnection implements Connection {
         ...(timedOut && !cancelled
           ? {
               hint:
-                `串口 ${String(portName)} 一次往返超时。` +
-                '**最常见的原因是回包被另一个程序吃掉了**' +
-                '（例如计划 1 验收留下的 serial-server.py 独占着这个口）——' +
-                `先确认 ${String(portName)} 没有被别的程序占用。`,
+                `one round trip on serial port ${String(portName)} timed out. ` +
+                '**the most common reason is that another program swallowed the reply**' +
+                '(for example the serial-server.py left by the Plan 1 acceptance run holds this port exclusively) — ' +
+                `first make sure ${String(portName)} is not held by another program.`,
             }
           : {}),
       };
@@ -315,29 +315,29 @@ export class SerialConnection implements Connection {
 
   /** Serial cannot carry files (Fact S7) */
   async list(_remotePath: string): Promise<FileEntry[]> {
-    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
+    throw makeError('FILE_TRANSFER_FAILED', 'serial cannot carry files');
   }
 
   /** Serial cannot carry files (Fact S7) */
   async pull(_remotePath: string, _localPath: string): Promise<void> {
-    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
+    throw makeError('FILE_TRANSFER_FAILED', 'serial cannot carry files');
   }
 
   /** Serial cannot carry files (Fact S7) */
   async push(_localPath: string, _remotePath: string): Promise<void> {
-    throw makeError('FILE_TRANSFER_FAILED', '串口不支持文件传输');
+    throw makeError('FILE_TRANSFER_FAILED', 'serial cannot carry files');
   }
 
   async openSession(_opts?: { cols?: number; rows?: number }): Promise<Session> {
     if (!this.port) {
-      throw makeError('CONN_CLOSED', '串口未打开', { detail: { id: this.id } });
+      throw makeError('CONN_CLOSED', 'the serial port is not open', { detail: { id: this.id } });
     }
     if (this.busy) {
       // There is already a round trip on this wire (Fact S1: the command
       // channel and the interactive terminal share one wire). Better to reject
       // than to append the command after the input the user has not finished
       // typing.
-      throw makeError('CONN_BUSY', '这条连接上已经有命令在跑', {
+      throw makeError('CONN_BUSY', 'a command is already running on this connection', {
         detail: { id: this.id },
       });
     }
