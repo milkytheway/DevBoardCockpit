@@ -128,7 +128,7 @@ export async function executeAction(
   const action = deps.actions().find((a) => a.id === actionId);
   // **① 存在性先查** ✓（契约 §2.4 ✓ —— **顺序有讲究** ✓）
   if (action === undefined) {
-    return { ok: false, reason: 'not_found', detail: `没有这个动作：${actionId}` };
+    return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };
   }
 
   // **③ 参数校验 + 编码** ✓（**dry-run 也要过这一步** ✓ —— 不然给的不是「将要执行的」✓）
@@ -182,7 +182,7 @@ function checkDevice(
   return {
     ok: false,
     reason: 'not_found',
-    detail: `没有这个设备：${deviceKey}（当前那块是 ${current || '（没有）'}）`,
+    detail: `No such device: ${deviceKey} (the current one is ${current || 'none'})`,
   };
 }
 

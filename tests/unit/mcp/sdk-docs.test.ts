@@ -55,7 +55,7 @@ describe('MCP · SDK 活文档', () => {
   it('**每个方法都有一句说明** ✓（**光有方法名不够** ✓ —— agent 不知道它什么时候用 ✓）', () => {
     const docs = sdkDocs('api');
     // **`tags.get` 的说明** ✓
-    expect(docs.content).toMatch(/tags\.get[\s\S]{0,200}?读/);
+    expect(docs.content).toMatch(/tags\.get[\s\S]{0,200}?Read/);
   });
 
   it('**`manifest` 主题给出封闭 schema 的字段表** ✓（**从代码取** ✓）', () => {
@@ -64,7 +64,7 @@ describe('MCP · SDK 活文档', () => {
     expect(docs.content).toContain('entry');
     expect(docs.content).toContain('apiVersion');
     // **未知字段会报错** ✓ → 文档里要说清** ✓
-    expect(docs.content).toContain('未知字段');
+    expect(docs.content).toContain('Unknown fields');
   });
 
   it('**`layout` 主题用契约的词** ✓（`cards` / `card_id` ✓ —— 不是实现的 `units` / `cardId` ✓）', () => {

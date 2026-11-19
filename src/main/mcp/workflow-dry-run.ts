@@ -75,7 +75,7 @@ export function dryRunWorkflow(
       return {
         ok: false,
         reason: 'invalid_params',
-        detail: `缺输入：${name}`,
+        detail: `Missing input: ${name}`,
       };
     }
   }

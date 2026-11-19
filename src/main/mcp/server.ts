@@ -127,7 +127,7 @@ export class McpServer {
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     const impl = this.tools.get(name);
     if (impl === undefined) {
-      throw new RpcError(JSON_RPC_METHOD_NOT_FOUND, `没有这个工具：${name}`);
+      throw new RpcError(JSON_RPC_METHOD_NOT_FOUND, `No such tool: ${name}`);
     }
     return impl(args);
   }
@@ -144,7 +144,7 @@ export class McpServer {
       case 'tools/call': {
         const params = (message.params ?? {}) as { name?: unknown; arguments?: unknown };
         if (typeof params.name !== 'string') {
-          throw new RpcError(JSON_RPC_INVALID_PARAMS, 'tools/call 缺 name');
+          throw new RpcError(JSON_RPC_INVALID_PARAMS, 'tools/call is missing name');
         }
         const args = (params.arguments ?? {}) as Record<string, unknown>;
         try {
@@ -170,7 +170,7 @@ export class McpServer {
       case 'ping':
         return {};
       default:
-        throw new RpcError(JSON_RPC_METHOD_NOT_FOUND, `没有这个方法：${message.method}`);
+        throw new RpcError(JSON_RPC_METHOD_NOT_FOUND, `No such method: ${message.method}`);
     }
   }
 
@@ -238,23 +238,23 @@ function failure(reason: McpReason, detail?: string): McpFailure {
 export const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'list_workflows',
-    title: '列出可跑的流程',
+    title: 'List the runnable workflows',
     description:
-      '列出**注册表里有的**流程（只有 id / 名称 / 输入声明 —— 不给拓扑：哪个角色连哪台机器是未授权方不该看的）。',
+      'List the workflows **in the registry** (only id / name / input declarations — no topology: which role connects to which machine is not for unauthorised parties to see).',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'run_workflow',
-    title: '跑一条流程',
-    description: '跑一条流程，**立刻返回** run_id；进度用 workflow_status 轮询。',
+    title: 'Run a workflow',
+    description: 'Run a workflow, **returning** the run_id **immediately**; poll workflow_status for progress.',
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: '流程 id（先跑 list_workflows 看有哪些）' },
-        inputs: { type: 'object', description: '输入值（按流程的输入声明给）' },
+        id: { type: 'string', description: 'Workflow id (run list_workflows first to see the available ones)' },
+        inputs: { type: 'object', description: 'Input values (given according to the input declarations of the workflow)' },
         dry_run: {
           type: 'boolean',
-          description: '**只预览**将要跑什么 ✓（**不执行** ✓ · **不写审计** ✓ · **没有 run_id** ✓）',
+          description: '**Preview only** what will run ✓ (**no execution** ✓ · **no audit written** ✓ · **no run_id** ✓)',
         },
       },
       required: ['id'],
@@ -262,50 +262,50 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'workflow_status',
-    title: '看一次运行的状态',
-    description: '看一次运行的**状态与阶段时间线**（缩减投影：不给路径、参数值、角色）。',
+    title: 'Inspect the status of a run',
+    description: 'Inspect the **status and stage timeline** of a run (a reduced projection: no paths, parameter values, or roles).',
     inputSchema: {
       type: 'object',
-      properties: { run_id: { type: 'string', description: 'run_workflow 给的运行 id' } },
+      properties: { run_id: { type: 'string', description: 'The run id returned by run_workflow' } },
       required: ['run_id'],
     },
   },
   {
     name: 'install_card',
-    title: '装一张卡',
+    title: 'Install a card',
     description:
-      '把一个卡片目录装到卡片根（**复制 + 热重载** ✓）。' +
-      '**要写的动作板型包里没有 → 不装** ✓（**板型包说了算** ✓）。' +
-      '**装卡不再要「同意」** ✓ —— **卡片的 manifest 就是它的权限** ✓（ADR-D46 ✓）。',
+      'Install a card directory into the card root (**copy + hot reload** ✓).' +
+      '**Actions to write that the board pack does not declare → not installed** ✓ (**the board pack decides** ✓).' +
+      '**Installing a card no longer requires "approval"** ✓ — **the card manifest is its permission** ✓ (ADR-D46 ✓).',
     inputSchema: {
       type: 'object',
-      properties: { path: { type: 'string', description: '卡片目录的绝对路径' } },
+      properties: { path: { type: 'string', description: 'Absolute path of the card directory' } },
       required: ['path'],
     },
   },
   {
     name: 'uninstall_card',
-    title: '卸一张卡',
-    description: '删掉一张用户卡（**没有授权账要清** ✓ —— 2026-11-16 起没有那一层了 ✓）。',
+    title: 'Uninstall a card',
+    description: 'Delete a user card (**no grant ledger to clear** ✓ — that layer was removed on 2026-11-16 ✓).',
     inputSchema: {
       type: 'object',
-      properties: { card_id: { type: 'string', description: '卡片 id' } },
+      properties: { card_id: { type: 'string', description: 'Card id' } },
       required: ['card_id'],
     },
   },
   {
     name: 'promote_card',
-    title: '把一张卡提为全屏',
+    title: 'Promote a card to fullscreen',
     description:
-      '把一张卡提为全屏（**它改的是布局** ✓ —— 全屏是布局的一个状态 ✓）。' +
-      '**宿主记「谁要全屏」✓，铺几行由渲染层按视口算** ✓（行高只有那边知道 ✓）。',
+      'Promote a card to fullscreen (**it changes the layout** ✓ — fullscreen is one state of the layout ✓).' +
+      '**The host records "who wants fullscreen" ✓; how many rows it spans is computed by the renderer from the viewport** ✓ (only the renderer knows the row height ✓).',
     inputSchema: {
       type: 'object',
       properties: {
-        card_id: { type: 'string', description: '卡片 id' },
+        card_id: { type: 'string', description: 'Card id' },
         connection_id: {
           type: 'string',
-          description: '哪条连接（**缺省 = 该卡唯一的实例** ✓ · 多于一个时报错 ✓）',
+          description: 'Which connection (**omitted = the only instance of that card** ✓ · more than one is an error ✓)',
         },
       },
       required: ['card_id'],
@@ -313,17 +313,17 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'get_card_sdk_docs',
-    title: '拿写卡片的语法参考',
+    title: 'Get the card authoring reference',
     description:
-      '写卡片的**语法参考**：manifest 格式 / 本 build 实际有的 API / 示例卡片 / 布局。' +
-      '**从活代码生成** ✓ —— 不会漂 ✓。省略 topic 则返回全部。',
+      'The **syntax reference** for authoring cards: manifest format / the APIs this build actually has / example cards / layout.' +
+      '**Generated from the live code** ✓ — it cannot drift ✓. Omit topic to get all of it.',
     inputSchema: {
       type: 'object',
       properties: {
         topic: {
           type: 'string',
           enum: ['manifest', 'api', 'examples', 'layout'],
-          description: '要哪一块（**省略就是全部** ✓）',
+          description: 'Which section (**omitting it means all of them** ✓)',
         },
       },
     },
@@ -339,108 +339,108 @@ export const TOOL_DEFS: McpToolDef[] = [
 export const READ_TOOL_DEFS: McpToolDef[] = [
   {
     name: 'list_connections',
-    title: '列出连着的配置',
+    title: 'List the connected profiles',
     description:
-      '列出连接配置（profile）：id / 标签 / 传输 / 绑的板型包 / **现在有活连接吗** / 连接级能力位。',
+      'List the connection profiles: id / label / transport / bound board pack / **is there a live connection now** / connection-level capabilities.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'list_data_sources',
-    title: '列出数据源',
+    title: 'List the data sources',
     description:
-      '列出当前板型包的数据源（**reader 粒度**）：每个 reader 提供哪些 tag、属于哪个轮询组、周期多长、现在什么状态。',
+      'List the data sources of the current board pack (**reader granularity**): which tags each reader provides, which poll group it belongs to, its period, and its current state.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'list_capabilities',
-    title: '工作台自己有什么',
-    description: '列出可用的传输与工作台自己的能力位（**cards** / **mcp** / **layout_share** / **record**）。',
+    title: 'What the workbench itself offers',
+    description: 'List the available transports and the capability bits of the workbench itself (**cards** / **mcp** / **layout_share** / **record**).',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'list_tags',
-    title: '列出当前可读的量',
+    title: 'List the currently readable tags',
     description:
-      '列出**当前实际可读**的 tag：名字 / 类型 / 单位 / 取值域 / 现在的值与状态 / 哪个 reader 提供的。**写卡时第一个该调它**。',
+      'List the tags that are **actually readable right now**: name / type / unit / range / current value and status / which reader provides it. **This is the first tool to call when writing a card**.',
     inputSchema: {
       type: 'object',
       properties: {
-        board: { type: 'string', description: '只看某块板（**省略就是当前那块**）' },
+        board: { type: 'string', description: 'Restrict to one board (**omitting it means the current board**)' },
       },
     },
   },
   {
     name: 'describe_tag',
-    title: '看一个量的语义',
+    title: 'Inspect the semantics of a tag',
     description:
-      '看一个 tag 的**语义原文**（防误用）、来源 reader 与它的脱敏参数、最近的样本窗口。**命令不会给**。',
+      'Inspect the **verbatim semantics** of a tag (to prevent misuse), the reader it comes from together with the redacted parameters of that reader, and the most recent sample window. **The command does not provide this**.',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string', description: 'tag 名' } },
+      properties: { name: { type: 'string', description: 'Tag name' } },
       required: ['name'],
     },
   },
   {
     name: 'sample_tag',
-    title: '取最近的样本',
+    title: 'Fetch the most recent samples',
     description:
-      '**先定向采一次**再取最近 n 个样本（值 / 单位 / 状态 / 时刻）——用来判断「这个量稳不稳、刷新周期多长」。',
+      '**Take one targeted sample first**, then fetch the n most recent samples (value / unit / status / timestamp) — used to judge "is this reading stable, and how long is its refresh period".',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'tag 名' },
-        n: { type: 'number', description: '要几个样本（**最近 n 个**，不是 n 秒）' },
+        name: { type: 'string', description: 'Tag name' },
+        n: { type: 'number', description: 'How many samples (**the n most recent**, not n seconds)' },
       },
       required: ['name'],
     },
   },
   {
     name: 'list_cards',
-    title: '列出装着的卡片',
+    title: 'List the installed cards',
     description:
-      '列出装着的卡片：id / manifest id / 版本 / 路径 / 装的状态 / **在当前板上是不是残的**（缺哪些 tag、哪些读不出来）。',
+      'List the installed cards: id / manifest id / version / path / installation status / **whether it is degraded on the current board** (which tags are missing and which cannot be read).',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'validate_card',
-    title: '校验一张卡',
+    title: 'Validate a card',
     description:
-      '静态校验一个卡片目录（**不安装**）：错误与警告清单，以及它实际会绑到哪些 tag 与动作、哪些会缺失。',
+      'Statically validate a card directory (**without installing**): the list of errors and warnings, plus which tags and actions it would actually bind to and which of them are missing.',
     inputSchema: {
       type: 'object',
-      properties: { path: { type: 'string', description: '卡片目录的绝对路径' } },
+      properties: { path: { type: 'string', description: 'Absolute path of the card directory' } },
       required: ['path'],
     },
   },
   {
     name: 'get_card_runtime_log',
-    title: '看卡片的运行时日志',
-    description: '看一张卡运行时的错误（level / 时刻 / 消息 / 来源）。**agent 的自测眼睛**。',
+    title: 'Inspect the card runtime log',
+    description: 'Inspect the runtime errors of a card (level / timestamp / message / source). **The eyes of the agent for self-testing**.',
     inputSchema: {
       type: 'object',
       properties: {
-        card_id: { type: 'string', description: '卡片 id' },
-        since: { type: 'number', description: '只看这个时刻之后的（毫秒 UTC）' },
+        card_id: { type: 'string', description: 'Card id' },
+        since: { type: 'number', description: 'Only entries after this timestamp (milliseconds, UTC)' },
       },
       required: ['card_id'],
     },
   },
   {
     name: 'get_layout',
-    title: '读当前布局',
-    description: '读主区的布局（每格：卡片 id / 连接 id / 坐标与尺寸）。',
+    title: 'Read the current layout',
+    description: 'Read the layout of the main area (per cell: card id / connection id / position and size).',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'set_layout',
-    title: '保存布局',
-    description: '**整份替换**主区的布局。越界的格子会被丢掉并报在 `dropped` 里。',
+    title: 'Save the layout',
+    description: '**Replace** the whole layout of the main area. Cells that fall outside the grid are dropped and reported in `dropped`.',
     inputSchema: {
       type: 'object',
       properties: {
         layout: {
           type: 'object',
-          description: '布局（`{ cards: [{ card_id, connection_id, x, y, w, h }] }`）',
+          description: 'Layout (`{ cards: [{ card_id, connection_id, x, y, w, h }] }`)',
         },
       },
       required: ['layout'],
@@ -448,22 +448,22 @@ export const READ_TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'execute_action',
-    title: '执行一个动作',
+    title: 'Execute an action',
     description:
-      '执行板型包里声明的一个动作。**授权集里有它 → 直接执行** ✓（**destructive 也是直接执行** ✓ —— ' +
-      '**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）。' +
-      '`dry_run` 只返回**将要执行的命令** ✓（不执行 ✓）。',
+      'Execute an action declared by the board pack. **If it is in the grant set → execute it directly** ✓ (**destructive is executed directly too** ✓ — ' +
+      '**the danger level is only information** ✓ — **the gate is the unified permission area in the settings** ✓).' +
+      '`dry_run` only returns **the command that would be executed** ✓ (it does not execute ✓).',
     inputSchema: {
       type: 'object',
       properties: {
-        action_id: { type: 'string', description: '板型包里声明的动作 id' },
-        params: { type: 'object', description: '参数值（按动作声明给）' },
-        dry_run: { type: 'boolean', description: '只预览将要执行的命令，**不执行**' },
+        action_id: { type: 'string', description: 'The id of an action declared by the board pack' },
+        params: { type: 'object', description: 'Parameter values (given according to the action declaration)' },
+        dry_run: { type: 'boolean', description: 'Only preview the command that would be executed, **do not execute**' },
         device_key: {
           type: 'string',
           description:
-            '**要动的是哪块板** ✓（`list_connections` 的 `device_key` ✓ —— **同一块板的多条连接给同一个** ✓）。' +
-            '**不给 = 当前运行时那块** ✓；**给了但对不上 → `not_found`** ✓（**不会静默地打当前那块** ✓）。',
+            '**Which board to act on** ✓ (the `device_key` of `list_connections` ✓ — **several connections to the same board give the same one** ✓).' +
+            '**Omitted = the board of the current runtime** ✓; **given but not matching → `not_found`** ✓ (**it never silently acts on the current board** ✓).',
         },
       },
       required: ['action_id'],
@@ -492,12 +492,12 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const id = args['id'];
         if (typeof id !== 'string' || id.length === 0) {
-          return withVersion(failure('invalid_params', 'run_workflow 缺 id'));
+          return withVersion(failure('invalid_params', 'run_workflow is missing id'));
         }
         const inputs = (args['inputs'] ?? {}) as Record<string, unknown>;
         const dryRun = args['dry_run'];
         if (dryRun !== undefined && typeof dryRun !== 'boolean') {
-          return withVersion(failure('invalid_params', 'dry_run 要么不给，要么给布尔'));
+          return withVersion(failure('invalid_params', 'dry_run must be omitted or a boolean'));
         }
         // **dry_run：预览** ✓（**不跑任何一步** ✓ · **不写审计** ✓ · **没有 run_id** ✓）
         if (dryRun === true) {
@@ -532,13 +532,13 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const runId = args['run_id'];
         if (typeof runId !== 'string' || runId.length === 0) {
-          return withVersion(failure('invalid_params', 'workflow_status 缺 run_id'));
+          return withVersion(failure('invalid_params', 'workflow_status is missing run_id'));
         }
         try {
           // **agent 侧投影** ✓（`04` §2.4 ✓ —— 含 audit_id ✓，不含明细 ✓）
           return withVersion({ ok: true, ...projectRunStatusForAgent(workflows.status(runId)) });
         } catch {
-          return withVersion(failure('not_found', '没有这次运行'));
+          return withVersion(failure('not_found', 'No such run'));
         }
       },
     ],
@@ -547,10 +547,10 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const path = args['path'];
         if (typeof path !== 'string' || path.length === 0) {
-          return withVersion(failure('invalid_params', 'install_card 缺 path'));
+          return withVersion(failure('invalid_params', 'install_card is missing path'));
         }
         if (deps.host?.cardTools === undefined) {
-          return withVersion(failure('failed', '宿主没接上装卡能力'));
+          return withVersion(failure('failed', 'The host has no card installation capability wired up'));
         }
         return withVersion(installCard(deps.host.cardTools, path));
       },
@@ -560,10 +560,10 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const cardId = args['card_id'];
         if (typeof cardId !== 'string' || cardId.length === 0) {
-          return withVersion(failure('invalid_params', 'uninstall_card 缺 card_id'));
+          return withVersion(failure('invalid_params', 'uninstall_card is missing card_id'));
         }
         if (deps.host?.cardTools === undefined) {
-          return withVersion(failure('failed', '宿主没接上装卡能力'));
+          return withVersion(failure('failed', 'The host has no card installation capability wired up'));
         }
         return withVersion(uninstallCard(deps.host.cardTools, cardId));
       },
@@ -573,14 +573,14 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const cardId = args['card_id'];
         if (typeof cardId !== 'string' || cardId.length === 0) {
-          return withVersion(failure('invalid_params', 'promote_card 缺 card_id'));
+          return withVersion(failure('invalid_params', 'promote_card is missing card_id'));
         }
         const conn = args['connection_id'];
         if (conn !== undefined && typeof conn !== 'string') {
-          return withVersion(failure('invalid_params', 'connection_id 要么不给，要么给字符串'));
+          return withVersion(failure('invalid_params', 'connection_id must be omitted or a string'));
         }
         if (deps.host === undefined) {
-          return withVersion(failure('failed', '宿主没接上布局能力'));
+          return withVersion(failure('failed', 'The host has no layout capability wired up'));
         }
         const result = promoteCard(deps.host.layout(), cardId, conn as string | undefined);
         if (!result.ok || result.layout === undefined) {
@@ -601,7 +601,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       (args) => {
         const topic = args['topic'];
         if (topic !== undefined && typeof topic !== 'string') {
-          return withVersion(failure('invalid_params', 'topic 要么不给，要么给字符串'));
+          return withVersion(failure('invalid_params', 'topic must be omitted or a string'));
         }
         return withVersion(sdkDocs(topic));
       },
@@ -652,11 +652,11 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       (args) => {
         const name = args['name'];
         if (typeof name !== 'string' || name.length === 0) {
-          return withVersion(failure('invalid_params', 'describe_tag 缺 name'));
+          return withVersion(failure('invalid_params', 'describe_tag is missing name'));
         }
         const described = describeTag(host, name);
         if (described === null) {
-          return withVersion(failure('not_found', `没有这个 tag：${name}`));
+          return withVersion(failure('not_found', `No such tag: ${name}`));
         }
         return withVersion(described);
       },
@@ -666,11 +666,11 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       async (args) => {
         const name = args['name'];
         if (typeof name !== 'string' || name.length === 0) {
-          return withVersion(failure('invalid_params', 'sample_tag 缺 name'));
+          return withVersion(failure('invalid_params', 'sample_tag is missing name'));
         }
         const n = args['n'];
         if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
-          return withVersion(failure('invalid_params', 'sample_tag 的 n 要是正整数'));
+          return withVersion(failure('invalid_params', 'sample_tag n must be a positive integer'));
         }
         // **先定向采一次** ✓（契约 §2.1 ✓ —— 不采的话拿到的是**冻结的旧样本** ✓）
         await host.refreshTag(name);
@@ -686,7 +686,7 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       (args) => {
         const path = args['path'];
         if (typeof path !== 'string' || path.length === 0) {
-          return withVersion(failure('invalid_params', 'validate_card 缺 path'));
+          return withVersion(failure('invalid_params', 'validate_card is missing path'));
         }
         return withVersion(host.validateCard(path));
       },
@@ -696,11 +696,11 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       (args) => {
         const cardId = args['card_id'];
         if (typeof cardId !== 'string' || cardId.length === 0) {
-          return withVersion(failure('invalid_params', 'get_card_runtime_log 缺 card_id'));
+          return withVersion(failure('invalid_params', 'get_card_runtime_log is missing card_id'));
         }
         const since = args['since'];
         if (since !== undefined && (typeof since !== 'number' || !Number.isFinite(since))) {
-          return withVersion(failure('invalid_params', 'since 要是毫秒时间戳'));
+          return withVersion(failure('invalid_params', 'since must be a millisecond timestamp'));
         }
         return withVersionEach(getCardRuntimeLog(host, cardId, since as number | undefined));
       },
@@ -714,7 +714,7 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       (args) => {
         const layout = args['layout'];
         if (layout === null || typeof layout !== 'object') {
-          return withVersion(failure('invalid_params', 'set_layout 缺 layout'));
+          return withVersion(failure('invalid_params', 'set_layout is missing layout'));
         }
         const normalized = normalizeLayoutCards((layout as Record<string, unknown>)['cards']);
         host.saveLayout({
@@ -738,16 +738,16 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
       async (args) => {
         const actionId = args['action_id'];
         if (typeof actionId !== 'string' || actionId.length === 0) {
-          return withVersion(failure('invalid_params', 'execute_action 缺 action_id'));
+          return withVersion(failure('invalid_params', 'execute_action is missing action_id'));
         }
         const params = (args['params'] ?? {}) as Record<string, unknown>;
         const dryRun = args['dry_run'];
         if (dryRun !== undefined && typeof dryRun !== 'boolean') {
-          return withVersion(failure('invalid_params', 'dry_run 要么不给，要么给布尔'));
+          return withVersion(failure('invalid_params', 'dry_run must be omitted or a boolean'));
         }
         const deviceKey = args['device_key'];
         if (deviceKey !== undefined && (typeof deviceKey !== 'string' || deviceKey.length === 0)) {
-          return withVersion(failure('invalid_params', 'device_key 要么不给，要么给非空字符串'));
+          return withVersion(failure('invalid_params', 'device_key must be omitted or a non-empty string'));
         }
         const result = await executeAction(
           host.actions,

@@ -110,7 +110,7 @@ describe('MCP · HTTP 传输', () => {
     // ⚠️ **0.0.0.0 = 所有网卡** ✓ —— 那是把服务暴露到局域网 ✓
     await expect(
       startMcpHttp({ mcp, token, host: '0.0.0.0', port: 0 }),
-    ).rejects.toThrow(/只能绑本机/);
+    ).rejects.toThrow(/only bind to localhost/);
   });
 
   it('**JSON-RPC 请求 → 200 + JSON** ✓', async () => {

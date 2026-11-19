@@ -90,10 +90,10 @@ function builtinCardSummaries(cardsDir: string | undefined): string[] {
         ? perms.read.filter((t): t is string => typeof t === 'string')
         : [];
       out.push(
-        `## ${id}（${label}）\n` +
-          `- 目录名：\`${name}\`\n` +
-          `- \`permissions.read\`：${tags.length > 0 ? tags.map((t) => `\`${t}\``).join(' / ') : '（无）'}\n` +
-          '- 用它当模板：复制目录 → 改 manifest → 改入口文件。',
+        `## ${id} (${label})\n` +
+          `- Directory name: \`${name}\`\n` +
+          `- \`permissions.read\`: ${tags.length > 0 ? tags.map((t) => `\`${t}\``).join(' / ') : '(none)'}\n` +
+          '- Use it as a template: copy the directory → edit the manifest → edit the entry file.',
       );
     } catch {
       // **读不出来就跳过** ✓（不猜 ✓）—— 坏卡不该让整份文档失败 ✓
@@ -146,59 +146,59 @@ function sectionOf(topic: SdkTopic, examples: string[]): string {
 /** `manifest` 主题 —— **形状从代码取** ✓，语义是手写的 ✓（代码里没有那个 ✓） */
 function manifestSection(): string {
   return [
-    '# 卡片 manifest 格式',
+    '# Card manifest format',
     '',
-    'manifest.json 在卡片目录的根下。它的**每一层都是封闭的** ——',
-    '**未知字段会报错**（不是静默忽略）：被静默忽略的字段就是**拼错的字段**',
-    '（比如写成 `permisons`，卡片会**没有读权限**，而作者永远查不出原因）。',
+    'manifest.json sits at the root of the card directory. **Every level of it is closed** —',
+    '**Unknown fields raise an error** (they are not silently ignored): a silently ignored field is a **misspelled field**',
+    '(for example, writing `permisons` leaves the card with **no read permission**, and the author can never find out why).',
     '',
-    `顶层字段（可写）：${TOP_ALLOWED.join(' / ')}`,
-    `顶层必填：${TOP_REQUIRED.join(' / ')}`,
+    `Top-level fields (writable): ${TOP_ALLOWED.join(' / ')}`,
+    `Top-level required: ${TOP_REQUIRED.join(' / ')}`,
     '',
-    '## 字段的意思',
+    '## What the fields mean',
     '',
-    '- `apiVersion`：契约版本，v1 写 `devboard/v1`。',
-    '- `kind`：固定写 `Card`。',
-    '- `id`：卡片 id。**必须等于卡片目录名**。',
-    '- `name` / `version` / `description`：给人看的。',
-    '- `entry`：入口文件（相对卡片目录）。',
-    '- `requires`：**愿望**（想读什么、想写什么）——必须被 `permissions` 覆盖。',
-    '- `permissions`：**授权申请**（能读什么、能写什么）。',
-    '- `actions`：卡片自报的视图内动作（**不碰板子**的那些）。',
-    '- `layout`：默认格子尺寸（12 列网格）。',
+    '- `apiVersion`: the contract version; v1 writes `devboard/v1`.',
+    '- `kind`: always `Card`.',
+    '- `id`: the card id. **It must equal the card directory name**.',
+    '- `name` / `version` / `description`: for humans.',
+    '- `entry`: the entry file (relative to the card directory).',
+    '- `requires`: the **wishes** (what you want to read, what you want to write) — it must be covered by `permissions`.',
+    '- `permissions`: the **permission request** (what you may read, what you may write).',
+    '- `actions`: the view-local actions the card declares for itself (the ones that **do not touch the board**).',
+    '- `layout`: the default cell size (12-column grid).',
     '',
-    `## requires 的字段（可写）：${REQUIRES_ALLOWED.join(' / ')}`,
-    `## permissions 的字段（可写）：${PERMISSIONS_ALLOWED.join(' / ')}`,
-    `### permissions 必填：${PERMISSIONS_REQUIRED.join(' / ')}`,
+    `## fields of requires (writable): ${REQUIRES_ALLOWED.join(' / ')}`,
+    `## fields of permissions (writable): ${PERMISSIONS_ALLOWED.join(' / ')}`,
+    `### permissions required: ${PERMISSIONS_REQUIRED.join(' / ')}`,
     '',
-    '`permissions.read` 里每个 tag 名要么匹配**核心词表**，要么落在 `custom.*` 下。',
-    '`permissions.write` 里每个 id 必须是**板型包里声明的动作 id**，且**不许通配符**。',
+    'Every tag name in `permissions.read` must either match the **core vocabulary** or fall under `custom.*`.',
+    'Every id in `permissions.write` must be an **action id declared by the board pack**, and **wildcards are not allowed**.',
     '',
-    `## actions[] 的字段（可写）：${ACTION_ALLOWED.join(' / ')}`,
-    `### actions[] 必填：${ACTION_REQUIRED.join(' / ')}`,
-    `## actions[].params.<name> 的字段（可写）：${PARAM_ALLOWED.join(' / ')}`,
-    `### params.<name>.type 的取值：${PARAM_TYPES.join(' / ')}`,
+    `## fields of actions[] (writable): ${ACTION_ALLOWED.join(' / ')}`,
+    `### actions[] required: ${ACTION_REQUIRED.join(' / ')}`,
+    `## fields of actions[].params.<name> (writable): ${PARAM_ALLOWED.join(' / ')}`,
+    `### values of params.<name>.type: ${PARAM_TYPES.join(' / ')}`,
     '',
-    '**`string` 参数必须声明 `maxLength`** —— 没有上限的字符串参数就是注入面。',
+    '**A `string` parameter must declare `maxLength`** — a string parameter without an upper bound is an injection surface.',
   ].join('\n');
 }
 
 /** `api` 主题 —— **从注册表生成** ✓ */
 function apiSection(): string {
   const lines = [
-    '# 卡片可用的 API',
+    '# APIs available to cards',
     '',
-    '这些是**本 build 实际有的**方法（不是契约全集）。',
-    '卡片里的用法是 `cockpit.<name>(...)`，返回 `{ ok: true, ... }` 或 `{ ok: false, reason }`。',
+    'These are the methods **this build actually has** (not the full contract set).',
+    'Inside a card, call them as `cockpit.<name>(...)`; they return `{ ok: true, ... }` or `{ ok: false, reason }`.',
     '',
   ];
   for (const api of cardApis()) {
-    const params = api.params.length > 0 ? api.params.join(', ') : '（无）';
+    const params = api.params.length > 0 ? api.params.join(', ') : '(none)';
     lines.push(`## cockpit.${api.name}`);
     lines.push(api.summary);
-    lines.push(`- 参数：${params}`);
-    lines.push(`- 权限维度：${api.permission}`);
-    if (api.subscribable === true) lines.push('- **可订阅**（长连接，订阅要走权限检查）');
+    lines.push(`- Parameters: ${params}`);
+    lines.push(`- Permission dimension: ${api.permission}`);
+    if (api.subscribable === true) lines.push('- **Subscribable** (a long-lived connection; subscribing goes through a permission check)');
     lines.push('');
   }
   return lines.join('\n');
@@ -207,14 +207,14 @@ function apiSection(): string {
 /** `examples` 主题 —— **真卡** ✓ */
 function examplesSection(examples: string[]): string {
   const lines = [
-    '# 示例卡片',
+    '# Example cards',
     '',
-    '一张卡 = 一个目录：`manifest.json` + `entry` 指向的入口文件（HTML/JS/CSS）。',
-    '卡片里的 API 由宿主注入（`window.cockpit`）——**不要自己 fetch**（CSP 断了网络）。',
+    'One card = one directory: `manifest.json` + the entry file that `entry` points to (HTML/JS/CSS).',
+    'The APIs inside a card are injected by the host (`window.cockpit`) — **do not fetch by yourself** (the CSP blocks the network).',
     '',
   ];
   if (examples.length === 0) {
-    lines.push('（本 build 没有内置示例卡片。）');
+    lines.push('(This build has no built-in example cards.)');
     return lines.join('\n');
   }
   for (const example of examples) {
@@ -227,26 +227,26 @@ function examplesSection(examples: string[]): string {
 /** `layout` 主题 —— **用契约的词** ✓（`cards` / `card_id` ✓ —— 不是实现的内部词 ✓） */
 function layoutSection(): string {
   return [
-    '# 主区布局',
+    '# Main area layout',
     '',
-    '主区是一张**卡片网格**（12 列）。每格记一张卡在哪。',
+    'The main area is a **grid of cards** (12 columns). Each cell records where a card sits.',
     '',
-    '## 形状',
+    '## Shape',
     '',
     '```',
     '{ cards: [{ card_id, connection_id, x, y, w, h }] }',
     '```',
     '',
-    '- `card_id`：卡片 id（与 `list_cards` 的 `id` 同名同义）。',
-    '- `connection_id`：这一格绑的是哪条连接（`null` = 没有连接上下文）。',
-    '- `x` / `y`：格子坐标（左上角）。',
-    '- `w` / `h`：格子尺寸（列 / 行），`w` 在 `1..12`。',
+    '- `card_id`: the card id (the same name and meaning as the `id` of `list_cards`).',
+    '- `connection_id`: which connection this cell is bound to (`null` = no connection context).',
+    '- `x` / `y`: the cell coordinates (top-left corner).',
+    '- `w` / `h`: the cell size (columns / rows), `w` is in `1..12`.',
     '',
-    '## 两个要点',
+    '## Two points to note',
     '',
-    '- **布局的键是 `(card_id, connection_id)`** —— 同一张卡在两条连接上各有一个格子。',
-    '- **`w` / `h` 是卡片的**心愿** ✓ —— 实际摆多大由布局决定 ✓。',
+    '- **The layout key is `(card_id, connection_id)`** — the same card has one cell per connection.',
+    '- **`w` / `h` are the **wishes** of the card ✓ — the actual size is decided by the layout ✓.',
     '',
-    `卡片的默认尺寸在 manifest 的 \`layout\` 里（可写字段：${LAYOUT_ALLOWED.join(' / ')}）。`,
+    `The default size of the card lives in the \`layout\` of the manifest (writable fields: ${LAYOUT_ALLOWED.join(' / ')}).`,
   ].join('\n');
 }

@@ -43,14 +43,14 @@ export function promoteCard(
   // ── 找到那一格 ──
   const candidates = state.units.filter((u) => u.cardId === cardId);
   if (candidates.length === 0) {
-    return { ok: false, reason: 'not_found', detail: `主区里没有这张卡：${cardId}` };
+    return { ok: false, reason: 'not_found', detail: `This card is not in the main area: ${cardId}` };
   }
 
   let target: LayoutUnit;
   if (connectionId !== undefined) {
     const found = candidates.find((u) => u.connectionId === connectionId);
     if (found === undefined) {
-      return { ok: false, reason: 'not_found', detail: `这张卡不在那条连接上：${connectionId}` };
+      return { ok: false, reason: 'not_found', detail: `This card is not on that connection: ${connectionId}` };
     }
     target = found;
   } else {
@@ -59,7 +59,7 @@ export function promoteCard(
       return {
         ok: false,
         reason: 'invalid_params',
-        detail: `这张卡有 ${candidates.length} 个实例，说不清要提哪一个（给 connectionId）`,
+        detail: `This card has ${candidates.length} instances, so it is ambiguous which one to promote (give connectionId)`,
       };
     }
     target = candidates[0] as LayoutUnit;

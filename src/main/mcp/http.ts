@@ -61,7 +61,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
   for await (const chunk of req) {
     const buf = chunk as Buffer;
     size += buf.length;
-    if (size > MAX_BODY_BYTES) throw new Error('请求体太大');
+    if (size > MAX_BODY_BYTES) throw new Error('Request body too large');
     chunks.push(buf);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -75,7 +75,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
  */
 export async function startMcpHttp(opts: McpHttpOptions): Promise<McpHttpHandle> {
   if (opts.host !== '127.0.0.1' && opts.host !== 'localhost' && opts.host !== '::1') {
-    throw new Error(`MCP server 只能绑本机（契约 §7.1 ✓），收到：${opts.host}`);
+    throw new Error(`The MCP server may only bind to localhost (contract §7.1 ✓), got: ${opts.host}`);
   }
 
   const server = createServer((req, res) => {

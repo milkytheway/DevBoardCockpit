@@ -65,7 +65,7 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   const manifestPath = join(path, 'manifest.json');
   // **没有 manifest → 不装** ✓（**不是「装个空卡」** ✓）
   if (!existsSync(manifestPath)) {
-    return { ok: false, installed: false, reason: 'invalid', detail: '这个目录里没有 manifest.json' };
+    return { ok: false, installed: false, reason: 'invalid', detail: 'No manifest.json in this directory' };
   }
 
   // ── 解析 manifest ──
@@ -94,7 +94,7 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
       installed: false,
       card_id: cardId,
       reason: 'invalid',
-      detail: `板型包里没有这些动作：${missing.join('、')}`,
+      detail: `The board pack does not declare these actions: ${missing.join(', ')}`,
     };
   }
 
@@ -136,11 +136,11 @@ function doInstall(
 export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCardResult {
   // **内置卡 → 不许删** ✓
   if ((deps.builtinIds ?? []).includes(cardId)) {
-    return { ok: false, reason: 'denied', detail: '内置卡不能删' };
+    return { ok: false, reason: 'denied', detail: 'Builtin cards cannot be removed' };
   }
   const dir = deps.registry.dirOf(cardId);
   if (dir === null) {
-    return { ok: false, reason: 'not_found', detail: `没有这张卡：${cardId}` };
+    return { ok: false, reason: 'not_found', detail: `No such card: ${cardId}` };
   }
   try {
     rmSync(dir, { recursive: true, force: true });
