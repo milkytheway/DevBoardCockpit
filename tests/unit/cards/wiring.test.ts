@@ -55,6 +55,9 @@ describe('规则 5 · 「未验证」不该永远挂着', () => {
         permsFor: () => ({ read: [], write: ['led.set'] }),
         // **板型包绑上了 → 给真表** ✓
         availableActions: () => ['led.set'],
+        // **接线层要的那两样** ✓（存储目录 ✓ · 布局文件 ✓ —— 与 `wiringOf` 同款 ✓）
+        storageDir: fx.storageDir,
+        layoutFile: join(fx.base, 'layout.json'),
       });
       wiring.refresh();
       const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');
@@ -76,6 +79,9 @@ describe('规则 5 · 「未验证」不该永远挂着', () => {
         permsFor: () => ({ read: [], write: ['led.set'] }),
         // **离线 → null** ✓
         availableActions: () => null,
+        // **接线层要的那两样** ✓（与 `wiringOf` 同款 ✓）
+        storageDir: fx.storageDir,
+        layoutFile: join(fx.base, 'layout.json'),
       });
       wiring.refresh();
       const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');

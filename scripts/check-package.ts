@@ -47,6 +47,48 @@ export function compareCards(
   return { ok: expected.length > 0 && missing.length === 0 && extra.length === 0, missing, extra };
 }
 
+/**
+ * **包里的代码是不是磁盘上那份**（**纯函数** ✓ —— 好测 ✓）。
+ *
+ * ── 为什么要有这条（**它是被真机事件打出来的** ✓）──
+ *
+ * → **2026-11-19**：用户把安装包装上了 ✓ → 我去看 ✓
+ *   → **包里跑的是修复之前的代码** ⚠️
+ *   （安装包 **00:55** ✓ · 那个修复 **21:38** 才提交 ✓ → **包比修复早 21 小时** ⚠️）。
+ * → **后果**：装机版里「凡是能写板子的卡」**永久显示「降级」** ⚠️
+ *   → 而**开发期与沙箱里全绿** ✓ → **只有装上才看得见** ✓。
+ * → **`check:package` 原来验不出这个** ⚠️ → 它验「卡在不在」✓
+ *   → **验不出「代码是不是最新的」** ⚠️ → **所以它成了漏网的** ⚠️。
+ *
+ * ── 判据怎么定 ──
+ *
+ * → **逐字节相等** ✓ —— 不比时间戳 ✓（**时间戳会被 `cp` 改** ✓ → 不可靠 ✓）。
+ * → **任一边缺 → 不过** ✓ —— **不许「没有就跳过」** ✓（那样等于没这条判据 ✓）。
+ */
+export function compareBundle(
+  inAsar: Buffer | undefined,
+  onDisk: Buffer | undefined,
+): { ok: boolean; detail: string } {
+  if (inAsar === undefined) {
+    return { ok: false, detail: 'asar 里没有 out/main/index.js —— 包没带 main 产物' };
+  }
+  if (onDisk === undefined) {
+    return {
+      ok: false,
+      detail: '磁盘上没有 out/main/index.js —— 跑一次 `npm run build` 再验',
+    };
+  }
+  if (!inAsar.equals(onDisk)) {
+    return {
+      ok: false,
+      detail:
+        `**包是陈旧的** ✓（asar 里 ${inAsar.length} 字节 · 磁盘上 ${onDisk.length} 字节 ✓）` +
+        ' → **重打一次**（`npm run dist` ✓）→ **否则装上跑的是旧代码** ✓',
+    };
+  }
+  return { ok: true, detail: `一致（${inAsar.length} 字节）` };
+}
+
 /** asar 的头：文件清单（路径 → {size, offset, ...} ✓） */
 interface AsarHeader {
   files: Record<string, { size: number; offset: string; files?: Record<string, unknown> }>;
@@ -227,6 +269,24 @@ function main(): void {
 
   // ── 生产包里不许有假设备（**合成数据不许进生产包** ✓）───────────
   const mainBundle = readAsarFile(asarPath, header, 'out/main/index.js');
+  // ── **包里的代码是不是磁盘上那份**（2026-11-19 加 ✓）────────────
+  //
+  // → **它防的是「包比修复旧」** ✓（2026-11-19 真机事件 ✓）：
+  //   装上以后才发现**包里跑的是修复之前的代码** ⚠️ → 而**开发期全绿** ✓。
+  // → **`npm run dist` 先 `electron-vite build`** ✓ → **`out/` 是刚构建的** ✓
+  //   → **两处不等 = 包是陈旧的** ✓。
+  const diskBundlePath = join(root, 'out', 'main', 'index.js');
+  const diskBundle = existsSync(diskBundlePath)
+    ? readFileSync(diskBundlePath)
+    : undefined;
+  const bundleCmp = compareBundle(mainBundle, diskBundle);
+  checks.push({
+    what: '**包里的代码是最新的**（asar 的 out/main/index.js 与磁盘上的一致）',
+    ok: bundleCmp.ok,
+    detail: bundleCmp.ok
+      ? bundleCmp.detail
+      : `${bundleCmp.detail} —— **这一条抓的就是「装了旧代码」** ✓`,
+  });
   const fakeInPackage = mainBundle?.toString('utf8').includes(FAKE_DEVICE_MARKER) ?? false;
   checks.push({
     what: '生产包里没有假设备',
@@ -264,15 +324,17 @@ function main(): void {
   if (failed.length > 0) {
     console.error('✗ 打包产物自检不过：');
     for (const c of failed) console.error(`  - ${c.what}\n      ${c.detail}`);
-    console.error('\n  两种常见原因：');
+    console.error('\n  三种常见原因：');
     console.error('  ① `files` 少写了 `cards/**/*` 或 `profiles/**/*`');
     console.error('     —— 打包后 `app.getAppPath()` = asar 根，少了就是「装上后一张卡都没有」。');
     console.error('  ② 生产构建里混进了假设备（合成数据不许进生产包）');
+    console.error('  ③ **包比源码旧** ✓ —— 修完代码没重打 ✓ → **`npm run dist` 重打一次** ✓');
+    console.error('     （**2026-11-19 真机踩过** ✓：装上以后才发现包里跑的是修复前的代码 ⚠️）');
     process.exit(1);
   }
 
   console.log(
-    `✓ 打包产物自检通过（${cardManifests.length} 张内置卡 ✓ · 原生模块已解包 ✓ · 无假设备 ✓）`,
+    `✓ 打包产物自检通过（${cardManifests.length} 张内置卡 ✓ · 原生模块已解包 ✓ · 无假设备 ✓ · 包里的代码是最新的 ✓）`,
   );
 }
 

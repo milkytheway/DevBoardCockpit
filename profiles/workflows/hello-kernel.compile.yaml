@@ -15,7 +15,7 @@ inputs:
   build_dir:
     type: path
     required: false
-    default: /home/alientek/kernel-build
+    default: /home/alientek/build
     maxLength: 200
     description: 构建机上的工程根目录
   project:
