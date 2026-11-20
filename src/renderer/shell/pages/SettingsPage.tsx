@@ -11,19 +11,19 @@ import { PaletteIcon } from '../Icons';
  * the active locale ✓.
  */
 const strings = {
-  // ── 快捷键 ──
+  // ── Shortcuts ──
   shortcutPalette: { 'zh-Hans': '命令面板', en: 'Command palette' },
   shortcutTerminal: { 'zh-Hans': '去 / 回终端页', en: 'Go to / back from the terminal page' },
   shortcutDismiss: { 'zh-Hans': '关闭详情 / 命令面板', en: 'Close the detail pane / command palette' },
 
-  // ── 页面头 ──
+  // ── Page header ──
   title: { 'zh-Hans': '设置', en: 'Settings' },
   subtitle: {
     'zh-Hans': '外壳只管呈现；连接、卡片与权限都在 main',
     en: 'The shell only presents; connections, cards and permissions live in main',
   },
 
-  // ── 外观 ──
+  // ── Appearance ──
   appearance: { 'zh-Hans': '外观', en: 'Appearance' },
   appearanceHead: {
     'zh-Hans': '主题走 token 三层：改种子，不重写组件',
@@ -44,11 +44,11 @@ const strings = {
   languageGroup: { 'zh-Hans': '语言', en: 'Language' },
   languageNote: { 'zh-Hans': '选择立即生效，无需重启。', en: 'The choice takes effect at once; no restart needed.' },
 
-  // ── 键盘 ──
+  // ── Keyboard ──
   keyboard: { 'zh-Hans': '键盘', en: 'Keyboard' },
   keyboardNote: { 'zh-Hans': '全部操作都有命令行入口', en: 'Every action has a command line entry' },
 
-  // ── 运行面 ──
+  // ── Runtime ──
   runtime: { 'zh-Hans': '运行面', en: 'Runtime' },
   runtimeNote: { 'zh-Hans': '宿主能力与通道', en: 'Host capabilities and channels' },
   connections: { 'zh-Hans': '连接', en: 'Connections' },
@@ -59,7 +59,7 @@ const strings = {
   dataChannels: { 'zh-Hans': '数据通道', en: 'Data channels' },
   rescanCards: { 'zh-Hans': '重新扫描卡片目录', en: 'Rescan the card directories' },
 
-  // ── 权限 ──
+  // ── Permissions ──
   permissions: { 'zh-Hans': '权限', en: 'Permissions' },
   permissionsHead: {
     'zh-Hans': '所有能动的操作都在这儿 —— 想关哪个关哪个',
@@ -91,7 +91,7 @@ const strings = {
   grantPrefix: { 'zh-Hans': '为卡片打开', en: 'Grant ' },
   grantSuffix: { 'zh-Hans': '授权', en: ' to cards' },
 
-  // ── 关于 ──
+  // ── About ──
   about: { 'zh-Hans': '关于', en: 'About' },
   aboutVersion: { 'zh-Hans': 'DevBoard Cockpit · 外壳 v0.11', en: 'DevBoard Cockpit · shell v0.11' },
   aboutNote: {

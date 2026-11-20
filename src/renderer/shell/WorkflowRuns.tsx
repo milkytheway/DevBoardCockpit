@@ -66,7 +66,7 @@ export function WorkflowRuns(): JSX.Element | null {
         .catch(() => undefined);
     };
     pull();
-    // **一秒一次** ✓ —— 「已经跑了多久」要跟着走 ✓（契约 B2 ✓）
+    // **Once a second** ✓ — **how long it has been running** has to keep moving ✓ (contract B2 ✓)
     const timer = window.setInterval(pull, 1000);
     return () => {
       disposed = true;
@@ -74,7 +74,7 @@ export function WorkflowRuns(): JSX.Element | null {
     };
   }, []);
 
-  // **每秒重画一次** —— 「已经跑了多久」是**算出来的** ✓（不是轮询来的 ✓）
+  // **Repaint once a second** — **how long it has been running** is **computed** ✓ (not polled ✓)
   useEffect(() => {
     const timer = window.setInterval(() => forceTick((n) => n + 1), 1000);
     return () => window.clearInterval(timer);

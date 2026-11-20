@@ -3314,19 +3314,24 @@ html[data-theme='light'] .cockpit-card {
 
 /* ─────────────────────────────────────────────────────────── device picker
 
-   **「选板子」住在标题条上** ✓ —— 它是这个窗口最顶端的一行 ✓
-   （用户 2026-11-16 明确：「设备要放在界面最顶端，仅支持板卡选择」✓）。
+   **The board picker lives in the title bar** ✓ — it is the topmost row of
+   the window ✓ (decided on 2026-11-16: "the device belongs at the very top of
+   the interface, and it selects boards only" ✓).
 
-   → **菜单里只列板** ✓ —— **不列连接** ✓（**哪条连接宿主挑** ✓）
-   → **标题条是拖拽区** ✓ → **控件自己要让出拖拽** ✓（`no-drag` ✓）。 */
+   → **The menu lists boards only** ✓ — **not connections** ✓ (**the host picks
+     the connection** ✓)
+   → **The title bar is the drag region** ✓ → **the controls have to yield the
+     drag themselves** ✓ (`no-drag` ✓). */
 
 .device-picker {
   position: relative;
   -webkit-app-region: no-drag;
 }
 
-/* **标题条是拖拽区** ✓ → **控件自己要让出拖拽** ✓（`no-drag` ✓）。
-   （`app-region` 不继承 ✓ —— **每一处能点的都得自己写** ✓。） */
+/* **The title bar is the drag region** ✓ → **the controls have to yield the
+   drag themselves** ✓ (`no-drag` ✓).
+   (`app-region` is not inherited ✓ — **every clickable element has to say so
+   itself** ✓.) */
 .device-picker__trigger,
 .device-picker__menu,
 .device-picker__item {
@@ -3592,9 +3597,10 @@ html[data-theme='light'] .cockpit-card {
   -webkit-backdrop-filter: blur(36px) saturate(200%);
 }
 
-/* ─────────────────────────────────────────────────────── 权限区（设置页）
+/* ───────────────────────────────────── permission area (settings)
 
-   **一个地方，一个开关** ✓ —— 不再弹窗 ✓（用户 2026-11-16 ✓ · ADR-D47 ✓）。 */
+   **One place, one switch** ✓ — no more pop-ups ✓ (decided on 2026-11-16 ✓ ·
+   ADR-D47 ✓). */
 
 .settings-card--permissions {
   grid-column: 1 / -1;
@@ -3674,7 +3680,7 @@ html[data-theme='light'] .cockpit-card {
 /* ─────────────────────────────────────────────── v0.10 sidebar cards ──
    The catalogue rows now read like the cards themselves: a family glyph in
    a soft tinted tile, the name as the primary line, the card id underneath,
-   and a small "主区" chip when it is on the canvas. Everything else stays
+   and a small "Work area" chip when it is on the canvas. Everything else stays
    neutral; the tint is a hint, not a status colour. */
 
 .secondary__item.is-card {
@@ -3743,7 +3749,7 @@ html[data-theme='light'] .cockpit-card {
 }
 
 /* ───────────────────────────────────────────── master consent switches ──
-   One switch per class (元操作 / 流程). Off = the card cannot use anything
+   One switch per class (meta operations / workflows). Off = the card cannot use anything
    in that class; on = every non-destructive row is granted. The per-row
    checkboxes below stay authoritative. */
 
@@ -3986,18 +3992,21 @@ html[data-theme='light'] .cockpit-card {
   background: transparent;
 }
 
-/* ── 运行中的流程（宿主唯一的「停」入口 ✓ · 契约 05 §八·A A4 ✓）────────────
+/* ── running workflows (the host's only "stop" entry point ✓ · contract 05 section 8.A A4 ✓) ────────────
  *
- * → **只在有东西在跑时出现** ✓（没有常驻的行 ✓ —— 顶条不能变挤 ✓）
- * → 颜色**只走语义层** ✓（`--cockpit-*` ✓ · **零颜色字面量** ✓ · ADR-D41 ✓）
- * → **不用 accent** ✓（accent 是「选中」✓ —— 「在跑」是**状态** ✓ → 用 warn ✓）
+ * → **It appears only while something is running** ✓ (no permanent row ✓ —
+ *   the top bar must not get crowded ✓)
+ * → Colour **comes only from the semantic layer** ✓ (`--cockpit-*` ✓ · **zero
+ *   colour literals** ✓ · ADR-D41 ✓)
+ * → **No accent** ✓ (accent means "selected" ✓ — "running" is a **state** ✓ →
+ *   use warn ✓)
  */
 .runs {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: 10px;
-  /* **拖拽区里的按钮不能当拖拽把手** ✓ */
+  /* **A button inside the drag region must not act as a drag handle** ✓ */
   -webkit-app-region: no-drag;
 }
 

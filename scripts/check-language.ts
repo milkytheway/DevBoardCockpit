@@ -87,13 +87,76 @@ function excerpt(text: string): string {
   return first.trim().slice(0, 90);
 }
 
-/** Every comment in the file, whether it is attached to a node or not. */
-function scanComments(source: string, lineOf: (pos: number) => number): Finding[] {
+/**
+ * The comments of a file, with the positions that are really comments.
+ *
+ * The scanner alone is not enough. It reports a "//" inside the children of
+ * a JSX element as a comment, while the syntax tree says it is text: that
+ * text is rendered, and an agent that "translated" it would change what the
+ * user sees.
+ *
+ * So the comments are collected from the token tree instead. Every token
+ * knows the comment ranges in front of it and the comment ranges behind it,
+ * and those are exactly the comments. The scanner is kept as a second
+ * opinion: whatever it finds that the token tree does not know is reported
+ * unless it falls inside a JSX text region.
+ */
+function scanComments(
+  source: string,
+  sf: ts.SourceFile,
+  lineOf: (pos: number) => number,
+): Finding[] {
   const findings: Finding[] = [];
+  const known = new Set<number>();
+  const ranges: ts.CommentRange[] = [];
+
+  const collect = (list: ts.CommentRange[] | undefined): void => {
+    if (!list) return;
+    for (const range of list) {
+      if (known.has(range.pos)) continue;
+      known.add(range.pos);
+      ranges.push(range);
+    }
+  };
+
+  const visitTokens = (node: ts.Node): void => {
+    for (const child of node.getChildren(sf)) {
+      collect(ts.getLeadingCommentRanges(source, child.getFullStart()));
+      collect(ts.getTrailingCommentRanges(source, child.getEnd()));
+      visitTokens(child);
+    }
+  };
+  visitTokens(sf);
+
+  const jsxTextRanges: ts.CommentRange[] = [];
+  const collectJsxText = (node: ts.Node): void => {
+    if (ts.isJsxText(node)) {
+      jsxTextRanges.push({ pos: node.getStart(sf), end: node.getEnd() });
+    }
+    ts.forEachChild(node, collectJsxText);
+  };
+  collectJsxText(sf);
+
+  const insideJsxText = (pos: number): boolean =>
+    jsxTextRanges.some((r) => pos >= r.pos && pos < r.end);
+
+  const report = (pos: number, text: string): void => {
+    if (!CJK.test(text) || COMMENT_ALLOWED.test(text)) return;
+    findings.push({ file: '', line: lineOf(pos), kind: 'comment', text: excerpt(text) });
+  };
+
+  for (const range of ranges) {
+    // A range that falls inside a JSX text region is rendered text, not a comment.
+    if (insideJsxText(range.pos)) continue;
+    report(range.pos, source.slice(range.pos, range.end));
+  }
+
+  // The second opinion: anything the scanner sees that the token tree does
+  // not know is a comment unless it sits in JSX text.
   const scanner = ts.createScanner(
     ts.ScriptTarget.Latest,
     false,
-    ts.LanguageVariant.Standard,
+    sf.languageVariant,
     source,
   );
   for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
@@ -103,16 +166,12 @@ function scanComments(source: string, lineOf: (pos: number) => number): Finding[
     ) {
       continue;
     }
-    const text = scanner.getTokenText();
-    if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
-      findings.push({
-        file: '',
-        line: lineOf(scanner.getTokenPos()),
-        kind: 'comment',
-        text: excerpt(text),
-      });
-    }
+    const pos = scanner.getTokenPos();
+    if (known.has(pos)) continue;
+    if (insideJsxText(pos)) continue;
+    report(pos, scanner.getTokenText());
   }
+
   return findings;
 }
 
@@ -129,7 +188,7 @@ function scanScript(file: string, source: string): Finding[] {
   }
   const lineOf = (pos: number): number => sf.getLineAndCharacterOfPosition(pos).line + 1;
 
-  for (const finding of scanComments(source, lineOf)) {
+  for (const finding of scanComments(source, sf, lineOf)) {
     findings.push({ ...finding, file });
   }
 

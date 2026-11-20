@@ -117,8 +117,9 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
     return {
       id: card.instanceId,
       label: look.name,
-      // **说清楚第二次点击会发生什么** ——
-      // 摆好的卡再点一次是「撤下」，不写出来的话那是一次**静默的删除**。
+      // **Say what the second click will do** —
+      // clicking a placed card again removes it; without saying so, that is a
+      // **silent deletion**.
       hint: {
         'zh-Hans': `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
         en: `${card.cardId} · ${isPlaced ? 'in the work area · click to remove' : 'click to place'}`,
@@ -178,7 +179,8 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
     sessionId: session.sessionId,
     onSelect: () => ctx.onSelectSession(session.sessionId),
-    // **会话要能关**：串口与 SSH 的连接是独占的，没有关闭路径就一直占着。
+    // **A session has to be closable**: a serial or SSH connection is exclusive,
+    // and without a way to close it the port stays held.
     onClose: () => ctx.onCloseSession(session.sessionId),
   }));
   return [

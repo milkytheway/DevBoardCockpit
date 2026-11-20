@@ -43,7 +43,7 @@ const BAUD_RATES = [1500000, 115200, 921600, 460800, 230400, 57600, 9600] as con
 const strings = {
   title: { 'zh-Hans': '接板向导', en: 'Board setup wizard' },
 
-  // ── 阶段轨道 ──
+  // ── Stage track ──
   stageParameters: { 'zh-Hans': '参数', en: 'Parameters' },
   stageFirstTruth: { 'zh-Hans': '建立第一个真相', en: 'Establish the first truth' },
   stageMetaOps: { 'zh-Hans': '试元操作', en: 'Try the meta operations' },
@@ -54,7 +54,7 @@ const strings = {
   /** "Step" is a Chinese word; in English the step is only the separator. */
   stageTail: { 'zh-Hans': ' 步 · ', en: ' · ' },
 
-  // ── 等待阶段 ──
+  // ── Waiting for a stage ──
   metaOpsTitle: { 'zh-Hans': '试 13 个元操作', en: 'Try the 13 meta operations' },
   firstPackTitle: { 'zh-Hans': '生成初版包', en: 'Generate the first pack' },
   firstTruthDetail: {
@@ -70,13 +70,13 @@ const strings = {
     en: 'The green ones stay and the red ones are dropped, then the pack and where it came from are written into the user directory.',
   },
 
-  // ── 结果标题 ──
+  // ── Result headline ──
   resultOk: { 'zh-Hans': '这块板现在有自己的包了', en: 'This board now has its own pack' },
   resultPortUnopenable: { 'zh-Hans': '串口打不开', en: 'The serial port will not open' },
   resultNoReply: { 'zh-Hans': '板子没说话', en: 'The board did not answer' },
   resultConnectionDead: { 'zh-Hans': '那条连接一次都没通', en: 'That connection never came up' },
 
-  // ── 失败提示 ──
+  // ── Failure hints ──
   hintPortExclusive: {
     'zh-Hans': '最常见的情况不是口选错，是有别的程序正独占着那个口（串口助手、终端、另一个 IDE）。',
     en: 'Most of the time the port is not the wrong one — another program is holding it exclusively (a serial assistant, a terminal, another IDE).',
@@ -118,7 +118,7 @@ const strings = {
     en: 'Try a data cable you know works, or a different USB port, and try again.',
   },
 
-  // ── 表单 ──
+  // ── Form ──
   howToConnect: { 'zh-Hans': '怎么连', en: 'How to connect' },
   channelGroup: { 'zh-Hans': '连接通道', en: 'Connection channel' },
   serial: { 'zh-Hans': '串口', en: 'Serial port' },
@@ -166,14 +166,14 @@ const strings = {
     en: 'The host runs the whole way in one call and reports no progress; this screen says what it is doing by elapsed time and invents no percentage.',
   },
 
-  // ── 失败与重试 ──
+  // ── Failure and retry ──
   didNotStart: { 'zh-Hans': '没跑起来', en: 'Did not start' },
   wizardNotFinished: { 'zh-Hans': '向导没跑完', en: 'The wizard did not finish' },
   retry: { 'zh-Hans': '重新试一次', en: 'Try again' },
   adjust: { 'zh-Hans': '改参数', en: 'Change parameters' },
   whatToCheck: { 'zh-Hans': '下一步查什么', en: 'What to check next' },
 
-  // ── 成功 ──
+  // ── Success ──
   done: { 'zh-Hans': '成了', en: 'Done' },
   countAvailable: { 'zh-Hans': '个可用', en: 'available' },
   countUnavailable: { 'zh-Hans': '个不可用', en: 'unavailable' },

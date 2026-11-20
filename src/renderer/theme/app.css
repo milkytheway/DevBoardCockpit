@@ -1,7 +1,9 @@
-/* 应用外壳的**组件样式**（手写）。
+/* The **component styles** of the application shell (hand written).
  *
- * 变量（颜色/字体/几何）在 `tokens.generated.css` —— 那是**生成产物**，
- * 真源是 `src/shared/theme/seed.ts`。**这里不许再写一份变量。**
+ * The variables (colour / type / geometry) live in `tokens.generated.css` —
+ * that file is a **generated artefact**; the source of truth is
+ * `src/shared/theme/seed.ts`. **Do not write a second set of variables
+ * here.**
  */
 
 * {
@@ -30,12 +32,12 @@ body {
   overflow: hidden;
 }
 
-/* xterm 自己的背景要跟着 token 走 */
+/* The xterm background has to follow the tokens */
 .cockpit-terminal .xterm {
   height: 100%;
 }
 
-/* ── 工作台外壳 ────────────────────────────────────────────────────── */
+/* ── workbench shell ──────────────────────────────────────────── */
 
 .cockpit-app {
   display: flex;
@@ -82,9 +84,10 @@ body {
 }
 
 /**
- * 标签本身是 `role="tab"` 的 div，不是 button——
- * 因为里面要放一个**真正的**关闭按钮（嵌套的交互元素是无效 HTML，
- * 而 `<span role="button">` 没有 onKeyDown，键盘用户关不掉标签）。
+ * The tab itself is a div with `role="tab"`, not a button — it has to hold a
+ * **real** close button (a nested interactive element is invalid HTML, and
+ * `<span role="button">` has no onKeyDown, so a keyboard user cannot close
+ * the tab).
  */
 .cockpit-tab {
   font: inherit;
@@ -145,11 +148,13 @@ body {
 }
 
 /**
- * 错误条与状态条。
+ * The error bar and the status bar.
  *
- * 之前 `.cockpit-error` **根本没有 CSS 规则**——错误渲染成一个普通段落，
- * 没有颜色、没有边框，跟正文混在一起。而文件互传的错误（`.cockpit-files__error`）
- * 是有样式的：**两条错误路径的视觉不一致**，用户会以为文件那边才是出错的。
+ * `.cockpit-error` used to have **no CSS rule at all** — the error rendered as
+ * an ordinary paragraph, with no colour and no border, mixed into the body
+ * text. The file transfer error (`.cockpit-files__error`) did have styles:
+ * **the two error paths looked different**, and the user would conclude that
+ * the file side was the one that failed.
  */
 .cockpit-error {
   margin: 0;
@@ -167,16 +172,17 @@ body {
   border-bottom: 1px solid var(--cockpit-border);
 }
 
-/* ── 终端面板 ──────────────────────────────────────────────────────── */
+/* ── terminal panel ────────────────────────────────────────────── */
 
 /**
- * 每个标签的终端面板。
+ * The terminal panel of each tab.
  *
- * **所有标签都挂着，只是把不活动的那个藏起来。**
+ * **Every tab stays mounted; only the inactive one is hidden.**
  *
- * 之前只渲染活动标签的终端，于是切标签时 React 复用组件实例、
- * effect 重跑、旧 xterm 被 dispose——**回滚历史没了**，
- * 而且后台标签的输出没人订阅，**直接丢掉**。
+ * Previously only the active tab rendered a terminal, so switching tabs made
+ * React reuse the component instance, the effect rerun and the old xterm be
+ * disposed — **the scrollback was gone** — and nobody subscribed to the output
+ * of the background tabs, so it was **dropped outright**.
  */
 .cockpit-terminals {
   flex: 1;
@@ -187,8 +193,9 @@ body {
 .cockpit-tabpanel {
   position: absolute;
   inset: 0;
-  /* hidden 属性的元素不占布局 —— 但 ResizeObserver 会因此触发重排，
-     切回来时自动 refit */
+  /* An element with the hidden attribute takes no layout space — but the
+     ResizeObserver fires a reflow because of it, so the terminal refits on its
+     own when the tab comes back */
 }
 
 .cockpit-tabpanel[hidden] {
@@ -201,7 +208,7 @@ body {
   font-size: 11px;
 }
 
-/* ── 文件浏览器 ────────────────────────────────────────────────────── */
+/* ── file browser ─────────────────────────────────────────────── */
 
 .cockpit-files {
   border-top: 1px solid var(--cockpit-border);
@@ -227,7 +234,7 @@ body {
   margin: 6px 0 0;
 }
 
-/* ── 双树文件浏览器 ────────────────────────────────────────────────── */
+/* ── two-tree file browser ──────────────────────────────────── */
 
 .cockpit-files__trees {
   display: grid;
@@ -294,7 +301,8 @@ body {
   margin: 6px 0 0;
 }
 
-/* 目录 / 文件的标记。用 CSS 画，不混在文字里——混在一起文本就匹配不到了 */
+/* The directory / file markers. Drawn with CSS and not mixed into the text —
+   mixed in, the text could no longer be matched */
 .cockpit-tree__list .is-dir,
 .cockpit-tree__list .is-file {
   width: 10px;
@@ -347,10 +355,10 @@ body {
 }
 
 /**
- * 最小读数面板。
+ * The minimal readout panel.
  *
- * **只用现有的 token**（O1 视觉体系还没拍板，
- * 这里不引入任何 UI 库，也不定视觉语言）。
+ * **Only the existing tokens are used** (the O1 visual system is not settled
+ * yet, so no UI library is pulled in here and no visual language is defined).
  */
 .readings-panel {
   border-bottom: 1px solid var(--cockpit-border);
@@ -419,7 +427,7 @@ body {
   color: var(--cockpit-unavailable);
 }
 
-/* ── 卡片区 ──────────────────────────────────────────────────────── */
+/* ── card area ────────────────────────────────────────────────── */
 
 .card-panel {
   border-bottom: 1px solid var(--cockpit-border);
@@ -446,7 +454,8 @@ body {
   color: var(--cockpit-danger);
 }
 
-/* 卡片区的那张网格（react-grid-layout 负责定位；这里管**格子里的东西**） */
+/* The grid of the card area (react-grid-layout does the placement; this rules
+   what is **inside a cell**) */
 .card-board__cell {
   display: flex;
   flex-direction: column;
@@ -457,7 +466,8 @@ body {
   overflow: hidden;
 }
 
-/* 拖拽手柄：**宿主画的**（卡片碰不到宿主的 chrome，契约 §六） */
+/* The drag handle: **drawn by the host** (a card cannot reach the host chrome;
+   contract `spec/03` section 6) */
 .card-board__handle {
   flex: 0 0 auto;
   padding: 4px 8px;
@@ -477,8 +487,9 @@ body {
   font-family: var(--cockpit-font-mono);
 }
 
-/* 一张用户卡：沙箱 iframe。**边框是宿主画的**——
-   卡片自己碰不到宿主 chrome（契约 §六：chrome 归宿主）。 */
+/* A user card: a sandboxed iframe. **The border is drawn by the host** —
+   the card cannot reach the host chrome (contract `spec/03` section 6: the
+   chrome belongs to the host). */
 .user-card {
   display: block;
   width: 100%;

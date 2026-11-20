@@ -42,12 +42,12 @@ interface Registered {
 
 export class CardBroker {
   private readonly registered = new Map<string, Registered>();
-  /** 每个实例一条私有通道 */
+  /** One private channel per instance */
   private readonly ports = new Map<string, PortLike>();
   private readonly offEvent: () => void;
 
   constructor(private readonly api: CockpitApi) {
-    // main 的推送 → 对应的卡
+    // A push from main → the matching card
     this.offEvent = api.onCardEvent((instanceId, payload) => {
       this.push(instanceId, payload);
     });
@@ -80,7 +80,7 @@ export class CardBroker {
   handleMessage(event: MessageEvent): void {
     const data = event.data as { type?: string; instanceId?: string; detail?: unknown } | null;
     if (data === null || typeof data !== 'object') return;
-    // CSP 违规（宿主注入的监听脚本报的）——不是握手
+    // A CSP violation (reported by the listener script the host injects) — not a handshake
     if (data.type === 'cockpit-csp') {
       this.onCspViolation(event, data);
       return;
@@ -89,13 +89,13 @@ export class CardBroker {
     const instanceId = data.instanceId;
     if (instanceId === undefined) return;
 
-    // ① source 认人：**必须是登记过的那个 iframe**
+    // ① Identify by source: **it must be the registered iframe**
     const entry = this.entryOf(event.source);
     if (entry === undefined) return;
-    // ② instanceId 比对（RF-1 的防线）
+    // ② Compare the instanceId (the RF-1 defence line)
     if (entry.instanceId !== instanceId) return;
 
-    // ③ 建私有通道
+    // ③ Open the private channel
     const channel = new MessageChannel();
     const port = channel.port1 as unknown as PortLike;
     port.onmessage = (message: { data: unknown }) => {
@@ -105,19 +105,21 @@ export class CardBroker {
     this.ports.set(instanceId, port);
     entry.frame.contentWindow.postMessage({ type: 'cockpit-port' }, '*', [channel.port2]);
 
-    // 告诉 main「这个实例连上了」
+    // Tell main that this instance is connected
     void this.api.cardsHello(instanceId);
   }
 
   /**
-   * 一张卡报了 CSP 违规 → 转给 main。
+   * A card reported a CSP violation → forward it to main.
    *
-   * **认人要认两次**（跟握手一样）：
-   * ① `event.source` 必须是**登记过的那个 iframe**；
-   * ② `instanceId` 要对得上——
-   *    否则卡片可以**替别的卡报错**（往别人的日志里塞一条「它试图联网」）。
+   * **Identification takes two steps** (as in the handshake):
+   * ① `event.source` must be the registered iframe;
+   * ② `instanceId` must match —
+   *    otherwise a card could report on another card's behalf
+   *    (push "it tried to reach the network" into somebody else's log).
    *
-   * 详情是**卡片给的**（AI 写的任意网页）→ 跨进程之前先收成封闭形状。
+   * The detail comes from the card (an arbitrary page written by an AI) →
+   * narrow it to a closed shape before it crosses the process boundary.
    */
   private onCspViolation(
     event: MessageEvent,
@@ -140,7 +142,7 @@ export class CardBroker {
     port.postMessage(payload);
   }
 
-  /** 卡片的一个请求 → main → 回到那张卡的端口 */
+  /** A request from a card → main → back to that card's port */
   private async onCardMessage(instanceId: string, raw: unknown): Promise<void> {
     const port = this.ports.get(instanceId);
     if (port === undefined) return;
@@ -169,7 +171,7 @@ export class CardBroker {
     port.postMessage(response);
   }
 
-  /** 这个 source 是登记过的哪个实例 */
+  /** Which registered instance this source belongs to */
   private entryOf(source: unknown): Registered | undefined {
     for (const entry of this.registered.values()) {
       if (entry.frame.contentWindow === source) return entry;

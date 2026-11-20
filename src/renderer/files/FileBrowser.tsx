@@ -76,9 +76,9 @@ export interface FileBrowserProps {
 export function parentPath(path: string): string {
   const m = /^(.*?)[\\/][^\\/]+[\\/]*$/.exec(path);
   if (!m) return path;
-  // m[1] 为空 = 路径在根下（`/.cache`）→ 上一级是根
+  // m[1] empty = the path sits directly under the root (`/.cache`) → the parent is the root
   if (m[1] === '') return '/';
-  // Windows 的盘符根（`C:\Users` → `C:\`）
+  // A Windows drive root (`C:\Users` → `C:\`)
   if (/^[A-Za-z]:$/.test(m[1])) return `${m[1]}\\`;
   return m[1];
 }
@@ -120,15 +120,17 @@ export function FileBrowser({
    */
   const load = useCallback(
     async (path: string) => {
-      // 请求序号：**连点两个目录时，先发的请求可能后返回**——
-      // 不守卫的话，旧目录的列表会盖掉新目录的，
-      // 于是又出现「路径变了、列表还是上一个」（这轮要消灭的那个 bug）。
+      // Request sequence number: **clicking two directories in a row means the
+      // first request may come back after the second** —
+      // without the guard the listing of the old directory overwrites the new
+      // one, and the path has changed while the listing still shows the
+      // previous directory (the bug this round is meant to kill).
       const seq = ++loadSeq.current;
       setBusy(true);
       setError(null);
       try {
         const entries = await listRemote(connectionId, path);
-        if (seq !== loadSeq.current) return; // 有更新的请求了，这次的结果丢掉
+        if (seq !== loadSeq.current) return; // A newer request exists; drop this result
         setRemote(entries);
       } catch (err) {
         if (seq !== loadSeq.current) return;
@@ -171,8 +173,9 @@ export function FileBrowser({
   };
 
   const handleDrop = (e: React.DragEvent<HTMLLabelElement>): void => {
-    // 不 preventDefault 的话，Electron 会把文件当成导航，
-    // **整个窗口被替换掉那个文件**——应用看起来「崩了」。
+    // Without preventDefault Electron takes the file for a navigation and
+    // **replaces the whole window with that file** — the application looks
+    // like it has crashed.
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
@@ -191,12 +194,12 @@ export function FileBrowser({
 
   const push = (): void => {
     if (!selectedLocal) return;
-    // 上传的远端目标 = **当前所在的目录**
+    // The remote target of the upload = **the directory currently shown**
     onPush(selectedLocal, currentPath);
   };
 
   const pull = (): void => {
-    // 目录不能下载 —— 点了也不该有反应
+    // A directory cannot be downloaded — clicking one should do nothing
     if (!selectedRemote || selectedRemote.isDirectory) return;
     onPull(connectionId, selectedRemote.path);
   };
@@ -204,7 +207,7 @@ export function FileBrowser({
   return (
     <section className="cockpit-files" data-connection={connectionId}>
       <div className="cockpit-files__trees">
-        {/* ── 左：本地 ── */}
+        {/* ── left: local ── */}
         <div className="cockpit-tree" data-testid="tree-local">
           <div className="cockpit-tree__head">{t(strings.local)}</div>
           <label
@@ -228,7 +231,7 @@ export function FileBrowser({
           )}
         </div>
 
-        {/* ── 中：箭头 ── */}
+        {/* ── middle: the arrows ── */}
         <div className="cockpit-files__arrows">
           <button
             type="button"
@@ -250,7 +253,7 @@ export function FileBrowser({
           </button>
         </div>
 
-        {/* ── 右：远端 ── */}
+        {/* ── right: remote ── */}
         <div className="cockpit-tree" data-testid="tree-remote">
           <div className="cockpit-tree__head">
             <span className="cockpit-tree__path" data-testid="remote-path">
@@ -285,10 +288,10 @@ export function FileBrowser({
                   className={
                     selectedRemote?.path === entry.path ? 'is-selected' : undefined
                   }
-                  // 点目录是**进去**，点文件是**选中**
+                  // Clicking a directory **enters** it, clicking a file **selects** it
                   onClick={() => (entry.isDirectory ? enter(entry) : setSelectedRemote(entry))}
                 >
-                  {/* 图标用 CSS class，不混在文字里——混在一起文本就匹配不到了 */}
+                  {/* The icon is a CSS class and not mixed into the text — mixed in, the text could no longer be matched */}
                   <span className={entry.isDirectory ? 'is-dir' : 'is-file'} aria-hidden />
                   {entry.name}
                 </button>

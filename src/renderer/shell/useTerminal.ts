@@ -100,7 +100,8 @@ export function useTerminal(
       );
       setSessions((previous) => {
         const remaining = previous.filter((session) => session.sessionId !== sessionId);
-        // **会话没了，活跃项要落到相邻的会话上**（而不是变成空白页）
+        // **When the session is gone the active item moves to a neighbouring
+        // session** (rather than leaving a blank page)
         setActiveSessionId((current) => {
           if (current !== sessionId) return current;
           const index = previous.findIndex((session) => session.sessionId === sessionId);
@@ -121,7 +122,7 @@ export function useTerminal(
 
   const openSession = useCallback(
     (profileId: string) => {
-      // 同一 profile 已有会话 → 复用（串口是独占的）
+      // A session for the same profile already exists → reuse it (a serial port is exclusive)
       const existing = sessions.find((session) => session.profileId === profileId);
       if (existing) {
         setActiveSessionId(existing.sessionId);

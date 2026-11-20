@@ -186,7 +186,7 @@ export function Secondary({
                             className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
                               item.tone === 'muted' ? ' is-muted' : ''
                             }${item.cardId !== undefined ? ' is-card' : ''}`}
-                            // **稳定的 e2e 钩子**（不认 class 名 —— 外壳的 DOM 可以整个换掉）
+                            // **A stable e2e hook** (not a class name — the shell's DOM may be replaced wholesale)
                             data-cockpit-card-id={item.cardId}
                             data-cockpit-session-id={item.sessionId}
                             onClick={item.onSelect}
@@ -239,7 +239,7 @@ export function Secondary({
                               className="secondary__close"
                               aria-label={t(strings.close, { name: pick(item.label, locale) })}
                               title={t(strings.closeSession)}
-                              // **在行按钮外面**：点它不该顺手选中那一行
+                              // **Outside the row button**: clicking it must not select the row as well
                               onClick={item.onClose}
                             >
                               ✕

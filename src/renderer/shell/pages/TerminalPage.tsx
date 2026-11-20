@@ -155,7 +155,7 @@ export function TerminalPage({
                   isActive ? ' is-active' : ''
                 }`}
                 data-testid={`terminal-pane-${session.sessionId}`}
-                // **display:none**（不是 visibility）→ 隐藏的会话不报尺寸
+                // **display:none** (not visibility) → a hidden session reports no size
                 hidden={!visible}
               >
                 {visible ? (

@@ -30,7 +30,7 @@ export async function uploadFile(
   file: File,
   remotePath: string,
 ): Promise<string> {
-  // **绝对路径**，不是文件名
+  // **An absolute path**, not a file name
   const localPath = host.getPathForFile(file);
   await host.push(sessionId, localPath, remotePath);
   return localPath;

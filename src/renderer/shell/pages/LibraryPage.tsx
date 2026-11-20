@@ -37,7 +37,7 @@ const strings = {
   },
   aiCard: { 'zh-Hans': 'AI 造卡 · M7', en: 'AI card creation · M7' },
 
-  // ── 列表 ──
+  // ── List ──
   found: { 'zh-Hans': '已发现', en: 'Found' },
   searchPlaceholder: { 'zh-Hans': '按卡片 id 过滤…', en: 'Filter by card id…' },
   notConnected: { 'zh-Hans': '未连接', en: 'Not connected' },
@@ -52,7 +52,7 @@ const strings = {
     en: 'AI card creation starts at M7; for now read the manifest format in docs/spec/03.',
   },
 
-  // ── 详情 ──
+  // ── Details ──
   degradedInvalid: { 'zh-Hans': '降级 · 校验错误', en: 'Degraded · validation error' },
   validationPassed: { 'zh-Hans': '校验通过', en: 'Validation passed' },
   previewBody: {
@@ -85,7 +85,7 @@ const strings = {
   placeOnWorkbench: { 'zh-Hans': '放到工作台', en: 'Put on the workbench' },
   openDetail: { 'zh-Hans': '打开详情', en: 'Open details' },
 
-  // ── 空详情 ──
+  // ── Empty details ──
   blankBody: {
     'zh-Hans': '卡片是文件。把文件夹放进用户卡片目录就会出现在这里；改一行文件就热更新。',
     en: 'A card is a file. Drop a folder into the user card directory and it shows up here; change one line and it hot reloads.',
@@ -298,8 +298,9 @@ export function LibraryPage({
               </dl>
 
               <div className="library__actions">
-                {/* **「放到工作台」要真的摆进去**——
-                    只切页的话，用户落到一个空网格上，还得自己去侧边栏找这张卡。 */}
+                {/* **"Put on the workbench" has to actually place it** —
+                    switching the page alone drops the user on an empty grid,
+                    and they would still have to find the card in the sidebar. */}
                 <button
                   type="button"
                   className="btn btn--primary btn--sm"

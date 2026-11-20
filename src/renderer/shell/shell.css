@@ -774,8 +774,8 @@ select {
   list-style: none;
 }
 .secondary__list > li {
-  /* 行按钮 + 关闭按钮并排（关闭按钮在行按钮**外面**，
-     点它不该顺手选中那一行） */
+  /* The row button and the close button sit side by side (the close button is
+     **outside** the row button, so clicking it must not select the row) */
   display: flex;
   align-items: stretch;
   gap: 2px;
@@ -869,10 +869,11 @@ select {
   color: var(--cockpit-text-faint);
 }
 .page--terminal {
-  /* **定位祖先**：下面的 `.terminal__pane` 是绝对定位的（inset: 0）——
-     没有定位祖先，它的包含块会回落成**视口** → 终端面板铺满整个窗口，
-     把状态栏、rail 与二级侧边栏全盖住（实测 1200×773 @ (0,0)，
-     而它应该在页面区 866×705 @ (314,48)）。 */
+  /* **The positioned ancestor**: the `.terminal__pane` below is absolutely
+     positioned (inset: 0) — without a positioned ancestor its containing block
+     falls back to the **viewport** → the terminal pane covers the whole window
+     and hides the status bar, the rail and the secondary sidebar (measured
+     1200×773 @ (0,0), while it should be 866×705 @ (314,48)). */
   position: relative;
   padding: 0;
 }

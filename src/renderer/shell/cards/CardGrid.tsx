@@ -137,9 +137,10 @@ export function CardGrid({
         rowHeight={ROW_HEIGHT[density]}
         margin={[14, 14]}
         containerPadding={[0, 0]}
-        // **用 data 属性，不用 class 名** ——
-        // e2e 找的就是它（`data-cockpit-drag-handle`）；
-        // 两处各写一个名字的话，改了其中一个就有一个悄悄失配。
+        // **A data attribute, not a class name** —
+        // e2e looks for exactly that (`data-cockpit-drag-handle`);
+        // if the two places each carry a name of their own, changing one of
+        // them leaves the other quietly mismatched.
         draggableHandle="[data-cockpit-drag-handle='true']"
         resizeHandles={['se']}
         useCSSTransforms

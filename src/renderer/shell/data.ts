@@ -287,9 +287,10 @@ export function useLayout(reportError: ReportError): {
       if (current === null) return;
       const key = keyOf(card);
       if (current.units.some((u) => `${u.cardId}::${u.connectionId ?? ''}` === key)) return;
-      // **默认格子只有一处**（shared/layout.ts 的 defaultUnit）：尺寸取卡片
-      // 自报的 layout.w/h——作者的心愿；位置则找第一个空位，别让三张卡叠在
-      // (0, 0)。
+      // **The default cell has one home** (`defaultUnit` in
+      // shared/layout.ts): the size comes from the layout.w/h the card
+      // declares — the author's wish; the position takes the first free spot,
+      // so that three cards do not stack on (0, 0).
       const unit = defaultUnit(card.cardId, card.connectionId, card.layout);
       persist(withUnits(current, [...current.units, { ...unit, ...firstFreeSpot(current.units, unit.w, unit.h) }]));
     },

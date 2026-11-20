@@ -24,7 +24,7 @@ export function UserCard({
 
   useEffect(() => {
     const frame = ref.current;
-    // `contentWindow` 可能是 null（还没布局 / 已被卸载）
+    // `contentWindow` may be null (not laid out yet / already unmounted)
     if (frame === null || frame.contentWindow === null) return;
     broker.attach({ contentWindow: frame.contentWindow }, info.instanceId);
     return () => {

@@ -114,16 +114,19 @@ export function TerminalView({
       fontSize: 13,
       convertEol: false,
       cursorBlink: true,
-      // 板子可能吐出半个 UTF-8 字符或坏字节，终端自己处理，不要崩
+      // The board may emit half a UTF-8 character or a bad byte; the terminal
+      // handles that itself and must not crash
       scrollback: 2000,
-      // **必须读出解析后的值**：xterm 用 canvas 的 fillStyle 画字，
-      // canvas **不解析 CSS 变量**——直接传 'var(--cockpit-bg)' 会静默失效。
+      // **The resolved value has to be read out**: xterm paints the glyphs with
+      // the canvas `fillStyle`, and the canvas **does not resolve CSS
+      // variables** — passing 'var(--cockpit-bg)' fails silently.
       //
-      // 兜底也走**同一条路**（`shell/theme.ts` → 种子）。
-      // 这里过去另存着一套计划 1 时代的回落色
-      // （`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`），
-      // 与种子里的 `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129` 并存。
-      // 两套都在，只是没同时生效过——**这正是「迟早会漂」的样子**。
+      // The fallback follows **the same path** (`shell/theme.ts` → the seed).
+      // This file used to hold a second set of fallback colours from the plan 1
+      // era (`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`), side by side
+      // with the seed's `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129`.
+      // Both sets were there and neither had ever been live at the same time —
+      // **which is exactly what "it will drift eventually" looks like**.
       theme: theme ?? readXtermTheme(),
     });
 
@@ -131,8 +134,9 @@ export function TerminalView({
     term.loadAddon(fit);
     term.open(host);
     safeFit(fit, host);
-    // **把焦点给终端**：否则开完标签直接打字没反应，
-    // 而回车还会再开一个标签（焦点还在工具栏的按钮上）。
+    // **Give the terminal the focus**: otherwise typing right after the tab
+    // opens does nothing, and Enter opens yet another tab (the focus is still
+    // on a toolbar button).
     term.focus();
 
     const disposeData = term.onData((data) => {
@@ -140,17 +144,18 @@ export function TerminalView({
     });
 
     const report = (): void => {
-      // **隐藏的标签不要报尺寸**。
-      // 标签不活动时面板是 `display:none` → 容器 0×0 → FitAddon 量出
-      // 一个极小的尺寸（cols 2 / rows 1 之类）。
-      // 把那个尺寸报给远端，远端的窗口尺寸就废了——
-      // 而那个标签用户根本没在看。
+      // **A hidden tab must not report a size**.
+      // The panel of an inactive tab is `display:none` → the container is 0×0 →
+      // FitAddon measures a tiny size (cols 2 / rows 1 or so).
+      // Reporting that size to the remote end ruins the remote window size —
+      // and the user is not looking at that tab anyway.
       if (term.cols <= 2 || term.rows <= 1) return;
       onResizeRef.current?.(term.cols, term.rows);
     };
 
     const observer = new ResizeObserver(() => {
-      // **隐藏时不要 fit**：容器 0×0，FitAddon 会量出一个假尺寸
+      // **Do not fit while hidden**: the container is 0×0 and FitAddon would
+      // measure a fictitious size
       if (!activeRef.current) return;
       if (!safeFit(fit, host)) return;
       report();
@@ -170,10 +175,13 @@ export function TerminalView({
     };
   }, [sessionId]);
 
-  // 订阅远端输出：每个 chunk 写一次，不重放历史
+  // Subscribe to the remote output: write every chunk once, do not replay the
+  // history.
   //
-  // **依赖是 `subscribe` 本身**——宿主给每个会话缓存了一个稳定的函数，
-  // 所以这个 effect 不会每次渲染都重跑（重跑 = 退订 + 重订 = 中间到的输出丢了）。
+  // **The dependency is `subscribe` itself** — the host caches a stable
+  // function per session, so this effect does not rerun on every render (a
+  // rerun = unsubscribe + resubscribe = the output that arrived in between is
+  // lost).
   useEffect(() => {
     if (!subscribe) return;
     return subscribe((chunk: string) => {
@@ -181,10 +189,13 @@ export function TerminalView({
     });
   }, [subscribe]);
 
-  // 换主题：**原地改 options.theme**，不重建终端
+  // Change the theme: **set `options.theme` in place**, do not rebuild the
+  // terminal.
   //
-  // 重建（换 `key`）会把 scrollback 一起丢掉 —— 换主题不该丢屏幕。
-  // xterm 的 options 是可写的（`term.options.theme = {...}`），换完刷新一下即可。
+  // Rebuilding it (a different `key`) drops the scrollback as well — changing
+  // the theme must not lose the screen.
+  // The xterm options are writable (`term.options.theme = {...}`); refresh
+  // once afterwards.
   useEffect(() => {
     if (!theme) return;
     const term = termRef.current;
@@ -193,7 +204,8 @@ export function TerminalView({
     term.refresh(0, term.rows - 1);
   }, [theme]);
 
-  // 变得可见：重新量尺寸并报给远端（隐藏期间远端停在旧尺寸上）
+  // Became visible: measure again and report to the remote end (while it was
+  // hidden the remote end stayed at the old size)
   useEffect(() => {
     if (!active) return;
     const term = termRef.current;

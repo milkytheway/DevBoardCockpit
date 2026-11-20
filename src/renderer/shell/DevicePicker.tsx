@@ -56,7 +56,7 @@ export function DevicePicker({
   const currentBoard = boards.find((board) => board.current) ?? null;
   const t = useT();
 
-  // ── 点外面就关掉 · Esc 也关掉 ──
+  // ── Click outside to close · Esc closes too ──
   useEffect(() => {
     if (!open) return undefined;
     const onDown = (event: MouseEvent): void => {

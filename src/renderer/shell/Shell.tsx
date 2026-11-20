@@ -463,17 +463,23 @@ export function Shell(): JSX.Element {
     <div className={`app-shell${page === 'wizard' ? ' is-wizard' : ''}`}>
       {/* The native title bar is hidden; this strip is the window's drag
           handle and the native min/max/close buttons float over it.
-          **选板子在这里** ✓ —— 它是界面最顶端的一行 ✓
-          （**「我在这块板上」得一直在** ✓ —— 页面头会跟着页面换位置 ✗）。*/}
+          **The board picker is here** ✓ — it is the topmost row of the
+          interface ✓
+          (**"which board I am on" has to stay on screen** ✓ — a page header
+          moves with the page ✗).*/}
       <div className="window-drag">
         <DevicePicker
           connections={connections}
           onSelect={selectDevice}
           busy={selecting}
         />
-        {/* **运行中的流程 + 唯一的「停」** ✓ —— 契约 `05` §八·A **A4** ✓：
-            **只有宿主能取消** ✓ → **卡片里没有这个按钮** ✓ → 它只能在这儿 ✓。
-            顶条**一直在** ✓ —— 编译要几分钟 ✓，中途切到别的页面也得找得着「停」✓。*/}
+        {/* **The running workflows + the only "stop"** ✓ — contract `05` §8.A
+            **A4** ✓:
+            **only the host may cancel** ✓ → **the card has no such button** ✓ →
+            it can only be here ✓.
+            The top bar **is always there** ✓ — a build takes minutes ✓, and
+            after switching to another page the "stop" still has to be findable
+            ✓.*/}
         <WorkflowRuns />
       </div>
 

@@ -47,7 +47,7 @@ export interface Board {
 export function boardsOf(connections: readonly ConnectionInfo[]): Board[] {
   const byKey = new Map<string, Board>();
   for (const connection of connections) {
-    // **没绑板型包的连接不是板** ✓（本机 / 客机 ✓ —— 它们是「机器」，不是「板」 ✓）
+    // **A connection without a board pack is not a board** ✓ (the local machine / the guest ✓ — they are "machines", not "boards" ✓)
     if (connection.boardPack === null) continue;
     const entry = byKey.get(connection.deviceKey);
     if (entry === undefined) {
@@ -59,13 +59,13 @@ export function boardsOf(connections: readonly ConnectionInfo[]): Board[] {
       });
       continue;
     }
-    // **只认第一条 `current`** ✓（**两处说「当前」就是数据乱了** ✓）
+    // **Only the first `current` counts** ✓ (**two places claiming to be "current" means the data is confused** ✓)
     if (!entry.current && connection.current) entry.current = true;
     entry.connectionCount += 1;
   }
 
   const boards = [...byKey.values()];
-  // **当前那块排第一** ✓（**其余保持输入顺序** ✓）
+  // **The current board comes first** ✓ (**the rest keep the input order** ✓)
   const currentFirst = boards.filter((board) => board.current);
   const rest = boards.filter((board) => !board.current);
   return [...currentFirst, ...rest];
