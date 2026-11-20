@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { PermissionStore } from '../../../src/main/permissions/policy';
 import { listConnections } from '../../../src/main/mcp/read-tools';
 import { executeAction } from '../../../src/main/mcp/action-tools';
 import type { McpHostDeps } from '../../../src/main/mcp/host';
@@ -91,11 +94,16 @@ let audits: number;
 /** **the `device_key` of the connection of the current runtime** (it changes — when the board is swapped) */
 let currentDevice: string;
 let deps: AgentActionDeps;
+let permissions: PermissionStore;
+let storeSeq = 0;
 
 beforeEach(() => {
   executed = [];
   audits = 0;
   currentDevice = 'atk-01';
+  // **The unified permission area** ✓ (the gate of the agent side ✓)
+  permissions = new PermissionStore(join(tmpdir(), `cockpit-perm-dev-${process.pid}-${storeSeq++}.json`));
+  permissions.set('agent', 'action:system.reboot', true);
   deps = {
     packId: 'demo-pack',
     packIdOf: () => 'demo-pack',
@@ -124,6 +132,9 @@ beforeEach(() => {
     },
     now: () => 1_700_000_000_000,
     actions: () => [BACKLIGHT, REBOOT],
+    // **The unified permission area** ✓ — **the reboot is turned on** ✓
+    // (these cases are about the **device** ✓, not about the gate ✓)
+    permissions,
   } as unknown as AgentActionDeps;
 });
 

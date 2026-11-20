@@ -1,6 +1,8 @@
 import { MCP_PROTOCOL_VERSION } from './security';
 import { projectRunStatusForAgent } from './view';
 import type { WorkflowService } from '../workflows/service';
+import type { WorkflowPack } from '../workflows/format';
+import type { PermissionStore } from '../permissions/policy';
 import type { McpHostDeps } from './host';
 import { withVersion, withVersionEach } from './convention';
 import { executeAction } from './action-tools';
@@ -74,6 +76,14 @@ export type McpToolImpl = (args: Record<string, unknown>) => Promise<unknown> | 
 export interface McpServerDeps {
   /** The workflow service (**the card side and the agent side share the same one** ✓ — ADR-D34 ✓) */
   workflows: WorkflowService;
+  /**
+     * **The unified permission area** ✓ (the gate of the agent side ✓ —
+     * implementation decision record ADR-D47 ✓ · ADR-D48 ✓).
+     *
+     * → **It is required** ✓ — **every tool the agent can call passes through
+     *   here** ✓ → **one place decides what the agent may do** ✓.
+     */
+  permissions: PermissionStore;
   /**
      * **The host dependencies of the read-side tools** ✓.
      *
@@ -514,10 +524,25 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         if (dryRun !== undefined && typeof dryRun !== 'boolean') {
           return withVersion(failure('invalid_params', 'dry_run must be omitted or a boolean'));
         }
+        // **① The existence** ✓ (contract §2.4 ✓ — **before the authorisation** ✓)
+        let pack: WorkflowPack;
+        try {
+          pack = workflows.pack(id);
+        } catch (err) {
+          return withVersion(
+            failure(reasonOf(err), err instanceof Error ? err.message : String(err)),
+          );
+        }
+        // **② The unified permission area is the gate** ✓ (contract §2.4 ✓ ·
+        // implementation decision record ADR-D47 ✓ · ADR-D48 ✓)
+        if (!deps.permissions.allows('agent', `workflow:${id}`)) {
+          return withVersion(
+            failure('denied', `The permission area does not allow the agent to run the workflow "${id}"`),
+          );
+        }
         // **dry_run: a preview** ✓ (**not a single step is run** ✓ · **nothing is written to the audit** ✓ · **there is no run_id** ✓)
         if (dryRun === true) {
           try {
-            const pack = workflows.pack(id);
             const preview = dryRunWorkflow(pack, inputs);
             return withVersion({
               ok: preview.ok,
@@ -567,6 +592,10 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         if (deps.host?.cardTools === undefined) {
           return withVersion(failure('failed', 'The host has no card installation capability wired up'));
         }
+        // **The unified permission area** ✓ (ADR-D47 ✓)
+        if (!deps.permissions.allows('agent', 'host:install_card')) {
+          return withVersion(failure('denied', 'The permission area does not allow the agent to install cards'));
+        }
         return withVersion(installCard(deps.host.cardTools, path));
       },
     ],
@@ -579,6 +608,10 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         }
         if (deps.host?.cardTools === undefined) {
           return withVersion(failure('failed', 'The host has no card installation capability wired up'));
+        }
+        // **The unified permission area** ✓ (ADR-D47 ✓)
+        if (!deps.permissions.allows('agent', 'host:uninstall_card')) {
+          return withVersion(failure('denied', 'The permission area does not allow the agent to uninstall cards'));
         }
         return withVersion(uninstallCard(deps.host.cardTools, cardId));
       },
@@ -596,6 +629,10 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         }
         if (deps.host === undefined) {
           return withVersion(failure('failed', 'The host has no layout capability wired up'));
+        }
+        // **The unified permission area** ✓ (ADR-D47 ✓)
+        if (!deps.permissions.allows('agent', 'host:promote_card')) {
+          return withVersion(failure('denied', 'The permission area does not allow the agent to promote cards'));
         }
         const result = promoteCard(deps.host.layout(), cardId, conn as string | undefined);
         if (!result.ok || result.layout === undefined) {

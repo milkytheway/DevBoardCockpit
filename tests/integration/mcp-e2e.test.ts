@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { startMcpHttp } from '../../src/main/mcp/http';
 import { McpServer } from '../../src/main/mcp/server';
+import { PermissionStore } from '../../src/main/permissions/policy';
 import type { McpHostDeps } from '../../src/main/mcp/host';
 import { generateToken } from '../../src/main/mcp/security';
 import { discoveryFilePath, removeDiscoveryFile, writeDiscoveryFile } from '../../src/main/mcp/discovery';
@@ -46,6 +47,8 @@ steps:
 let dir: string;
 let server: { close: () => Promise<void>; port: number };
 let token: string;
+/** **The unified permission area** ✓ (the gate of the agent side ✓) */
+let permissions: PermissionStore;
 let discoveryPath: string;
 
 beforeEach(async () => {
@@ -98,9 +101,11 @@ beforeEach(async () => {
     },
   });
 
+  // **The unified permission area** ✓ (the gate of the agent side ✓)
+  permissions = new PermissionStore(join(dir, 'permissions.json'));
   token = generateToken();
   server = await startMcpHttp({
-    mcp: new McpServer({ workflows: service, host: hostDeps() }),
+    mcp: new McpServer({ workflows: service, permissions: permissions, host: hostDeps() }),
     token,
     host: '127.0.0.1',
     port: 0,
@@ -231,6 +236,7 @@ function hostDeps(): McpHostDeps {
         } as unknown as Connection),
       readTag: async () => undefined,
       audit: () => 'audit-e2e',
+      permissions,
       actions: () => [
         {
           id: 'demo.action',

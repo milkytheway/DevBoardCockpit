@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { executeAction, agentGrants } from '../../../src/main/mcp/action-tools';
 import type { ActionDef } from '../../../src/main/tags/schema';
 import type { AgentActionDeps } from '../../../src/main/mcp/action-tools';
 import type { TagReading } from '../../../src/shared/tag-reading';
+import { PermissionStore } from '../../../src/main/permissions/policy';
 
 /**
  * Action execution for an agent (contract `spec/04` §2.4 / §2.4.1).
@@ -14,7 +17,7 @@ import type { TagReading } from '../../../src/shared/tag-reading';
  * | **the action is not in the pack → `not_found`** (**not `denied`**) | the order of contract §2.4 |
  * | **the parameters are invalid → `invalid_params`** | the order of contract §2.4 |
  * | **it is in the granted set → it runs directly** | contract §2.4.1 |
- * | **`destructive` → it runs directly as well** (no prompt) | the danger level is informational — the gate is the permission area in the settings |
+ * | **`destructive` → it runs directly as well** (no prompt) — **when the permission area allows it** | the danger level is informational — the gate is the permission area in the settings, and **the dangerous ones are off by default** ✓ |
  * | **outside the guard range → `denied`** (**not "ask for confirmation"**) | the guard is the boundary the pack author drew |
  * | **`dry_run` executes nothing and writes no audit row** | "it is not an attempt" |
  *
@@ -64,10 +67,18 @@ const REBOOT: ActionDef = {
 let executed: string[];
 let audits: number;
 let deps: AgentActionDeps;
+let permissions: PermissionStore;
+let storeSeq = 0;
 
 beforeEach(() => {
   executed = [];
   audits = 0;
+  // **The unified permission area** ✓ (the gate of the agent side ✓)
+  // → **one file per store** ✓ (the store persists ✓ — a shared file would
+  //   leak the settings of one case into the next one ✗)
+  permissions = new PermissionStore(
+    join(tmpdir(), `cockpit-perm-${process.pid}-${storeSeq++}.json`),
+  );
   deps = {
     // **the packId is a string** (the shape the executor expects)
     packId: 'demo-pack',
@@ -101,6 +112,7 @@ beforeEach(() => {
     },
     now: () => 1_700_000_000_000,
     actions: () => [BACKLIGHT, DIMMER, REBOOT],
+    permissions,
   } as unknown as AgentActionDeps;
 });
 
@@ -114,6 +126,21 @@ describe('MCP · execute_action · existence and authorisation', () => {
   it('**the parameters are invalid → `invalid_params`** (**not an execution failure**)', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 9999 });
     expect(res.reason).toBe('invalid_params');
+  });
+
+  it('**the agent may not run a `destructive` action while the permission area says no** ✓ (ADR-D48: **the dangerous ones are off by default** ✓ — **turning one on is the informed consent** ✓)', async () => {
+    const res = await executeAction(deps, 'system.reboot', {});
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('denied');
+    // **it did not run** ✓
+    expect(executed).toEqual([]);
+  });
+
+  it('**turning the switch on is the informed consent** ✓ → the agent may run it ✓', async () => {
+    permissions.set('agent', 'action:system.reboot', true);
+    const res = await executeAction(deps, 'system.reboot', {});
+    expect(res.ok).toBe(true);
+    expect(executed.length).toBeGreaterThan(0);
   });
 
   it('**the granted set of the agent is every action of the pack** (contract §2.4.1)', () => {
@@ -138,7 +165,9 @@ describe('MCP · execute_action · the two authorisation criteria', () => {
     expect(res.audit_id).toBe('audit-1');
   });
 
-  it('**`destructive` → it runs directly** (no prompt)', async () => {
+  it('**`destructive` → it runs directly** (no prompt) — **the permission area allows it** ✓', async () => {
+    // **the switch is on** ✓ (turning it on is the informed consent ✓ — ADR-D48 ✓)
+    permissions.set('agent', 'action:system.reboot', true);
     const res = await executeAction(deps, 'system.reboot', {});
     expect(res.ok).toBe(true);
     // **the command really went out** (**what is counted are the commands of the
@@ -176,7 +205,8 @@ describe('MCP · execute_action · dry_run', () => {
     expect(res.command).toBe("echo 100 > /sys/class/backlight/backlight/brightness");
   });
 
-  it('**`destructive` can be previewed as well**', async () => {
+  it('**`destructive` can be previewed as well** (the permission area allows it ✓)', async () => {
+    permissions.set('agent', 'action:system.reboot', true);
     const res = await executeAction(deps, 'system.reboot', {}, { dryRun: true });
     expect(res.ok).toBe(true);
     expect(res.command).toBe('reboot');

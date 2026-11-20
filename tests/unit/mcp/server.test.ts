@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '../../../src/main/mcp/server';
+import { PermissionStore } from '../../../src/main/permissions/policy';
 import { WorkflowRegistry } from '../../../src/main/workflows/registry';
 import { WorkflowService } from '../../../src/main/workflows/service';
 import { TargetRegistry } from '../../../src/main/workflows/targets';
@@ -107,7 +108,15 @@ beforeEach(() => {
 });
 
 function server(): McpServer {
-  return new McpServer({ workflows: service });
+  return new McpServer({ workflows: service, permissions: permissionsStore() });
+}
+
+/** **The unified permission area** ✓ (the gate of the agent side ✓) */
+let storeSeq = 0;
+function permissionsStore(): PermissionStore {
+  // → **one file per store** ✓ (the store persists ✓ — a shared file would
+  //   leak the settings of one case into the next one ✗)
+  return new PermissionStore(join(tmpdir(), `cockpit-perm-server-${process.pid}-${storeSeq++}.json`));
 }
 
 /** Sends a JSON-RPC request */
@@ -125,6 +134,7 @@ function call(method: string, params?: unknown): Promise<Record<string, unknown>
 function serverWithHost(): McpServer {
   return new McpServer({
     workflows: service,
+    permissions: permissionsStore(),
     host: {
       pack: () => null,
       readings: () => [],
@@ -257,6 +267,31 @@ describe('MCP · get_card_sdk_docs', () => {
     expect(res.topics).toEqual(['api']);
     // **The name of the method comes from the API registry** (it is not copied by hand)
     expect(res.content).toContain('tags.get');
+  });
+});
+
+describe('MCP · the permission area is the gate of the agent side', () => {
+  it('**`run_workflow` is `denied` when the permission area does not allow it** ✓ (ADR-D47 ✓ · ADR-D48 ✓)', async () => {
+    const store = permissionsStore();
+    store.set('agent', 'workflow:demo.run', false);
+    const mcp = new McpServer({ workflows: service, permissions: store });
+    const res = (await mcp.handle({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'run_workflow', arguments: { id: 'demo.run' } },
+    })) as { result?: { content?: { text?: string }[] } };
+    const text = res.result?.content?.[0]?.text ?? '';
+    expect(text).toContain('denied');
+  });
+
+  it('**`run_workflow` runs when the permission area allows it** ✓', async () => {
+    const res = (await call('tools/call', {
+      name: 'run_workflow',
+      arguments: { id: 'demo.run' },
+    })) as { result?: { content?: { text?: string }[] } };
+    const text = res.result?.content?.[0]?.text ?? '';
+    expect(text).not.toContain('denied');
   });
 });
 

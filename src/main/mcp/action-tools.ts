@@ -2,6 +2,7 @@ import { invokeAction, type ActionExecutorDeps, type ActionOutcome } from '../ac
 import { buildCommand } from '../actions/encoder';
 import type { ActionDef } from '../tags/schema';
 import type { GrantedActions } from '../actions/authorization';
+import type { PermissionStore } from '../permissions/policy';
 
 /**
  * The **action execution of the agent** (contract `spec/04` §2.4 / §2.4.1 ✓ ·
@@ -69,6 +70,14 @@ export interface AgentActionDeps extends Omit<ActionExecutorDeps, 'granted' | 'a
      * → **The credential is bound to it as well** ✓ (§2.4.1, sixth item ✓).
      */
   deviceKey: () => string;
+  /**
+     * **The unified permission area** ✓ (the gate of the agent side ✓ —
+     * implementation decision record ADR-D47 ✓).
+     *
+     * → **It is required** ✓ — **an agent without a gate is the bug this
+     *   closes** ✓ (the switch in the settings page has to mean something ✓).
+     */
+  permissions: PermissionStore;
 }
 
 /** The authorisation set of the agent (**all the actions of the pack** ✓ — contract §2.4.1 ✓) */
@@ -143,6 +152,21 @@ export async function executeAction(
   // **① The existence is checked first** ✓ (contract §2.4 ✓ — **the order matters** ✓)
   if (action === undefined) {
     return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };
+  }
+
+  // **② The unified permission area is the gate of the agent side** ✓
+  // (contract §2.4 ✓ · implementation decision record ADR-D47 ✓ · ADR-D48 ✓)
+  //
+  // → **The dangerous actions are off by default** ✓ → **turning one on is the
+  //   informed consent for that one step** ✓ (ADR-D48 ✓).
+  // → **It comes after the existence check** ✓ (§2.4's order ✓ — an action that
+  //   does not exist is `not_found` ✓, **not** `denied` ✓).
+  if (!deps.permissions.allows('agent', `action:${action.id}`, action.danger === 'destructive')) {
+    return {
+      ok: false,
+      reason: 'denied',
+      detail: `The permission area does not allow the agent to run "${action.id}"`,
+    };
   }
 
   // **③ Validation of the parameters + encoding** ✓ (**the dry run has to pass this step as well** ✓ — otherwise what it returns is not "what will be run" ✓)

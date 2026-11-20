@@ -138,11 +138,21 @@ export class PermissionStore {
     this.load();
   }
 
-  /** May this actor use this operation */
-  allows(actor: PermissionActor, op: string): boolean {
+  /**
+   * May this actor use this operation.
+   *
+   * → `dangerous` is **how dangerous that operation is** ✓ — the caller knows it
+   *   (the action definition ✓ · the board pack ✓) →
+   *   **passing it in keeps the answer independent of whether the settings
+   *   page has ever been opened** ✓ (that state is global ✓ — the answer
+   *   would not be ✓).
+   * → Without it the answer falls back to **what the settings page last told
+   *   the store** ✓.
+   */
+  allows(actor: PermissionActor, op: string, dangerous?: boolean): boolean {
     const explicit = this.policy[actor][op];
     if (explicit !== undefined) return explicit;
-    return defaultAllowed(actor, op, this.isDangerous(op));
+    return defaultAllowed(actor, op, dangerous ?? this.isDangerous(op));
   }
 
 

@@ -442,6 +442,9 @@ let mcpHttp: { close: () => Promise<void>; port: number } | undefined;
 async function startMcpServer(): Promise<void> {
   try {
     const mcp = new McpServer({
+      // **The unified permission area** ✓ (the gate of the agent side ✓ —
+      // implementation decision record ADR-D47 ✓ · ADR-D48 ✓)
+      permissions,
       workflows: workflowService,
       // Host dependencies of the read-side tools ✓ (see `src/main/mcp/host.ts` ✓)
       host: buildMcpHost({
@@ -476,6 +479,9 @@ async function startMcpServer(): Promise<void> {
           readTag: (tag) => runtime.sampleTag(tag),
           audit: (row) => actionAudit.append(row),
           actions: () => runtime.actionDefs,
+          // **The gate of the agent side** ✓ (the same store the settings page
+          // writes ✓ — **one book** ✓)
+          permissions,
         },
       }),
     });

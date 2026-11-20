@@ -1,4 +1,3 @@
-import type { PermissionStore } from '../permissions/policy';
 import { cardState, type CardState } from '../cards/state';
 import { validateCardAt } from '../cards/validate-at';
 import type { McpCardEntry, McpHostDeps, McpValidateResult } from '../mcp/host';
@@ -54,8 +53,6 @@ export interface McpHostWiring {
   /** The consent queue (**the ones waiting for a human approval** ✓) */
   /** The ids of the built-in cards (**a built-in card may not be deleted** ✓) */
   builtinCardIds?: string[];
-  /** **The unified permission area** (the table of the settings page ✓ · ADR-D47 ✓) */
-  permissions?: PermissionStore;
 }
 
 /** Assembles the host dependencies of the MCP layer ✓ */
