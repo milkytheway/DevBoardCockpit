@@ -26,7 +26,7 @@ import type { ActionDef, PackGuard, PackParam } from '../tags/schema';
  *   switch ✓.
  */
 
-  /** Granted actions (approved by the user when the card was installed) */
+  /** Granted actions (**the card declares them** ✓ — the permission area decides whether they may run ✓) */
 export interface GrantedActions {
   /**
    * Action id → the approved parameter domain (by parameter name, the same

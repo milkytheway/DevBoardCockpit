@@ -74,7 +74,7 @@ export interface CardServices {
      * **The permission is judged by action id** (the write permissions do not
      * use patterns, contract §2.3) — the session layer already has one check
      * (is this id in `permissions.write`), and here `invoke` goes through the
-     * chain of the executor (encode → floor → authorisation → confirm → execute
+     * chain of the executor (encode → floor → authorisation → execute
      * → readback → audit).
      */
   actions: {

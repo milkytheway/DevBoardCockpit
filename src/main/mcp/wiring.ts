@@ -49,8 +49,6 @@ export interface McpHostWiring {
   agentActions: AgentActionDeps;
   /** The user card root (**the cards are installed here** ✓) */
   cardsRoot?: string;
-  /** The authorisation ledger */
-  /** The consent queue (**the ones waiting for a human approval** ✓) */
   /** The ids of the built-in cards (**a built-in card may not be deleted** ✓) */
   builtinCardIds?: string[];
 }

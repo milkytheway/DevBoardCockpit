@@ -76,7 +76,6 @@ export interface WorkflowRunStatus {
   outputs: Record<string, string>;
   ok?: boolean;
   reason?: string;
-  /** A human has to confirm (a dangerous command) */
   /**
    * The step it stopped at (the index) — when it continues it starts
    * at this step, the earlier steps do not run again (running them
@@ -207,8 +206,8 @@ export class WorkflowService {
     }
 
     // The run_id is unpredictable (V2-M10 of review 35):
-    // an id derived from a timestamp can be guessed ✗ → and it is one of
-    // the arguments of `confirm`.
+    // an id derived from a timestamp can be guessed ✗ → **so the run id
+    // has to be unpredictable** ✓.
     const runId = `wf-${randomUUID().slice(0, 8)}`;
     const status: WorkflowRunStatus = {
       runId,

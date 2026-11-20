@@ -140,9 +140,8 @@ function doInstall(
  *
  * → **Only the ones under the user card root** ✓ (**a built-in card cannot be
  *   deleted** ✓ — it lives in the application directory ✓).
- * → **The authorisation ledger is cleared as well** ✓ (otherwise installing
- *   it again would bring the old authorisation along ✗ — that would not be a
- *   "fresh install" ✓).
+ * → **There is no authorisation ledger to clear** ✓ (**it was removed on
+ *   2026-11-16** ✓ — ADR-D46 ✓) → **the manifest is the authorisation** ✓.
  */
 export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCardResult {
   // **A built-in card → it may not be deleted** ✓

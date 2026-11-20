@@ -50,7 +50,7 @@ export interface ActionExecutorDeps {
   runTransaction: <T>(fn: (connection: Connection) => Promise<T>) => Promise<T>;
   /** Read one tag (a fresh one) */
   readTag: (tag: string) => Promise<TagReading | undefined>;
-  /** Granted actions (approved by the user when the card was installed) */
+  /** Granted actions (**the card declares them** ✓ — the permission area decides whether they may run ✓) */
   granted: () => GrantedActions;
   // There is no "should we ask a human" item any more ✓ (2026-11-16 ✓ ·
   // implementation decision record ADR-D48 ✓) —

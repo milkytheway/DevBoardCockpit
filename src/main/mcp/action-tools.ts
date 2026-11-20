@@ -109,9 +109,6 @@ export interface AgentActionResult {
   audit_id?: string;
   /** The reason of the failure (**a closed table** ✓ — contract §4 ✓) */
   reason?: string;
-  /** The credential that is given when a person has to approve ✓ */
-  /** The parameters are outside the range of the guard ✓ (**a flag, not a reason code** ✓) */
-  guard_exceeded?: boolean;
   /** The expected value / the actual value ✓ */
   expected?: unknown;
   actual?: unknown;

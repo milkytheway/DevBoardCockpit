@@ -58,7 +58,6 @@ export type CardWorkflowReason =
   | 'denied'
   /** There is no such workflow pack ✓ */
   | 'not_found'
-  /** This workflow pack has **not been approved by the user** ✓ */
   /** The input is not valid ✓ */
   | 'invalid_params'
   /** The same workflow is already running ✓ */
