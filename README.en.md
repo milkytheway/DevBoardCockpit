@@ -77,7 +77,7 @@ The application includes a **board setup wizard**: after choosing a transport an
 
 All three extension paths require no change to the main process.
 
-A **card** is a directory of HTML, JavaScript and styles declaring the tags and workflows it needs. Drop it into the user card directory; it takes effect on hot reload.
+A **card** is a directory of HTML, JavaScript and styles declaring the tags and workflows it needs. Drop it into the user card directory; it takes effect on hot reload. Follow the [card design rules](docs/tutorial/03-card-design-rules.md) when you write one: one claim per card, colour only for state, trends and details belong to the host's detail panel.
 
 A **board pack** is a YAML file declaring the tag sources, actions and auto-detection rules for one board model.
 
@@ -121,6 +121,7 @@ Dangerous actions are switched individually in settings and are off by default.
 | [Workflow pack format](docs/spec/05-workflow-pack.md) | Step kinds, roles, cancellation semantics |
 | [Device facts](docs/02-device-facts.md) | Measured paths and behavioural constraints |
 | [Tutorial](docs/tutorial/01-build-a-board-pack.en.md) | Building a board pack for an unfamiliar board |
+| [Card design rules](docs/tutorial/03-card-design-rules.md) | The information budget, the colour discipline, the seven hard rules and a self-check list |
 
 ## License
 

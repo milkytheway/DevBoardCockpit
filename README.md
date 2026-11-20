@@ -77,7 +77,7 @@ npm run dist
 
 三种扩展方式，均无需修改主进程：
 
-**卡片**是 HTML、JavaScript 与样式组成的目录，声明自己需要的位号与流程。放入用户卡片目录后热插拔生效。
+**卡片**是 HTML、JavaScript 与样式组成的目录，声明自己需要的位号与流程。放入用户卡片目录后热插拔生效。写卡片时遵循[卡片设计规范](docs/tutorial/03-card-design-rules.md)：一张卡一个主张，色彩只表达状态，趋势与明细归宿主详情面板。
 
 **板型包**是 YAML 文件，声明该型号的位号来源、动作与自动识别规则。
 
@@ -121,6 +121,7 @@ npm run check:package       # 校验打包产物
 | [流程包格式](docs/spec/05-workflow-pack.md) | 步骤类型、角色、取消语义 |
 | [设备事实](docs/02-device-facts.md) | 实测路径与行为约束 |
 | [教程](docs/tutorial/01-build-a-board-pack.zh-Hans.md) | 为一块陌生的板子建立板型包 |
+| [卡片设计规范](docs/tutorial/03-card-design-rules.md) | 信息预算、色彩纪律、七条硬规矩与自查表 |
 
 ## 许可
 
