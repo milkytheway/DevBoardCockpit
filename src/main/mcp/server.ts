@@ -26,7 +26,7 @@ import {
  *
  * ── 为什么自己写而不用 SDK ──
  *
- * `docs/04` §132 的选型表写着用 `@modelcontextprotocol/sdk` ✓，
+ * The transport selection table chose `@modelcontextprotocol/sdk` ✓,
  * **这一轮推翻它** ✓（**ADR-D39** ✓）：
  *
  * | # | 理由 |
@@ -72,7 +72,7 @@ export interface McpServerDeps {
   /** 流程服务（**卡片侧与 agent 侧共用同一个** ✓ —— ADR-D34 ✓） */
   workflows: WorkflowService;
   /**
-   * **读侧工具的宿主依赖** ✓（`docs/04` §9.2.1 ✓）。
+   * **The host dependencies of the read-side tools** ✓.
    *
    * → **可选** ✓：不传就只有四个流程工具 ✓（**接线之前也能用** ✓ —— 测试与渐进接线 ✓）。
    */

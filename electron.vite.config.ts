@@ -4,19 +4,21 @@ import react from '@vitejs/plugin-react';
 import { PRELOAD_ENTRY, PRELOAD_FORMAT } from './src/shared/build-layout';
 
 /**
- * preload 必须构建成 **CommonJS**。
+ * The preload has to be built as **CommonJS**.
  *
- * electron-vite 默认看 `package.json` 的 `type` 决定格式——本工程是
- * `"type": "module"`，于是它把 preload 产成 ESM（`index.mjs`）。
- * 但 **Electron 的沙箱 preload 只能跑 CommonJS**
- * （官方文档：Sandboxed preload scripts can't use ESM imports）。
- * ESM preload 必须 `sandbox: false`，那等于关掉渲染进程沙箱——
- * 而渲染进程里要装不可信的卡片，沙箱是最后一道防线。
+ * electron-vite picks the format from the `type` field of `package.json`.
+ * This project is `"type": "module"`, so the preload would come out as ESM
+ * (`index.mjs`). But **a sandboxed preload in Electron can only run
+ * CommonJS** (the official documentation states it: sandboxed preload scripts
+ * cannot use ESM imports). An ESM preload forces `sandbox: false`, which
+ * switches the renderer sandbox off — and the renderer hosts untrusted cards,
+ * so that sandbox is the last line of defence.
  *
- * 所以这里钉死 `format: 'cjs'` + `entryFileNames: '[name].cjs'`。
- * 文件名不是随手写的：`src/shared/build-layout.ts` 是唯一出处，
- * main 里的 preload 路径也从那里取，两边不会对不上。
- * `npm run build` 末尾的 `scripts/check-build.ts` 会再验一次产物真的存在。
+ * Hence `format: 'cjs'` and `entryFileNames: '[name].cjs'` are pinned here.
+ * The file name is not arbitrary: `src/shared/build-layout.ts` is the single
+ * source of it, and the preload path in main is taken from the same place, so
+ * the two cannot disagree. `scripts/check-build.ts` runs at the end of
+ * `npm run build` and checks that the artefact really exists.
  */
 export default defineConfig(({ command, mode }) => ({
   main: {
@@ -30,17 +32,19 @@ export default defineConfig(({ command, mode }) => ({
        * is never emitted** (`scripts/check-build.ts` verifies this:
        * the marker string must not appear anywhere under `out/main/`).
        *
-       * ── 两档「带假设备的构建」──
+       * ── The two builds that carry the fake device ──
        *
-       * | 构建 | 命令 | 假设备在包里吗 |
+       * | Build | Command | Fake device in the bundle |
        * |---|---|---|
-       * | 生产 | `npm run build` | **不在**（自检脚本验的就是这件事） |
-       * | 调试 | `npm run build:fake`（`--mode fake`） | **在** |
-       * | 开发服务器 | `npm run dev` | 在 |
+       * | Production | `npm run build` | **No** (this is exactly what the self-check verifies) |
+       * | Debug | `npm run build:fake` (`--mode fake`) | **Yes** |
+       * | Development server | `npm run dev` | Yes |
        *
-       * → **为什么要「带假设备的构建」**：e2e 要一块**能应答动作的假板子**
-       * （生产构建里没有假设备 → 动作那条判据没法自动化）。
-       * → 那条构建**不走 `scripts/check-build.ts`**（自检要验的正是「假设备不在包里」）。
+       * → **Why a build that carries the fake device**: the e2e suite needs a
+       *   **fake board that answers actions** (a production build has no fake
+       *   device, so the action criterion cannot be automated).
+       * → That build **does not run `scripts/check-build.ts`** (the self-check
+       *   exists precisely to verify that the fake device is absent).
        */
       __COCKPIT_FAKE_BUILD__: JSON.stringify(command !== 'build' || mode === 'fake'),
     },

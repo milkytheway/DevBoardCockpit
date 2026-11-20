@@ -21,6 +21,23 @@
 
 主进程持有全部设备 I/O、位号采集、动作执行与权限判定；渲染进程只负责绘制。卡片运行在独立 iframe 中，只能访问白名单 API。
 
+## 仓库结构
+
+```
+docs/spec/               契约：位号词表、板型包、卡片清单、MCP 工具集、流程包
+docs/tutorial/           方法论教程
+docs/02-device-facts.md  实测事实
+src/main/                设备 I/O、位号运行时、动作执行、卡片宿主、MCP 服务
+src/renderer/            界面
+src/shared/              主进程与渲染进程共用的类型与主题
+cards/                   内置卡片
+profiles/                板型包、流程包、连接 profile
+fixtures/                真机样本（黄金测试向量，只增不改）
+scripts/                 构建、校验、生成与探测工具
+tests/                   单元、集成与端到端测试
+```
+
+---
 ## 快速开始
 
 前置条件：Node.js 20 或更高版本；Windows。开发环境需要 Visual Studio 生成工具，用于编译 `node-pty` 与 `serialport`。
@@ -54,7 +71,7 @@ npm run dist
 
 板子的默认波特率为 1500000。
 
-应用提供**接板向导**：选择传输方式与串口参数后，向导用通用板型包（`profiles/boards/generic-linux/`）逐项探测该板，生成对应的板型包并写入用户数据目录。详见[教程](docs/tutorial/01-建立板型包.md)。
+应用提供**接板向导**：选择传输方式与串口参数后，向导用通用板型包（`profiles/boards/generic-linux/`）逐项探测该板，生成对应的板型包并写入用户数据目录。详见[教程](docs/tutorial/01-build-a-board-pack.zh-Hans.md)。
 
 ## 扩展
 
@@ -73,7 +90,7 @@ npm run dist
 ```bash
 npm run lint          # ESLint
 npm run typecheck     # TypeScript
-npm test              # Vitest（1437 项）
+npm test              # Vitest
 npm run test:cards    # Playwright，真 Electron
 npm run validate:profiles   # 校验板型包
 npm run check:package       # 校验打包产物
@@ -103,7 +120,7 @@ npm run check:package       # 校验打包产物
 | [MCP 工具集](docs/spec/04-mcp-tools.md) | 工具定义与返回形状 |
 | [流程包格式](docs/spec/05-workflow-pack.md) | 步骤类型、角色、取消语义 |
 | [设备事实](docs/02-device-facts.md) | 实测路径与行为约束 |
-| [教程](docs/tutorial/01-建立板型包.md) | 为一块陌生的板子建立板型包 |
+| [教程](docs/tutorial/01-build-a-board-pack.zh-Hans.md) | 为一块陌生的板子建立板型包 |
 
 ## 许可
 

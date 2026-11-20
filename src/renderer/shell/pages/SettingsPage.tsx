@@ -98,8 +98,8 @@ const strings = {
     en: 'The card host, the sandbox and the CSP belong to main; this shell only draws, it neither judges permissions nor touches the device.',
   },
   aboutDesign: {
-    'zh-Hans': '设计依据 docs/UI设计/01-UI设计总纲.md · 机制基线 docs/21 · 边界 docs/UI设计/05-外壳施工图.md',
-    en: 'Design basis docs/UI设计/01-UI设计总纲.md · mechanism baseline docs/21 · boundaries docs/UI设计/05-外壳施工图.md',
+    'zh-Hans': '配色与卡片内部遵循同一套视觉规范；卡片只能使用宿主注入的 `--cockpit-*` 变量。',
+    en: 'Colour and card interiors follow one visual specification; a card may only use the `--cockpit-*` variables the host injects.',
   },
 } satisfies Record<string, Localised>;
 

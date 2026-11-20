@@ -1,17 +1,15 @@
-# 真机样本：RK3588 ATK-DLRK3588 的 devfreq 与 rknpu 对照
+# Real-device sample: devfreq and rknpu readings from an RK3588 ATK-DLRK3588 board.
 #
-# 采集于 2026-11-13，板子 serial f34dca7784396ab2。
+# Captured 2026-11-13 over ADB, board serial 0000000000000000.
 #
-# 采集命令与逐条结论见 `docs/06-契约核对.md` §五。
+# This file is the NPU duty-cycle reference pair. The two paths to the same
+# NPU are placed side by side:
+#   /sys/class/devfreq/fdab0000.npu/load   -> duty cycle (idle reads 100)
+#   /sys/kernel/debug/rknpu/load           -> true utilisation
 #
-# **这一份是 C7 要求的「npu 占空比对照量」**：
-# 同一个 NPU 的两条路径并排放——
-#   /sys/class/devfreq/fdab0000.npu/load   → 占空比（**空闲就是 100**）
-#   /sys/kernel/debug/rknpu/load            → 真正的利用率
-#
-# 契约 `spec/01` §七 警告的正是这个：**devfreq 的 load 是时钟占空比，不是利用率**。
-# 这份样本把警告从「推断」变成「实测」。
-###GPU_DEVFRQ
+# Contract `spec/01` section 7 warns about exactly this: the devfreq `load`
+# value is a clock duty cycle, not a utilisation figure. This sample turns
+# the warning from an inference into a measurement.
 0@300000000Hz
 ###NPU_DEVFRQ
 100@1000000000Hz

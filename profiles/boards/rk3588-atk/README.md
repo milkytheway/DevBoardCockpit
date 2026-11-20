@@ -10,7 +10,7 @@ board's USB is claimed by the host, so it can be reached with the host's
 
 ## Where the paths come from
 
-From the measurements recorded in the device fact list, `docs/02`, and from
+From the measurements recorded in the device fact list, `docs/02-device-facts.md`, and from
 the documentation of the previous project.
 
 One path was wrong when the pack was first written and was corrected

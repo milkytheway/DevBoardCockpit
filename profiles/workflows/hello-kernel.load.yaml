@@ -2,7 +2,7 @@
 # uploaded to the board already).
 #
 # Run `depmod -a` and then `modprobe` by name; not `insmod` by path (rule P2 of
-# docs/02 section 3.5). Finally confirm on the board with `lsmod` that it is
+# docs/02-device-facts.md section 3.5). Finally confirm on the board with `lsmod` that it is
 # really loaded.
 
 apiVersion: devboard/v1

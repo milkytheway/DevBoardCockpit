@@ -5,7 +5,7 @@ import { useT, type Localised } from '../shell/i18n';
 /**
  * 双树文件浏览器。
  *
- * 交互沿用旧工程（`docs/03-迁移对照表.md`：「**交互设计保留，实现重写**：
+ * 交互沿用旧工程：「**交互设计保留，实现重写**：
  * 双树 + 懒加载 + 目标选择器 + 箭头传输」）：
  *
  * ```
@@ -98,7 +98,7 @@ export function FileBrowser({
    *
    * **远端树必须能进目录**——不然用户永远只能看到根目录，
    * 而「上传到某个目录」这件事根本无从谈起
-   * （`docs/13-计划1复评报告.md` S-08：原来 `remotePath` 是个常量 prop，
+   * （原来 `remotePath` 是个常量 prop，
    * 组件内从不修改，点目录只是「选中」不是「进去」）。
    */
   const [currentPath, setCurrentPath] = useState(remotePath);

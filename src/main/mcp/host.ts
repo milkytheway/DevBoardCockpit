@@ -10,7 +10,7 @@ import type { AgentActionDeps } from './action-tools';
 import type { CardToolDeps } from './card-tools';
 
 /**
- * **MCP 层的宿主依赖面**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
+ * **The host dependencies the MCP layer needs** ✓.
  *
  * ── 它是「薄封装」的形状 ──
  *

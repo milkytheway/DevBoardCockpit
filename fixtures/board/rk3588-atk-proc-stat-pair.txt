@@ -1,16 +1,16 @@
-# 真机样本：/proc/stat 的**两次真实采样**（间隔 3 秒）
+# Real-device sample: two real `/proc/stat` readings, three seconds apart.
 #
-# 采集于 2026-11-13，板子 serial f34dca7784396ab2。
+# Captured 2026-11-13 over ADB, board serial 0000000000000000.
 #
-# 采集命令与逐条结论见 `docs/06-契约核对.md` §五。
+# Why a second sample: `fixtures/metrics/proc-stat-second.txt`, inherited
+# from the predecessor project, is synthetic (derived from "1 second at
+# HZ=1000") rather than captured. `cpu.usage` is computed by differencing
+# two readings, so the difference vector has to come from two real readings;
+# otherwise the parser's tolerance for a missing line, an extra line or a
+# different CPU count is never exercised.
 #
-# **为什么再采一份**：前身工程留下的 `fixtures/metrics/proc-stat-second.txt`
-# 是**构造**的（按「1 秒 @ HZ=1000」推算出来的），不是真采样。
-# `cpu.usage` 是「两次采样做差」算出来的，**差值向量应该来自真的两次采样**——
-# 否则解析器的容错（多一行、少一行、CPU 数量不同）根本没被验过。
-#
-# `fixtures/` 只增不改：这份是新增，旧文件留作回归输入。
-###FIRST
+# Samples are append-only: this file is the addition, the old one stays as a
+# regression input.
 cpu  48866 0 34391 77632117 4047 0 237 0 0 0
 cpu0 41281 0 14215 9662070 17 0 51 0 0 0
 cpu1 2564 0 7105 9688505 3898 0 78 0 0 0

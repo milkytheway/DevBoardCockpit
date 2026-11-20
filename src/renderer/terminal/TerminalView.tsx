@@ -11,7 +11,7 @@ import { readXtermTheme, type XtermTheme } from '../shell/theme';
  * **不要自己算列宽**——那是终端渲染里最容易出错的地方。
  * 尺寸变化交给 FitAddon，宿主只需把行列数报回去。
  *
- * 颜色全部走 `--cockpit-*` token（`docs/04-架构设计.md` §6.5）：
+ * 颜色全部走 `--cockpit-*` token：
  * 换主题 = 换一套变量值 = 所有卡片跟着变，不用重写任何卡片。
  */
 

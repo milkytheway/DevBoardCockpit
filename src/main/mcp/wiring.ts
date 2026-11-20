@@ -13,7 +13,7 @@ import { capabilitiesFor } from '../hal/capabilities';
 import type { AgentActionDeps } from './action-tools';
 
 /**
- * **把宿主拼成 MCP 层要的形状**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
+ * **Shapes the host into what the MCP layer expects** ✓.
  *
  * ── 为什么有这一层 ──
  *

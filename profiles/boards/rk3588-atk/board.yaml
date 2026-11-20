@@ -217,7 +217,7 @@ actions:
     params:
       governor:
         type: enum
-        # Measured available values (docs/02 section 3.1): interactive
+        # Measured available values (docs/02-device-facts.md section 3.1): interactive
         # conservative ondemand userspace powersave performance schedutil
         values: [performance, schedutil, powersave, ondemand, userspace, interactive, conservative]
       cpu:
@@ -289,7 +289,7 @@ actions:
     params:
       governor:
         type: enum
-        # Measured available values (docs/02 section 3.1; on the board read
+        # Measured available values (docs/02-device-facts.md section 3.1; on the board read
         # `scaling_available_governors`)
         values: [performance, schedutil, powersave, ondemand, userspace, interactive, conservative]
     # ── Why this one exists (while `cpu.governor.set` covers a single core) ──
@@ -498,7 +498,7 @@ actions:
       name:
         type: string
         maxLength: 64
-    # Load by name, not by path (docs/02 section 3.5, rule P2):
+    # Load by name, not by path (docs/02-device-facts.md section 3.5, rule P2):
     # `insmod /path/x.ko` would pass, but `modprobe x` would not find it.
     # - The module has to be installed into
     #   `/usr/lib/modules/$(uname -r)/extra/` first, then `depmod -a`.

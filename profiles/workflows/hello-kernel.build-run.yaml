@@ -17,7 +17,7 @@
 #    a board pack cannot verify, so the workflow layer has to speak this
 #    vocabulary itself);
 # ⑤ Load by name, not by path: `modprobe <name>`,
-#    never `insmod /path/x.ko` (rule P2 of docs/02 section 3.5).
+#    never `insmod /path/x.ko` (rule P2 of docs/02-device-facts.md section 3.5).
 
 apiVersion: devboard/v1
 kind: Workflow

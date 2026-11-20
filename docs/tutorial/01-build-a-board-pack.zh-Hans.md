@@ -180,4 +180,4 @@ npm run probe:board -- --pack my-board --profile my-board
 |---|---|
 | [板型包格式](../spec/02-board-pack.md) | 完整字段定义与 31 条校验规则 |
 | [位号契约](../spec/01-tag-contract.md) | 词表、命名空间、位号的五种状态 |
-| [设备事实清单](../02-设备事实清单.md) | 一台真实板子的实测路径与行为约束 |
+| [设备事实清单](../02-device-facts.md) | 一台真实板子的实测路径与行为约束 |

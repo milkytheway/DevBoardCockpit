@@ -59,7 +59,7 @@ export interface ValidateCardResult {
 /** 已知的契约版本 */
 const KNOWN_API_VERSIONS = ['devboard/v1'] as const;
 
-/** 栅格的合法尺寸（12 列网格，见 `docs/UI设计/01-UI设计总纲.md` §六） */
+/** The grid a card may declare (12 columns). */
 const GRID_COLUMNS = 12;
 
 const PARAM_TYPES = ['integer', 'number', 'string', 'boolean', 'enum'] as const;

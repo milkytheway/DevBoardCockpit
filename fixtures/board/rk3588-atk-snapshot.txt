@@ -1,11 +1,13 @@
-# 真机样本：RK3588 ATK-DLRK3588（Buildroot 2024.02，内核 6.1.141）
+# Real-device sample: RK3588 ATK-DLRK3588 (Buildroot 2024.02, kernel 6.1.141).
 #
-# 采集于 2026-11-13，板子 serial f34dca7784396ab2（adb devices 确认在 device 状态）。
-# 采集命令见 `docs/06-契约核对.md` §五。
+# Captured 2026-11-13 over ADB, board serial 0000000000000000
+# (`adb devices` reported the device as ready).
 #
-# **样本只增不改**（AGENTS.md）：要改就新增一份文件，旧文件留作回归输入。
-# 这一份是**一次往返**采到的全部段（与前身工程的 SNAPSHOT_SCRIPT 同构：
-# 段之间用 ### 标记分隔，解析器不用猜内容在哪一段结束）。
+# Samples are append-only (see AGENTS.md): to change a parser, add a new
+# file and keep the old one as a regression input.
+# This file holds every section of one round trip, in the same shape as the
+# predecessor project's SNAPSHOT_SCRIPT: sections are separated by `###`
+# markers, so a parser never has to guess where a section ends.
 
 ###STAT
 cpu  48788 0 34331 77513374 4041 0 237 0 0 0

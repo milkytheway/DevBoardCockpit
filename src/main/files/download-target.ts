@@ -56,7 +56,6 @@ export function defaultDownloadPath(downloadsDir: string, remotePath: string): s
  *
  * 静默覆盖是数据安全问题：用户从板子上拉三次同名文件，
  * 前两次的结果被第三次盖掉，而他一点提示都没收到。
- * （`docs/12-计划1复评-renderer.md` P2-12）
  */
 export function uniqueDownloadPath(
   downloadsDir: string,

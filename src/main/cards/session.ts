@@ -16,7 +16,7 @@ import type { CardRequest, CardResponse } from '../../shared/ipc-contract';
  * ── 为什么会话在 main 而不是页面 ──
  *
  * 页面是不可信的一侧（卡片就住在它旁边）。
- * 权限判定**必须在可信进程**（ADR-D28 / `docs/21` §4.4）。
+ * The permission decision **has to be made in a trusted process**.
  */
 
 /** 读数的来源（TagStore 满足它） */

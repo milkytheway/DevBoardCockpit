@@ -21,6 +21,23 @@ In essence this is SCADA / HMI software for embedded boards: tags are data sourc
 
 The main process owns all device I/O, tag sampling, action execution and permission decisions. The renderer only draws. Cards run in isolated iframes and reach a whitelisted API only.
 
+## Repository layout
+
+```
+docs/spec/               Contract: tag vocabulary, board pack, card manifest, MCP tools, workflow pack
+docs/tutorial/           Methodology tutorials
+docs/02-device-facts.md  Measured device facts
+src/main/                Device I/O, tag runtime, action execution, card host, MCP server
+src/renderer/            User interface
+src/shared/              Types and theme shared by both processes
+cards/                   Built-in cards
+profiles/                Board packs, workflow packs, connection profiles
+fixtures/                Real-device samples (golden test vectors, append-only)
+scripts/                 Build, validation, generation and probing tools
+tests/                   Unit, integration and end-to-end tests
+```
+
+---
 ## Getting started
 
 Prerequisites: Node.js 20 or later; Windows. Development requires the Visual Studio build tools to compile `node-pty` and `serialport`.
@@ -54,7 +71,7 @@ Three transports are configured independently. Connection profiles live in `prof
 
 The default baud rate for this board is 1500000.
 
-The application includes a **board setup wizard**: after choosing a transport and serial parameters, the wizard probes the board with the generic board pack (`profiles/boards/generic-linux/`), generates a matching board pack, and writes it to the user data directory. See the [tutorial](docs/tutorial/01-build-a-board-pack.md).
+The application includes a **board setup wizard**: after choosing a transport and serial parameters, the wizard probes the board with the generic board pack (`profiles/boards/generic-linux/`), generates a matching board pack, and writes it to the user data directory. See the [tutorial](docs/tutorial/01-build-a-board-pack.en.md).
 
 ## Extending
 
@@ -73,7 +90,7 @@ An AI agent on the host reaches every capability through MCP, which exposes 20 t
 ```bash
 npm run lint          # ESLint
 npm run typecheck     # TypeScript
-npm test              # Vitest (1437 tests)
+npm test              # Vitest
 npm run test:cards    # Playwright, real Electron
 npm run validate:profiles   # Validate board packs
 npm run check:package       # Validate build artefacts
@@ -103,7 +120,7 @@ Dangerous actions are switched individually in settings and are off by default.
 | [MCP tool set](docs/spec/04-mcp-tools.md) | Tool definitions and return shapes |
 | [Workflow pack format](docs/spec/05-workflow-pack.md) | Step kinds, roles, cancellation semantics |
 | [Device facts](docs/02-device-facts.md) | Measured paths and behavioural constraints |
-| [Tutorial](docs/tutorial/01-build-a-board-pack.md) | Building a board pack for an unfamiliar board |
+| [Tutorial](docs/tutorial/01-build-a-board-pack.en.md) | Building a board pack for an unfamiliar board |
 
 ## License
 

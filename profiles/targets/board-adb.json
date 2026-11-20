@@ -10,7 +10,7 @@
     "commands": "adb",
     "serial": "0000000000000000",
     "ssh": {
-      "host": "192.168.5.100",
+      "host": "192.0.2.100",
       "port": 22,
       "username": "root"
     }

@@ -1,9 +1,11 @@
-# 真机样本：RK3588 ATK-DLRK3588（Buildroot 2024.02，内核 6.1.141）
+# Real-device sample: `ls -l /` on an RK3588 ATK-DLRK3588 board
+# (Buildroot 2024.02, kernel 6.1.141).
 #
-# 采集于 2026-11-13，板子 serial f34dca7784396ab2（adb devices 确认在 device 状态）。
-# 采集命令见 `docs/06-契约核对.md` §五。
+# Captured 2026-11-13 over ADB, board serial 0000000000000000
+# (`adb devices` reported the device as ready).
 #
-# **样本只增不改**（AGENTS.md）：要改就新增一份文件，旧文件留作回归输入。
+# Samples are append-only (see AGENTS.md): to change a parser, add a new
+# file and keep the old one as a regression input.
 total 92
 drwxr-xr-x  23 root root  4096 Jan  2 09:27 .
 drwxr-xr-x  23 root root  4096 Jan  2 09:27 ..

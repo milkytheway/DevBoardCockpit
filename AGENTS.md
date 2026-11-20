@@ -1,95 +1,191 @@
-# AGENTS.md
+# AGENTS.md — working notes for agents in this repository
 
-面向在此仓库工作的 AI agent 与开发者的工程约定。
+> This file describes how to work on `DevBoardCockpit`, a Windows desktop
+> workbench for embedded Linux boards.
+> It is written for an agent that has just opened the repository: read it before
+> changing anything.
 
 ---
 
-## 一 · 工程结构
+## 1. What this project is
 
-这是一个产品工程。产品的形态：面向嵌入式 Linux 开发者的 Windows 桌面工作台，板子的能力表达为语义位号，可视化与操控表达为卡片，扩展方式为 MCP。
+One sentence:
 
-| 层 | 位置 | 地位 |
+> A Windows desktop workbench for embedded Linux developers. A board's
+> capabilities are standardised as **semantic tags**, visualisation and control
+> as **cards**, and extension as **MCP**, so an AI agent on the host can build
+> instruments and switches on demand.
+
+The project has three layers, and they are not interchangeable:
+
+| Layer | Where | Standing |
 |---|---|---|
-| 契约层 | `docs/spec/` 五份文档 + `docs/spec/data/tag-vocabulary.yaml` | 权威。位号词表、板型包格式、卡片清单、流程包格式、MCP 工具集 |
-| 实现层 | `src/` | 主进程、卡片宿主、位号运行时、流程执行器、MCP 服务 |
-| 资产 | `cards/` `profiles/` | 内置卡片、板型包、流程包、连接 profile |
+| **Contract** | `docs/spec/` (six documents plus `docs/spec/data/tag-vocabulary.yaml`) | **Authoritative.** The tag vocabulary, the board pack format, the card manifest, the workflow pack format and the MCP tool set are defined here. |
+| **Implementation** | `src/` | The Electron shell, the card runtime, the workflow engine and the MCP server. |
 
-主进程持有全部设备 I/O、位号采集、动作执行与权限判定。渲染进程只负责绘制。卡片运行在独立 iframe 中，只能访问白名单 API。
+There is no separate design document. The contract is the design.
 
-## 二 · 三条主线
+### Three invariants
 
-1. **契约优先。** 契约冻结在 `docs/spec/`，实现必须逐条对齐，不得另立命名或状态语义。改动契约需要评审，并相应决定 `apiVersion` 是否升级。`devboard/v1` 尚未随正式版本发布，此前的修改属于定稿前的修正，不升版本号。
-2. **卡片是文件。** agent 写完即生效，改一行热插拔。卡片不依赖打包流程。
-3. **驾驶舱而非遥控器。** 控制动作必须回读，界面以板子真实状态为准。
+1. **The contract comes first.** The implementation matches `docs/spec/`
+   clause by clause. It does not introduce a second set of names or a second
+   set of state semantics.
+2. **An agent can make cards.** A card is a directory of files. An agent
+   writes it, it takes effect, and changing one line hot-reloads it.
+3. **A cockpit, not a remote control.** Every control action reads the board
+   back. The interface reports the board's real state, not the state the
+   application believes it set.
 
-## 三 · 工作方式
+---
 
-- **先写测试再看它失败。** 纯函数必须有单元测试；真机样本做黄金向量。
-- **契约层冻结。** 修改 `docs/spec/` 走评审。封闭码表增加条目属于契约变更。
-- **契约与实测的差异记入核对清单，不擅自改包。** 修改板型包前先看差异清单。
-- **改架构决策要写决策记录。** 不在代码里静默改变结构。
-
-## 四 · 阅读顺序
+## 2. Reading order
 
 ```
-README.md
-  └─ docs/spec/00-overview.md       两条主线与各文档职责
-  └─ docs/spec/01-tag-contract.md    位号词表与五种状态
-  └─ docs/spec/data/tag-vocabulary.yaml  词表的机器可读权威
-  └─ docs/spec/02-board-pack.md      板型包与数据源类型
-  └─ docs/spec/03-card-manifest.md   卡片清单与权限
-  └─ docs/spec/04-mcp-tools.md       MCP 工具集
-  └─ docs/spec/05-workflow-pack.md   流程包格式
-  └─ docs/02-device-facts.md         实测路径与行为约束
-  └─ docs/tutorial/01-建立板型包.md  为陌生板子建立板型包
+README.md                      Start here.
+docs/spec/00-overview.md       The two buses and where every rule comes from.
+docs/spec/01-tag-contract.md   The tag vocabulary and the five states.
+docs/spec/data/tag-vocabulary.yaml
+                               Machine-readable authority for the vocabulary.
+                               `docs/spec/01` renders it; this file is the source.
+docs/spec/02-board-pack.md     Board packs and reader kinds.
+docs/spec/03-card-manifest.md  Cards and permissions.
+docs/spec/04-mcp-tools.md      The MCP tool set.
+docs/spec/05-workflow-pack.md  Workflow packs: how one task is carried out.
+docs/02-device-facts.md        Measured facts about a real board. Read before
+                               writing a parser, a transport or a tag binding.
+docs/tutorial/                 Methodology: how to build a board pack, how to
+                               write a card, the terminology.
 ```
 
-## 五 · 硬约定
+---
 
-| 约定 | 说明 |
+## 3. Rules
+
+| Rule | Detail |
 |---|---|
-| **词表只有一个源头** | 核心词表的机器可读权威是 `docs/spec/data/tag-vocabulary.yaml`。修改后运行 `npm run gen:vocabulary`，并用 `npm run gen:vocabulary:check` 确认文档表格、代码词表与 YAML 三者一致 |
-| **颜色只有一个源头** | 语义色在 `src/shared/theme/seed.ts`，材质色在 `src/shared/theme/`。改完运行 `npm run gen:theme:check` |
-| **路径写绝对路径** | Windows 宿主用 `C:\...`，板端路径用 POSIX 绝对路径。机器专属路径只出现在 `profiles/settings.json` 与连接 profile 中 |
-| **事实标注状态** | 已核实、用户陈述、待验证三种状态要区分开 |
-| **测试样本只增不改** | `fixtures/` 中的是黄金向量 |
-| **未知字段报错** | 契约层封闭 schema 拒收未知字段，避免拼错的字段被静默忽略 |
-| **Windows 子进程隐藏控制台** | 拉起子进程时设置 `windowsHide: true` |
+| **The contract is authoritative** | To change a tag name, a unit, a state semantic or a board pack field: change `docs/spec/` first, then change the implementation. Change both in one commit, or the conformance tests fail. |
+| **One source for the vocabulary** | `docs/spec/data/tag-vocabulary.yaml` is the authority. Edit the YAML, then run `npm run gen:vocabulary`. Never write a second copy of the vocabulary. |
+| **Contract changes need a decision record** | Record the decision in `docs/spec/00-overview.md` section 4 under the next `SPEC-D` number, and state the cost as well as the rule. A contract change without a recorded decision is not finished. |
+| **`apiVersion`** | `devboard/v1` has not shipped with any release yet, so a correction made before the first release does **not** bump it. After v1 ships, every contract change bumps it. Adding a member to a closed code table is a contract change. |
+| **Conformance is the verdict** | The implementation must pass the golden samples that come from the same source as the contract. The samples live in `fixtures/`; the same sample must give the same result on both sides. |
+| **Facts carry a status** | Measured / reported by the user / not yet verified. Do not present the second as the first. |
+| **Absolute paths** | Windows host paths as `C:\...`; board-side paths as POSIX absolute paths. |
+| **No large binaries in the repository** | SDKs, firmware and manuals are referenced by path, never committed. |
+| **Write the test before the fix** | Every pure function has a unit test. Real-device samples become golden vectors. |
+| **Prove the test still guards** | After fixing a defect, revert the fix and confirm the corresponding test turns red, then restore it and confirm it turns green. "The test passed" does not mean "the test catches the bug". `npm run mutation:check` measures that. |
+| **Model the substitute by behaviour** | A fake implementation must simulate the real behaviour — echo every line, run the command, call back asynchronously. Returning the answer the contract expects hides protocol-shape defects. |
+| **Run the checks before committing** | `npm run lint && npm run typecheck && npm test` must be green. |
+| **Commit messages are English** | `<type>(<scope>): <summary>`, for example `feat(cards): add the thermal card`. |
 
-## 六 · 代码规范
+---
 
-| 项 | 约定 |
+## 4. Where the facts come from
+
+- `docs/02-device-facts.md` — measured paths, commands and pitfalls of a real
+  board. The only source of device facts.
+- `docs/spec/` — the contract. Where fact and contract disagree, the contract
+  wins and the implementation is corrected; the disagreement is recorded, not
+  silently patched.
+
+---
+
+## 5. Code conventions
+
+| Item | Convention |
 |---|---|
-| 语言 | TypeScript，`strict` 模式，禁用 `any`（确需时用 `unknown` 并收窄） |
-| 主进程与渲染进程边界 | 设备 I/O、位号层、动作层、卡片注册表、MCP 服务全部在主进程 |
-| 卡片沙箱 | 独立 iframe，`sandbox="allow-scripts"`，内容安全策略由宿主注入 |
-| 参数编码 | 拼接进 shell 的字符串按类型编码，路径加引号并拒绝换行与空字符 |
-| 未知不等于零 | 读不到与读数为零是两种状态，前者显示为不可用，不显示数字 |
+| Language | TypeScript, `strict: true`. No `any`; use `unknown` and narrow. |
+| Main / renderer boundary | Device I/O, the tag layer, the action layer, the card registry and the MCP server all live in `main`. The renderer only draws. |
+| Cards | Run in a sandboxed iframe. They reach the host only through the whitelisted API in `docs/spec/03-card-manifest.md`. |
+| Child processes | On Windows, always `windowsHide: true`, or every command flashes a console window. |
+| Tests | vitest. Pure functions get unit tests; real-device samples become golden vectors in `fixtures/`. |
+| Samples | Files under `fixtures/` are append-only. To change a parser, add a new sample and keep the old one as a regression input. |
 
-## 七 · 常见错误
+---
 
-| 错误 | 后果 |
-|---|---|
-| 把「暂时没有数据」与「连不上」混成一句话 | 用户无法判断该查数据还是查连接 |
-| 在渲染进程直接读位号 | 绕过主进程，破坏单一数据源 |
-| 在渲染进程做权限过滤 | 权限判定必须在主进程，页面拿到的是已过滤的结果 |
-| 自行实现动作执行、回读或审计 | 参数编码与权限判定是防线，重写会引入注入面 |
-| 用真实数值代替状态 | 恒为零的仪表比没有仪表更危险，它看起来是真的 |
-| 位号自带引号 | 引号由运行时统一编码，叠加会出错 |
+## 6. Do not
 
-## 八 · 常用命令
+- Rename a tag or redefine a state semantic without changing the contract first.
+- Write implementation code against an unreviewed contract.
+- Let the renderer touch a device directly, bypassing the tag and action layers.
+- Give cards a back door: same-origin access, arbitrary `postMessage`, direct
+  filesystem access.
+- Read board state one file per round trip. It pollutes `/proc/stat`.
+- Run sampling and actions concurrently on one connection. A serial line has
+  one wire; the traffic interleaves.
+- Interpolate parameters into commands. Encode them by type.
+- Rely on the iframe `sandbox` attribute alone to cut network access. The host
+  must inject the CSP.
+- Treat `unavailable` as `0`.
+- Edit the contract documents as a side effect of an implementation change.
+
+---
+
+## 7. Adding a dependency
+
+npm installs `optionalDependencies` per platform (`@esbuild/win32-x64` versus
+`@esbuild/linux-x64`, `@rollup/rollup-win32-*` versus `-linux-*`). Installing
+on one platform therefore removes the other platform's packages, and the
+toolchain stops working there.
+
+- On the Windows host: run `npm install`, then restore the other platform's
+  packages with `bash scripts/acceptance/linux-natives.sh restore` from a
+  Linux environment.
+- To change `package-lock.json`, use `npm install --package-lock-only`. It
+  rewrites the lock file and leaves `node_modules` untouched.
+
+`package.json` and `package-lock.json` must stay in sync. `npm ci` installs
+from the lock file alone, and a dependency listed only in `package.json` will
+be missing.
+
+---
+
+## 8. The fake device
 
 ```bash
-npm run dev                    # 开发模式
-npm run build                  # 构建与产物自检
-npm run dist                   # 构建安装包
-npm run lint
-npm run typecheck
-npm test
-npm run test:cards             # Playwright，真 Electron
-npm run validate:profiles      # 校验板型包
-npm run probe:board -- --profile board-adb   # 对真板探测
-npm run check:package          # 校验打包产物
-npm run gen:vocabulary:check   # 确认词表三处一致
-npm run gen:theme:check        # 确认主题产物一致
+COCKPIT_FAKE=1 npm run dev     # the fake board is listed first
+COCKPIT_FAKE=only npm run dev  # only the fake board
 ```
+
+The fake board (`src/main/hal/fake/`) runs at the HAL boundary: the real
+board packs, the real reader kinds, the real tag store and the real samplers
+all run; only the layer that talks to the board is replaced.
+
+| Rule | Reason |
+|---|---|
+| The fake board emits raw text only — jiffies, kB, `@Hz`, millidegrees. It never produces a percentage and never produces a state. | The five states are the contract (`docs/spec/01`). A fake that invents them is a second copy of the contract, and it will drift. |
+| The fake device's connection profile is never written to disk. | `profiles/targets/` stays clean. |
+| The production build must not contain it. | `scripts/check-build.ts` scans `out/main/**` and fails the build if the marker appears. |
+
+Without it, the shell can only be developed against absent hardware — and an
+interface that has never seen `unavailable` or `error` meets both for the first
+time the moment the board drops off.
+
+---
+
+## 9. Commands
+
+```bash
+npm run dev                # electron-vite development mode
+npm run build              # three-stage build plus a self-check of the output
+npm run lint               # ESLint
+npm run typecheck          # tsc --noEmit, both projects
+npm test                   # vitest
+npm run test:cards         # Playwright against a real Electron build
+npm run validate:profiles  # validate the board packs
+npm run probe:board -- --profile <profile>
+                             # run the readers against a real board
+npm run gen:vocabulary     # regenerate the vocabulary from the YAML
+npm run gen:vocabulary:check
+                             # assert YAML = document tables = code vocabulary
+npm run mutation:check     # mutation testing: prove the regression tests guard
+npm run check:package      # validate the packaged application
+npm run dist               # build the Windows installer
+```
+
+> `npm run gen:vocabulary:check` is a separate script entry on purpose. Under
+> PowerShell, `npm.ps1` swallows the arguments after `--`, which would turn the
+> check into a regeneration — and regeneration rewrites the contract document.
+> A standalone entry behaves the same on every platform.
+
+`npm run mutation:check` rewrites source files in place while it runs. Do not
+run it while another agent is editing the same tree.

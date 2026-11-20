@@ -20,7 +20,7 @@
  *
  * ── 踩过的坑（2026-11-14）──
  *
- * 设计基线 `docs/21` §4.7 把**卡片的** CSP 抄给了外壳，
+ * The design baseline copied the **card** CSP into the shell,
  * 那份里有 `frame-src 'none'` → **生产模式下每张卡片都装不上**，
  * 而且症状只是「卡片区一片空白」，不报任何错。
  *

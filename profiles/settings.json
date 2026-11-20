@@ -1,8 +1,8 @@
 {
   "$comment": "Host tools and global settings. Machine-specific paths belong here only, never in code (see AGENTS.md).",
   "hostTools": {
-    "adb": "C:\\Users\\Administrator\\Downloads\\platform-tools_r33.0.3-windows\\platform-tools\\adb.exe",
-    "$comment.adb": "The host adb is not on PATH (where adb finds nothing). This may also be left null, letting the app look it up by PATH and then by the usual install locations."
+    "adb": null,
+    "$comment": "The host adb is not on PATH (where adb finds nothing). This may also be left null, letting the app look it up by PATH and then by the usual install locations."
   },
   "app": {
     "name": "DevBoardCockpit",

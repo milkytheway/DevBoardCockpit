@@ -9,8 +9,8 @@ import type { WorkflowRunStatus } from '../workflows/service';
  * 每一步的 `role`（**哪台机器** ✓）· `detail`（**人话解释** ✓）· `value`（**文件内容** ✓）。
  *
  * → 卡片是 **AI 写的任意网页** ✓ → 给它的东西**越少越安全** ✓。
- * → 而且这条**不是「顺便收紧」** ✓ —— `docs/37` 的 **V3-M7** 早就点了它 ✓
- * （「按最自然的实现（直接序列化 status）→ **全泄**」✓）。
+ * → And this is **not a tightening done in passing** ✓
+ * (the obvious implementation, serialising `status` directly, **leaks everything** ✓).
  *
  * → 所以：**投影是这一层的职责** ✓，不是「调用方自己记得别给」✓
  * （「记得别给」= 迟早有人给了 ✓）。

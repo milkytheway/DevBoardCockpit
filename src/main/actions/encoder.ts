@@ -9,7 +9,7 @@ import type { PackParam } from '../tags/schema';
  * ── Why this belongs to the runtime ──
  *
  * A board-side session runs as root (measured around facts A1/S1 in
- * `docs/02`). A single `--model 'x; reboot'` turns "start the pipeline" into
+ * `docs/02-device-facts.md`). A single `--model 'x; reboot'` turns "start the pipeline" into
  * "reboot the board" — and `reboot` is not in the command template, so
  * matching the template against the danger floor cannot stop it at all
  * (§5.3 says exactly this).
