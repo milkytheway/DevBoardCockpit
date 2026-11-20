@@ -2,20 +2,22 @@ import { test, expect } from '@playwright/test';
 import { launchApp } from './harness';
 
 /**
- * 外壳自检：应用**起得来**、preload **加载了**。
+ * The self-check of the shell: the application **starts** and the preload
+ * **loaded**.
  *
- * ── 为什么先测这个 ──
+ * ── Why this comes first ──
  *
- * 后面十条隔离判据全都在这个应用里跑。
- * 应用起不来，十条判据全是「红」——但那是**环境红**，不是**判据红**。
- * 先把地基验掉，后面的红才红得可信。
+ * The ten isolation judgments that follow all run in this application. If the
+ * application does not start, all ten are red — but that is an **environment
+ * red**, not a **judgment red**. Once the ground is verified, the later reds
+ * can be trusted.
  */
-test('应用起得来，preload 装上了宿主能力', async () => {
+test('the application starts and the preload installs the host capabilities', async () => {
   const launched = await launchApp();
   try {
-    await expect(launched.window).toHaveTitle(/开发板驾驶舱/);
+    await expect(launched.window).toHaveTitle(/DevBoard Cockpit/);
 
-    // preload 的白名单 API 在页面里
+    // The whitelisted API of the preload is in the page
     const apiKeys = await launched.window.evaluate(() =>
       Object.keys((window as unknown as { cockpit: Record<string, unknown> }).cockpit ?? {}).sort(),
     );

@@ -3,21 +3,25 @@ import { CardBroker } from '../../src/renderer/cards/broker';
 import type { CockpitApi } from '../../src/shared/ipc-contract';
 
 /**
- * 页面侧的卡片帧经纪人。
+ * The card frame broker on the page side.
  *
- * ── 它做三件事 ──
+ * ── What it does ──
  *
- * 1. **认人**：收到 `cockpit-hello` 时，用 `event.source` 认出是哪个 iframe；
- *    **再比一次 instanceId**（RF-1 的防线）——
- *    不比的话，卡片 A 把自己导航到卡片 B 的 URL，就会**借到 A 的权限**。
- * 2. **建通道**：给这张卡一条**私有的 MessagePort**（不是共用父窗口的广播）。
- * 3. **转发**：卡片的请求 → main；main 的推送 → 卡。
+ * 1. **Recognises the sender**: on `cockpit-hello` it uses `event.source` to
+ *    work out which iframe the message came from, and compares the instance
+ *    id as well — that comparison is the defence of RF-1. Without it, card A
+ *    could navigate itself to the URL of card B and borrow A's permissions.
+ * 2. **Builds the channel**: the card gets a private MessagePort, not a
+ *    broadcast on the shared parent window.
+ * 3. **Forwards**: a request from the card goes to main; a push from main
+ *    goes to the card.
  *
- * ── 为什么请求不直接走 `parent.postMessage` ──
+ * ── Why the requests do not go through `parent.postMessage` ──
  *
- * 共用父窗口的话，**每张卡的请求都经过同一个窗口**——
- * 卡片之间就能互相看见（只要知道对方的 instanceId）。
- * 私有端口 = 每张卡一条线，**卡与卡之间没有公共面**。
+ * On a shared parent window every request of every card passes through the
+ * same window, so two cards can see each other as soon as they know the
+ * other's instance id. A private port gives each card its own line, and
+ * there is no common surface between two cards.
  */
 interface FakeWindow {
   postMessage: (message: unknown, targetOrigin: string, transfer?: unknown[]) => void;
@@ -51,8 +55,8 @@ function installApi(over: Partial<CockpitApi> = {}): CockpitApi {
   return api;
 }
 
-describe('卡片帧经纪人 · 认人', () => {
-  it('收到 hello：建通道并把端口转给那张卡', () => {
+describe('The card frame broker · recognising the sender', () => {
+  it('on hello it builds the channel and hands the port to that card', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
     broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
@@ -67,7 +71,7 @@ describe('卡片帧经纪人 · 认人', () => {
     expect(frame.posted[0]?.transfer.length).toBe(1);
   });
 
-  it('**instanceId 对不上 → 丢弃**（卡片 A 导航到卡片 B 的 URL，RF-1）', () => {
+  it('a mismatched instance id is discarded (card A navigated to the URL of card B — RF-1)', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
     broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
@@ -80,7 +84,7 @@ describe('卡片帧经纪人 · 认人', () => {
     expect(frame.posted).toHaveLength(0);
   });
 
-  it('不是登记过的 frame → 丢弃', () => {
+  it('a frame that was never registered is discarded', () => {
     const frame = makeFrame();
     const other = makeFrame();
     const broker = new CardBroker(installApi());
@@ -95,7 +99,7 @@ describe('卡片帧经纪人 · 认人', () => {
     expect(other.posted).toHaveLength(0);
   });
 
-  it('不是 hello 的消息 → 不管', () => {
+  it('a message that is not a hello is ignored', () => {
     const frame = makeFrame();
     const broker = new CardBroker(installApi());
     broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
@@ -109,8 +113,8 @@ describe('卡片帧经纪人 · 认人', () => {
   });
 });
 
-describe('卡片帧经纪人 · 转发', () => {
-  it('卡片的请求 → main → 原样回到那张卡的端口', async () => {
+describe('The card frame broker · forwarding', () => {
+  it('a request from the card goes to main and comes back unchanged on the port of that card', async () => {
     const frame = makeFrame();
     const calls: { method: string; args: unknown }[] = [];
     const api = installApi({
@@ -122,13 +126,13 @@ describe('卡片帧经纪人 · 转发', () => {
     const broker = new CardBroker(api);
     broker.attach({ contentWindow: frame.contentWindow }, 'inst-1');
 
-    // 先握手
+    // The handshake comes first
     broker.handleMessage({
       source: frame.contentWindow,
       data: { type: 'cockpit-hello', instanceId: 'inst-1' },
     } as unknown as MessageEvent);
 
-    // 卡那边拿到端口，向它发一个请求
+    // The card holds the port now and sends a request through it
     const cardPort = frame.posted[0]?.transfer[0] as MessagePort;
     expect(cardPort).toBeTruthy();
     const answers: unknown[] = [];
@@ -137,7 +141,7 @@ describe('卡片帧经纪人 · 转发', () => {
     };
     cardPort.postMessage({ id: 'r9', method: 'tags.get', args: { name: 'cpu.usage' } });
 
-    // 等一拍（请求是异步的）
+    // Give the asynchronous request a tick
     await new Promise((r) => setTimeout(r, 20));
     expect(calls.length).toBe(1);
     expect(calls[0]?.method).toBe('tags.get');
@@ -145,7 +149,7 @@ describe('卡片帧经纪人 · 转发', () => {
     expect((answers[0] as { value: number }).value).toBe(42);
   });
 
-  it('main 的推送 → 走那条私有端口', () => {
+  it('a push from main goes through that private port', () => {
     const frame = makeFrame();
     let push: ((instanceId: string, payload: unknown) => void) | undefined;
     installApi({
@@ -162,18 +166,18 @@ describe('卡片帧经纪人 · 转发', () => {
     } as unknown as MessageEvent);
 
     expect(push).toBeTruthy();
-    // 推送不该抛
+    // The push must not throw
     expect(() => push?.('inst-1', { type: 'push' })).not.toThrow();
   });
 
-  it('还没握手就推送 → 不炸', () => {
+  it('a push before the handshake does not blow up', () => {
     const broker = new CardBroker(installApi());
     expect(() => broker.push('inst-1', { type: 'push' })).not.toThrow();
   });
 });
 
-describe('卡片帧经纪人 · CSP 违规', () => {
-  it('**收到 `cockpit-csp` → 转给 main**（带 instanceId 与违规详情）', () => {
+describe('The card frame broker · CSP violations', () => {
+  it('on cockpit-csp the violation is passed to main, with the instance id and the details', () => {
     const frame = makeFrame();
     const seen: { instanceId: string; detail: unknown }[] = [];
     const broker = new CardBroker(
@@ -204,7 +208,7 @@ describe('卡片帧经纪人 · CSP 违规', () => {
     expect((seen[0]?.detail as { blockedURI: string }).blockedURI).toBe('https://evil.example/');
   });
 
-  it('**instanceId 对不上 → 丢弃**（卡片不能替别的卡报错）', () => {
+  it('a mismatched instance id is discarded (a card may not report a violation for another card)', () => {
     const frame = makeFrame();
     const seen: unknown[] = [];
     const broker = new CardBroker(

@@ -3,9 +3,10 @@ import { aliasVars } from '../../src/shared/theme/map';
 import { xtermThemeFromVars } from '../../src/renderer/shell/theme';
 
 /**
- * 「一处映射，四处产出」：应用 CSS / 卡片 theme.css / ECharts / xterm 必须
- * 说同一套颜色。xterm 画在 canvas 上、不解析 CSS 变量，所以这里是唯一
- * 容易悄悄漂移的一处。
+ * One mapping, four outputs: the application CSS, the card theme.css, ECharts
+ * and xterm must all speak the same colours. xterm draws on a canvas and does
+ * not resolve CSS variables, so this is the one place where the colours can
+ * drift apart silently.
  */
 
 function luminance(hex: string): number {
@@ -27,8 +28,8 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-describe('主题 · 终端与别名层同源', () => {
-  it('xterm 的背景/正文/强调/语义色直接取自别名层（两套皮肤）', () => {
+describe('Theme · the terminal and the alias layer share one source', () => {
+  it('the xterm background, text, accent and semantic colours come straight from the alias layer (both skins)', () => {
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
       const theme = xtermThemeFromVars(vars);
@@ -42,28 +43,30 @@ describe('主题 · 终端与别名层同源', () => {
     }
   });
 
-  it('两套皮肤的终端主题不一样（否则「换肤」在终端里是假的）', () => {
+  it('the two skins produce different terminal themes (otherwise the skin switch is a lie in the terminal)', () => {
     const dark = xtermThemeFromVars(aliasVars('dark'));
     const light = xtermThemeFromVars(aliasVars('light'));
     expect(JSON.stringify(dark)).not.toBe(JSON.stringify(light));
   });
 });
 
-describe('主题 · 外壳视觉判据', () => {
-  it('卡片内可聚焦控件的边框对卡面 ≥ 3:1（施工图 §8.2 第 10 条）', () => {
-    // 卡面**从 token 取**，不写死色值。
-    // （曾经写死 `#1E242C` —— 那个值在种子里**根本不存在**，
-    //   是旧总纲留下的；写死的判据测的不是真实卡面。）
+describe('Theme · the visual judgments of the shell', () => {
+  it('the border of a focusable control inside a card has at least 3:1 contrast against the card surface', () => {
+    // The card surface comes from a token, never from a literal colour.
+    // (It used to be hard-coded as `#1E242C` — a value that does not exist in
+    //   the seed at all; it was left over from an old outline, and a hard-coded
+    //   judgment does not measure the real card surface.)
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
       const cardSurface = vars['--cockpit-surface'] as string;
       const ratio = contrast(vars['--cockpit-border-strong'] as string, cardSurface);
-      expect(ratio, `${skin} 的 border-strong 对卡面只有 ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      expect(ratio, `${skin}: border-strong against the card surface is only ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('正文与语义色对面板底 ≥ 4.5:1（施工图 §8.2 第 9 条）', () => {
-    // 承载正文的面 = 卡面 = `--cockpit-surface`（从 token 取，不写死）
+  it('body text and the semantic colours have at least 4.5:1 against the panel background', () => {
+    // The surface that carries the body text is the card surface, `--cockpit-surface`
+    // (taken from a token, never hard-coded)
     const surface = {
       dark: aliasVars('dark')['--cockpit-surface'] as string,
       light: aliasVars('light')['--cockpit-surface'] as string,
@@ -82,7 +85,7 @@ describe('主题 · 外壳视觉判据', () => {
       const vars = aliasVars(skin);
       for (const name of names) {
         const ratio = contrast(vars[name] as string, surface[skin]);
-        expect(ratio, `${skin} 的 ${name} 只有 ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        expect(ratio, `${skin}: ${name} is only ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

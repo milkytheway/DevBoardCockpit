@@ -5,40 +5,46 @@ import { join } from 'node:path';
 import { launchApp, writeCard, currentCardFrame, placeCard, APP_NAME } from './harness';
 
 /**
- * 写侧的**端到端**：一张卡触发一次动作 → 界面按**回读值**渲染。
+ * The write side, end to end: a card triggers an action → the interface
+ * renders the **readback value**.
  *
- * ── 这条判据在证明什么 ──
+ * ── What this judgment proves ──
  *
- * 契约 `docs/spec/03-card-manifest.md` §5.2：
+ * The contract (`docs/spec/03-card-manifest.md` section 5.2):
  *
- * > 「**卡片必须用返回值渲染，不能自己乐观更新。**」
+ * > "A card must render the value that came back; it may not update
+ * > optimistically on its own."
  *
- * → 所以判据不是「动作执行了」，而是：
- * **卡片显示的那个数，是从板子上读回来的**。
- * 乐观更新的话，卡片会显示自己刚传进去的参数——
- * 那张卡在「板子没接上」时也会显示「已设置 200」✗。
+ * → So the judgment is not "the action ran", but:
+ * **the number the card shows was read back from the board**.
+ * With an optimistic update the card would show the parameter it just sent,
+ * and the card would also show "set to 200" while the board is not connected.
  *
- * ── 为什么用假设备 ──
+ * ── Why the fake device ──
  *
- * 真板子不在这台机器上；而这条判据必须**可自动化**。
- * 假设备现在有一块**虚拟盘**（`hal/fake/fs.ts`）→
- * 动作的命令真的写进去，回读真的读回来 ✓。
+ * The real board is not on this machine, and this judgment has to be
+ * **automatable**. The fake device now has a **virtual disk**
+ * (`hal/fake/fs.ts`) → the command of the action is really written and the
+ * readback is really read.
  *
- * ── 三层都要真 ──
+ * ── All three layers have to be real ──
  *
- * ① **main 侧**：授权账 → 权限判定 → 执行器 → 回读 → 审计（真代码）
- * ② **HAL 侧**：假设备的虚拟盘（真文件往返）
- * ③ **卡片侧**：卡片 iframe 里的 JS 真的按返回值渲染
+ * ① **The main side**: the authorisation ledger → the permission decision →
+ *   the executor → the readback → the audit (the real code)
+ * ② **The HAL side**: the virtual disk of the fake device (a real file
+ *   round trip)
+ * ③ **The card side**: the JavaScript in the card iframe really renders the
+ *   value that came back
  */
 
-/** 一张会调动作的卡（渲染**回读值**，不是自己传的参数） */
+/** A card that calls an action (it renders the readback value, not the parameter it sent) */
 const ACTION_CARD: Record<string, string> = {
   'manifest.json': JSON.stringify(
     {
       apiVersion: 'devboard/v1',
       kind: 'Card',
       id: 'action-card',
-      name: '动作卡',
+      name: 'Action card',
       version: '1.0.0',
       entry: 'index.html',
       requires: { actions: ['backlight.set'] },
@@ -65,15 +71,19 @@ const ACTION_CARD: Record<string, string> = {
   ].join('\n'),
 };
 
-test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐观更新）', async () => {
+test('a card triggers an action → the interface renders the readback value (not an optimistic update)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-action-e2e-'));
   try {
     /**
-     * ── **得先把权限打开** ──
+     * ── The permission has to be opened first ──
      *
-     * → **卡片写板子默认禁止** ✓（**ADR-D47** ✓ —— **设置里的统一权限区** ✓）
-     *   → 理由：**宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓ → **要写板子的人在设置里打开** ✓
-     * → 这份账就是**设置里那个开关存下来的东西** ✓（`permissions.json` ✓）
+     * → A card may not write to a board by default (ADR-D47 — the unified
+     *   permission area of the settings page)
+     *   → The reason: the host **cannot verify that a person pressed the
+     *   button on the card** → the default is no → the person who wants to
+     *   write to the board opens it in the settings
+     * → This ledger is what the switch of the settings page stored
+     *   (`permissions.json`)
      */
     const userDataDir = join(root, APP_NAME);
     mkdirSync(userDataDir, { recursive: true });
@@ -83,17 +93,20 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
       'utf8',
     );
 
-    // **只有假设备**（真板子不在这台机器上）
+    // The fake device only (the real board is not on this machine)
     const app = await launchApp({ userDataDir: root, env: { COCKPIT_FAKE: 'only' } });
     try {
       /**
-       * ── 生产构建里**没有假设备** ──
+       * ── There is no fake device in the production build ──
        *
-       * ADR-D30：假设备**不进生产包**（`scripts/check-build.ts` 验的就是这件事）→
-       * 这条判据要 `npm run build:fake`（`--mode fake`）才跑得起来。
+       * ADR-D30: the fake device **is not in the production package** (that is
+       * what `scripts/check-build.ts` verifies) → this judgment only runs
+       * with `npm run build:fake` (`--mode fake`).
        *
-       * → **自己判断**：假 profile 在连接清单里吗？
-       * → 不在就**跳过并说清楚为什么**（不是「悄悄通过」）。
+       * → **It decides for itself**: is the fake profile in the list of the
+       *   connections?
+       * → If it is not, it **skips and says why** (rather than passing
+       *   quietly).
        */
       const hasFake = await app.window.evaluate(async () => {
         const list = await (
@@ -105,10 +118,10 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
       });
       test.skip(
         !hasFake,
-        '这条判据要**带假设备的构建**（`npm run build:fake`）——生产构建里没有假设备（ADR-D30）',
+        'this judgment needs a build that carries the fake device (npm run build:fake) — the production build has no fake device (ADR-D30)',
       );
 
-      // ── 等运行时连上（动作跑在那条连接上）──
+      // ── Wait for the runtime to connect (the action runs on that connection) ──
       await expect
         .poll(
           async () =>
@@ -122,23 +135,28 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
         .not.toHaveLength(0);
 
       await writeCard(app.userDataDir, 'action-card', ACTION_CARD);
-      // **先把卡放进工作台**（外壳的规矩：卡片要先「就位」才进主区）
+      // The card goes into the workbench first (the rule of the shell: a card
+      // has to be in place before it enters the main area)
       await placeCard(app.window, 'action-card');
 
       /**
-       * ── 等「**成功**的那次渲染」──
+       * ── Wait for the rendering of the **successful** run ──
        *
-       * 卡片刚写进去时会被**热更新**一次（内容指纹变了 → 实例 id 变了 → iframe 重建）
-       * → 卡片脚本会跑**两遍**：第一遍可能赶在运行时连上之前（失败），
-       * 第二遍才是真的成功。
+       * A card that was just written is hot reloaded once (the content
+       * fingerprint changed → the instance id changed → the iframe was
+       * rebuilt) → the script of the card runs **twice**: the first run may
+       * come before the runtime is connected (it fails), the second one is the
+       * one that succeeds.
        *
-       * → 所以**不能**只等「出现 `"ok"`」——那会逮到第一次（失败的那次）✗。
-       * → 等**回读值 200**（只有成功才有）✓。
+       * → So it must **not** wait for `"ok"` to appear — that would catch the
+       *   first run, the failing one.
+       * → It waits for the **readback value 200** (only the success has it).
        */
       await expect
         .poll(
           async () => {
-            // **每轮重新找帧**（热更新会换掉旧帧）
+            // The frame is looked up again on every round (the hot reload
+            // replaces the old frame)
             const frame = await currentCardFrame(app.window, 'action-card');
             if (frame === undefined) return '';
             return (await frame.locator('#result').textContent().catch(() => '')) ?? '';
@@ -148,7 +166,7 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
         .toContain('"value":"200"');
 
       const frame = await currentCardFrame(app.window, 'action-card');
-      if (frame === undefined) throw new Error('卡片 action-card 的 iframe 不见了');
+      if (frame === undefined) throw new Error('the iframe of the card action-card is gone');
       const raw = (await frame.locator('#result').textContent()) ?? '{}';
       const rendered = JSON.parse(raw) as {
         ok: boolean;
@@ -157,21 +175,24 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
         audit: string | null;
         reason?: string;
       };
-      // **失败时把卡片看到的东西原样带出来**（不然只剩一句「不是 true」）
-      expect(rendered.ok, `卡片看到的结果：${raw}`).toBe(true);
+      // When it fails, what the card saw is carried out as it is (otherwise
+      // only "not true" is left)
+      expect(rendered.ok, `the result the card saw: ${raw}`).toBe(true);
       expect(rendered.verified).toBe(true);
-      // **回读到的值**（板子上真的写着 200）——不是卡片自己传的参数
+      // The value that was read back (the board really holds 200) — not the
+      // parameter the card sent
       expect(rendered.value).toBe('200');
-      // 结果带**审计的 id**（契约 spec/04 §2.4）
+      // The result carries the id of the audit (contract `docs/spec/04-mcp-tools.md` section 2.4)
       expect(rendered.audit).toBeTruthy();
 
-      // ── 审计：恰好一行，且**参数与回读值都在** ──
+      // ── The audit: exactly one line, and it holds the parameter and the readback value ──
       const auditPath = join(app.userDataDir, 'logs', 'actions.log');
       expect(existsSync(auditPath)).toBe(true);
       const lines = readFileSync(auditPath, 'utf8').trim().split('\n');
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain('action=backlight.set');
-      // 回读值是**文本**（file_equals 比的是文件内容）→ 审计行里是带引号的
+      // The readback value is **text** (file_equals compares the content of
+      // the file) → the audit line holds it in quotes
       expect(lines[0]).toContain('value="200"');
       expect(lines[0]).toContain('verified=true');
     } finally {
@@ -183,15 +204,18 @@ test('一张卡触发一次动作 → 界面按**回读值**渲染（不是乐�
 });
 
 /**
- * **默认：卡片不许写板子** ✓（**ADR-D47** ✓ · **C2** ✓）。
+ * By default a card may not write to the board (ADR-D47, C2).
  *
- * → **宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓
- * → **要写板子的人在设置里打开那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）
+ * → The host **cannot verify that a person pressed the button on the card** →
+ *   the default is no
+ * → The person who wants to write to the board opens that switch in the
+ *   settings (once, and **no dialog any more**)
  */
-test('卡片写板子：默认被拒（**设置里没打开** ✓）', async () => {
+test('a card that writes to the board is refused by default (the switch was not opened)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-perm-e2e-'));
   try {
-    // **不写 permissions.json** ✓ → **走默认** ✓（**卡片写板子：禁止** ✓）
+    // `permissions.json` is not written → the default applies (a card may
+    // not write to the board)
     const app = await launchApp({ userDataDir: root, env: { COCKPIT_FAKE: 'only' } });
     try {
       const hasFake = await app.window.evaluate(async () => {
@@ -202,7 +226,7 @@ test('卡片写板子：默认被拒（**设置里没打开** ✓）', async () 
       });
       test.skip(
         !hasFake,
-        '这条判据要**带假设备的构建**（`npm run build:fake`）——生产构建里没有假设备（ADR-D30）',
+        'this judgment needs a build that carries the fake device (npm run build:fake) — the production build has no fake device (ADR-D30)',
       );
 
       await expect
@@ -220,7 +244,8 @@ test('卡片写板子：默认被拒（**设置里没打开** ✓）', async () 
       await writeCard(app.userDataDir, 'action-card', ACTION_CARD);
       await placeCard(app.window, 'action-card');
 
-      // **等它渲染出「失败」** ✓（**被拒就是失败** ✓ —— 不是「还没跑」✓）
+      // Wait for it to render the failure (a refusal is a failure, not "it
+      // has not run yet")
       await expect
         .poll(
           async () => {
@@ -233,11 +258,12 @@ test('卡片写板子：默认被拒（**设置里没打开** ✓）', async () 
         .toContain('"ok":false');
 
       const frame = await currentCardFrame(app.window, 'action-card');
-      if (frame === undefined) throw new Error('卡片 action-card 的 iframe 不见了');
+      if (frame === undefined) throw new Error('the iframe of the card action-card is gone');
       const raw = (await frame.locator('#result').textContent()) ?? '{}';
       const rendered = JSON.parse(raw) as { ok: boolean; value: string | null };
-      expect(rendered.ok, `卡片看到的结果：${raw}`).toBe(false);
-      // **板子上没有那个数** ✓（**动作根本没跑** ✓ —— 不是「跑了但回读失败」✓）
+      expect(rendered.ok, `the result the card saw: ${raw}`).toBe(false);
+      // The board does not hold that number (the action never ran — not "it ran
+      // and the readback failed")
       expect(rendered.value).toBeNull();
     } finally {
       await app.close();

@@ -6,52 +6,55 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 /**
- * 在**真 Electron** 里跑测试的外壳。
+ * The harness that runs the tests in a real Electron.
  *
- * ── 为什么不用浏览器模式 ──
+ * ── Why not the browser mode ──
  *
- * 这个产品的三条边界（自定义协议、preload、跨进程）**只在 Electron 里存在**。
- * 浏览器模式测出来的「通过」，跟产品真正的边界没关系。
+ * The three boundaries of this product (the custom protocol, the preload, the
+ * cross-process calls) exist only in Electron. A pass in the browser mode has
+ * nothing to do with the boundaries the product really has.
  *
- * ── Linux 沙箱里的显示问题 ──
+ * ── The display in the Linux sandbox ──
  *
- * 沙箱没有显示器。`DISPLAY` 没设时**自己起一个 Xvfb**
- * （与 `scripts/acceptance/run-app.sh` 同一套办法）。
- * 宿主（Windows）上有显示器，这一支不会走。
+ * The sandbox has no display. When `DISPLAY` is not set, an Xvfb is started
+ * (the same method as `scripts/acceptance/run-app.sh`). The Windows host
+ * has a display, so that branch never runs there.
  */
 
-/** 仓库根（测试从仓库根跑） */
+/** The root of the repository (the tests run from the root) */
 const REPO_ROOT = resolve(process.cwd());
 
 export interface Launched {
   app: ElectronApplication;
   window: Page;
-  /** 这次运行的 userData 目录（测试往这里放卡片） */
+  /** The userData directory of this run (the tests put their cards here) */
   userDataDir: string;
-  /** 收摊：关应用 + 关 Xvfb + 删临时目录 */
+  /** Clean up: close the application, close Xvfb, remove the temporary directory */
   close: () => Promise<void>;
 }
 
-/** 应用的用户数据目录名（与 `src/main/util/paths.ts` 的 DEFAULT_APP 同一个） */
+/** The name of the user data directory of the application (the same as DEFAULT_APP in `src/main/util/paths.ts`) */
 export const APP_NAME = 'DevBoardCockpit';
 
 /**
- * **整个测试进程共用**的 Xvfb。
+ * The Xvfb shared by the whole test process.
  *
- * ── 为什么不能每个测试各起各的 ──
+ * ── Why it cannot be one per test ──
  *
- * 第一个测试起 Xvfb，后面的测试看到 `DISPLAY` 已经设了就**不再起**——
- * 但如果第一个测试的 `close()` 把它杀了，**后面的测试就没有显示器了**：
- * Electron 会以 `The platform failed to initialize` + SIGSEGV 挂掉。
+ * The first test starts Xvfb, and the tests that follow see that `DISPLAY`
+ * is already set and do not start another one — but if the first test's
+ * `close()` kills it, the tests that follow have no display left: Electron
+ * dies with `The platform failed to initialize` and a SIGSEGV.
  *
- * → Xvfb **起一次，用到进程退出**（`process.on('exit')` 收摊）。
+ * → Xvfb is started once and lives until the process exits (the cleanup runs
+ *   on `process.on('exit')`).
  */
 let sharedXvfb: ChildProcess | undefined;
 
 /**
- * Linux 上没有显示器就起一个 Xvfb。
+ * Start an Xvfb on Linux when there is no display.
  *
- * @returns 进程（已经 set 了 `process.env.DISPLAY`）
+ * @returns the process (`process.env.DISPLAY` has been set)
  */
 function ensureDisplay(): ChildProcess | undefined {
   if (process.platform !== 'linux') return undefined;
@@ -64,34 +67,37 @@ function ensureDisplay(): ChildProcess | undefined {
   proc.unref();
   process.env['DISPLAY'] = display;
   sharedXvfb = proc;
-  // **进程退出时收摊**（不是每个测试结束时——后面的测试还要用它）
+  // Clean up when the process exits (not when a test ends — the tests that
+  // follow still need it)
   process.on('exit', () => {
     try {
       sharedXvfb?.kill();
     } catch {
-      // 已经退了
+      // It has already exited
     }
   });
   return proc;
 }
 
-/** 等 Xvfb 的 socket 出来 */
+/** Wait for the socket of Xvfb to appear */
 async function waitForDisplay(display: string): Promise<void> {
   const socket = `/tmp/.X11-unix/X${display.replace(':', '')}`;
   for (let i = 0; i < 50; i += 1) {
     if (existsSync(socket)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error(`Xvfb ${display} 没起来（${socket} 不存在）`);
+  throw new Error(`Xvfb ${display} did not start (${socket} does not exist)`);
 }
 
 /**
- * 起一次应用。
+ * Start the application once.
  *
- * @param opts.executablePath Electron 二进制。默认用 `node_modules/electron`；
- *   Linux 沙箱里没有 npm 版的 Linux 二进制，用 `ELECTRON_BIN` 指过去
- *   （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
- * @param opts.env 追加的环境变量（如 `COCKPIT_FAKE=only` → 只连假设备）。
+ * @param opts.executablePath the Electron binary. It defaults to
+ *   `node_modules/electron`; the Linux sandbox has no npm build of the Linux
+ *   binary, so `ELECTRON_BIN` points at it (the same environment variable as
+ *   in `scripts/acceptance/run-app.sh`).
+ * @param opts.env the environment variables to add (for example
+ *   `COCKPIT_FAKE=only` connects the fake device only).
  */
 export async function launchApp(
   opts: {
@@ -99,10 +105,11 @@ export async function launchApp(
     userDataDir?: string;
     env?: Record<string, string>;
     /**
-     * **应用启动之前**往 userData 里写东西 ✓。
+     * Write into the userData directory **before the application starts**.
      *
-     * → 为什么需要它 ✓：**流程注册表在应用启动时扫一次目录** ✓
-     *   → 流程包**必须在启动前就位** ✓（晚一步就找不到 ✓）。
+     * → Why it is needed: the workflow registry scans its directory once at
+     *   start-up, so a workflow pack has to be in place before that — one step
+     *   later and it is not found.
      */
     prepare?: (userDataDir: string) => void;
   } = {},
@@ -112,27 +119,32 @@ export async function launchApp(
 
   const mainEntry = join(REPO_ROOT, 'out', 'main', 'index.js');
   if (!existsSync(mainEntry)) {
-    throw new Error(`找不到构建产物：${mainEntry} —— 先跑 npm run build`);
+    throw new Error(`the build output is missing: ${mainEntry} — run npm run build first`);
   }
 
   /**
-   * **两边说的「用户数据目录」必须是同一个地方。**
+   * The "user data directory" of both sides has to be the same place.
    *
-   * 宿主侧算的是 `src/main/util/paths.ts` 的 `userDataDir()`：
-   * Linux 是 `$XDG_DATA_HOME/DevBoardCockpit`，Windows 是 `%LOCALAPPDATA%\DevBoardCockpit`。
-   * 而 Electron 的 `app.getPath('userData')` 默认是 `%APPDATA%\DevBoardCockpit`（**漫游目录**）。
+   * The host computes it in `userDataDir()` of `src/main/util/paths.ts`:
+   * on Linux `$XDG_DATA_HOME/DevBoardCockpit`, on Windows
+   * `%LOCALAPPDATA%\DevBoardCockpit`. Electron's `app.getPath('userData')`
+   * defaults to `%APPDATA%\DevBoardCockpit` — the roaming directory.
    *
-   * → **不是一个地方**。测试把卡写进 Electron 那个，应用却去另一个里找 →
-   * **卡片区永远是空的** → 十条隔离判据全是「红」，而红的原因是**环境**。
+   * → They are not the same place. The test writes the card into the Electron
+   *   one and the application looks in the other →
+   * **the card area is always empty** → the ten isolation judgments are all
+   *   red, and the reason they are red is the **environment**.
    *
-   * 顺带解决一件事：e2e **不再往用户真实的用户数据目录里写东西**。
+   * One thing is settled along the way: the e2e tests **no longer write into
+   * the real user data directory of the user**.
    */
-  // **复用传入的 userData**（「重启应用后位置还在」那条判据要用）——
-  // 不传就每次起一个新的临时目录（互不干扰 ✓）
+  // The userData passed in is reused (the "the position survives a restart"
+  // judgment needs it) — without it every run gets a new temporary directory
+  // (so the runs do not interfere with each other)
   const root = opts.userDataDir ?? mkdtempSync(join(tmpdir(), 'cockpit-e2e-'));
   const userDataDir = join(root, APP_NAME);
   mkdirSync(userDataDir, { recursive: true });
-  // **启动前把该写的写了** ✓（流程包 ✓）
+  // Whatever has to be written is written before the start (the workflow packs)
   opts.prepare?.(userDataDir);
   const env: NodeJS.ProcessEnv = { ...process.env, ...(opts.env ?? {}) };
   if (process.platform === 'win32') {
@@ -141,20 +153,27 @@ export async function launchApp(
     env['XDG_DATA_HOME'] = root;
   }
 
-  // **Electron 二进制**：默认用 node_modules 里那个；
-  // Linux 沙箱里那个是 win32 的 → 用 `ELECTRON_BIN` 指过去
-  // （与 `scripts/acceptance/run-app.sh` 同一个环境变量）。
+  // The Electron binary: the one in node_modules by default; in the Linux
+  // sandbox that one is the win32 build → `ELECTRON_BIN` points at the
+  // right one (the same environment variable as in
+  // `scripts/acceptance/run-app.sh`).
   const executablePath = opts.executablePath ?? process.env['ELECTRON_BIN'];
   const app = await electron.launch({
-    // **用「应用根」启动**（`electron .`），不是 `electron out/main/index.js`
+    // The application root is started (`electron .`), not
+    // `electron out/main/index.js`
     //
-    // 两者的 `app.getAppPath()` 不同：前者 = 应用根，**内置卡的根就在那儿**
-    // （`join(app.getAppPath(), 'cards')`）；后者 = 脚本所在目录 → **内置卡找不到**。
-    // → e2e 测的就不是用户看到的东西了。
+    // The two give a different `app.getPath()`: the first one is the
+    // application root, and **the root of the built-in cards is there**
+    // (`join(app.getAppPath(), 'cards')`); the second one is the directory
+    // of the script → **the built-in cards are not found**.
+    // → The e2e test would not be testing what the user sees.
     //
-    // `--disable-gpu`：无 GPU 的环境（CI 容器、Xvfb）里 GPU 进程起不来，
-    // Electron 会以 `The platform failed to initialize` + SIGSEGV 挂掉——
-    // **跟被测的东西无关**（卡片隔离靠 iframe 的 sandbox 与 CSP，不靠 GPU）。
+    // `--disable-gpu`: in an environment without a GPU (a CI container,
+    // Xvfb) the GPU process does not start, and Electron dies with
+    // `The platform failed to initialize` and a SIGSEGV —
+    // **that has nothing to do with what is under test** (the isolation of the
+    // cards rests on the sandbox attribute and the CSP of the iframe, not on
+    // the GPU).
     args: ['.', `--user-data-dir=${userDataDir}`, '--disable-gpu'],
     cwd: REPO_ROOT,
     ...(executablePath !== undefined ? { executablePath } : {}),
@@ -168,9 +187,11 @@ export async function launchApp(
     userDataDir,
     close: async () => {
       await app.close().catch(() => undefined);
-      // **不杀 Xvfb**——它是整个测试进程共用的（见 `ensureDisplay` 的注释）
+      // Xvfb is not killed — the whole test process shares it (see the comment
+      // of `ensureDisplay`)
       void xvfb;
-      // 复用进来的目录**不删**（那是「重启后还在」那条判据的现场）
+      // The directory that was passed in is not removed (it is the site of the
+      // "it survives a restart" judgment)
       if (opts.userDataDir === undefined) {
         rmSync(root, { recursive: true, force: true });
       }
@@ -179,15 +200,19 @@ export async function launchApp(
 }
 
 /**
- * 找到某张卡**当前**的 iframe（找不到就是 `undefined`）。
+ * Find the iframe **currently** showing a card (`undefined` when there is
+ * none).
  *
- * ── 为什么要有「当前」这个版本 ──
+ * ── Why this "current" variant exists ──
  *
- * **热更新会让旧帧失效**：卡片文件一变 → 内容指纹变 → 实例 id 变 → iframe 重建。
- * → 手里攥着一个 `Frame` 引用等结果的判据，会在重建的那一刻**永远等不到** ✗。
- * → 所以要判据**每轮重新找**（用 `cardFrameFor` 那种重试逻辑，或本函数）。
+ * A hot reload invalidates the old frame: the card files change → the content
+ * fingerprint changes → the instance id changes → the iframe is rebuilt. A
+ * judgment that holds on to a `Frame` reference and waits for a result never
+ * sees it again at the moment of the rebuild. So a judgment has to **look the
+ * frame up again on every round** (with the retry logic of `cardFrameFor`, or
+ * with this function).
  *
- * @param cardId 卡片 id
+ * @param cardId the id of the card
  */
 export async function currentCardFrame(page: Page, cardId: string): Promise<Frame | undefined> {
   const list = await cardsList(page);
@@ -197,30 +222,38 @@ export async function currentCardFrame(page: Page, cardId: string): Promise<Fram
 }
 
 /**
- * 找到**某张卡**的 iframe。
+ * Find the iframe of **a given card**.
  *
- * ── 为什么不能靠「第一个 card frame」──
+ * ── Why "the first card frame" is not enough ──
  *
- * **内置卡（`cards/cpu-usage/`）自动就在列表里**（它就在内置根下）
- * → 卡片区不止一个 iframe。
- * 而 frame 的 URL 里只有**实例 id**（`cockpit://card/<实例 id>/…`），看不出是哪张卡。
+ * The **built-in card (`cards/cpu-usage/`) is in the list by itself** (it
+ * sits under the built-in root), so the card area holds more than one iframe.
+ * The URL of a frame only carries the **instance id**
+ * (`cockpit://card/<instance id>/…`), which does not say which card it is.
  *
- * → 先问宿主要清单（`cardsList`），用 cardId 换 instanceId，再按 URL **精确匹配** ✓
+ * → Ask the host for the list (`cardsList`), turn the card id into an
+ *   instance id, and match the URL **exactly**.
  *
- * @param cardId 卡片 id（目录名与 manifest 的 id 相同）
+ * @param cardId the id of the card (the directory name and the id of the
+ * manifest are the same)
  */
 export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
-  // ── 为什么是「重试」而不是「等一次」 ──
+  // ── Why a retry and not a single wait ──
   //
-  // 卡片的内容指纹进了**实例 id** → **卡片文件一变，实例 id 就变**
-  // （这是「改文件即热更新」的实现方式：URL 变 → iframe 重建）。
-  // 而 e2e 写卡时是**连续写几个文件** → 实例 id 会抖几下。
+  // The content fingerprint of the card goes into the **instance id** → **the
+  // card files change and the instance id changes with them** (that is how
+  // "edit a file and it reloads" is implemented: the URL changes → the iframe
+  // is rebuilt). The e2e tests write a card as several files in a row → the
+  // instance id wobbles a few times.
   //
-  // → 每轮都重新读清单、重新找帧；帧要是已经被换掉（detached）就再来一轮。
+  // → On every round the list is read again and the frame is looked up again;
+  //   if the frame has already been replaced (detached) another round follows.
   //
-  // 还有一个更朴素的原因：iframe 一进 DOM，`page.frames()` 就能看到它，
-  // 但这时卡片文档**可能还没导航完**（evaluate 会落在 about:blank）。
-  // → 找到帧后还要确认文档已加载、bridge 已注入，再交出去。
+  // And for a plainer reason: as soon as the iframe is in the DOM,
+  // `page.frames()` sees it, but the card document **may not have finished
+  // navigating** (the evaluate lands on about:blank).
+  // → After the frame is found, the document has to be loaded and the bridge
+  //   injected before it is handed out.
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const list = await cardsList(page);
     const info = list.find((c) => c.cardId === cardId);
@@ -240,10 +273,10 @@ export async function cardFrameFor(page: Page, cardId: string): Promise<Frame> {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`卡片 ${cardId} 的 iframe 没出现`);
+  throw new Error(`the iframe of the card ${cardId} did not appear`);
 }
 
-/** 问宿主要装着的卡片清单 */
+/** Ask the host for the list of the installed cards */
 export async function cardsList(page: Page): Promise<{ cardId: string; instanceId: string }[]> {
   return page.evaluate(() =>
     (
@@ -271,21 +304,22 @@ export async function placeCard(page: Page, cardId: string): Promise<void> {
       { timeout: 20_000 },
     )
     .toBeGreaterThan(0);
-  // **按 data 属性找，不认 class 名** ——
-  // `docs/UI设计/07-外壳接口清单.md` §四：e2e 不认识任何 class 名，
-  // 外壳的 DOM 可以完全不同，只要接口接上了，判据就该全绿。
+  // It is found by its data attribute, not by a class name: the e2e tests
+  // know no class name at all, the DOM of the shell may be entirely different,
+  // and as long as the interface is connected the judgments must stay green.
   await page.locator(`[data-cockpit-card-id="${cardId}"]`).first().click();
 }
 
-/** 卡片目录在 userData 下的位置 */
+/** The place of the card directory under userData */
 export function cardDir(userDataDir: string, cardId: string): string {
   return join(userDataDir, 'cards', cardId);
 }
 
 /**
- * 往 userData 里写一张卡。
+ * Write a card into the userData directory.
  *
- * **写 userData，不写仓库**——测试不该在仓库里留垃圾。
+ * It writes into userData and not into the repository — a test must not leave
+ * rubbish in the repository.
  */
 export async function writeCard(
   userDataDir: string,
@@ -301,11 +335,13 @@ export async function writeCard(
 }
 
 /**
- * 一张最小的只读卡（读 cpu.usage）。
+ * The smallest read-only card (it reads cpu.usage).
  *
- * @param cardId 卡片 id（目录名与 manifest 的 id 相同）
- * @param marker 卡片自己写在 `document.body.dataset.marker` 上的标记——
- *   **「改文件即热更新」那条判据靠它看新行为有没有生效**
+ * @param cardId the id of the card (the directory name and the id of the
+ * manifest are the same)
+ * @param marker the marker the card writes on
+ * `document.body.dataset.marker` — the "edit a file and it reloads"
+ * judgment watches it to see whether the new behaviour took effect
  */
 export function simpleCard(cardId = 'e2e-card', marker = 'v1'): Record<string, string> {
   return {
@@ -314,7 +350,7 @@ export function simpleCard(cardId = 'e2e-card', marker = 'v1'): Record<string, s
         apiVersion: 'devboard/v1',
         kind: 'Card',
         id: cardId,
-        name: 'E2E 卡',
+        name: 'E2E card',
         version: '1.0.0',
         entry: 'index.html',
         requires: { tags: ['cpu.usage'] },

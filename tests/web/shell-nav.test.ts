@@ -5,19 +5,23 @@ import { secondaryGroupsFor, type SecondaryContext } from '../../src/renderer/sh
 import { slotKey } from '../../src/renderer/shell/layout-utils';
 
 /**
- * 二级侧边栏的**数据**（`nav.ts`）。
+ * The data behind the secondary sidebar (`nav.ts`).
  *
- * ── 为什么它是纯数据，值得单测 ──
+ * ── Why it is data, and why that deserves a unit test ──
  *
- * 「哪些行、在什么状态、点了会发生什么」全是数据 → 一眼看得出对不对，
- * 不用起应用。而这里恰恰出过一条**静默失效**：
+ * "Which rows there are, in which state, and what a click does" is all data,
+ * so it can be checked by reading it, without starting the application. And
+ * this is exactly where a silent failure once lived:
  *
- * 「已在主区」曾经按 **cardId** 判，而布局的键是 **(cardId, connectionId)**——
- * 同一张卡在两条连接上是两个实例、各占一个格子。
- * → 换了连接之后，旧连接的单位还留在文件里，
- * 目录说「已在主区」而主区里没有它；
- * 再点只会去移除（按当前连接键过滤 → 什么也没移除）→
- * **这张卡在新连接上再也摆不进去**。
+ * "already in the work area" used to be decided by the card id alone, while
+ * the layout key is (card id, connection id) — the same card on two
+ * connections is two instances, each occupying its own cell.
+ * → After a connection switch the unit of the old connection was still in the
+ * file, so the catalogue said "already in the work area" while the work area
+ * did not hold it.
+ * → The next click only tried to remove it (filtered by the current connection
+ * key, so nothing was removed) →
+ * **the card could never be placed on the new connection again**.
  */
 
 function card(cardId: string, connectionId: string | null): CardInstanceInfo {
@@ -59,8 +63,8 @@ function cardItems(ctx: SecondaryContext) {
   return group!.items;
 }
 
-describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => {
-  it('摆进主区的那张卡：提示是「已在主区」', () => {
+describe('Shell · the card catalogue (the work area is decided by the instance key)', () => {
+  it('the card that is placed in the work area is hinted as "already in the work area"', () => {
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-a')],
@@ -71,11 +75,11 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
     expect(items[0]?.tone).toBe('active');
   });
 
-  it('**同一张卡在另一条连接上**：不算「已在主区」（它在新连接上还没摆）', () => {
+  it('the same card on another connection is not "already in the work area" (it has not been placed there yet)', () => {
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-b')],
-        // 旧连接的单位还留在布局文件里
+        // The unit of the old connection is still in the layout file
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
@@ -83,7 +87,7 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
     expect(items[0]?.tone).toBe('default');
   });
 
-  it('摆好的卡再点一次是「撤下」——提示里写出来（不写就是一次静默的删除）', () => {
+  it('clicking a placed card a second time removes it — the hint says so (without it the removal would be silent)', () => {
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-a')],
@@ -93,16 +97,16 @@ describe('外壳 · 卡片目录（按实例键判「已在主区」）', () => 
     expect(items[0]?.hint?.['zh-Hans']).toContain('撤下');
   });
 
-  it('卡片行带稳定的 e2e 钩子（不认 class 名）', () => {
+  it('the card row carries a stable e2e hook (no class names)', () => {
     const items = cardItems(context({ cards: [card('cpu-curve', 'conn-a')] }));
     expect(items[0]?.cardId).toBe('cpu-curve');
   });
 });
 
-describe('外壳 · 终端页的会话', () => {
-  it('会话行有关闭按钮（串口与 SSH 的连接是独占的，没地方关就一直占着）', () => {
+describe('Shell · the sessions of the terminal page', () => {
+  it('the session row has a close button (a serial or SSH connection is exclusive; without a way to close it, it holds the port for good)', () => {
     const ctx = context({
-      sessions: [{ sessionId: 's-1', profileId: 'board-serial', label: '板子 · 串口' }],
+      sessions: [{ sessionId: 's-1', profileId: 'board-serial', label: 'Board · Serial' }],
       activeSessionId: 's-1',
     });
     const group = secondaryGroupsFor('terminal', ctx).find((g) => g.id === 'sessions');
@@ -113,9 +117,9 @@ describe('外壳 · 终端页的会话', () => {
     expect(item.onSelect).toBeTypeOf('function');
   });
 
-  it('文件页的会话行也有关闭按钮', () => {
+  it('the session row of the files page has a close button too', () => {
     const ctx = context({
-      sessions: [{ sessionId: 's-2', profileId: 'board-adb', label: '板子 · ADB' }],
+      sessions: [{ sessionId: 's-2', profileId: 'board-adb', label: 'Board · ADB' }],
     });
     const group = secondaryGroupsFor('files', ctx).find((g) => g.id === 'sessions');
     expect(group).toBeDefined();
@@ -123,8 +127,8 @@ describe('外壳 · 终端页的会话', () => {
   });
 });
 
-describe('外壳 · 卡片目录（英文）', () => {
-  it('**同一个提示有英文** ✓（界面的语言选项要真的切换文案 ✓）', () => {
+describe('Shell · the card catalogue (English)', () => {
+  it('the same hint has an English wording (the language option of the interface really switches the text)', () => {
     const items = cardItems(
       context({
         locale: 'en',

@@ -13,6 +13,8 @@ export default [
       'docs/**',
       // The one-shot scripts and the intermediate artefacts of the release cleanup.
       './*.cjs',
+      './*.mjs',
+      './*.ts',
     ],
   },
   js.configs.recommended,

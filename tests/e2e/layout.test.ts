@@ -5,20 +5,23 @@ import { join } from 'node:path';
 import { launchApp, writeCard, simpleCard, cardFrameFor, placeCard } from './harness';
 
 /**
- * 布局：**拖完 → 位置还在**（M5b 的验收判据）。
+ * The layout: **after the drag the position is still there** (the acceptance
+ * judgment of M5b).
  *
- * ── 为什么这条要「重启应用」才算数 ──
+ * ── Why a restart of the application is needed for this to count ──
  *
- * 位置存**内存**里不算数——用户会关掉应用。
- * 契约 §七说布局单元记 `(cardId, connectionId)`，
- * 而落盘在**用户数据目录**的 `layout.json`（宿主的账）。
+ * A position that only lives in **memory** does not count — the user closes
+ * the application. The contract says a layout unit records
+ * `(cardId, connectionId)`, and it is written to the `layout.json` of the
+ * **user data directory** (the ledger of the host).
  *
- * → 所以判据是：**拖 → 关掉应用 → 再开 → 位置还在**。
+ * → So the judgment is: **drag → close the application → open it again → the
+ *   position is still there**.
  */
-test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
+test('dragging a card → the position is remembered (it survives a restart)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cockpit-layout-e2e-'));
   try {
-    // ── 第一次：装卡、拖动、记下位置 ──
+    // ── The first run: install the card, drag it, note the position ──
     const first = await launchApp({ userDataDir: root });
     let moved: { x: number; y: number } | null = null;
     try {
@@ -26,16 +29,17 @@ test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
       await placeCard(first.window, 'e2e-card');
       await cardFrameFor(first.window, 'e2e-card');
 
-      // **按稳定钩子选手柄**（`data-cockpit-drag-handle`）——
-      // 不靠 class 名：外壳换皮、class 改名，这条判据都不该断
+      // The handle is chosen by its stable hook (`data-cockpit-drag-handle`) —
+      // not by a class name: when the shell is reskinned or a class is renamed,
+      // this judgment must not break
       const handle = first.window.locator(
         '[data-cockpit-drag-handle="true"][data-card-id="e2e-card"]',
       );
       await expect(handle).toBeVisible();
       const box = await handle.boundingBox();
-      if (box === null) throw new Error('拖拽手柄没有位置');
+      if (box === null) throw new Error('the drag handle has no position');
 
-      // **拖**：按下 → 移动 → 松开
+      // The drag: press → move → release
       await first.window.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await first.window.mouse.down();
       await first.window.mouse.move(box.x + box.width / 2 + 260, box.y + box.height / 2 + 120, {
@@ -43,7 +47,7 @@ test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
       });
       await first.window.mouse.up();
 
-      // 位置变了没有
+      // Did the position change?
       await expect
         .poll(
           async () => {
@@ -81,7 +85,7 @@ test('拖动一张卡 → 位置被记住（重启后还在）', async () => {
     }
     expect(moved).not.toBeNull();
 
-    // ── 第二次：**同一个用户目录**再开一次 → 位置还在 ──
+    // ── The second run: open it again with the **same user directory** → the position is still there ──
     const second = await launchApp({ userDataDir: root });
     try {
       await writeCard(second.userDataDir, 'e2e-card', simpleCard('e2e-card'));

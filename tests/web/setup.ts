@@ -2,22 +2,23 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
-// 每个测试后卸载已渲染的组件——否则同一文件里的多次 render 会叠加，
-// getByTestId 会找到多个同名的元素。
+// Unmount the rendered components after every test — otherwise several renders
+// in one file pile up and getByTestId finds several elements with the same name.
 afterEach(() => {
   cleanup();
 });
 
 /**
- * 测试环境缺 xterm 与我们组件需要的浏览器 API：
+ * The test environment lacks xterm and the browser APIs our components need:
  *
- * - `window.matchMedia` —— xterm 用来判断 Unicode 宽度支持
- * - `HTMLCanvasElement.prototype.getContext` —— xterm 的渲染器；DOM 实现不提供 canvas
- * - `ResizeObserver` —— 我们用它监听终端容器尺寸变化
+ * - `window.matchMedia` — xterm uses it to decide whether Unicode widths are supported
+ * - `HTMLCanvasElement.prototype.getContext` — the xterm renderer; the DOM implementation has no canvas
+ * - `ResizeObserver` — we use it to watch the size of the terminal container
  *
- * 这里的 canvas 与 ResizeObserver 都是**空实现**——
- * 测试验的是组件的挂载与事件接线，不是终端的像素渲染。
- * 终端真实渲染由《真机验收清单》负责。
+ * The canvas and the ResizeObserver here are empty implementations.
+ * What the test checks is that the component mounts and wires its events, not the
+ * pixel rendering of the terminal. The real rendering is covered by the
+ * real-device acceptance checklist.
  */
 if (!window.matchMedia) {
   window.matchMedia = ((query: string) => ({
@@ -39,7 +40,7 @@ if (!HTMLCanvasElement.prototype.getContext) {
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
     observe(): void {
-      /* jsdom 不布局，尺寸变化由测试显式触发 */
+      /* The DOM implementation does not lay out; the test triggers resizes explicitly */
     }
     unobserve(): void {
       /* no-op */

@@ -15,23 +15,26 @@ import type { ConnectionProfile } from '../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../src/main/hal/connection';
 
 /**
- * **MCP 的端到端**（契约 `spec/04` §2.4 / §7.1 / §7.2 ✓）。
+ * The end-to-end of MCP (the contract `docs/spec/04-mcp-tools.md` sections
+ * 2.4, 7.1 and 7.2).
  *
- * ── 为什么这条要「真起一个服务、真发 HTTP」 ──
+ * ── Why it starts a real service and sends real HTTP ──
  *
- * agent 的用法就是这个形状 ✓：**读发现文件 → 连端口 → 带 token → 发 JSON-RPC** ✓。
- * → 所以就按这个形状走一遍 ✓ —— **中间任何一环接不上，agent 就连不上** ✓。
+ * That is the shape in which an agent uses it: **read the discovery file →
+ * connect to the port → carry the token → send JSON-RPC**. So the test walks
+ * that shape once — if any link of the chain does not fit, the agent cannot
+ * connect.
  */
 const PACK_YAML = `apiVersion: devboard/v1
 kind: Workflow
 id: demo.run
-name: 演示流程
+name: Demo workflow
 version: 1.0.0
 inputs:
   project: { type: string, required: true, maxLength: 50 }
 roles:
   build:
-    purpose: 客机
+    purpose: Guest machine
     profile: guest
 steps:
   - id: hello
@@ -53,7 +56,7 @@ beforeEach(async () => {
 
   const profile: ConnectionProfile = {
     id: 'guest',
-    label: '客机',
+    label: 'Guest machine',
     transport: 'ssh',
     options: { host: '10.0.0.2' },
   };
@@ -74,7 +77,7 @@ beforeEach(async () => {
     push: async () => undefined,
     list: async () => [],
     openSession: async () => {
-      throw new Error('不开会话');
+      throw new Error('no session is opened');
     },
   } as unknown as Connection;
 
@@ -122,7 +125,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** **按 agent 的用法**：读发现文件 → 按里面的端口与 token 发请求 ✓ */
+/** The way an agent uses it: read the discovery file → send the request to the port and the token in it */
 async function agentCall(
   method: string,
   params?: unknown,
@@ -162,8 +165,10 @@ async function agentCall(
 }
 
 /**
- * **读侧与写侧的宿主依赖**（**假的** ✓ —— 这里验的是「agent 能不能连上并调通」✓，
- * **不是**板子的真本事 ✓ —— 那由各模块自己的单测负责 ✓）。
+ * The host dependencies of the read side and of the write side (**fake** —
+ * what is verified here is that an agent can connect and call, **not** what
+ * the board can really do — that is the job of the unit tests of the modules
+ * themselves).
  */
 function hostDeps(): McpHostDeps {
   const readings = [
@@ -172,7 +177,7 @@ function hostDeps(): McpHostDeps {
   return {
     pack: () => ({
       id: 'demo-pack',
-      name: '演示包',
+      name: 'Demo pack',
       version: '1.0.0',
       poll_groups: [{ id: 'fast', interval_ms: 1000, readers: ['cpu'] }],
       readers: [
@@ -190,10 +195,10 @@ function hostDeps(): McpHostDeps {
     readings: () => readings,
     history: () => [],
     refreshTag: async () => undefined,
-    profiles: () => [{ id: 'guest', label: '客机', transport: 'ssh', options: {} }],
+    profiles: () => [{ id: 'guest', label: 'Guest machine', transport: 'ssh', options: {} }],
     capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
     connected: () => true,
-    // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+    // The connection the runtime is using now (**no connection means `null`**)
     currentProfileId: () => 'guest',
     cards: () => [],
     cardDir: () => null,
@@ -210,7 +215,8 @@ function hostDeps(): McpHostDeps {
       packId: 'demo-pack',
       packIdOf: () => 'demo-pack',
       contractVersion: 'devboard/v1',
-      // **当前那块板** ✓（凭据要绑它 ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
+      // The board in use: the credentials are bound to it (contract
+      // `docs/spec/04-mcp-tools.md` section 2.4.1, the sixth item)
       deviceKey: () => 'demo-board',
       hasExitCode: true,
       runTransaction: async <T>(fn: (connection: Connection) => Promise<T>): Promise<T> =>
@@ -228,31 +234,31 @@ function hostDeps(): McpHostDeps {
       actions: () => [
         {
           id: 'demo.action',
-          label: '演示动作',
+          label: 'Demo action',
           danger: 'reversible',
           command: 'echo {value}',
           params: { value: { type: 'integer', min: 0, max: 100 } },
-          readback: { kind: 'none', consequence: '演示用' },
+          readback: { kind: 'none', consequence: 'for the demonstration' },
         },
       ],
     },
   };
 }
 
-describe('MCP · agent 的用法（端到端）', () => {
-  it('**读发现文件 → 连上去 → initialize → tools/list → tools/call** ✓', async () => {
-    // ① initialize ✓
+describe('MCP · the way an agent uses it (end to end)', () => {
+  it('reads the discovery file → connects → initialize → tools/list → tools/call', async () => {
+    // ① initialize
     const init = await agentCall('initialize', { protocolVersion: '2025-06-18' });
     expect(init.status).toBe(200);
     const initResult = (JSON.parse(init.body) as { result: Record<string, unknown> }).result;
     expect(initResult['protocolVersion']).toBe('2025-06-18');
 
-    // ② tools/list ✓
+    // ② tools/list
     const list = await agentCall('tools/list');
     const tools = (JSON.parse(list.body) as { result: { tools: { name: string }[] } }).result.tools;
     expect(tools.map((t) => t.name)).toContain('run_workflow');
 
-    // ③ tools/call → 起一条流程 ✓
+    // ③ tools/call → start a workflow
     const call = await agentCall('tools/call', {
       name: 'run_workflow',
       arguments: { id: 'demo.run', inputs: { project: 'x' } },
@@ -263,7 +269,7 @@ describe('MCP · agent 的用法（端到端）', () => {
     expect(payload.ok).toBe(true);
     expect(payload.run_id).toMatch(/^wf-/);
 
-    // ④ workflow_status → 看时间线 ✓
+    // ④ workflow_status → look at the timeline
     const status = await agentCall('tools/call', {
       name: 'workflow_status',
       arguments: { run_id: payload.run_id },
@@ -277,7 +283,7 @@ describe('MCP · agent 的用法（端到端）', () => {
     expect(statusPayload.stages.length).toBeGreaterThan(0);
   });
 
-  it('**tools/list 里有读侧与写侧那些工具** ✓（接了宿主依赖才有 ✓）', async () => {
+  it('tools/list holds the tools of the read side and of the write side (they are there once the host dependencies are connected)', async () => {
     const list = await agentCall('tools/list');
     const tools = (JSON.parse(list.body) as { result: { tools: { name: string }[] } }).result.tools;
     const names = tools.map((t) => t.name);
@@ -295,14 +301,15 @@ describe('MCP · agent 的用法（端到端）', () => {
       'set_layout',
       'execute_action',
     ]) {
-      expect(names, `少了 ${expected}`).toContain(expected);
+      expect(names, `${expected} is missing`).toContain(expected);
     }
-    // **「问人」那两个工具没了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）
+    // The two tools that "ask a person" are gone (removed on 2026-11-16 —
+    // ADR-D48)
     expect(names).not.toContain('confirm_action');
     expect(names).not.toContain('confirm_workflow');
   });
 
-  it('**tools/call → list_tags 真给得出东西** ✓（**真 HTTP** ✓）', async () => {
+  it('tools/call → list_tags really returns something (over real HTTP)', async () => {
     const call = await agentCall('tools/call', {
       name: 'list_tags',
       arguments: {},
@@ -315,11 +322,11 @@ describe('MCP · agent 的用法（端到端）', () => {
       apiVersion: string;
     }[];
     expect(payload[0]?.name).toBe('cpu.usage');
-    // **每一项都带 apiVersion** ✓（契约 §四 ✓）
+    // Every entry carries the apiVersion (contract section 4)
     expect(payload[0]?.apiVersion).toBe('devboard/v1');
   });
 
-  it('**tools/call → execute_action 真跑得通** ✓（**真 HTTP** ✓）', async () => {
+  it('tools/call → execute_action really runs (over real HTTP)', async () => {
     const call = await agentCall('tools/call', {
       name: 'execute_action',
       arguments: { action_id: 'demo.action', params: { value: 7 } },
@@ -334,7 +341,7 @@ describe('MCP · agent 的用法（端到端）', () => {
     expect(payload.apiVersion).toBe('devboard/v1');
   });
 
-  it('**tools/call → 动作不存在 → `not_found`** ✓（**不是 `denied`** ✓）', async () => {
+  it('tools/call → an action that does not exist gives not_found (not denied)', async () => {
     const call = await agentCall('tools/call', {
       name: 'execute_action',
       arguments: { action_id: 'nope.nope' },
@@ -345,17 +352,17 @@ describe('MCP · agent 的用法（端到端）', () => {
     expect(payload.reason).toBe('not_found');
   });
 
-  it('**发现文件里的 token 不对 → 401** ✓（token 真的是凭据 ✓）', async () => {
+  it('a wrong token in the discovery file gives 401 (the token really is a credential)', async () => {
     const reply = await agentCall('tools/list', undefined, { Authorization: 'Bearer wrong' });
     expect(reply.status).toBe(401);
   });
 
-  it('**恶意 Origin → 403** ✓（agent 不是浏览器 ✓，但恶意网页是 ✓）', async () => {
+  it('a hostile Origin gives 403 (an agent is not a browser, but a hostile web page is)', async () => {
     const reply = await agentCall('tools/list', undefined, { Origin: 'https://evil.example.com' });
     expect(reply.status).toBe(403);
   });
 
-  it('**发现文件用完就能删** ✓（退出时清 ✓ —— 契约 §7.2 ✓）', () => {
+  it('the discovery file can be deleted once it has been used (it is cleaned up on exit — contract section 7.2)', () => {
     expect(existsSync(discoveryPath)).toBe(true);
     removeDiscoveryFile(discoveryPath);
     expect(existsSync(discoveryPath)).toBe(false);

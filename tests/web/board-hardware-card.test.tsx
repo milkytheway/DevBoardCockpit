@@ -3,26 +3,27 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /**
- * **「板卡硬件」那张卡的呈现**（`cards/board-hardware/card.js`）。
+ * The presentation of the "board hardware" card (`cards/board-hardware/card.js`).
  *
- * ── 为什么要测它 ──
+ * ── Why it is tested ──
  *
- * → 卡片代码**不进 vitest 的 include** ✓（它在 `cards/` 下 ✓）→ **没人跑它** ✗。
- * → 而这张卡**会说话** ✓（说「这块板有什么」）→ **说错了就是在骗人** ✗
- *   → **它得被测** ✓。
+ * → The card code is outside the include list of vitest (it lives under
+ *   `cards/`), so nothing runs it.
+ * → This card speaks (it says what the board has), and a card that says the
+ *   wrong thing is lying → it has to be tested.
  *
- * ── 三条判据 ──
+ * ── Three judgments ──
  *
- * | # | 判据 | 为什么 |
+ * | # | Judgment | Why |
  * |---|---|---|
- * | 1 | **26 项都在** ✓（手册第二章 26 小节 ✓） | 少一项 = **少一块硬件** ✗ |
- * | 2 | **先认「是不是这块板」** ✓ | **清单不适用于别的板** ✓ → **明说** ✓（不装作适用 ✗） |
- * | 3 | **实时值分得清「读不到」与「没数」** ✓ | `unavailable` **不是** 0 ✓（契约 §五态 ✓） |
+ * | 1 | All 26 sections are there (the second chapter of the manual) | one missing is one piece of hardware missing |
+ * | 2 | It recognises whether this is the board of the manual | the list does not apply to another board → it has to say so, instead of pretending to apply |
+ * | 3 | A live reading distinguishes "cannot be read" from "no value" | `unavailable` is not 0 (the five states of the contract) |
  */
 const REPO_ROOT = resolve(__dirname, '../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'board-hardware');
 
-/** 装一份假的宿主 API（**只给这张卡用得到的那几个** ✓） */
+/** Install a fake host API (only the few this card uses). */
 function installCockpit(model: unknown, extra: Record<string, unknown> = {}): void {
   (window as unknown as { cockpit: unknown }).cockpit = {
     tags: {
@@ -61,14 +62,14 @@ beforeEach(() => {
   loaded = null;
 });
 
-describe('「板卡硬件」那张卡', () => {
-  it('**手册的每一节都有** ✓（**25 行 · 覆盖 26 节** ✓ —— WiFi 与蓝牙合一 ✓）', async () => {
-    installCockpit('正点原子 ATK-DLRK3588');
+describe('The "board hardware" card', () => {
+  it('every section of the manual is there (25 rows covering 26 sections — WiFi and Bluetooth share one)', async () => {
+    installCockpit('ALIENTEK ATK-DLRK3588');
     await loadCard();
     const items = document.querySelectorAll('.hw__item');
-    // **板载 WiFi 与蓝牙是同一颗芯片（RTL8733BU）** ✓ → **合成一行** ✓
+    // The on-board WiFi and the Bluetooth are one chip (RTL8733BU) → one row.
     expect(items.length).toBe(25);
-    // **每一项都写出处** ✓（**能翻回手册** ✓）
+    // Every row names its source, so it can be looked up in the manual.
     const sections = new Set<string>();
     for (const item of items) {
       const ref = item.querySelector('.hw__ref')?.textContent ?? '';
@@ -78,28 +79,30 @@ describe('「板卡硬件」那张卡', () => {
         if (at >= 0) sections.add(part.slice(at).trim());
       }
     }
-    // **26 节一节不缺** ✓
+    // No section of the 26 is missing.
     expect(sections.size).toBe(26);
   });
 
-  it('**这块板是手册那块 → 说「本板」** ✓', async () => {
-    installCockpit('正点原子 ATK-DLRK3588');
+  it('this is the board of the manual, so it says so', async () => {
+    installCockpit('ALIENTEK ATK-DLRK3588');
     await loadCard();
     const applies = document.getElementById('applies');
-    expect(applies?.textContent).toContain('本板');
+    // The wording belongs to the card package; the judgment is that the card
+    // names the board it recognised instead of staying silent.
+    expect(applies?.textContent).toMatch(/this board/i);
     expect(applies?.className).toContain('is-ok');
   });
 
-  it('**不是手册那块 → 明说不适用** ✓（**不装作适用** ✗）', async () => {
-    installCockpit('某块别的板子');
+  it('another board is not the board of the manual, so it says the list may not apply', async () => {
+    installCockpit('some other board');
     await loadCard();
     const applies = document.getElementById('applies');
-    expect(applies?.textContent).toContain('不一定适用');
+    expect(applies?.textContent).toMatch(/may not apply|not necessarily apply|does not apply/i);
     expect(applies?.className).toContain('is-warn');
   });
 
-  it('**实时值出得来** ✓（**温度与 NPU 两项** ✓）', async () => {
-    installCockpit('正点原子 ATK-DLRK3588', { 'temp.soc': 42, 'npu.usage': 17 });
+  it('the live readings come out (the temperature and the NPU)', async () => {
+    installCockpit('ALIENTEK ATK-DLRK3588', { 'temp.soc': 42, 'npu.usage': 17 });
     await loadCard();
     const lives = [...document.querySelectorAll('.hw__live')];
     expect(lives.length).toBe(2);
@@ -107,13 +110,15 @@ describe('「板卡硬件」那张卡', () => {
     expect(lives.map((el) => el.textContent)).toContain('17%');
   });
 
-  it('**读不到就说读不到** ✓（**不是 0** ✗ —— **没数与零是两件事** ✓）', async () => {
-    installCockpit('正点原子 ATK-DLRK3588', {
+  it('when it cannot be read it says so (not 0 — "no value" and "zero" are two different things)', async () => {
+    installCockpit('ALIENTEK ATK-DLRK3588', {
       'temp.soc': undefined,
       'temp.soc__status': 'unavailable',
     });
     await loadCard();
     const lives = [...document.querySelectorAll('.hw__live')];
-    expect(lives.map((el) => el.textContent)).toContain('读不到');
+    expect(lives.map((el) => el.textContent).join(' ')).toMatch(
+      /cannot be read|not readable|unavailable/i,
+    );
   });
 });

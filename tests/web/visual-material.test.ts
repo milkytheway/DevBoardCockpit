@@ -5,34 +5,40 @@ import { MATERIALS, materialVars } from '../../src/shared/theme/material';
 import { themeCss, aliasVars } from '../../src/shared/theme/map';
 
 /**
- * 材质层与色彩纪律的**机械判据**。
+ * The mechanical judgments of the material layer and of colour discipline.
  *
- * ── 为什么要有这一组测试 ──
+ * ── Why this group of tests exists ──
  *
- * 「不许乱用色彩」这句话，靠人记不住。
- * 过去 `visual.css` 里有 43 处硬编码色值，加进来、删掉、改值都没人管——
- * 因为**没有判据**。这一组测试就是那个判据。
+ * "Do not use colours carelessly" is not something a person can remember.
+ * `visual.css` once held 43 hard-coded colour values, and adding one,
+ * deleting one or changing one went unnoticed — because there was no
+ * judgment. This group of tests is that judgment.
  *
- * ── 规则（全部可机械判定） ──
+ * ── The rules (all of them mechanically decidable) ──
  *
- * 1. **非生成产物的 CSS 里不许出现颜色字面量**
- *    （hex / rgb() / rgba() / hsl() / 颜色关键字）。
- *    颜色只有三个合法来源：`--cockpit-*`（语义）、`--shell-mat-*`（材质）、
- *    `color-mix()` 里当明暗调节用的白/黑。
- * 2. **颜色关键字只许出现在 `color-mix()` 里**
- *    ——`color: white` 那种「直接上色」是乱用的开始。
- * 3. **CSS 里用到的 `--shell-mat-*` 必须在材质层登记过**（不许有影子变量）。
- * 4. **材质层里不许有孤儿**（登记了却没人用 = 又一份真相）。
- * 5. **卡片拿不到材质层**（`--shell-mat-*` 是外壳专有）。
- * 6. **主题的产出方不许手写色值**（终端 / ECharts / 卡片基础样式）。
+ * 1. **No colour literal in CSS that is not a generated artefact**
+ *    (hex / rgb() / rgba() / hsl() / colour keywords).
+ *    A colour has three legitimate sources: `--cockpit-*` (semantic),
+ *    `--shell-mat-*` (material), and the white/black that `color-mix()`
+ *    uses to shift lightness.
+ * 2. **A colour keyword may only appear inside `color-mix()`**
+ *    — a bare `color: white` is where careless colouring begins.
+ * 3. **Every `--shell-mat-*` used in CSS must be registered in the material
+ *    layer** (no shadow variables).
+ * 4. **The material layer must have no orphans** (registered but never used
+ *    means a second source of truth).
+ * 5. **A card cannot reach the material layer** (`--shell-mat-*` belongs to
+ *    the shell).
+ * 6. **The producers of the theme must not hand-write colour values** (the
+ *    terminal, ECharts, the base stylesheet of the cards).
  */
 
 const ROOT = process.cwd();
 
-/** 生成产物：色值本来就该在这里（它由种子推导出来） */
+/** Generated artefacts: the colour values belong here (they are derived from the seed) */
 const GENERATED = ['src/renderer/theme/tokens.generated.css'];
 
-/** 参与检查的手写 CSS */
+/** The hand-written CSS that takes part in the check */
 const HAND_WRITTEN = [
   'src/renderer/shell/shell.css',
   'src/renderer/shell/visual.css',
@@ -45,16 +51,16 @@ for (const name of readdirSync(join(ROOT, 'cards'))) {
   try {
     if (statSync(p).isFile()) CARD_CSS.push(p);
   } catch {
-    // 没有 style.css 的卡片目录，跳过
+    // A card directory without a style.css is skipped
   }
 }
 
-/** 去掉注释 */
+/** Remove the comments */
 function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-/** 去掉 `color-mix(...)`（括号配对，允许嵌套） */
+/** Remove the `color-mix(...)` calls (the parentheses are matched, nesting is allowed) */
 function stripColorMix(css: string): string {
   let out = '';
   let i = 0;
@@ -82,7 +88,7 @@ function stripColorMix(css: string): string {
   return out;
 }
 
-/** 一条 CSS 里所有「颜色字面量」的位置与文本 */
+/** Every colour literal in a stylesheet, with its position and text */
 function colorLiterals(css: string): string[] {
   const stripped = stripComments(css);
   const outsideMix = stripColorMix(stripped);
@@ -90,7 +96,7 @@ function colorLiterals(css: string): string[] {
 
   // hex：#rgb / #rgba / #rrggbb / #rrggbbaa
   for (const m of outsideMix.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
-    // 排除 id 选择器（`#root` 之类）：hex 必须正好 3/4/6/8 位
+    // Exclude the id selectors (`#root` and the like): a hex value must be exactly 3, 4, 6 or 8 digits
     const digits = m[0].slice(1);
     if (![3, 4, 6, 8].includes(digits.length)) continue;
     hits.push(m[0]);
@@ -98,7 +104,7 @@ function colorLiterals(css: string): string[] {
   // rgb / rgba / hsl / hsla / hwb
   for (const m of outsideMix.matchAll(/\b(?:rgba?|hsla?|hwb)\(/g)) hits.push(m[0]);
 
-  // 颜色关键字：直接上色（white-space / tone-cyan / near-black 都不算）
+  // Colour keywords: a colour applied directly (white-space / tone-cyan / near-black do not count)
   const KEYWORDS =
     /\b(white|black|red|green|blue|gray|grey|orange|yellow|purple|pink|cyan|magenta|silver|gold|navy|teal|lime|maroon|olive|aqua|fuchsia|indigo|violet|crimson|salmon|tomato|beige|ivory|khaki|salmon)\b(?![-\w])/gi;
   for (const m of outsideMix.matchAll(KEYWORDS)) {
@@ -109,150 +115,150 @@ function colorLiterals(css: string): string[] {
   return hits;
 }
 
-describe('材质层 · 登记与引用闭环', () => {
-  it('每条材质都有名字、族、状态、用途（没有"随手加的"）', () => {
+describe('Material layer · registration and reference close the loop', () => {
+  it('every material has a name, a family, a status and a purpose (none of them is "added on the fly")', () => {
     for (const m of MATERIALS) {
-      expect(m.name, '材质名必须以 --shell-mat- 开头').toMatch(/^--shell-mat-[a-z0-9-]+$/);
+      expect(m.name, 'a material name must start with --shell-mat-').toMatch(/^--shell-mat-[a-z0-9-]+$/);
       expect(['veil', 'edge', 'sheen', 'lift', 'canvas']).toContain(m.family);
       expect(['active', 'legacy']).toContain(m.status);
-      expect(m.usage.length, `${m.name} 缺用途说明`).toBeGreaterThan(4);
+      expect(m.usage.length, `${m.name} has no purpose description`).toBeGreaterThan(4);
       expect(m.dark.length).toBeGreaterThan(0);
       expect(m.light.length).toBeGreaterThan(0);
     }
   });
 
-  it('材质名不重名', () => {
+  it('material names are unique', () => {
     const names = MATERIALS.map((m) => m.name);
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('两套皮肤给的是**同一批**材质（少一条就是漏给浅色皮肤）', () => {
+  it('both skins get the same set of materials (one missing means the light skin was left out)', () => {
     const dark = Object.keys(materialVars('dark')).sort();
     const light = Object.keys(materialVars('light')).sort();
     expect(light).toEqual(dark);
   });
 
-  it('材质层**不进卡片**（卡片只许拿契约别名）', () => {
+  it('the material layer does not reach the cards (a card may only use the contract aliases)', () => {
     const cardCss = themeCss('dark', ':root');
     expect(cardCss).not.toContain('--shell-mat-');
-    // 但应用外壳要拿得到
+    // The application shell does get them
     expect(themeCss('dark', ':root', true)).toContain('--shell-mat-');
   });
 
-  it('卡片的 theme.css 里连影子的材质变量都没有', () => {
+  it('the card theme.css carries no shadow material variables either', () => {
     for (const name of MATERIALS.map((m) => m.name)) {
       expect(themeCss('dark', ':root')).not.toContain(name);
     }
   });
 
-  it('**卡片实际注入**的 theme.css 没把材质层带进去', () => {
-    // 接线处是最容易顺手加 `true` 的地方 —— 所以守住它。
+  it('the theme.css the card is actually given does not carry the material layer', () => {
+    // The wiring is the place where a `true` slips in easily — so it is guarded.
     const src = readFileSync(join(ROOT, 'src/main/cards/wiring.ts'), 'utf8');
     expect(src).toContain("themeCss(theme(), ':root')");
-    expect(src, '卡片注入的 theme.css 不许带材质层').not.toContain("themeCss(theme(), ':root', true)");
+    expect(src, 'the theme.css given to a card must not carry the material layer').not.toContain("themeCss(theme(), ':root', true)");
   });
 
-  it('推送给卡片的变量是**别名层**，不是全量（含材质层）', () => {
+  it('the variables pushed to a card are the alias layer, not the full set (which includes the material layer)', () => {
     const src = readFileSync(join(ROOT, 'src/main/cards/wiring.ts'), 'utf8');
     expect(src).toContain('return aliasVars(theme);');
-    expect(src, '推给卡片的变量不许来自 materialVars').not.toContain('materialVars');
+    expect(src, 'the variables pushed to a card must not come from materialVars').not.toContain('materialVars');
   });
 
-  it('生成的 CSS 里每一条材质都在（少一条 = 外壳少一块材质）', () => {
+  it('every material is in the generated CSS (one missing means the shell lost a material)', () => {
     const css = readFileSync(join(ROOT, 'src/renderer/theme/tokens.generated.css'), 'utf8');
     for (const m of MATERIALS) {
-      expect(css, `生成的 CSS 缺 ${m.name}`).toContain(`${m.name}:`);
+      expect(css, `the generated CSS is missing ${m.name}`).toContain(`${m.name}:`);
     }
   });
 });
 
-describe('材质层 · CSS 里不许再抄色值', () => {
-  it('手写 CSS 里**一个颜色字面量都没有**', () => {
+describe('Material layer · no colour value is copied into CSS again', () => {
+  it('the hand-written CSS holds no colour literal at all', () => {
     for (const rel of HAND_WRITTEN) {
       const css = readFileSync(join(ROOT, rel), 'utf8');
       const hits = colorLiterals(css);
-      expect(hits, `${rel} 里还有硬编码色值：${hits.join(', ')}`).toEqual([]);
+      expect(hits, `${rel} still holds hard-coded colour values: ${hits.join(', ')}`).toEqual([]);
     }
   });
 
-  it('卡片的 CSS 里也**一个颜色字面量都没有**', () => {
+  it('the CSS of the cards holds no colour literal either', () => {
     for (const abs of CARD_CSS) {
       const css = readFileSync(abs, 'utf8');
       const hits = colorLiterals(css);
-      expect(hits, `${abs.replace(ROOT, '')} 里还有硬编码色值：${hits.join(', ')}`).toEqual([]);
+      expect(hits, `${abs.replace(ROOT, '')} still holds hard-coded colour values: ${hits.join(', ')}`).toEqual([]);
     }
   });
 
-  it('卡片不许用外壳专有的材质层', () => {
+  it('a card may not use the material layer, which belongs to the shell', () => {
     for (const abs of CARD_CSS) {
       const css = readFileSync(abs, 'utf8');
-      expect(css, `${abs.replace(ROOT, '')} 用了 --shell-mat-*`).not.toContain('--shell-mat-');
+      expect(css, `${abs.replace(ROOT, '')} uses --shell-mat-*`).not.toContain('--shell-mat-');
     }
   });
 
-  it('生成产物之外的文件才是被检查的对象（生成产物里的色值来自种子）', () => {
+  it('only the files outside the generated artefacts are checked (the colour values of the artefacts come from the seed)', () => {
     for (const rel of GENERATED) {
       expect(HAND_WRITTEN).not.toContain(rel);
     }
   });
 });
 
-describe('材质层 · 引用闭环（不许有影子变量与孤儿）', () => {
+describe('Material layer · the reference loop (no shadow variables, no orphans)', () => {
   const shellCss = HAND_WRITTEN.map((rel) => readFileSync(join(ROOT, rel), 'utf8')).join('\n');
 
-  it('CSS 里用到的每个 --shell-mat-* 都在材质层登记过', () => {
+  it('every --shell-mat-* used in CSS is registered in the material layer', () => {
     const used = new Set([...shellCss.matchAll(/var\((--shell-mat-[a-z0-9-]+)/g)].map((m) => m[1]));
     const known = new Set(MATERIALS.map((m) => m.name));
     for (const name of used) {
-      expect(known.has(name), `CSS 用了没登记的材质 ${name}`).toBe(true);
+      expect(known.has(name), `the CSS uses the unregistered material ${name}`).toBe(true);
     }
-    expect(used.size, '一条材质都没被用到，说明这一层是空转').toBeGreaterThan(0);
+    expect(used.size, 'no material is used at all, so this layer is idle').toBeGreaterThan(0);
   });
 
-  it('材质层里没有孤儿（登记了却没人用 = 又一份真相）', () => {
+  it('the material layer has no orphans (registered but unused means a second source of truth)', () => {
     for (const m of MATERIALS) {
-      expect(shellCss, `${m.name} 登记了但没人用`).toContain(`var(${m.name})`);
+      expect(shellCss, `${m.name} is registered but never used`).toContain(`var(${m.name})`);
     }
   });
 
-  it('材质层只有一个来源：CSS 里不许**重新定义** --shell-mat-*', () => {
+  it('the material layer has one source: the CSS must not redefine --shell-mat-*', () => {
     for (const rel of HAND_WRITTEN) {
       const css = readFileSync(join(ROOT, rel), 'utf8');
-      expect(css, `${rel} 又定义了一遍材质变量`).not.toMatch(/--shell-mat-[a-z0-9-]+\s*:/);
+      expect(css, `${rel} defines the material variables a second time`).not.toMatch(/--shell-mat-[a-z0-9-]+\s*:/);
     }
   });
 });
 
-describe('主题的产出方不许手写色值', () => {
-  it('终端主题（shell/theme.ts）里没有颜色字面量', () => {
+describe('The producers of the theme must not hand-write colour values', () => {
+  it('the terminal theme (shell/theme.ts) holds no colour literal', () => {
     const src = readFileSync(join(ROOT, 'src/renderer/shell/theme.ts'), 'utf8');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(code).not.toMatch(/\brgba?\(/);
   });
 
-  it('终端组件（TerminalView.tsx）里没有颜色字面量', () => {
+  it('the terminal component (TerminalView.tsx) holds no colour literal', () => {
     const src = readFileSync(join(ROOT, 'src/renderer/terminal/TerminalView.tsx'), 'utf8');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(code, '终端组件不许自己存一套回落色（那是第二份真相）').not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(code, 'the terminal component must not keep a fallback colour set of its own (that would be a second source of truth)').not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 
-  it('ECharts 主题（echarts-theme.ts）里没有颜色字面量', () => {
+  it('the ECharts theme (echarts-theme.ts) holds no colour literal', () => {
     const src = readFileSync(join(ROOT, 'src/shared/theme/echarts-theme.ts'), 'utf8');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(code).not.toMatch(/['"][#a-f0-9]{6}['"]/i);
   });
 
-  it('宿主注入给卡片的基础样式里没有颜色字面量', () => {
+  it('the base stylesheet the host injects into a card holds no colour literal', () => {
     const src = readFileSync(join(ROOT, 'src/shared/theme/base-css.ts'), 'utf8');
     const code = src.replace(/`[\s\S]*?`/g, '');
     expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 });
 
-describe('终端主题 · 单一来源', () => {
-  it('终端的兜底色 == 种子的真值（不是另抄一份）', async () => {
+describe('Terminal theme · one source', () => {
+  it('the fallback colours of the terminal are the values of the seed (not a second copy)', async () => {
     const { xtermThemeFromVars } = await import('../../src/renderer/shell/theme');
     const { SEEDS } = await import('../../src/shared/theme/seed');
     const theme = xtermThemeFromVars({});
@@ -265,7 +271,7 @@ describe('终端主题 · 单一来源', () => {
     expect(theme.cyan).toBe(SEEDS.dark['series-5']);
   });
 
-  it('别名层给的终端主题与兜底**一致**（两条路不许分叉）', async () => {
+  it('the terminal theme from the alias layer agrees with the fallback (the two paths must not diverge)', async () => {
     const { xtermThemeFromVars } = await import('../../src/renderer/shell/theme');
     const fromVars = xtermThemeFromVars(aliasVars('dark'));
     const fromFallback = xtermThemeFromVars({});

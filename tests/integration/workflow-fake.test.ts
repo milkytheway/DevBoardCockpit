@@ -12,20 +12,27 @@ import { SessionLog } from '../../src/main/logging/session-log';
 import type { ConnectionProfile } from '../../src/main/profiles/schema';
 
 /**
- * 流程层的**集成验证**（**假设备**扮两个角色）。
+ * The integration check of the workflow layer (the **fake device** plays two
+ * roles).
  *
- * ── 为什么不是 Electron e2e ──
+ * ── Why it is not an Electron e2e test ──
  *
- * **应用里还没有流程的入口**（首版只由 `npm run workflow:run` 触发 ✓ ——
- * ADR-D31 R1：卡片 API 与 MCP 工具首版不动契约 ✓）。
- * → 在 Electron 里跑一条流程**证明不了应用的事**（它压根不经过应用 ✗）。
- * → 所以这里验的是**真链路**：流程包 → 目标登记处 → **真 HAL（假设备）** → 七步链 → **真审计文件** ✓。
+ * **The application has no entry point for a workflow yet** (the first version
+ * is only triggered by `npm run workflow:run` — ADR-D31 R1: the card API and
+ * the MCP tools do not change the contract in the first version).
+ * → Running a workflow inside Electron **proves nothing about the
+ *   application** (it does not go through the application at all).
+ * → So what is verified here is the **real chain**: the workflow pack → the
+ *   target registry → the **real HAL (the fake device)** → the seven-step
+ *   chain → the **real audit file**.
  *
- * ── 两个角色 = 两块盘 ──
+ * ── Two roles = two disks ──
  *
- * 假设备**按 profile id 分盘**（`fakeFilesystem(profile.id)` ✓）→
- * `build` 与 `target` 各有一块 ✓ → 「板子上真的有那个文件了吗」**验的是另一块盘** ✓
- * ——这正是**跨目标判据**要证明的那件事 ✓（RF-6 的反面 ✓）。
+ * The fake device **keeps one disk per profile id**
+ * (`fakeFilesystem(profile.id)`) → `build` and `target` each have one →
+ * "is that file really on the board now" **is verified on another disk** —
+ * that is exactly what a **criterion across two targets** has to prove (the
+ * opposite of RF-6).
  */
 let dir: string;
 
@@ -38,8 +45,8 @@ afterEach(() => {
 });
 
 const ROLES = {
-  build: { purpose: '假客机', profile: 'build' },
-  target: { purpose: '假板子', profile: 'target' },
+  build: { purpose: 'Fake guest machine', profile: 'build' },
+  target: { purpose: 'Fake board', profile: 'target' },
 };
 
 function harness(): {
@@ -59,7 +66,7 @@ function harness(): {
         now: () => 1_700_000_000_000,
         log,
         profile,
-        // **不注入故障**（这条判据要的是「干净地跑通」✓）
+        // No failure is injected (this judgment wants a clean run)
         timeoutEvery: 0,
         breakMeminfoEvery: 0,
       }),
@@ -72,7 +79,7 @@ function harness(): {
       apiVersion: 'devboard/v1',
       kind: 'Workflow',
       id: 'fake-flow.build-run',
-      name: '假设备上的编译→直传→落位',
+      name: 'Build on the fake device, transfer it, place it',
       version: '1.0.0',
       inputs: { artifact: { type: 'string', maxLength: 50 } },
       roles: ROLES,
@@ -94,7 +101,7 @@ function harness(): {
           to: { role: 'target', placement: 'kernel-module' },
           cmd: 'scp {from.path} {role:target.user}@{role:target.host}:{to.path}',
           out: 'dest',
-          // **判据指名目标** → 在**另一块盘**上验 ✓
+          // The criterion names its target → it is verified on **another disk**
           readback: { kind: 'verify', role: 'target', command: 'test -f {to.path}' },
         },
         {
@@ -109,8 +116,9 @@ function harness(): {
     'fake-flow.yaml',
   );
 
-  // ── 先在**假客机**那块盘上放一个产物 ──
-  // （发现要找到东西才走得到下一步 ✓；假设备的盘一开始是空的 ✓）
+  // ── First put an artefact on the disk of the **fake guest machine** ──
+  // (the discovery has to find something to reach the next step; the disk of
+  // the fake device starts empty)
   const seed = async (): Promise<void> => {
     await registry.runOn('build', async (conn) => conn.exec('echo ko > build/hello.ko'));
   };
@@ -139,18 +147,19 @@ function harness(): {
   };
 }
 
-describe('流程层 · 假设备上的两个角色', () => {
-  it('一条流程跑通，**每个阶段都有审计行**（时间线 ↔ 审计对得上）', async () => {
+describe('The workflow layer · two roles on the fake device', () => {
+  it('a workflow runs through, and every stage has an audit row (the timeline and the audit agree)', async () => {
     const h = harness();
     const result = await h.run;
 
-    // **假设备上产物要先在**（否则 discover 找不到 ✓）
+    // The artefact has to be there on the fake device first (otherwise the
+    // discovery finds nothing)
     expect(result.stages.length).toBeGreaterThan(0);
-    // 每个阶段都有 audit_id ✓
+    // Every stage carries an audit id
     for (const stage of result.stages) {
-      expect(stage.audit_id, `阶段 ${stage.stepId} 没有 audit_id`).toBeTruthy();
+      expect(stage.audit_id, `the stage ${stage.stepId} has no audit id`).toBeTruthy();
     }
-    // **审计文件里能查到那些行** ✓
+    // Those rows can be found in the audit file
     const lines = h.readAudit();
     expect(lines.length).toBeGreaterThan(0);
     for (const stage of result.stages) {
@@ -158,14 +167,15 @@ describe('流程层 · 假设备上的两个角色', () => {
     }
   });
 
-  it('**跨目标的判据在目标那块盘上验**（不是在自己的盘上自说自话 ✓）', async () => {
+  it('a criterion across two targets is verified on the disk of the target (not on its own disk, talking to itself)', async () => {
     const h = harness();
     await h.run;
     const lines = h.readAudit();
-    // 跨目标判据**单独一行**（两个事实 → 两行账 ✓）
+    // The criterion across two targets is a line of its own (two facts → two
+    // rows in the ledger)
     const cross = lines.filter((l) => l.includes(':deliver:readback'));
     expect(cross).toHaveLength(1);
-    // 判据是「在目标上验」→ 它的 action id 里带着 target 的角色 ✓
+    // The criterion is verified on the target → the action id carries the role of the target
     expect(cross[0]).toContain('workflow:fake-flow.build-run');
   });
 });

@@ -8,17 +8,18 @@ import type { WizardRunResult } from '../../src/shared/ipc-contract';
 const BASE: WizardRunResult = {
   ok: true,
   kind: 'ok',
-  message: '好了 —— 包已经落在用户目录',
+  message: 'done — this board now has a pack of its own',
   hints: [],
   greenCount: 12,
   redCount: 1,
-  installedDir: 'C:\\Users\\Administrator\\AppData\\Roaming\\devboard\\boards\\my-board',
+  installedDir: 'C:\\Users\\<user>\\AppData\\Roaming\\devboard\\boards\\my-board',
   boardId: 'my-board',
 };
 
 /**
- * **中文分支** ✓ —— 页面文案有中英两个分支，这里把语言钉在中文上，
- * 断言里的期望值就是**中文分支的文案** ✓。
+ * The Chinese branch: the page has two wordings, the locale is pinned here,
+ * and the expected values in the assertions are the wording of the Chinese
+ * branch.
  */
 function renderZh(ui: JSX.Element): ReturnType<typeof render> {
   return render(<LocaleContext.Provider value="zh-Hans">{ui}</LocaleContext.Provider>);
@@ -30,13 +31,13 @@ function pendingRun(): (input: WizardRequest) => Promise<WizardRunResult> {
   );
 }
 
-function fill(port = 'COM7', name = '我的板'): void {
+function fill(port = 'COM7', name = 'my board'): void {
   fireEvent.change(screen.getByLabelText('串口'), { target: { value: port } });
   fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: name } });
 }
 
-describe('接板向导页', () => {
-  it('**只有三个字段**，ADB 时串口与波特率变灰但不消失', () => {
+describe('The board setup wizard page', () => {
+  it('there are three fields; with ADB the serial port and the baud rate grey out but do not disappear', () => {
     const run = pendingRun();
     const { container } = renderZh(<WizardPage run={run} />);
 
@@ -50,10 +51,10 @@ describe('接板向导页', () => {
     expect((screen.getByLabelText('板子名字') as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('**串口提交的是人填的值**，跑时按钮禁用并说出正在做什么', () => {
+  it('the serial port submits what the person typed; while it runs the button is disabled and says what is happening', () => {
     const run = pendingRun();
     const { container } = renderZh(<WizardPage run={run} />);
-    fill('COM7', '我的板');
+    fill('COM7', 'my board');
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
 
@@ -61,7 +62,7 @@ describe('接板向导页', () => {
       transport: 'serial',
       port: 'COM7',
       baudrate: 1500000,
-      boardName: '我的板',
+      boardName: 'my board',
     });
     const button = screen.getByRole('button', { name: '正在接板…' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
@@ -69,10 +70,10 @@ describe('接板向导页', () => {
     expect(screen.getByRole('status').textContent).toContain('不编百分比');
   });
 
-  it('**ADB 提交不拿串口和波特率**（宿主会忽略，但界面别装作用得上）', () => {
+  it('the ADB submission carries neither the serial port nor the baud rate (the host ignores them, and the interface must not pretend they apply)', () => {
     const run = pendingRun();
     renderZh(<WizardPage run={run} />);
-    fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: '我的板' } });
+    fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: 'my board' } });
     fireEvent.click(screen.getByRole('button', { name: 'ADB' }));
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
 
@@ -80,11 +81,11 @@ describe('接板向导页', () => {
       transport: 'adb',
       port: '',
       baudrate: 0,
-      boardName: '我的板',
+      boardName: 'my board',
     });
   });
 
-  it('等待时间推进后换下一段名字，仍然不报百分比', () => {
+  it('the wording changes as the wait advances, and it still reports no percentage', () => {
     vi.useFakeTimers();
     try {
       const run = pendingRun();
@@ -103,7 +104,7 @@ describe('接板向导页', () => {
     }
   });
 
-  it('**成功**：主视觉、可用数、包路径、初版说明，并通知外壳刷新', async () => {
+  it('on success: the main visual, the usable count, the package path, the note about the first version, and a notice to the shell to refresh', async () => {
     const run = vi.fn(() => Promise.resolve(BASE));
     const onInstalled = vi.fn();
     const { container } = renderZh(<WizardPage run={run} onInstalled={onInstalled} />);
@@ -123,13 +124,13 @@ describe('接板向导页', () => {
     expect(onInstalled).toHaveBeenCalledTimes(1);
   });
 
-  it('**串口打不开**：先怀疑端口被别的东西占着', async () => {
+  it('the serial port does not open: suspect that something else holds the port', async () => {
     const run = vi.fn(() =>
       Promise.resolve({
         ...BASE,
         ok: false,
         kind: 'port-unopenable' as const,
-        message: '**串口打不开** —— Opening COM9: Access denied',
+        message: '**the serial port cannot be opened** —— Opening COM9: Access denied',
         greenCount: 0,
         redCount: 0,
         installedDir: undefined,
@@ -145,13 +146,13 @@ describe('接板向导页', () => {
     expect(screen.getByText(/有别的程序正独占着那个口/)).toBeTruthy();
   });
 
-  it('**板子没说话**：不说「连接失败」，hints 逐条列', async () => {
+  it('the board says nothing: no "the connection failed", and the hints are listed one by one', async () => {
     const run = vi.fn(() =>
       Promise.resolve({
         ...BASE,
         ok: false,
         kind: 'no-reply' as const,
-        message: '**板子没说话** —— 连上了，但命令没有回包',
+        message: '**the board said nothing** —— it is connected, but the command did not answer',
         greenCount: 0,
         redCount: 0,
         installedDir: undefined,
@@ -162,20 +163,20 @@ describe('接板向导页', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
 
-    expect(await screen.findByText(/连上了，但命令没有回包/)).toBeTruthy();
+    expect(await screen.findByText(/it is connected, but the command did not answer/)).toBeTruthy();
     expect(container.querySelector('.wizard-result__title')?.textContent).toBe('板子没说话');
-    expect(container.textContent).not.toContain('连接失败');
+    expect(container.textContent).not.toContain('the connection failed');
     expect(container.querySelectorAll('.wizard-hints li').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText(/1500000/).length).toBeGreaterThan(0);
   });
 
-  it('**那条连接一次都没通**：先查连接，不是元操作', async () => {
+  it('that connection never came through: look at the connection first, not at the meta operations', async () => {
     const run = vi.fn(() =>
       Promise.resolve({
         ...BASE,
         ok: false,
         kind: 'connection-dead' as const,
-        message: '**一个数都没出来** —— 不是元操作的问题',
+        message: '**not a single number came out** —— it is most likely not the problem of those meta-operations',
         greenCount: 0,
         redCount: 0,
         installedDir: undefined,

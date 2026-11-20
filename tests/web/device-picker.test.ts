@@ -3,16 +3,19 @@ import type { ConnectionInfo } from '../../src/shared/ipc-contract';
 import { boardsOf } from '../../src/renderer/shell/devices';
 
 /**
- * **界面只列板卡**（`devices.ts`）。
+ * The interface layer knows boards only (`devices.ts`).
  *
- * ── 为什么要有这一层 ──
+ * ── Why this layer exists ──
  *
- * → **板实物与连接是两层** ✓（契约 `spec/02` §10.2 ✓）——
- *   一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **界面要按板子分组** ✓。
- * → 用户 2026-11-16 明确：「**仅支持板卡选择，不要把连接放进去**」✓
- *   → **界面那一层只认板** ✓ → **连接由宿主挑** ✓。
+ * → The physical board and the connection are two layers (contract
+ *   `docs/spec/02-board-pack.md` section 10.2) — a board has three
+ *   connections (ADB / serial / SSH), so the interface groups them by board.
+ * → The user was explicit on 2026-11-16: "support the selection of a board
+ *   only, do not put the connections in there."
+ *   → The interface layer knows boards only → the host picks the connection.
  *
- * → **`device_key` 就是「哪块板」** ✓ —— **同一块板的多条连接给同一个值** ✓。
+ * → `device_key` is "which board" — every connection of the same board
+ *   carries the same value.
  */
 function conn(
   id: string,
@@ -31,29 +34,29 @@ function conn(
   };
 }
 
-describe('按板子归并', () => {
-  it('**同一块板的多条连接归成一块板** ✓', () => {
+describe('Grouping by board', () => {
+  it('the several connections of one board collapse into one board', () => {
     const boards = boardsOf([
-      conn('board-adb', 'atk-01', { label: '板子 · ADB' }),
-      conn('board-serial', 'atk-01', { label: '板子 · 串口', transport: 'serial' }),
-      conn('board-ssh', 'atk-01', { label: '板子 · SSH', transport: 'ssh' }),
-      conn('guest', 'guest', { label: '客机', transport: 'ssh' }),
+      conn('board-adb', 'atk-01', { label: 'Board · ADB' }),
+      conn('board-serial', 'atk-01', { label: 'Board · Serial', transport: 'serial' }),
+      conn('board-ssh', 'atk-01', { label: 'Board · SSH', transport: 'ssh' }),
+      conn('guest', 'guest', { label: 'Guest', transport: 'ssh' }),
     ]);
     expect(boards.map((b) => b.deviceKey)).toEqual(['atk-01', 'guest']);
     expect(boards[0]?.connectionCount).toBe(3);
   });
 
-  it('**当前那块排第一** ✓（**选板的人先看到自己在用哪块** ✓）', () => {
+  it('the current board comes first (the person choosing sees the board they are on)', () => {
     const boards = boardsOf([
-      conn('guest', 'guest', { label: '客机', transport: 'ssh' }),
-      conn('board-adb', 'atk-01', { label: '板子 · ADB', current: true }),
+      conn('guest', 'guest', { label: 'Guest', transport: 'ssh' }),
+      conn('board-adb', 'atk-01', { label: 'Board · ADB', current: true }),
     ]);
     expect(boards.map((b) => b.deviceKey)).toEqual(['atk-01', 'guest']);
     expect(boards[0]?.current).toBe(true);
     expect(boards[1]?.current).toBe(false);
   });
 
-  it('**板型包就是那块板的型号** ✓', () => {
+  it('the board pack is the model of the board', () => {
     const boards = boardsOf([
       conn('board-adb', 'atk-01', { boardPack: 'rk3588-atk' }),
       conn('fake-board', 'fake-board', { boardPack: 'rk3588-atk' }),
@@ -61,27 +64,28 @@ describe('按板子归并', () => {
     expect(boards.map((b) => b.boardPack)).toEqual(['rk3588-atk', 'rk3588-atk']);
   });
 
-  it('**没绑板型包的连接不是板子** ✓（**本机 / 客机不是板** ✓）', () => {
+  it('a connection without a board pack is not a board (the local machine and the guest are not boards)', () => {
     const boards = boardsOf([
       conn('local', 'local', { boardPack: null, transport: 'local' }),
       conn('guest', 'guest', { boardPack: null, transport: 'ssh' }),
       conn('board-adb', 'atk-01', { boardPack: 'rk3588-atk' }),
     ]);
-    // **只有绑了板型包的才是板** ✓ —— 与运行时候选同一把尺 ✓（`tags/runtime.ts` ✓）
+    // Only a connection bound to a board pack is a board — the same measure as at
+    // runtime (`src/main/tags/runtime.ts`)
     expect(boards.map((b) => b.deviceKey)).toEqual(['atk-01']);
   });
 
-  it('**一块板只有一个 `current`** ✓ —— **两处说「当前」就是数据乱了** ✓', () => {
+  it('a board has exactly one "current" — two claims to be current mean the data is inconsistent', () => {
     const boards = boardsOf([
       conn('board-adb', 'atk-01', { current: true }),
       conn('board-ssh', 'atk-01', { current: true }),
     ]);
-    // **只认第一条** ✓（**不猜第二个是谁** ✓）
+    // Only the first one counts (the second one is never guessed at)
     expect(boards[0]?.current).toBe(true);
     expect(boards.length).toBe(1);
   });
 
-  it('**没有连接就是空数组** ✓（**不是「一块都没有的板」** ✓）', () => {
+  it('no connection gives an empty array (not a board without connections)', () => {
     expect(boardsOf([])).toEqual([]);
   });
 });

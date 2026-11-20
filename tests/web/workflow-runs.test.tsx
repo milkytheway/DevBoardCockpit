@@ -1,25 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { WorkflowRuns } from '../../src/renderer/shell/WorkflowRuns';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 import type { CockpitApi } from '../../src/shared/ipc-contract';
 
 /**
- * **取消**（契约 `05` §八·A ✓）—— **宿主唯一的「停」入口** ✓。
+ * Cancelling a run (contract `docs/spec/05-workflow-pack.md` section 8.A) —
+ * the only place the host offers a "stop".
  *
- * ── 这组判据在防什么 ──
+ * ── What this group of judgments guards ──
  *
- * | 判据 | 防的是 |
+ * | Judgment | What it prevents |
  * |---|---|
- * | **卡片 API 里没有 `workflows.cancel`** | 卡片能「停一次别人的运行」✗ —— 那**不在任何权限项里** ✗（契约 A4 ✓） |
- * | **MCP 工具里没有 cancel** | agent 有了「**自己决定不干**」的通道 ✗ —— 「人点头」那条链多一个旁路 ✗（契约 A4 ✓） |
- * | **宿主有这两个通道** | 「编译要几分钟，中途想停做不到」✗（契约 A1–A10 全是语义，**没有入口就是没有** ✓） |
- * | **没有运行中时不渲染** | 顶条**常驻一行** ✗ —— 顶条不能变挤 ✓ |
+ * | The card API has no `workflows.cancel` | a card could stop somebody else's run — that is not covered by any permission |
+ * | The MCP tool set has no cancel | an agent would have a "decide to stop by itself" channel, a bypass around the chain that asks the person |
+ * | The host does have those two channels | "the build takes minutes and there is no way to stop it halfway" — a rule that has no entry point is not a rule |
+ * | Nothing is rendered while no run is active | the strip would be a permanent row, and the title bar must not get crowded |
+ *
+ * The locale is pinned to English, so the wording under test is fixed.
  */
 
-describe('取消 · 外壳的「停」按钮', () => {
+describe('Cancelling · the stop button of the shell', () => {
   const cancel = vi.fn(async () => ({ runId: 'r1' }));
 
-  /** 只给测试要用的那几个方法 ✓（类型上是整个 api ✓ —— 测试里只碰这两个 ✓） */
+  /** Only the few methods the test needs (the type is the whole api, the test touches two of them). */
   function setApi(partial: Partial<CockpitApi>): void {
     (window as unknown as { cockpit: CockpitApi }).cockpit = partial as CockpitApi;
   }
@@ -33,13 +37,21 @@ describe('取消 · 外壳的「停」按钮', () => {
     delete (window as unknown as { cockpit?: unknown }).cockpit;
   });
 
-  it('**没有运行中 → 什么都不渲染** ✓（顶条不能常驻一行 ✓）', async () => {
-    render(<WorkflowRuns />);
+  function renderRuns(): void {
+    render(
+      <LocaleContext.Provider value="en">
+        <WorkflowRuns />
+      </LocaleContext.Provider>,
+    );
+  }
+
+  it('with no run in flight nothing is rendered (the strip may not be a permanent row)', async () => {
+    renderRuns();
     await waitFor(() => expect(cancel).not.toHaveBeenCalled());
     expect(screen.queryByTestId('workflow-runs')).toBeNull();
   });
 
-  it('**有运行中 → 显示流程名 + 当前这一步 + 一个「停」** ✓', async () => {
+  it('with a run in flight it shows the workflow name, the current step and one stop', async () => {
     setApi({
       workflowsRecent: async () => [
         {
@@ -53,16 +65,16 @@ describe('取消 · 外壳的「停」按钮', () => {
       ],
       workflowsCancel: cancel,
     });
-    render(<WorkflowRuns />);
+    renderRuns();
     await waitFor(() => expect(screen.getByTestId('workflow-runs')).toBeTruthy());
     expect(screen.getByText('hello-kernel.build-run')).toBeTruthy();
     expect(screen.getByText(/compile/)).toBeTruthy();
-    // **已经跑了多久** ✓ —— **算出来的** ✓（契约 B2 ✓：不给百分比 ✓）
-    expect(screen.getByText(/42 秒|41 秒|43 秒/)).toBeTruthy();
-    expect(screen.getByText('停')).toBeTruthy();
+    // How long it has been running is computed (contract B2: no percentage).
+    expect(screen.getByText(/42 s|41 s|43 s/)).toBeTruthy();
+    expect(screen.getByText('Stop')).toBeTruthy();
   });
 
-  it('**点「停」→ 调宿主的取消** ✓（**卡片不参与** ✓）', async () => {
+  it('pressing stop calls the cancel of the host (the cards take no part in it)', async () => {
     setApi({
       workflowsRecent: async () => [
         {
@@ -76,13 +88,13 @@ describe('取消 · 外壳的「停」按钮', () => {
       ],
       workflowsCancel: cancel,
     });
-    render(<WorkflowRuns />);
-    await waitFor(() => expect(screen.getByText('停')).toBeTruthy());
-    screen.getByText('停').click();
+    renderRuns();
+    await waitFor(() => expect(screen.getByText('Stop')).toBeTruthy());
+    screen.getByText('Stop').click();
     await waitFor(() => expect(cancel).toHaveBeenCalledWith('r7'));
   });
 
-  it('**已结束的运行不显示** ✓（只有 running 才占地方 ✓）', async () => {
+  it('a run that has ended is not shown (only a running one takes space)', async () => {
     setApi({
       workflowsRecent: async () => [
         {
@@ -96,7 +108,7 @@ describe('取消 · 外壳的「停」按钮', () => {
       ],
       workflowsCancel: cancel,
     });
-    render(<WorkflowRuns />);
+    renderRuns();
     await waitFor(() => expect(cancel).not.toHaveBeenCalled());
     expect(screen.queryByTestId('workflow-runs')).toBeNull();
   });

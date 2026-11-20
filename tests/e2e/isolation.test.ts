@@ -4,36 +4,40 @@ import { join } from 'node:path';
 import { launchApp, writeCard, cardDir, simpleCard, cardFrameFor, placeCard } from './harness';
 
 /**
- * 卡片沙箱的**隔离判据**（M5 的验收主体）。
+ * The isolation judgments of the card sandbox (the body of the M5 acceptance).
  *
- * 设计 `docs/21` §10.1 定了**六条**；这里跑了**七条**
- * （六条 + 「卡片用不了浏览器的存储」——契约 §6.2 的前提，也得守着）。
+ * The sandbox rules of the contract (`docs/spec/03-card-manifest.md`
+ * section 6) are six; this file runs seven — the six plus "a card cannot use
+ * the storage of the browser", which is the premise of section 6.2 and has to
+ * be guarded as well.
  *
- * ── 为什么它们必须是「自动的」 ──
+ * ── Why they have to be automatic ──
  *
- * 「卡片碰不到宿主」这件事，**人眼看不出来**——
- * 卡片照样显示，只是偷偷读了宿主的 DOM。
- * 所以每一条都要有**能跑、能红的判据**。
+ * "a card cannot reach the host" is not something a person can see — the card
+ * renders as usual, it only reads the DOM of the host quietly. So every rule
+ * needs a judgment that **runs and that can turn red**.
  *
- * ── 怎么跑 ──
+ * ── How to run them ──
  *
  * ```bash
  * npm run build && npm run test:cards
  * ```
- * （真 Electron；Linux 沙箱里没有 Linux 版 Electron，宿主侧跑。）
+ * (a real Electron; the Linux sandbox has no Linux build of Electron, so this
+ * runs on the host.)
  */
 
-test.describe('卡片沙箱', () => {
-  test('卡片碰不到宿主 DOM', async () => {
+test.describe('The card sandbox', () => {
+  test('a card cannot reach the DOM of the host', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      // The main area starts empty — the card has to be placed from the
+      // catalogue of the secondary sidebar first
       await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
         try {
-          // @ts-expect-error 运行时才知道有没有
+          // @ts-expect-error it is only known at run time
           const title = (window.parent as Window & { document?: Document }).document.title;
           return { ok: true, title };
         } catch (err) {
@@ -47,11 +51,12 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('卡片连不上网（fetch 被 CSP 挡）', async () => {
+  test('a card cannot reach the network (the CSP blocks fetch)', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      // The main area starts empty — the card has to be placed from the
+      // catalogue of the secondary sidebar first
       await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(async () => {
@@ -68,11 +73,12 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('卡片读不到没权限的 tag（且看不出存不存在）', async () => {
+  test('a card cannot read a tag it has no permission for (and cannot tell whether it exists)', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      // The main area starts empty — the card has to be placed from the
+      // catalogue of the secondary sidebar first
       await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const reading = await frame.evaluate(async () => {
@@ -88,25 +94,26 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('卡片抛异常不影响宿主', async () => {
+  test('an exception in a card does not affect the host', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
       await placeCard(launched.window, 'e2e-card');
       await cardFrame(launched.window);
-      // 宿主还活着吗？
+      // Is the host still alive?
       const title = await launched.window.title();
-      expect(title).toMatch(/开发板驾驶舱/);
+      expect(title).toMatch(/DevBoard Cockpit/);
     } finally {
       await launched.close();
     }
   });
 
-  test('卡片用不了浏览器的存储（不透明源 → SecurityError）', async () => {
+  test('a card cannot use the storage of the browser (an opaque origin → SecurityError)', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard());
-      // **主区默认是空的** —— 卡片要先从左二级的目录里「摆进来」
+      // The main area starts empty — the card has to be placed from the
+      // catalogue of the secondary sidebar first
       await placeCard(launched.window, 'e2e-card');
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       const result = await frame.evaluate(() => {
@@ -124,10 +131,11 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('**内置的第一张卡自己出现**（不用手动复制——它就在内置根下）', async () => {
+  test('the first built-in card appears by itself (it is under the built-in root, no copying needed)', async () => {
     const launched = await launchApp();
     try {
-      // **不装任何卡**——内置的 `cards/cpu-usage/` 就该自己被发现
+      // No card is installed — the built-in `cards/cpu-usage/` has to be
+      // discovered on its own
       await expect
         .poll(
           async () => {
@@ -137,7 +145,7 @@ test.describe('卡片沙箱', () => {
           { timeout: 20_000 },
         )
         .toBeGreaterThan(0);
-      // 摆进主区 → 它得真的跑起来（不是只出现在清单里）
+      // Placed in the work area → it has to really run (not only appear in the list)
       await placeCard(launched.window, 'cpu-usage');
       const frame = await cardFrameFor(launched.window, 'cpu-usage');
       expect(await frame.evaluate(() => typeof (window as unknown as { cockpit?: unknown }).cockpit)).toBe(
@@ -148,7 +156,7 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('卡片碰不到别的卡', async () => {
+  test('a card cannot reach another card', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'card-a', simpleCard('card-a'));
@@ -162,13 +170,13 @@ test.describe('卡片沙箱', () => {
       const result = await frame.evaluate(() => {
         const out: Record<string, string> = { own: 'no-throw', other: 'no-throw' };
         try {
-          // ① 自己的存储：不透明源 → 抛 SecurityError
+          // ① Its own storage: an opaque origin → a SecurityError
           localStorage.setItem('x', '1');
         } catch (err) {
           out['own'] = String(err);
         }
         try {
-          // ② **别的卡**的存储：跨源 → 抛 SecurityError
+          // ② The storage of **another card**: a cross-origin access → a SecurityError
           const others = parent.frames;
           for (let i = 0; i < others.length; i += 1) {
             if (others[i] === window) continue;
@@ -186,7 +194,7 @@ test.describe('卡片沙箱', () => {
     }
   });
 
-  test('改文件即热更新（改 card.js → 卡片重载 → 新行为生效）', async () => {
+  test('editing a file reloads the card (edit card.js → the card reloads → the new behaviour takes effect)', async () => {
     const launched = await launchApp();
     try {
       await writeCard(launched.userDataDir, 'e2e-card', simpleCard('e2e-card', 'v1'));
@@ -194,7 +202,7 @@ test.describe('卡片沙箱', () => {
       const frame = await cardFrameFor(launched.window, 'e2e-card');
       expect(await frame.evaluate(() => document.body.dataset.marker)).toBe('v1');
 
-      // 改卡片里的一个字 —— **不重启**
+      // Change one character in the card — without a restart
       const file = join(cardDir(launched.userDataDir, 'e2e-card'), 'card.js');
       writeFileSync(file, "document.body.dataset.marker = 'v2';\n", 'utf8');
 
@@ -204,7 +212,8 @@ test.describe('卡片沙箱', () => {
             const frames = cardFrames(launched.window).filter((f) =>
               f.url().startsWith('cockpit://card/'),
             );
-            // **按实例找那张 e2e-card**（内置卡也在列表里，不能靠顺序）
+            // The e2e-card is found **by its instance** (the built-in cards are
+            // in the list too, so the order cannot be used)
             const list = await cardsListOf(launched.window);
             const info = list.find((c) => c.cardId === 'e2e-card');
             if (info === undefined) return 'no-card';
@@ -223,7 +232,7 @@ test.describe('卡片沙箱', () => {
   });
 });
 
-/** 问宿主要装着的卡片清单 */
+/** Ask the host for the list of the installed cards */
 async function cardsListOf(
   page: import('@playwright/test').Page,
 ): Promise<{ cardId: string; instanceId: string }[]> {
@@ -236,12 +245,12 @@ async function cardsListOf(
   );
 }
 
-/** 所有卡片 iframe */
+/** All the card iframes */
 function cardFrames(page: import('@playwright/test').Page): import('@playwright/test').Frame[] {
   return page.frames().filter((f) => f.url().startsWith('cockpit://card/'));
 }
 
-/** 等卡片 iframe 出现并返回它 */
+/** Wait for a card iframe to appear and return it */
 async function cardFrame(page: import('@playwright/test').Page): Promise<import('@playwright/test').Frame> {
   await expect
     .poll(
@@ -250,6 +259,6 @@ async function cardFrame(page: import('@playwright/test').Page): Promise<import(
     )
     .toBeGreaterThan(0);
   const frame = cardFrames(page)[0];
-  if (frame === undefined) throw new Error('卡片 iframe 没出现');
+  if (frame === undefined) throw new Error('the card iframe did not appear');
   return frame;
 }

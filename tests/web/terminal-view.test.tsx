@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 /**
- * xterm 的假实现：**记录每次 write 的内容**。
+ * The fake xterm: it records the content of every write.
  *
- * jsdom 里 xterm 用 canvas 画字，写进去的内容测不到——
- * 于是「每个 chunk 写一次」和「把累积串重写一遍」这两种实现，
- * 在测试里长得一模一样。整支评审的 C4 就是这么漏过去的：
- * 屏幕上是重复的文本，而测试全绿。
+ * In the DOM test environment xterm draws on a canvas, so what was written
+ * cannot be observed — and "write every chunk once" and "rewrite the
+ * accumulated string" look identical to a test. That is how review finding
+ * C4 slipped through: the screen showed duplicated text and the suite was
+ * green.
  */
 const writes: string[] = [];
 
@@ -22,7 +23,7 @@ vi.mock('@xterm/xterm', () => ({
     write(data: string) { writes.push(data); }
     focus() { /* no-op */ }
     dispose() { /* no-op */ }
-    // **换肤是原地改 options**（不重建实例）→ 假实现要能接住
+    // A theme change mutates the options in place (no new instance) → the fake has to accept that
     options: Record<string, unknown> = {};
     refresh() { /* no-op */ }
   },
@@ -42,18 +43,18 @@ beforeEach(() => {
 });
 
 describe('TerminalView', () => {
-  it('渲染一个终端容器并把输入转成 write 调用', () => {
+  it('renders a terminal container and turns the input into write calls', () => {
     const write = vi.fn();
     render(<TerminalView sessionId="s1" onWrite={write} />);
     expect(screen.getByTestId('terminal-s1')).toBeTruthy();
   });
 
-  it('容器带 data-testid，宿主据此定位每个会话的终端', () => {
+  it('the container carries a data-testid, so the host can find the terminal of every session', () => {
     render(<TerminalView sessionId="abc" onWrite={vi.fn()} />);
     expect(screen.getByTestId('terminal-abc')).toBeTruthy();
   });
 
-  it('每个 chunk 写一次，不重放历史（C4）', () => {
+  it('every chunk is written once and the history is not replayed (C4)', () => {
     let push: ((chunk: string) => void) | undefined;
     const subscribe = (cb: (chunk: string) => void) => {
       push = cb;
@@ -62,10 +63,10 @@ describe('TerminalView', () => {
 
     render(<TerminalView sessionId="s1" onWrite={vi.fn()} subscribe={subscribe} />);
 
-    push?.('第一段');
-    push?.('第二段');
+    push?.('first chunk');
+    push?.('second chunk');
 
-    // 两次写入，各一次，**不是**「累积串被重写两遍」
-    expect(writes).toEqual(['第一段', '第二段']);
+    // Two writes, one each — not "the accumulated string rewritten twice".
+    expect(writes).toEqual(['first chunk', 'second chunk']);
   });
 });

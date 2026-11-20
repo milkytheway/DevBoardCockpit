@@ -12,9 +12,10 @@ logs/
 *.log
 *.tmp
 
-# ...but fixtures/ 里的是**黄金测试向量**，必须入库
-# （fixtures/session-log/serial-session.log 曾被上面的 *.log 误伤，
-#   导致它只存在于工作树、不在 git 里——评审时才发现）
+# ...but the files under fixtures/ are golden test vectors and must be tracked.
+# (fixtures/session-log/serial-session.log was caught by the *.log rule above,
+#   so it existed only in the working tree and not in git. It was noticed
+#   during a review.)
 !fixtures/**/*.log
 
 # Local settings (machine-specific paths, do not commit)
@@ -36,35 +37,38 @@ __pycache__/
 .venv/
 venv/
 
-# 会话本地的状态文件（不是工程内容）
+# Session-local state (not part of the project)
 .claude/ralph-loop.local.md
 
-# 本地临时脚本（原生模块 prebuild 自检用）
+# Local helper scripts for the native module prebuild self-check
 /prebuild-*.cjs
 
-# superpowers 计划工作区（ledger / briefs / review package）
+# The superpowers planning workspace (ledger / briefs / review package)
 .superpowers/
 
 # Scratch workspace for one-shot analysis scripts
-.work/
+.work*/
 
 # One-shot scripts and intermediate artefacts of the release cleanup
-/.tmp-*.cjs
-/.my-*.cjs
-/.scan-*.cjs
-/.scan-*.json
+/.tmp-*
+/.my-*
+/.scan*
+/.fix-*
+/.patch-*
 /.prot.txt
 /.stage-test.txt
+/.zh-ranges.txt
+/.linkcheck.cjs
 
-# 平台专属原生包的备份（共享 node_modules 的固有代价）
+# Backup of the platform-specific native packages (the price of a shared node_modules)
 .cache/
 
-# 变异测试的还原日志（进程被 SIGKILL 时靠它还原）
+# The restore log of the mutation test (it restores the sources when the process is killed)
 .mutation-restore.json
 
-# Playwright 产物（npm run test:cards 会生成）
+# Playwright artefacts (npm run test:cards writes them)
 test-results/
 playwright-report/
 
-# 审查看图的产物（一次性截图 ✓ —— 不进版本库 ✓）
+# Screenshots taken while reviewing (one-off, not part of the project)
 shots/

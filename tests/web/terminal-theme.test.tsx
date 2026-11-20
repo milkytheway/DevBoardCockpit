@@ -3,26 +3,29 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 主题 token 的形状检查。
+ * The shape of the theme tokens.
  *
- * xterm 用 canvas 画字，**canvas 不解析 CSS 变量**——
- * 直接把 `var(--cockpit-bg)` 传给 xterm 会静默失效，终端落在默认色上。
- * 所以实现里必须用 getComputedStyle 取解析后的值。
+ * xterm draws its glyphs on a canvas, and a canvas does not resolve CSS
+ * variables — handing `var(--cockpit-bg)` to xterm fails silently and the
+ * terminal keeps the default colours. The implementation therefore has to
+ * read the resolved values with getComputedStyle.
  *
- * 这个测试锁住两件事：
- * 1. tokens.css 里定义了契约要求的那几个 token（`docs/04` §6.5）
- * 2. 实现没有把 `var(--...)` 直接塞进 xterm 的 theme
+ * This test locks down two things:
+ * 1. the generated token sheet defines the variables the contract requires
+ *    (`docs/spec/03-card-manifest.md` section 6.3)
+ * 2. the implementation does not hand `var(--...)` straight to the xterm theme
  */
-describe('终端主题', () => {
+describe('Terminal theme', () => {
   const css = readFileSync(join(process.cwd(), 'src/renderer/theme/tokens.generated.css'), 'utf8');
   const view = readFileSync(
     join(process.cwd(), 'src/renderer/terminal/TerminalView.tsx'),
     'utf8',
   );
-  // **主题值由外壳算好传进来**（`shell/theme.ts` 读 CSS 变量 → 解析后的具体色）
+  // The shell computes the theme values and passes them in (shell/theme.ts reads
+  // the CSS variables and resolves them into concrete colours)
   const theme = readFileSync(join(process.cwd(), 'src/renderer/shell/theme.ts'), 'utf8');
 
-  it('tokens.css 定义了契约要求的 token', () => {
+  it('the generated token sheet defines the variables the contract requires', () => {
     for (const token of [
       '--cockpit-bg',
       '--cockpit-bg-elevated',
@@ -38,21 +41,21 @@ describe('终端主题', () => {
     }
   });
 
-  it('xterm 的 theme 没有直接用 var(--...)（canvas 不解析 CSS 变量）', () => {
-    // **主题值的产出方**（外壳的 theme.ts）里不许出现 var(--…)
+  it('the xterm theme does not use var(--...) directly (the canvas does not resolve CSS variables)', () => {
+    // The producer of the theme values (the shell's theme.ts) must not contain var(--…)
     expect(theme).not.toMatch(/var\(--/);
-    // 终端组件只**接收**算好的颜色
+    // The terminal component only receives the resolved colours
     expect(view).toContain('theme');
     expect(view).toContain('options.theme');
   });
 
-  it('主题值走 getComputedStyle 取解析后的值（**不是** token 名）', () => {
+  it('the theme values go through getComputedStyle, which yields resolved values (not token names)', () => {
     expect(theme).toContain('getComputedStyle');
-    // 终端组件自己也留了一份兜底（没传 theme 时）
+    // The terminal component keeps a fallback of its own (for the case where no theme was passed)
     expect(view).toContain('getComputedStyle');
   });
 
-  it('**换色是原地改 options.theme**，不重建终端（否则 scrollback 会丢）', () => {
+  it('a colour change mutates options.theme in place instead of rebuilding the terminal (a rebuild loses the scrollback)', () => {
     expect(view).toContain('options.theme');
   });
 });

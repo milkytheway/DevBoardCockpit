@@ -3,27 +3,29 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /**
- * **「编译上板」那张卡**（`cards/build-deploy/card.js`）——三段式。
+ * The "build and deploy" card (`cards/build-deploy/card.js`) — three stages.
  *
- * ── 为什么要有守卫 ──
+ * ── Why it needs a guard ──
  *
- * → 它**把编译、上传、运行拆成三步** ✓ —— 每一步都是一次真实流程 ✗
- *   → 按钮和参数如果错了，用户会在真板子上跑错命令 ✗ → **必须守住** ✓。
+ * → It drives a build, an upload and a load, and it drives them through the
+ *   host: a card may not run a command on the board by itself.
+ * → Its three stages are independent, so a failure in one must not leave the
+ *   other two looking as if they had run.
  *
- * ── 测什么 ──
+ * ── The judgments ──
  *
- * | # | 判据 | 为什么 |
+ * | # | Judgment | Why |
  * |---|---|---|
- * | 1 | **流程清单来自宿主** ✓ | 没在清单里的流程不能偷偷跑 ✓ |
- * | 2 | **三个参数输入都在** ✓ | 目录 / 项目 / 模块名都可以留空 ✓ |
- * | 3 | **点哪一步就调哪条流程** ✓ | 卡片自己不执行命令 ✓ |
- * | 4 | **空参数不发给宿主** ✓ | 留给流程包的默认值 ✓ |
- * | 5 | **没被授权就说没被授权** ✓ | 不装作跑起来了 ✓ |
- * | 6 | **跑过 ≠ 成了** ✓ | `verified: false` 不是成功 ✓ |
+ * | 1 | The three stage buttons exist | the card is the entry point of the flow |
+ * | 2 | All three inputs may be left empty | the defaults of the host are good enough for the common case |
+ * | 3 | Clicking a stage calls the matching workflow pack | the card collects inputs, the host runs the steps |
+ * | 4 | The stage that is still running is not a stage that succeeded | `verified: false` is not a success |
+ * | 5 | A refusal is reported as a refusal | the card must not pretend the build ran |
  */
 const REPO_ROOT = resolve(__dirname, '../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'build-deploy');
 
+/** Install a fake host API that returns the given workflows. */
 function installCockpit(overrides: Record<string, unknown> = {}): void {
   (window as unknown as { cockpit: unknown }).cockpit = {
     workflows: {
@@ -54,9 +56,9 @@ async function flush(times = 6): Promise<void> {
 }
 
 const FLOWS = [
-  { id: 'hello-kernel.compile', name: '编译', version: '1.0.0', inputs: {} },
-  { id: 'hello-kernel.upload', name: '上传', version: '1.0.0', inputs: {} },
-  { id: 'hello-kernel.load', name: '运行', version: '1.0.0', inputs: {} },
+  { id: 'hello-kernel.compile', name: 'Compile', version: '1.0.0', inputs: {} },
+  { id: 'hello-kernel.upload', name: 'Upload', version: '1.0.0', inputs: {} },
+  { id: 'hello-kernel.load', name: 'Load', version: '1.0.0', inputs: {} },
 ];
 
 beforeEach(() => {
@@ -65,8 +67,8 @@ beforeEach(() => {
   loaded = null;
 });
 
-describe('「编译上板」那张卡', () => {
-  it('**三个步骤按钮都在** ✓（编译 / 上传 / 运行 ✓）', async () => {
+describe('The "build and deploy" card', () => {
+  it('the three stage buttons are there (compile / upload / load)', async () => {
     installCockpit();
     await loadCard();
     expect(document.getElementById('phase-compile')).not.toBeNull();
@@ -74,7 +76,7 @@ describe('「编译上板」那张卡', () => {
     expect(document.getElementById('phase-run')).not.toBeNull();
   });
 
-  it('**三个输入都在** ✓（全部可以留空 ✓）', async () => {
+  it('the three inputs are there (all of them may be left empty)', async () => {
     installCockpit();
     await loadCard();
     expect(document.getElementById('build-dir')).not.toBeNull();
@@ -82,7 +84,7 @@ describe('「编译上板」那张卡', () => {
     expect(document.getElementById('module')).not.toBeNull();
   });
 
-  it('**点「编译」就调编译流程** ✓（带上目录与项目 ✓）', async () => {
+  it('clicking compile calls the compile workflow, with the directory and the project', async () => {
     const run = vi.fn(async () => ({ ok: true, runId: 'wf-1' }));
     installCockpit({ workflows: { list: async () => FLOWS, run } });
     await loadCard();
@@ -96,7 +98,7 @@ describe('「编译上板」那张卡', () => {
     });
   });
 
-  it('**点「运行」只发模块名** ✓（空就一个参数都不发 ✓）', async () => {
+  it('clicking load sends the module name only (an empty field sends no argument at all)', async () => {
     const run = vi.fn(async () => ({ ok: true, runId: 'wf-1' }));
     installCockpit({ workflows: { list: async () => FLOWS, run } });
     await loadCard();
@@ -111,7 +113,7 @@ describe('「编译上板」那张卡', () => {
     expect(run).toHaveBeenCalledWith('hello-kernel.load', { module: 'hello' });
   });
 
-  it('**没被授权就说没被授权** ✓（**不装作跑起来了** ✗）', async () => {
+  it('a refusal is reported as a refusal (the card must not pretend it ran)', async () => {
     installCockpit({
       workflows: {
         list: async () => FLOWS,
@@ -121,11 +123,13 @@ describe('「编译上板」那张卡', () => {
     await loadCard();
     (document.getElementById('phase-compile') as HTMLButtonElement).click();
     await flush();
-    expect(document.getElementById('note')?.textContent).toContain('没有被授权');
+    expect(document.getElementById('note')?.textContent).toMatch(
+      /not authori[sz]ed|no permission|permission denied/i,
+    );
     expect(document.querySelector('.bd__step.is-failed')).not.toBeNull();
   });
 
-  it('**每一步分得清「跑过」与「成了」** ✓（**`verified: false` 不是成功** ✓）', async () => {
+  it('every stage distinguishes "it ran" from "it succeeded" (verified: false is not a success)', async () => {
     installCockpit({
       workflows: {
         list: async () => FLOWS,
@@ -150,9 +154,11 @@ describe('「编译上板」那张卡', () => {
     expect(steps[1]?.className).toContain('is-warn');
   });
 
-  it('**宿主没有这条流程就说没有** ✓（**不装成「有」** ✓）', async () => {
+  it('a workflow the host does not have is reported as missing (the card must not pretend it has it)', async () => {
     installCockpit({ workflows: { list: async () => [] } });
     await loadCard();
-    expect(document.getElementById('note')?.textContent).toContain('宿主没有');
+    expect(document.getElementById('note')?.textContent).toMatch(
+      /host (does not have|has no|lacks)/i,
+    );
   });
 });

@@ -2,14 +2,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { ConnectionInfo } from '../../src/shared/ipc-contract';
 import { DevicePicker } from '../../src/renderer/shell/DevicePicker';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 
 /**
- * **界面只列板卡**（`DevicePicker.tsx`）。
+ * The interface lists boards only (`DevicePicker.tsx`).
  *
- * 用户 2026-11-16 明确：「**设备要放在界面最顶端，仅支持板卡选择，
- * 当前有 fake 和 3588 的真版，不要把连接这些放进去**」。
+ * The user was explicit on 2026-11-16: "put the device at the very top of
+ * the interface, support the selection of a board only — there is a fake and
+ * the real 3588 — do not put the connections in there".
  *
- * → 这个文件守的就是那一句：**菜单里不许出现连接** ✓。
+ * → What this file guards is exactly that sentence: the menu must not offer
+ *   the connections.
+ *
+ * The locale is pinned to English, so the wording under test is fixed.
  */
 function conn(
   id: string,
@@ -30,73 +35,81 @@ function conn(
 }
 
 const CONNECTIONS: ConnectionInfo[] = [
-  conn('board-adb', 'atk-01', '板子 · ADB'),
-  conn('board-serial', 'atk-01', '板子 · 串口', { transport: 'serial' }),
-  conn('board-ssh', 'atk-01', '板子 · SSH', { transport: 'ssh' }),
-  conn('fake-board', 'fake-board', '假板子 · 合成数据', { transport: 'ssh' }),
-  conn('local', 'local', '本机', { boardPack: null, transport: 'local' }),
+  conn('board-adb', 'atk-01', 'Board · ADB'),
+  conn('board-serial', 'atk-01', 'Board · Serial', { transport: 'serial' }),
+  conn('board-ssh', 'atk-01', 'Board · SSH', { transport: 'ssh' }),
+  conn('fake-board', 'fake-board', 'Fake board · synthetic data', { transport: 'ssh' }),
+  conn('local', 'local', 'Local', { boardPack: null, transport: 'local' }),
   conn('ubuntu-ssh', 'ubuntu-ssh', 'Ubuntu · SSH', { boardPack: null, transport: 'ssh' }),
 ];
 
 function open(): HTMLElement {
   render(
-    <DevicePicker connections={CONNECTIONS} onSelect={() => undefined} busy={false} />,
+    <LocaleContext.Provider value="en">
+      <DevicePicker connections={CONNECTIONS} onSelect={() => undefined} busy={false} />
+    </LocaleContext.Provider>,
   );
-  fireEvent.click(screen.getByRole('button', { name: /板子/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Board/ }));
   return screen.getByRole('listbox');
 }
 
-describe('设备选择器（只列板卡）', () => {
-  it('**菜单里列的是板卡** ✓（**两块：真板与假板** ✓）', () => {
+describe('The device picker (boards only)', () => {
+  it('the menu lists boards (two of them: the real board and the fake one)', () => {
     const menu = open();
     expect(within(menu).getByText('atk-01')).toBeTruthy();
     expect(within(menu).getByText('fake-board')).toBeTruthy();
   });
 
-  it('**菜单里没有连接** ✓（**「板子 · ADB」这种条目不许出现** ✓）', () => {
+  it('the menu holds no connection (an entry such as "Board · ADB" must not appear)', () => {
     const menu = open();
-    expect(within(menu).queryByText('板子 · ADB')).toBeNull();
-    expect(within(menu).queryByText('板子 · SSH')).toBeNull();
-    expect(within(menu).queryByText('板子 · 串口')).toBeNull();
+    expect(within(menu).queryByText('Board · ADB')).toBeNull();
+    expect(within(menu).queryByText('Board · SSH')).toBeNull();
+    expect(within(menu).queryByText('Board · Serial')).toBeNull();
   });
 
-  it('**本机与客机不是板卡** ✓（**没绑板型包的不列** ✓）', () => {
+  it('the local machine and the guest are not boards (a connection without a board pack is not listed)', () => {
     const menu = open();
-    expect(within(menu).queryByText('本机')).toBeNull();
+    expect(within(menu).queryByText('Local')).toBeNull();
     expect(within(menu).queryByText('Ubuntu · SSH')).toBeNull();
   });
 
-  it('**点板卡 → 交出的是板的身份** ✓（**不是连接 id** ✓ —— **宿主去挑连接** ✓）', () => {
+  it('clicking a board hands over the board identity, not a connection id (the host picks the connection)', () => {
     const onSelect = vi.fn();
     render(
-      <DevicePicker connections={CONNECTIONS} onSelect={onSelect} busy={false} />,
+      <LocaleContext.Provider value="en">
+        <DevicePicker connections={CONNECTIONS} onSelect={onSelect} busy={false} />
+      </LocaleContext.Provider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: /板子/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Board/ }));
     fireEvent.click(screen.getByRole('option', { name: /fake-board/ }));
     expect(onSelect).toHaveBeenCalledWith('fake-board');
   });
 
-  it('**当前那块板在按钮上** ✓（**一眼看出现在动的是哪块** ✓）', () => {
+  it('the current board is shown on the button (it is obvious which one is in use)', () => {
     render(
-      <DevicePicker
-        connections={CONNECTIONS.map((c) =>
-          c.id === 'board-adb' ? { ...c, current: true } : c,
-        )}
-        onSelect={() => undefined}
-        busy={false}
-      />,
+      <LocaleContext.Provider value="en">
+        <DevicePicker
+          connections={CONNECTIONS.map((c) =>
+            c.id === 'board-adb' ? { ...c, current: true } : c,
+          )}
+          onSelect={() => undefined}
+          busy={false}
+        />
+      </LocaleContext.Provider>,
     );
-    expect(screen.getByRole('button', { name: /板子/ }).textContent).toContain('atk-01');
+    expect(screen.getByRole('button', { name: /Board/ }).textContent).toContain('atk-01');
   });
 
-  it('**没有板就明说** ✓（**不装成有** ✓）', () => {
+  it('with no board the picker says so (it does not pretend there is one)', () => {
     render(
-      <DevicePicker
-        connections={[conn('local', 'local', '本机', { boardPack: null })]}
-        onSelect={() => undefined}
-        busy={false}
-      />,
+      <LocaleContext.Provider value="en">
+        <DevicePicker
+          connections={[conn('local', 'local', 'Local', { boardPack: null })]}
+          onSelect={() => undefined}
+          busy={false}
+        />
+      </LocaleContext.Provider>,
     );
-    expect(screen.getByRole('button', { name: /板子/ }).textContent).toContain('没有板');
+    expect(screen.getByRole('button', { name: /Board/ }).textContent).toContain('No board');
   });
 });

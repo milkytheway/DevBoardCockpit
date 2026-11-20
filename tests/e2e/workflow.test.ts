@@ -4,32 +4,35 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchApp, cardFrameFor, placeCard, writeCard } from './harness';
 
 /**
- * **卡片触发流程**（计划 7 · 契约 `spec/03` §7.7 的三行 ✓）。
+ * A card triggers a workflow (the third line of the card API in the contract,
+ * `docs/spec/03-card-manifest.md` section 7.7).
  *
- * ── 这条 e2e 在证什么 ──
+ * ── What this e2e proves ──
  *
- * 「用户点一下就编译上板」这条路，**最后一段是卡片** ✓：
- * 卡片起一条流程 ✓ → 拿到 `run_id` ✓ → 轮询状态 ✓ → 看到阶段时间线 ✓。
+ * The path "the user clicks once and the module is built and loaded" ends
+ * **with a card**: the card starts a workflow → it gets a `run_id` → it polls
+ * the status → it sees the timeline of the stages.
  *
- * → 前面那些单测证的是**各层自己** ✓（授权 ✓ · 投影 ✓ · 规则 14 ✓）；
- * → 这一条证的是**接起来了** ✓（卡片的 `cockpit.workflows.*` 真的能驱动流程层 ✓）。
+ * → The unit tests before it prove that **each layer is right on its own**
+ *   (the authorisation, the projection, rule 14);
+ * → This one proves that **they are connected** (the `cockpit.workflows.*` of
+ *   a card really drives the workflow layer).
  *
- * ── 为什么用假设备 ──
+ * ── Why the fake device ──
  *
- * e2e 要**可重复** ✓ → 不依赖真板在场 ✓（真板另有尖兵 ✓）。
+ * An e2e test has to be **repeatable** → it must not depend on a real board
+ * being present (the real board has other tests of its own).
  */
-
-/** 流程包（**角色绑到假设备** ✓ —— 假设备是 ssh 传输 ✓，且不绑 `local` ✓） */
 const FLOW_ID = 'demo.e2e';
 const FLOW_YAML = `apiVersion: devboard/v1
 kind: Workflow
 id: ${FLOW_ID}
-name: E2E 流程
+name: E2E workflow
 version: 1.0.0
 inputs: {}
 roles:
   build:
-    purpose: 假客机
+    purpose: Fake guest machine
     profile: fake-board
 steps:
   - id: hello
@@ -38,7 +41,7 @@ steps:
     cmd: 'echo hello'
 `;
 
-/** 一张会起流程的卡 */
+/** A card that starts a workflow */
 function flowCard(cardId: string, flowId: string): Record<string, string> {
   return {
     'manifest.json': JSON.stringify(
@@ -46,10 +49,10 @@ function flowCard(cardId: string, flowId: string): Record<string, string> {
         apiVersion: 'devboard/v1',
         kind: 'Card',
         id: cardId,
-        name: 'E2E 流程卡',
+        name: 'E2E workflow card',
         version: '1.0.0',
         entry: 'index.html',
-        // **声明要这个流程** ✓（规则 3：requires ⊆ permissions ✓）
+        // The workflow is declared here (rule 3: requires ⊆ permissions)
         requires: { workflows: [flowId] },
         permissions: { read: [], write: [], workflows: [flowId] },
       },
@@ -64,10 +67,14 @@ const out = document.getElementById('result');
   try {
     const FLOW_ID = '${FLOW_ID}';
     const list = await cockpit.workflows.list();
-    // **别记「有几个」** ✓ —— **那个数会过时** ✓（内置流程包一多就变 ✓ → 断言跟着红 ✓
-    //   （实测 2026-11-16：批准账那层被拿掉后，列出来的是**全部**流程 ✓
-    //     —— 断言写死 '1' 就**必然红** ✓，而**流程本身好好的** ✓）。
-    // → 记「**我要的那个在不在**」✓（**这才是这条用例要证明的事** ✓）。
+    // It does not record "how many there are" — that number goes stale, it
+    // changes as soon as there are more built-in workflow packs, and the
+    // assertion turns red with it (measured on 2026-11-16: once the layer of
+    // the approval ledger was gone, the list held **every** workflow, so an
+    // assertion hard-coded to '1' was **certain to go red** while the
+    // workflows themselves were fine).
+    // → It records "**is the one I want in the list**" (that is what this case
+    //   has to prove).
     out.dataset.listed = String(
       Array.isArray(list) && list.some((w) => w && w.id === FLOW_ID) ? '1' : '0',
     );
@@ -79,7 +86,7 @@ const out = document.getElementById('result');
       const st = await cockpit.workflows.status(run.runId);
       out.dataset.state = String((st && st.state) || '');
       out.dataset.stageCount = String((st && st.stages && st.stages.length) || 0);
-      // **状态不是 running 了 → 收工** ✓
+      // The state is no longer running → the work is done
       if (st && st.state !== 'running') { out.textContent = String(st.state); break; }
       await new Promise((r) => setTimeout(r, 200));
     }
@@ -93,17 +100,19 @@ const out = document.getElementById('result');
   };
 }
 
-/** 把流程包写进 userData（**必须在应用启动前** ✓） */
+/** Write the workflow pack into userData (it has to be there before the application starts) */
 function prepare(userDataDir: string, cardId: string, flowId: string): void {
   const workflowsDir = join(userDataDir, 'workflows');
   mkdirSync(workflowsDir, { recursive: true });
   writeFileSync(join(workflowsDir, `${flowId}.yaml`), FLOW_YAML, 'utf8');
-  // **不用再写批准账** ✓（2026-11-16 起没有那一层 ✓ —— ADR-D48 ✓）
-  // → **闸在设置里的统一权限区** ✓（**卡片触发流程默认允许** ✓ · ADR-D47 ✓）
+  // There is no approval ledger to write any more (that layer is gone since
+  // 2026-11-16 — ADR-D48)
+  // → **The gate is the unified permission area of the settings** (a card may
+  //   trigger a workflow by default — ADR-D47)
 }
 
-test.describe('卡片触发流程', () => {
-  test('一张卡能起一条流程 → 拿到 run_id → 轮询看到时间线', async () => {
+test.describe('A card triggers a workflow', () => {
+  test('a card starts a workflow → gets a run_id → polls and sees the timeline', async () => {
     const cardId = 'e2e-flow-card';
     const app = await launchApp({
       env: { COCKPIT_FAKE: 'only' },
@@ -115,33 +124,38 @@ test.describe('卡片触发流程', () => {
       await placeCard(app.window, cardId);
       const frame = await cardFrameFor(app.window, cardId);
 
-      // **读卡片自己那个 div 的 dataset** ✓（不是 body 的 ✓ —— 写在哪就读哪 ✓）
+      // The dataset of the div of the card itself is read (not the one of the
+      // body — it is read where it is written)
       const readData = (): Promise<Record<string, string>> =>
         frame.evaluate(() => {
           const el = document.getElementById('result');
           return { ...(el?.dataset ?? {}) };
         });
 
-      // **等卡片跑完** ✓
+      // Wait for the card to finish
       await expect
         .poll(async () => (await readData())['done'] ?? '', { timeout: 30_000 })
         .toBe('1');
 
       const data = await readData();
 
-      // **先把卡片看到的东西打出来** ✓（判据失败时能一眼看出是哪一步 ✗）
-      console.log('卡片看到的数据：', JSON.stringify(data));
-      // **没这个键就是没出错** ✓（`undefined` 不是「空串」✓）
-      expect(data.error ?? '', `卡片抛了：${data.error}`).toBe('');
-      // **列得出流程** ✓ —— **要的是「我要的那个在列表里」** ✓
-      // （**不是「列表里只有一个」** ✓ —— 那是**会过时的写死事实** ✓）
+      // What the card saw is printed first (when the judgment fails, the step
+      // it failed at is visible at a glance)
+      console.log('the data the card saw:', JSON.stringify(data));
+      // The absence of the key means that nothing threw (`undefined` is not an
+      // empty string)
+      expect(data.error ?? '', `the card threw: ${data.error}`).toBe('');
+      // The workflows can be listed — what matters is **that the one I want is
+      // in the list**
+      // (not **that the list holds only one** — that would be a hard-coded
+      // fact that goes stale)
       expect(data.listed).toBe('1');
-      // **起得了** ✓
+      // It can be started
       expect(data.runOk).toBe('true');
       expect(data.runId).not.toBe('');
-      // **跑完了** ✓
+      // It has finished
       expect(data.state).toBe('done');
-      // **时间线有一行** ✓（那条 exec ✓）
+      // The timeline has one row (the exec step)
       expect(data.stageCount).toBe('1');
     } finally {
       await app.close();

@@ -3,15 +3,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FileBrowser, parentPath } from '../../src/renderer/files/FileBrowser';
 
 /**
- * 双树文件浏览器。
+ * The two-tree file browser.
  *
- * M2 的判据是「双树浏览 + 双向传输」，
- * 迁移对照表写的是「**交互设计保留，实现重写**：双树 + 懒加载 + 目标选择器 + 箭头传输」。
+ * The criterion of M2 is "browse two trees and transfer in both directions",
+ * and the migration table records it as "keep the interaction design, rewrite
+ * the implementation: two trees, lazy loading, a target selector and the
+ * arrow transfers".
  *
- * 之前的实现只有「选一个本地文件上传」——那是**单侧**，不是双树。
- * 双树是：左边本地、右边远端，中间两个箭头（上传 / 下载）。
+ * The earlier implementation only offered "pick a local file and upload it" —
+ * that is one side, not two trees. The two trees are: local on the left,
+ * remote on the right, with the two arrows (upload / download) in between.
  */
-describe('FileBrowser 双树', () => {
+describe('The two-tree FileBrowser', () => {
   const caps = { exec: true, pty: true, files: true, exitCode: true };
 
   const remote = [
@@ -19,7 +22,7 @@ describe('FileBrowser 双树', () => {
     { name: 'sub', path: '/root/sub', isDirectory: true, sizeBytes: null, modifiedAt: null },
   ];
 
-  it('左右两棵树都在', () => {
+  it('both trees are present', () => {
     render(
       <FileBrowser
         connectionId="c1"
@@ -33,7 +36,7 @@ describe('FileBrowser 双树', () => {
     expect(screen.getByTestId('tree-remote')).toBeTruthy();
   });
 
-  it('远端树按需加载（懒加载）', async () => {
+  it('the remote tree is loaded on demand (lazy loading)', async () => {
     const listRemote = vi.fn(async () => remote);
     render(
       <FileBrowser
@@ -44,14 +47,14 @@ describe('FileBrowser 双树', () => {
         listRemote={listRemote}
       />,
     );
-    // 远端目录是要问宿主的，不该在渲染时就发生
+    // The remote directory has to be asked from the host, so it must not happen while rendering
     expect(listRemote).not.toHaveBeenCalled();
-    // 点「展开远端」才去问
+    // The host is only asked once the remote tree is opened
     fireEvent.click(screen.getByTestId('remote-refresh'));
     await waitFor(() => expect(listRemote).toHaveBeenCalled());
   });
 
-  it('远端条目列出来', async () => {
+  it('the remote entries are listed', async () => {
     render(
       <FileBrowser
         connectionId="c1"
@@ -66,7 +69,7 @@ describe('FileBrowser 双树', () => {
     expect(screen.getByText('sub')).toBeTruthy();
   });
 
-  it('选中远端文件后点下载箭头会调 onPull', async () => {
+  it('selecting a remote file and pressing the download arrow calls onPull', async () => {
     const onPull = vi.fn();
     render(
       <FileBrowser
@@ -85,7 +88,7 @@ describe('FileBrowser 双树', () => {
     expect(onPull).toHaveBeenCalledWith('c1', '/root/a.txt');
   });
 
-  it('选中本地文件后点上传箭头会调 onPush', async () => {
+  it('selecting a local file and pressing the upload arrow calls onPush', async () => {
     const onPush = vi.fn();
     render(
       <FileBrowser
@@ -101,14 +104,14 @@ describe('FileBrowser 双树', () => {
     fireEvent.change(input, { target: { files: [chosen] } });
 
     fireEvent.click(screen.getByTestId('push-button'));
-    // onPush 收到的是 File 对象本身与远端目录
+    // onPush receives the File object itself and the remote directory
     expect(onPush).toHaveBeenCalledTimes(1);
     const [pushed, remoteDir] = onPush.mock.calls[0] as [File, string];
     expect(pushed.name).toBe('b.txt');
     expect(remoteDir).toBe('/');
   });
 
-  it('连接不支持传输时，入口禁用且给出说明', () => {
+  it('when the connection cannot transfer, the entry is disabled and explained', () => {
     render(
       <FileBrowser
         connectionId="c1"
@@ -119,13 +122,13 @@ describe('FileBrowser 双树', () => {
       />,
     );
     expect(screen.getByTestId('file-push-disabled')).toBeTruthy();
-    // 箭头也不能在
+    // The arrows must not be there either
     expect(screen.queryByTestId('push-button')).toBeNull();
     expect(screen.queryByTestId('pull-button')).toBeNull();
   });
 });
 
-describe('FileBrowser 的目录导航（复评 S-08）', () => {
+describe('The directory navigation of the FileBrowser (second review, S-08)', () => {
   const caps = { exec: true, pty: true, files: true, exitCode: true };
 
   const tree = [
@@ -133,7 +136,7 @@ describe('FileBrowser 的目录导航（复评 S-08）', () => {
     { name: 'a.txt', path: '/root/a.txt', isDirectory: false, sizeBytes: 3, modifiedAt: null },
   ];
 
-  it('点目录是「进去」，不是「选中」', async () => {
+  it('clicking a directory enters it, it does not select it', async () => {
     const listRemote = vi.fn(async () => tree);
     render(
       <FileBrowser
@@ -149,11 +152,11 @@ describe('FileBrowser 的目录导航（复评 S-08）', () => {
     await waitFor(() => expect(listRemote).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText('sub'));
-    // 当前目录变了
+    // The current directory has changed
     expect(screen.getByTestId('remote-path').textContent).toBe('/root/sub');
   });
 
-  it('上传的远端目标是「当前所在的目录」', async () => {
+  it('the remote target of an upload is the directory currently in', async () => {
     const onPush = vi.fn();
     const listRemote = vi.fn(async () => tree);
     render(
@@ -178,7 +181,7 @@ describe('FileBrowser 的目录导航（复评 S-08）', () => {
     expect((onPush.mock.calls[0] as unknown as [File, string])[1]).toBe('/root/sub');
   });
 
-  it('目录不能下载 —— 点了也不该有反应', async () => {
+  it('a directory cannot be downloaded — pressing it must have no effect', async () => {
     const onPull = vi.fn();
     const listRemote = vi.fn(async () => tree);
     render(
@@ -194,22 +197,23 @@ describe('FileBrowser 的目录导航（复评 S-08）', () => {
     fireEvent.click(screen.getByTestId('remote-refresh'));
     await waitFor(() => expect(listRemote).toHaveBeenCalled());
 
-    // 直接把目录设成选中（点目录是「进去」，所以这里用按钮的 disabled 状态验证）
+    // The directory is made the selected entry directly (clicking a directory
+    // enters it, so the disabled state of the button is what is checked here)
     const dirBtn = screen.getByTestId('remote-dir');
     expect(dirBtn.getAttribute('data-testid')).toBe('remote-dir');
-    // 目录不会被当成可下载的文件传给 onPull
+    // The directory is never handed to onPull as a downloadable file
     expect(onPull).not.toHaveBeenCalled();
   });
 });
 
-describe('远端树的目录导航（真机验收发现的两个 bug）', () => {
+describe('The directory navigation of the remote tree (two defects found during real-device acceptance)', () => {
   const caps = { exec: true, pty: true, files: true, exitCode: true };
   const tree = [
     { name: 'sub', path: '/root/sub', isDirectory: true, sizeBytes: null, modifiedAt: null },
     { name: 'a.txt', path: '/root/a.txt', isDirectory: false, sizeBytes: 3, modifiedAt: null },
   ];
 
-  it('进目录要**重新列那个目录** —— 路径变了列表不能还是上一个', async () => {
+  it('entering a directory lists that directory again — the list may not stay the one from the previous path', async () => {
     const listRemote = vi.fn(async () => tree);
     render(
       <FileBrowser
@@ -227,11 +231,11 @@ describe('远端树的目录导航（真机验收发现的两个 bug）', () => 
 
     fireEvent.click(screen.getByTestId('remote-dir'));
     await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/root/sub'));
-    // **必须按新路径重新列**
+    // The new path must be listed again
     await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/root/sub'));
   });
 
-  it('「↑ 上级」回到父目录 —— 根下的目录的上一级是根', async () => {
+  it('"one level up" goes to the parent directory — for a directory under the root the parent is the root', async () => {
     const listRemote = vi.fn(async () => tree);
     render(
       <FileBrowser
@@ -256,7 +260,7 @@ describe('远端树的目录导航（真机验收发现的两个 bug）', () => 
     await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/root'));
   });
 
-  it('根下的一级目录（`/.cache`）的上一级是根，不是它自己', () => {
+  it('the parent of a first-level directory under the root (`/.cache`) is the root, not itself', () => {
     expect(parentPath('/.cache')).toBe('/');
     expect(parentPath('/root/sub')).toBe('/root');
     expect(parentPath('/root')).toBe('/');
@@ -264,12 +268,13 @@ describe('远端树的目录导航（真机验收发现的两个 bug）', () => 
   });
 });
 
-describe('「↑ 上级」对根下的目录也有效', () => {
+describe('"One level up" also works for a directory under the root', () => {
   const caps = { exec: true, pty: true, files: true, exitCode: true };
 
-  it('组件级：进 /.cache 再点「↑ 上级」回到根，并按新路径重新列', async () => {
-    // 之前只有一条纯函数断言（`parentPath('/.cache')`）守着这条——
-    // **组件行为没被守住**：把父目录算法内联进组件，整套测试仍然全绿。
+  it('at the component level: entering /.cache and pressing "one level up" returns to the root and lists the new path', async () => {
+    // Until now a single pure-function assertion (`parentPath('/.cache')`) was
+    // the only guard — the behaviour of the component was not guarded: inline
+    // the parent algorithm into the component and the whole suite stays green.
     const listRemote = vi.fn(async () => [
       { name: '.cache', path: '/.cache', isDirectory: true, sizeBytes: null, modifiedAt: null },
     ]);
@@ -287,7 +292,7 @@ describe('「↑ 上级」对根下的目录也有效', () => {
     await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/'));
     listRemote.mockClear();
 
-    // 进根下的一个目录
+    // Enter a directory under the root
     fireEvent.click(screen.getByTestId('remote-dir'));
     await waitFor(() => expect(screen.getByTestId('remote-path').textContent).toBe('/.cache'));
 
