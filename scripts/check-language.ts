@@ -1,0 +1,191 @@
+/**
+ * The language gate.
+ *
+ * The repository is written in English. This script is the verdict that keeps
+ * it that way: a Chinese character in a source comment is a defect, and a
+ * Chinese character in a string literal is a defect unless the literal is the
+ * `zh-Hans` half of a localised pair.
+ *
+ * ── Why it has to be a script and not a convention ──
+ *
+ * A convention decays. The interface has a language switch, so the Chinese
+ * strings have to stay in the renderer, and a rule that says "no Chinese
+ * except the Chinese locale" cannot be checked by reading. This script is
+ * that check.
+ *
+ * ── What is allowed ──
+ *
+ *   1. The `zh-Hans` value of a localised pair. That is the whole point of
+ *      having a language switch.
+ *   2. The files listed in `ALLOWED_FILES`. They are the Chinese front door
+ *      of the repository and they are Chinese on purpose.
+ */
+
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { extname, join } from 'node:path';
+import ts from 'typescript';
+
+/**
+ * Files that are Chinese on purpose.
+ *
+ * The README is the Chinese front door; the tutorial has a Chinese edition;
+ * the glossary is bilingual because it maps the Chinese terms to the English
+ * ones.
+ */
+const ALLOWED_FILES = new Set([
+  'README.md',
+  // The only Chinese in the English README is the link label of the Chinese edition.
+  'README.en.md',
+  'docs/tutorial/01-build-a-board-pack.zh-Hans.md',
+  'docs/tutorial/02-terminology-glossary.md',
+]);
+
+const CJK = /[\u4e00-\u9fff]/;
+
+/**
+ * A comment may mention the Chinese locale: the one place a comment has to
+ * show a Chinese string is the example that documents a localised pair.
+ */
+const COMMENT_ALLOWED = /['"`]zh-Hans['"`]/;
+
+interface Finding {
+  file: string;
+  line: number;
+  kind: string;
+  text: string;
+}
+
+function trackedFiles(): string[] {
+  const out = execFileSync('git', ['ls-files'], { encoding: 'utf8' });
+  return out.split('\n').filter((f) => f.length > 0);
+}
+
+function scriptKind(ext: string): ts.ScriptKind {
+  if (ext === '.tsx') return ts.ScriptKind.TSX;
+  if (ext === '.jsx') return ts.ScriptKind.JSX;
+  return ts.ScriptKind.JS;
+}
+
+/** The Chinese characters of a text, with the rest of the line kept short. */
+function excerpt(text: string): string {
+  const first = text.split('\n').find((l) => CJK.test(l)) ?? text;
+  return first.trim().slice(0, 90);
+}
+
+function scanScript(file: string, source: string): Finding[] {
+  const findings: Finding[] = [];
+  const ext = extname(file);
+  // A test that pins the Chinese locale asserts Chinese text on purpose.
+  const localePinned = file.startsWith('tests/') && /zh-Hans/.test(source);
+  let sf: ts.SourceFile;
+  try {
+    sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(ext));
+  } catch {
+    return findings;
+  }
+  const lineOf = (pos: number): number => sf.getLineAndCharacterOfPosition(pos).line + 1;
+
+  const visit = (node: ts.Node): void => {
+    // A localised pair: the `zh-Hans` half may contain Chinese.
+    if (ts.isPropertyAssignment(node)) {
+      const name = node.name.getText(sf);
+      if (name === "'zh-Hans'" || name === '"zh-Hans"' || name === '`zh-Hans`') {
+        ts.forEachChild(node.name, visit);
+        return;
+      }
+    }
+    const kind = node.kind;
+    const isComment =
+      kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia;
+    if (isComment) {
+      const text = node.getText(sf);
+      if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
+        findings.push({ file, line: lineOf(node.getStart(sf)), kind: 'comment', text: excerpt(text) });
+      }
+    }
+    const jsDoc = (node as { jsDoc?: ts.NodeArray<ts.JSDoc> }).jsDoc;
+    if (jsDoc) {
+      for (const doc of jsDoc) {
+        const text = doc.getText(sf);
+        if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
+          findings.push({ file, line: lineOf(doc.getStart(sf)), kind: 'comment', text: excerpt(text) });
+        }
+      }
+    }
+    if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      const text = node.getText(sf);
+      if (CJK.test(text) && !localePinned) {
+        findings.push({ file, line: lineOf(node.getStart(sf)), kind: 'string', text: excerpt(text) });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return findings;
+}
+
+function scanText(file: string, source: string): Finding[] {
+  const findings: Finding[] = [];
+  const lines = source.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (CJK.test(lines[i])) {
+      findings.push({ file, line: i + 1, kind: 'text', text: lines[i].trim().slice(0, 90) });
+    }
+  }
+  return findings;
+}
+
+function main(): void {
+  const findings: Finding[] = [];
+  for (const file of trackedFiles()) {
+    if (ALLOWED_FILES.has(file)) continue;
+    let source: string;
+    try {
+      source = readFileSync(join(process.cwd(), file), 'utf8');
+    } catch {
+      continue;
+    }
+    const ext = extname(file);
+    if (ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+      findings.push(...scanScript(file, source));
+    } else if (
+      ext === '.md' ||
+      ext === '.json' ||
+      ext === '.yaml' ||
+      ext === '.yml' ||
+      ext === '.css' ||
+      ext === '.html'
+    ) {
+      findings.push(...scanText(file, source));
+    }
+  }
+
+  if (findings.length === 0) {
+    console.log('language gate: no Chinese outside the zh-Hans locale and the allowed files');
+    return;
+  }
+
+  const byFile = new Map<string, Finding[]>();
+  for (const f of findings) {
+    if (!byFile.has(f.file)) byFile.set(f.file, []);
+    byFile.get(f.file)!.push(f);
+  }
+  for (const [file, list] of byFile) {
+    console.error(`${file} (${list.length})`);
+    for (const f of list.slice(0, 6)) {
+      console.error(`  ${f.line}: ${f.kind}: ${f.text}`);
+    }
+    if (list.length > 6) console.error(`  ... and ${list.length - 6} more`);
+  }
+  console.error(`\nlanguage gate: ${findings.length} findings in ${byFile.size} files`);
+  process.exitCode = 1;
+}
+
+main();

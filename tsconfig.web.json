@@ -6,7 +6,7 @@
     "module": "ESNext",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    // web 测试要读磁盘上的 fixtures 与源码，所以要 node 的类型
+    // The web tests read the fixtures and the sources from disk, so they need the node types
     "types": ["vite/client", "node"],
     "outDir": "./out",
     "baseUrl": ".",

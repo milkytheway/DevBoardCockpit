@@ -51,7 +51,8 @@
     "gen:theme:check": "tsx scripts/gen-theme.ts --check",
     "mutation:check": "node scripts/mutation-check.mjs",
     "mutation:audit": "node scripts/audit-mutants.mjs",
-    "postinstall": "node scripts/ensure-native.mjs"
+    "postinstall": "node scripts/ensure-native.mjs",
+    "check:language": "tsx scripts/check-language.ts"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",

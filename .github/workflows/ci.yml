@@ -34,3 +34,14 @@ jobs:
 
       - name: Validate board packs
         run: npm run validate:profiles
+
+      # The contract is the authority: the vocabulary in the YAML, the tables in
+      # the document and the vocabulary in the code have to be the same thing.
+      - name: Check the vocabulary
+        run: npm run gen:vocabulary:check
+
+      # The repository is written in English. The gate allows Chinese only in
+      # the zh-Hans half of a localised pair and in the files that are Chinese
+      # on purpose.
+      - name: Check the language
+        run: npm run check:language
