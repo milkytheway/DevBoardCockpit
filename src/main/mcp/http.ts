@@ -8,51 +8,56 @@ import {
 import type { McpServer } from './server';
 
 /**
- * **MCP 的 HTTP 传输**（契约 `spec/04` §7.1 ✓ · MCP 规范 2025-06-18 ✓）。
+ * The **HTTP transport of the MCP** (contract `spec/04` §7.1 ✓ · MCP
+ * specification 2025-06-18 ✓).
  *
- * ── 为什么用 `node:http` 而不是某个框架 ──
+ * ── Why `node:http` and not a framework ──
  *
- * 本工程**零 web 框架依赖** ✓（`package.json` 里 7 个依赖没有一个是 web 框架 ✓），
- * 而这一层要做的只是「收一个 JSON-RPC 消息，回一个 JSON」✓ —— 框架给不了什么 ✓。
+ * This project has **zero web framework dependencies** ✓ (none of the 7
+ * dependencies in `package.json` is a web framework ✓), and this layer only
+ * has to "receive one JSON-RPC message and answer with a JSON" ✓ — a
+ * framework would not add anything ✓.
  *
- * ── 安全基线（契约 §7.1 的硬要求 ✓）──
+ * ── The security baseline (the hard requirements of contract §7.1 ✓) ──
  *
- * | 顺序 | 检查 | 不过时 |
+ * | Order | Check | When it fails |
  * |---|---|---|
- * | 1 | **`Origin`** ✓（存在且不合法 ✓） | **403** ✓ |
- * | 2 | **`Host`** ✓（只接受 `127.0.0.1:<port>` / `localhost:<port>` ✓） | **403** ✓ |
- * | 3 | **Bearer token** ✓ | **401** ✓ |
- * | 4 | **协议版本头** ✓ | **400** ✓ |
+ * | 1 | **`Origin`** ✓ (it is there and not legitimate ✓) | **403** ✓ |
+ * | 2 | **`Host`** ✓ (only `127.0.0.1:<port>` / `localhost:<port>` are accepted ✓) | **403** ✓ |
+ * | 3 | **The bearer token** ✓ | **401** ✓ |
+ * | 4 | **The protocol version header** ✓ | **400** ✓ |
  *
- * → **顺序有讲究** ✓：`Origin`/`Host` 先 ✓（它们挡的是**浏览器** ✓），
- *   token 后 ✓（它挡的是**别人** ✓）→ 两者挡的是不同的攻击面 ✓。
+ * → **The order matters** ✓: `Origin`/`Host` first ✓ (they block the
+ *   **browser** ✓), the token after ✓ (it blocks **everybody else** ✓) → the
+ *   two block different attack surfaces ✓.
  *
- * → **CORS 头一个都不发** ✓（契约 §7.1 ✓ —— 不做跨域放行 ✓）。
+ * → **Not a single CORS header is sent** ✓ (contract §7.1 ✓ — no cross-origin
+ *   allowance ✓).
  */
 export interface McpHttpOptions {
   mcp: McpServer;
-  /** 本次启动的 bearer token ✓ */
+  /** The bearer token of this start ✓ */
   token: string;
-  /** 监听地址（**只许 127.0.0.1** ✓ —— 传别的就该被拒 ✓） */
+  /** The address it listens on (**only 127.0.0.1 is allowed** ✓ — another one has to be refused ✓) */
   host: string;
-  /** 监听端口（**0 = 让 OS 分配** ✓ —— 避免多开撞端口 ✓） */
+  /** The port it listens on (**0 = let the OS assign it** ✓ — that avoids a collision when it is started twice ✓) */
   port: number;
 }
 
 export interface McpHttpHandle {
   server: Server;
-  /** 实际监听到的端口（**传 0 时是 OS 给的** ✓） */
+  /** The port it really listens on (**it is the one the OS gave when 0 was passed** ✓) */
   port: number;
   close: () => Promise<void>;
 }
 
-/** 端点路径（**一个** ✓ —— 规范：「MUST provide a single HTTP endpoint path」✓） */
+/** The path of the endpoint (**one** ✓ — the specification: "MUST provide a single HTTP endpoint path" ✓) */
 export const MCP_ENDPOINT = '/mcp';
 
-/** 我们支持的协议版本（**别的版本 → 400** ✓ —— 规范 §「Protocol Version Header」✓） */
+/** The protocol version we support (**another version → 400** ✓ — the specification §"Protocol Version Header" ✓) */
 const SUPPORTED_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 
-/** 读请求体（**有上限** ✓ —— 别让人往内存里灌一兆） */
+/** Reads the body of the request (**there is an upper bound** ✓ — nobody should be able to pour a megabyte into the memory) */
 const MAX_BODY_BYTES = 1024 * 1024;
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -68,10 +73,11 @@ async function readBody(req: IncomingMessage): Promise<string> {
 }
 
 /**
- * **起一个 MCP 的 HTTP 服务** ✓。
+ * **Starts an HTTP service for the MCP** ✓.
  *
- * → **只绑 127.0.0.1** ✓（契约 §7.1 ✓）—— 传别的主机**直接拒绝** ✓
- *   （不是「绑上了再说」✗ —— 那就晚了 ✓）。
+ * → **Only binds 127.0.0.1** ✓ (contract §7.1 ✓) — another host is
+ *   **refused directly** ✓ (and not "bind it and see" ✗ — by then it is too
+ *   late ✓).
  */
 export async function startMcpHttp(opts: McpHttpOptions): Promise<McpHttpHandle> {
   if (opts.host !== '127.0.0.1' && opts.host !== 'localhost' && opts.host !== '::1') {
@@ -89,7 +95,7 @@ export async function startMcpHttp(opts: McpHttpOptions): Promise<McpHttpHandle>
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    // **只绑回环** ✓（**不是 0.0.0.0** ✓ —— 契约 §7.1 ✓）
+    // **Only the loopback is bound** ✓ (**not 0.0.0.0** ✓ — contract §7.1 ✓)
     server.listen(opts.port, opts.host, () => {
       server.removeListener('error', reject);
       resolve();
@@ -114,7 +120,7 @@ async function handleRequest(
   res: ServerResponse,
   opts: McpHttpOptions,
 ): Promise<void> {
-  // ── ① `Origin`**（存在且不合法 → 403 ✓）──
+  // ── ① `Origin`** (it is there and not legitimate → 403 ✓) ──
   const origin = req.headers['origin'];
   if (!checkOrigin(typeof origin === 'string' ? origin : undefined)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -122,7 +128,7 @@ async function handleRequest(
     return;
   }
 
-  // ── ② `Host`**（只接受本机 + 同一个端口 ✓）──
+  // ── ② `Host`** (only the local machine + the same port are accepted ✓) ──
   const host = req.headers['host'];
   const port = serverPort(req, opts);
   if (!checkHost(typeof host === 'string' ? host : undefined, port)) {
@@ -139,7 +145,7 @@ async function handleRequest(
     return;
   }
 
-  // ── ④ 协议版本头** ──
+  // ── ④ The protocol version header** ──
   const version = req.headers['mcp-protocol-version'];
   if (typeof version === 'string' && !SUPPORTED_VERSIONS.has(version)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -147,7 +153,7 @@ async function handleRequest(
     return;
   }
 
-  // ── 路径不对 → 404** ──
+  // ── The path is wrong → 404** ──
   const path = (req.url ?? '').split('?')[0];
   if (path !== MCP_ENDPOINT) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -155,7 +161,7 @@ async function handleRequest(
     return;
   }
 
-  // ── `GET` → 本轮不提供 SSE → 405**（规范允许 ✓）──
+  // ── `GET` → no SSE in this round → 405** (the specification allows it ✓) ──
   if (req.method === 'GET') {
     res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'POST' });
     res.end('{"error":"method_not_allowed"}');
@@ -168,7 +174,7 @@ async function handleRequest(
     return;
   }
 
-  // ── 解析 JSON-RPC ──
+  // ── Parse the JSON-RPC ──
   let message: unknown;
   try {
     const raw = await readBody(req);
@@ -186,22 +192,23 @@ async function handleRequest(
 
   const reply = await opts.mcp.handle(message as Parameters<McpServer['handle']>[0]);
 
-  // ── **通知** → 202 空体**（规范 §「Sending Messages」第 4 条 ✓）──
+  // ── A **notification** → 202 with an empty body** (the specification §"Sending Messages", point 4 ✓) ──
   if (reply === null) {
     res.writeHead(202);
     res.end();
     return;
   }
 
-  // ── **请求** → 200 + 一个 JSON 对象**（规范允许 JSON 或 SSE ✓，本轮选 JSON ✓）──
+  // ── A **request** → 200 + one JSON object** (the specification allows JSON or SSE ✓, this round chooses JSON ✓) ──
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(reply));
 }
 
 /**
- * 这个请求实际打到了**哪个端口** ✓。
+ * The port this request actually reached ✓.
  *
- * → **从 socket 上问** ✓ —— 不能信 `Host` 头 ✓（那正是我们要校验的东西 ✓）。
+ * → **Asked from the socket** ✓ — the `Host` header cannot be trusted ✓
+ *   (that is exactly what is being validated ✓).
  */
 function serverPort(req: IncomingMessage, opts: McpHttpOptions): number {
   const socket = req.socket.localPort;

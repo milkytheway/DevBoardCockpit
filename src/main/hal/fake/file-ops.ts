@@ -2,41 +2,46 @@ import type { ExecResult } from '../connection';
 import type { VirtualFs } from './fs';
 
 /**
- * ⚠️ **假设备** —— 认「文件命令」。
+ * ⚠️ **The fake device** — it recognises the "file commands".
  *
- * ── 为什么单独一个模块 ──
+ * ── Why it is a module of its own ──
  *
- * `fake/exec.ts` 里的小 shell 负责**采样器的取数命令**
- * （`echo '<marker>'; cat -- '<路径>'; …`）——那是**多语句**的，
- * 它的输出要按 marker 切，**一个字都不能多**。
+ * The little shell in `fake/exec.ts` takes care of the **fetch commands of
+ * the sampler** (`echo '<marker>'; cat -- '<path>'; …`) — those are
+ * **multi-statement**, their output has to be cut at the markers, and **not
+ * one character more**.
  *
- * 而**动作的命令**是**单语句**的（`echo 128 > /path`、`cat -- '/path'`、
- * `test -s /path`、`grep -qF 'x' /path`）——
- * 它们要的是**退出码**与**副作用**，不是一段文本。
+ * The **commands of the actions** on the other hand are **single-statement**
+ * (`echo 128 > /path`, `cat -- '/path'`, `test -s /path`,
+ * `grep -qF 'x' /path`) — what they want is the **exit code** and the **side
+ * effect**, not a piece of text.
  *
- * → 两者**分开**：这里只认**单语句**的四种文件命令；
- * **认不出来就返回 `null`**，交回小 shell（**不猜**）。
+ * → The two are **separated**: here only the four single-statement file
+ * commands are recognised; **when it is not recognised `null` is returned**
+ * and the little shell takes over (**no guessing**).
  *
- * ── 为什么 `cat` 读不到时要报错（而不是给空串）──
+ * ── Why `cat` has to report an error when it cannot read (and not give an empty string) ──
  *
- * 真 `cat` 读不到文件 → **退出码 1 + stderr**。
- * 假设备给空串 + 退出码 0 → **「回读不符」会被误读成「值是空的」**，
- * 而真正的错是「文件根本不存在」。
- * → 这里照真 cat：**退出码 1 + stderr** ✓。
+ * A real `cat` that cannot read the file → **exit code 1 + stderr**.
+ * The fake device giving an empty string + exit code 0 → **"the readback does
+ * not match" would be misread as "the value is empty"**, while the real error
+ * is "the file does not exist at all".
+ * → It behaves like a real `cat` here: **exit code 1 + stderr** ✓.
  */
 
-/** 假设备的文件命令需要什么 */
+/** What the file commands of the fake device need */
 export interface FileCommandDeps {
-  /** 虚拟盘 */
+  /** The virtual disk */
   fs: VirtualFs;
-  /** 假设备**合成**的那些文件（`/proc/stat` 等）——盘上没有时看这里 */
+  /** The files the fake device **synthesises** (`/proc/stat` and the like) — they are looked up here when they are not on the disk */
   deviceRead: (path: string) => string | null;
 }
 
 /**
- * 认一条命令。
+ * Recognises one command.
  *
- * @returns 认出来了就返回结果；**认不出来返回 `null`**（交给小 shell）。
+ * @returns the result when it was recognised; **`null` when it was not**
+ * (the little shell takes over).
  */
 export function fakeFileCommand(command: string, deps: FileCommandDeps): ExecResult | null {
   const tokens = tokenize(command);
@@ -50,7 +55,7 @@ export function fakeFileCommand(command: string, deps: FileCommandDeps): ExecRes
   return null;
 }
 
-/** `cat -- <path>`（`--` 可省） */
+/** `cat -- <path>` (the `--` may be left out) */
 function catCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   const path = args.find((a) => !a.startsWith('-'));
   if (path === undefined) return null;
@@ -61,7 +66,7 @@ function catCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   return success(content);
 }
 
-/** `echo <值> > <路径>`（没有 `>` 就不是重定向 → 不认） */
+/** `echo <value> > <path>` (without the `>` it is not a redirection → not recognised) */
 function echoCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   const arrow = args.indexOf('>');
   if (arrow === -1) return null;
@@ -69,11 +74,11 @@ function echoCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   if (path === undefined) return null;
   const value = args.slice(0, arrow).join(' ');
   deps.fs.write(path, value);
-  // **真 `echo` 带重定向时不打印任何东西**
+  // **A real `echo` with a redirection prints nothing**
   return success('');
 }
 
-/** `test -s <路径>`（文件存在且非空 → 0） */
+/** `test -s <path>` (the file exists and is not empty → 0) */
 function testCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   if (args[0] !== '-s') return null;
   const path = args[1];
@@ -83,7 +88,7 @@ function testCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   return { exitCode: nonEmpty ? 0 : 1, stdout: '', stderr: '', durationMs: 1, timedOut: false };
 }
 
-/** `grep -qF <needle> <路径>`（找到 → 0，没找到 → 1，文件不在 → 2） */
+/** `grep -qF <needle> <path>` (found → 0, not found → 1, the file is not there → 2) */
 function grepCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   if (args[0] !== '-qF') return null;
   const needle = args[1];
@@ -97,7 +102,7 @@ function grepCommand(args: string[], deps: FileCommandDeps): ExecResult | null {
   return { exitCode: found ? 0 : 1, stdout: '', stderr: '', durationMs: 1, timedOut: false };
 }
 
-/** 读一个路径：先看虚拟盘，再看假设备合成的那些文件 */
+/** Reads one path: first the virtual disk, then the files the fake device synthesises */
 function readPath(path: string, deps: FileCommandDeps): string | null {
   const onDisk = deps.fs.readText(path);
   if (onDisk !== null) return onDisk;
@@ -113,12 +118,15 @@ function failure(exitCode: number, stderr: string): ExecResult {
 }
 
 /**
- * 切词：单引号（`'…'`，内部 `'` 写成 `'\''`）、双引号、裸词。
+ * Splits into words: single quotes (`'…'`, a `'` inside is written `'\''`),
+ * double quotes, bare words.
  *
- * **见到语句分隔符 `;` 就返回 `null`**——那是**多语句**的命令，
- * 归小 shell 管（采样器的取数命令就是这种）。
+ * **As soon as the statement separator `;` shows up `null` is returned** —
+ * that is a **multi-statement** command, and the little shell takes it (the
+ * fetch commands of the sampler are of that kind).
  *
- * @returns 引号没闭合、或命令是多语句的，就返回 `null`（**不认这条命令**）。
+ * @returns `null` when a quote is not closed or when the command has several
+ *          statements (**this command is not recognised**).
  */
 function tokenize(command: string): string[] | null {
   const tokens: string[] = [];
@@ -134,7 +142,7 @@ function tokenize(command: string): string[] | null {
       let value = '';
       let closed = false;
       while (i < command.length) {
-        // 单引号里的 `'\''` = 一个字面的单引号（参数编码器就是这么转义的）
+        // The `'\''` inside the single quotes = one literal single quote (the argument encoder escapes it exactly like this)
         if (quote === "'" && command.startsWith("'\\''", i)) {
           value += "'";
           i += 4;
@@ -153,11 +161,11 @@ function tokenize(command: string): string[] | null {
       continue;
     }
 
-    // 裸词：**`>` 单独成词**（`echo 1 > /p` 与 `echo 1> /p` 都要认）
+    // A bare word: **`>` is a word of its own** (`echo 1 > /p` and `echo 1> /p` both have to be recognised)
     let value = '';
     while (i < command.length && command[i] !== ' ' && command[i] !== '\t') {
       if (command[i] === '>') break;
-      // **`;` 是语句分隔符** → 这是多语句命令 → 归小 shell
+      // **`;` is the statement separator** → this is a multi-statement command → the little shell takes it
       if (command[i] === ';') return null;
       value += command[i];
       i += 1;

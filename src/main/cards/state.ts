@@ -5,81 +5,91 @@ import type { CardManifest } from './manifest';
 import type { PackView } from '../tags/pack-view';
 
 /**
- * **卡片在当前板上的状态**（契约 `spec/04` §2.2 ✓ · ADR-D40 ✓）。
+ * **The state of a card on the current board** (contract `spec/04` §2.2 ✓ ·
+ * ADR-D40 ✓).
  *
- * ── 「读不到」与「不存在」是两件事 ──
+ * ── "Cannot be read" and "does not exist" are two different things ──
  *
- * | 字段 | 问的是 |
+ * | Field | What it asks |
  * |---|---|
- * | `missing_tags` | **当前板型包根本没有**这个 tag ✓（**模式级** ✓） |
- * | `unreadable_tags` | 包**有**，但**现在读不出来** ✓（**具体名级** ✓） |
+ * | `missing_tags` | the current board pack **does not have this tag at all** ✓ (**at the pattern level** ✓) |
+ * | `unreadable_tags` | the pack **has** it, but **it cannot be read right now** ✓ (**at the concrete name level** ✓) |
  *
- * → **混成一个字段的后果** ✓：
- * 「整个 `cpu` reader 挂了 → 通配实例在读数里**不会变 stale** ✓
- *   → 读数里还是 `ok` + 旧值 ✓ → 卡片**不会被判 degraded** ✓ → **agent 被骗** ✓」。
+ * → **What collapsing them into one field would cause** ✓:
+ * "the whole `cpu` reader is down → the wildcard instance **does not turn
+ *   stale** in the readings ✓ → the reading is still `ok` with the old value ✓
+ *   → the card is **not judged degraded** ✓ → **the agent is fooled** ✓".
  *
- * → 所以**必须分开** ✓。
+ * → So they **have to be separated** ✓.
  *
- * ── 「通配实例在读数里缺席 ≠ 缺失」 ──
+ * ── "A wildcard instance is absent from the readings" is not "missing" ──
  *
- * 采样器**按契约不猜具体实例名** ✓（`cpu.core.*.usage` 的具体核数只有板子知道 ✓）
- * → 失败时**不知道该标哪个具体 tag** ✓ → 跳过 ✓
- * → **所以读数里没有它，不能据此判「缺失」** ✓。
+ * The sampler **does not guess the concrete instance names** per the contract
+ * ✓ (only the board knows how many cores `cpu.core.*.usage` has ✓)
+ * → on a failure it **does not know which concrete tag to mark** ✓ → it skips
+ * it ✓ → **so its absence in the readings cannot be read as "missing"** ✓.
  */
 
-/** 一张卡在当前板上的状态（**给 agent 看的那份** ✓） */
+/** The state of a card on the current board (**the copy meant for the agent** ✓) */
 export interface CardState {
-  /** **卡片 id = 卡片目录名** ✓（宿主侧一切按它索引 ✓） */
+  /** **card id = the name of the card directory** ✓ (everything on the host side is indexed by it ✓) */
   id: string;
-  /** manifest 里声明的 id（**可以与目录名不同** ✓ → 所以是两个字段 ✓） */
+  /** The id declared in the manifest (**it may differ from the directory name** ✓ → so there are two fields ✓) */
   manifest_id: string;
   name: string;
   version: string;
-  /** 卡片目录的**绝对路径** ✓ */
+  /** The **absolute path** of the card directory ✓ */
   path: string;
   /**
-   * **卡片目录的最后修改时刻**（毫秒 UTC）✓。
-   *
-   * → **不是「人点装上的时刻」** ✓ —— 宿主**从没记过安装时间** ✓。
-   * → **明写它是什么** ✓ —— 否则 agent 会拿它排序「最近装的卡」✗（那会错）✗。
-   */
+     * **The last modification time of the card directory** (milliseconds, UTC) ✓.
+     *
+     * → **It is not "the moment the person clicked install"** ✓ — the host
+     *   **never recorded an install time** ✓.
+     * → **It says what it is** ✓ — otherwise the agent would sort by it to find
+     *   "the most recently installed cards" ✗ (that would be wrong) ✗.
+     */
   installed_at: number;
-  /** `ok` / `degraded` / `invalid`（封闭 ✓） */
+  /** `ok` / `degraded` / `invalid` (closed ✓) */
   status: 'ok' | 'degraded' | 'invalid';
-  /** 这张卡在当前板上**是不是残的** ✓ */
+  /** Is this card **broken** on the current board ✓ */
   degraded: boolean;
-  /** 要读、**当前板型包根本没有**的 tag（**模式级** ✓） */
+  /** The tags it reads that the **current board pack does not have at all** (**at the pattern level** ✓) */
   missing_tags: string[];
-  /** 声明了、包也提供了、但**现在读不出来**的 tag（**具体名级** ✓） */
+  /** The tags that are declared, that the pack also provides, but that **cannot be read right now** (**at the concrete name level** ✓) */
   unreadable_tags: string[];
 }
 
-/** 算卡片状态要的东西 */
+/** What is needed to compute the state of a card */
 export interface CardStateInput {
-  /** 宿主注册表里的那张卡（**目录名是 id** ✓） */
+  /** The card in the registry of the host (**the directory name is the id** ✓) */
   cardId: string;
   dir: string;
   manifest: CardManifest;
-  /** 这张卡的问题（**错误级 = manifest 不合法** ✓） */
+  /** The problems of this card (**error level = the manifest is invalid** ✓) */
   issues: { severity: 'error' | 'warning' }[];
-  /** 当前的板型包视图（**没有就是 `null`** ✓ —— 那就没有「板上根本没有」这回事 ✓） */
+  /** The view of the current board pack (**`null` when there is none** ✓ — then there is no such thing as "not on the board at all" ✓) */
   pack: PackView | null;
-  /** 当前读数（**只判具体名** ✓） */
+  /** The current readings (**only the concrete names are judged** ✓) */
   readings: TagReading[];
 }
 
 /**
- * **模式级判据**：这个模式 `P` 有没有被当前包提供 ✓。
+ * **The criterion at the pattern level**: is this pattern `P` provided by the
+ * current pack ✓.
  *
- * → **判的是「有没有一个包的 provides 模式覆盖 P」** ✓ —— 不是「读数里有没有」✓
- *   （读数里有没有是**读不出来**那一档 ✓ —— 两个口径不能混 ✓）。
+ * → **What is judged is "does a provides pattern of the pack cover P"** ✓ —
+ *   and not "is it in the readings" ✓ (being in the readings is the
+ *   **"cannot be read"** case ✓ — the two readings must not be mixed ✓).
  *
- * → **覆盖的判定**：段数相同 ✓ 且**逐段**：
- * - 两段都是字面 → 必须相等 ✓
- * - 一段是通配 → **覆盖** ✓（`cpu.*.usage` 覆盖 `cpu.core.usage` ✓）
- * - 两段都是字面但不等 → 不覆盖 ✓
+ * → **The criterion of coverage**: the same number of segments ✓ and
+ *   **segment by segment**:
+ * - both segments literal → they have to be equal ✓
+ * - one segment is a wildcard → it **covers** ✓ (`cpu.*.usage` covers
+ *   `cpu.core.usage` ✓)
+ * - both segments literal but different → it does not cover ✓
  *
- * → **注意方向** ✓：`cpu.core.*.usage` **不**覆盖 `cpu.usage` ✓（段数不同 ✓）。
+ * → **Mind the direction** ✓: `cpu.core.*.usage` does **not** cover `cpu.usage`
+ * ✓ (a different number of segments ✓).
  */
 export function patternCovered(provided: string, wanted: string): boolean {
   const ps = provided.split('.');
@@ -94,9 +104,9 @@ export function patternCovered(provided: string, wanted: string): boolean {
   return true;
 }
 
-/** 一个模式有没有被当前包提供 ✓ */
+/** Is a pattern provided by the current pack ✓ */
 function isProvided(pack: PackView | null, wanted: string): boolean {
-  if (pack === null) return true; // **没有包 → 不判「板上根本没有」** ✓
+  if (pack === null) return true; // **No pack -> do not judge "the board does not have it"** ✓
   for (const reader of pack.readers) {
     for (const tag of reader.provides) {
       if (patternCovered(tag, wanted)) return true;
@@ -106,10 +116,12 @@ function isProvided(pack: PackView | null, wanted: string): boolean {
 }
 
 /**
- * **这张卡要的、板上根本没有的 tag**（**模式级** ✓）。
+ * **The tags this card wants that the board does not have at all** (**at the
+ * pattern level** ✓).
  *
- * → **记模式本身** ✓ —— **不展开成具体名** ✓
- *   （宿主侧**没有「模式 → 具体名」的函数** ✓ —— 只有反方向 ✓ —— 不猜 ✓）。
+ * → **The pattern itself is recorded** ✓ — **it is not expanded into concrete
+ *   names** ✓ (the host has **no "pattern → concrete name" function** ✓ —
+ *   only the other direction ✓ — no guessing ✓).
  */
 export function missingTags(manifest: CardManifest, pack: PackView | null): string[] {
   const out: string[] = [];
@@ -120,11 +132,14 @@ export function missingTags(manifest: CardManifest, pack: PackView | null): stri
 }
 
 /**
- * **声明了、包也提供了、但现在读不出来的 tag**（**具体名级** ✓）。
+ * **The tags that are declared, that the pack provides, but that cannot be
+ * read right now** (**at the concrete name level** ✓).
  *
- * → **只列读数里有的那些** ✓ —— 通配实例在读数里**缺席**时**不列** ✓
- *   （那是「板上就没有 / 还没采到」✓ —— 不是「读不到」✓）。
- * → 判据：**该具体名在读数里** ✓ 且**状态不是 `ok`** ✓。
+ * → **Only the ones that are in the readings are listed** ✓ — a wildcard
+ *   instance that is **absent** from the readings is **not** listed ✓ (that is
+ *   "not on the board / not sampled yet" ✓ — not "cannot be read" ✓).
+ * → The criterion: **the concrete name is in the readings** ✓ **and its state
+ *   is not `ok`** ✓.
  */
 export function unreadableTags(
   manifest: CardManifest,
@@ -134,7 +149,7 @@ export function unreadableTags(
   const out: string[] = [];
   for (const reading of readings) {
     if (reading.status === 'ok') continue;
-    // **这张卡要读它吗** ✓ —— 按模式覆盖判 ✓
+    // **Does this card want to read it** ✓ — judged by pattern coverage ✓
     const wanted = manifest.permissions.read.some((p) => matchTagPattern(p, reading.tag));
     if (!wanted) continue;
     out.push(reading.tag);
@@ -143,16 +158,17 @@ export function unreadableTags(
 }
 
 /**
- * **算一张卡在当前板上的状态** ✓。
+ * **Computes the state of a card on the current board** ✓.
  *
- * → **`status` 的三档** ✓：
- * | 值 | 什么时候 |
+ * → **The three values of `status`** ✓:
+ * | Value | When |
  * |---|---|
- * | `invalid` | **manifest 本身不合法** ✓（有错误级问题 ✓） |
- * | `degraded` | manifest 合法 ✓ **但**有 tag 读不到 ✓（或有警告 ✓） |
- * | `ok` | 干净 ✓ |
+ * | `invalid` | **the manifest itself is invalid** ✓ (there is an error-level problem ✓) |
+ * | `degraded` | the manifest is valid ✓ **but** a tag cannot be read ✓ (or there is a warning ✓) |
+ * | `ok` | clean ✓ |
  *
- * → **`invalid` 的卡仍然列出来** ✓ —— agent 要知道「我上次装的那张卡坏了」✓。
+ * → **A card with `invalid` is still listed** ✓ — the agent has to know "the
+ * card I installed last time is broken" ✓.
  */
 export function cardState(input: CardStateInput): CardState {
   const hasError = input.issues.some((i) => i.severity === 'error');
@@ -179,9 +195,10 @@ export function cardState(input: CardStateInput): CardState {
 }
 
 /**
- * **卡片目录的最后修改时刻**（毫秒 UTC）✓。
+ * **The last modification time of the card directory** (milliseconds, UTC) ✓.
  *
- * → **拿不到就是 `0`** ✓（不猜 ✓ —— 目录被删了 ✓ / 权限不够 ✓）。
+ * → **When it cannot be obtained it is `0`** ✓ (no guessing ✓ — the directory
+ *   was deleted ✓ / the permissions are not enough ✓).
  */
 export function dirModifiedAt(dir: string): number {
   try {

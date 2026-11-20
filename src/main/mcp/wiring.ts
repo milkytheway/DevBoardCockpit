@@ -15,46 +15,50 @@ import type { AgentActionDeps } from './action-tools';
 /**
  * **Shapes the host into what the MCP layer expects** ✓.
  *
- * ── 为什么有这一层 ──
+ * ── Why this layer exists ──
  *
- * → **MCP 层不该知道宿主内部怎么组织的** ✓（它只认 `McpHostDeps` 那一组窄接口 ✓）。
- * → **判断全在宿主这一侧** ✓ —— MCP 层**只做转发与投影** ✓（契约 §六 ✓）。
+ * → **The MCP layer must not know how the host is organised internally** ✓
+ *   (it only knows the narrow interfaces of `McpHostDeps` ✓).
+ * → **All the decisions are on the host side** ✓ — the MCP layer **only
+ *   forwards and projects** ✓ (contract §6 ✓).
  *
- * ── `connected` 的判据（**两条都要满足** ✓）──
+ * ── The criterion of `connected` (**both have to hold** ✓) ──
  *
- * ① 它是**当前 tag 运行时那条连接**，**且**运行时状态是 `running` ✓
- *    —— **光看「运行时记着这个 profile」不够** ✓：连不上（`error` ✓）
- *    与已停下（`idle` ✓）时**那个 id 仍然留着** ✓ → 会误报 `true` ✗。
- * ② **或**它**开着终端会话** ✓。
+ * ① It is **the connection of the current tag runtime**, **and** the state of
+ *    the runtime is `running` ✓
+ *    — **looking only at "the runtime remembers this profile" is not enough**
+ *      ✓: when it cannot connect (`error` ✓) and when it has stopped (`idle`
+ *      ✓) **that id is still there** ✓ → it would report `true` wrongly ✗.
+ * ② **Or** it **has a terminal session open** ✓.
  */
 export interface McpHostWiring {
-  /** 连接 profile 清单 */
+  /** The list of the connection profiles */
   listProfiles: () => ConnectionProfile[];
-  /** tag 运行时 */
+  /** The tag runtime */
   runtime: TagRuntime;
-  /** 终端管理（**活会话** ✓） */
+  /** The terminal manager (**the live sessions** ✓) */
   terminal: TerminalManager;
-  /** 卡片注册表 */
+  /** The card registry */
   cards: CardRegistry;
-  /** 卡片运行时日志 */
+  /** The runtime log of the cards */
   cardLog: CardRuntimeLog;
-  /** 读布局（**宿主记的账** ✓ —— 与卡片侧同一份 ✓） */
+  /** Reads the layout (**the book of the host** ✓ — the same one as on the card side ✓) */
   layoutGet: () => LayoutState;
-  /** 存布局（**同一份账** ✓ —— 不另开一套 ✓） */
+  /** Stores the layout (**the same book** ✓ — no second set of books ✓) */
   layoutSet: (state: LayoutState) => void;
-  /** agent 的动作执行依赖（**与卡片侧共用执行器** ✓） */
+  /** The action execution dependencies of the agent (**the same executor as the card side** ✓) */
   agentActions: AgentActionDeps;
-  /** 用户卡片根（**装卡到这里** ✓） */
+  /** The user card root (**the cards are installed here** ✓) */
   cardsRoot?: string;
-  /** 授权账 */
-  /** 同意队列（**待人批的** ✓） */
-  /** 内置卡 id（**内置卡不许删** ✓） */
+  /** The authorisation ledger */
+  /** The consent queue (**the ones waiting for a human approval** ✓) */
+  /** The ids of the built-in cards (**a built-in card may not be deleted** ✓) */
   builtinCardIds?: string[];
-  /** **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓） */
+  /** **The unified permission area** (the table of the settings page ✓ · ADR-D47 ✓) */
   permissions?: PermissionStore;
 }
 
-/** 拼出 MCP 层的宿主依赖 ✓ */
+/** Assembles the host dependencies of the MCP layer ✓ */
 export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
   const { runtime, terminal, cards, cardLog } = wiring;
 
@@ -63,20 +67,20 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
     readings: () => runtime.readings(),
     history: (tag, n) => runtime.sampleHistory(tag, n),
     refreshTag: async (tag) => {
-      // **先定向采一次** ✓（契约 §2.1 ✓）—— 采不到也不炸 ✓（**没这个 tag 就是没这个 tag** ✓）
+      // **Sample it in a directed way once first** ✓ (contract §2.1 ✓) — it does not blow up when it cannot be sampled ✓ (**no such tag means no such tag** ✓)
       await runtime.sampleTag(tag);
     },
     profiles: wiring.listProfiles,
     capabilities: (profile: ConnectionProfile): ConnectionCapabilities =>
       capabilitiesFor(profile),
     connected: (profileId: string): boolean => {
-      // ① **当前运行时那条连接** ✓ —— **且状态是 `running`** ✓
+      // ① **The connection of the current runtime** ✓ — **and the state is `running`** ✓
       const status = runtime.status;
       if (status.state === 'running' && status.profileId === profileId) return true;
-      // ② **或开着终端会话** ✓
+      // ② **Or a terminal session is open** ✓
       return terminal.liveProfileIds().includes(profileId);
     },
-    // **当前运行时那条连接是哪个** ✓（**没有就是 `null`** ✓ —— 不猜 ✓）
+    // **Which connection the current runtime uses** ✓ (**`null` when there is none** ✓ — no guessing ✓)
     currentProfileId: (): string | null => runtime.status.profileId ?? null,
     cards: (): McpCardEntry[] =>
       cards.cards().map((card) => {
@@ -109,7 +113,7 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
         pack: runtime.packView,
         readings: runtime.readings(),
         actionIds: runtime.packView?.actions ?? [],
-        // **规则 2 比的是 manifest 的 id** ✓，**且要排除自己** ✓
+        // **Rule 2 compares the id of the manifest** ✓, **and it has to exclude itself** ✓
         installedCardIds: cards
           .cards()
           .filter((c) => c.dir !== path)
@@ -118,9 +122,9 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
     cardLog: (cardId: string) => cardLog.read(cardId),
     layout: (): LayoutState => wiring.layoutGet(),
     saveLayout: (state: LayoutState) => wiring.layoutSet(state),
-    // **agent 的动作执行** ✓ —— **复用同一个执行器** ✓（卡片侧同一个 ✓）
+    // **The action execution of the agent** ✓ — **the same executor is reused** ✓ (the card side uses the same one ✓)
     actions: wiring.agentActions,
-    // **装卡与卸卡** ✓（契约 §2.3 ✓）
+    // **Installing and uninstalling a card** ✓ (contract §2.3 ✓)
     ...(wiring.cardsRoot === undefined
       ? {}
       : {

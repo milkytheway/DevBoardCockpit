@@ -2,53 +2,55 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 卡片的存储：**每张卡一个命名空间**（契约 §6.2）。
+ * The storage of a card: **one namespace per card** (contract §6.2).
  *
- * ── 规则 ──
+ * ── The rules ──
  *
- * | 规则 | 值 |
+ * | Rule | Value |
  * |---|---|
- * | 落盘 | `<dir>/<cardId>/storage.json` |
- * | 命名空间 | **按卡片 id**——卡片之间互不可见 |
- * | 值 | 必须 **JSON 可序列化** |
- * | 单键上限 | **64 KB** |
- * | 命名空间上限 | **1 MB** |
- * | 键名 | 不得以 `__` 开头（**留给宿主**） |
- * | 卸载 | **保留**数据（契约 §6.2） |
+ * | On disk | `<dir>/<cardId>/storage.json` |
+ * | Namespace | **per card id** — the cards cannot see each other |
+ * | Value | must be **JSON serialisable** |
+ * | Limit per key | **64 KB** |
+ * | Limit per namespace | **1 MB** |
+ * | Key name | must not start with `__` (**reserved for the host**) |
+ * | Uninstall | the data is **kept** (contract §6.2) |
  *
- * ── 为什么限额在宿主 ──
+ * ── Why the limits live in the host ──
  *
- * 卡片是 AI 写的：它可能不小心（或故意）往里塞一个巨大的值。
- * **没有限额，一张卡就能把用户的磁盘写满**——
- * 这是宿主必须替用户挡住的，不该由卡片自觉。
+ * A card is written by an AI: it may accidentally (or deliberately) push a
+ * huge value into it.
+ * **Without a limit one card could fill up the disk of the user** — that is
+ * something the host has to shield the user from, not something a card should
+ * be trusted to restrain on its own.
  */
 export interface StorageResult {
   ok: boolean;
-  /** 失败的原因（**理由要对**——`reserved_key` 不是「值序列化不了」） */
+  /** Why it failed (**the reason has to be right** — `reserved_key` does not mean "the value cannot be serialised") */
   reason?: 'quota_exceeded' | 'not_serializable' | 'reserved_key';
 }
 
-/** 单键上限（字节） */
+/** The limit of a single key (bytes) */
 export const KEY_LIMIT_BYTES = 64 * 1024;
-/** 一个命名空间的上限（字节） */
+/** The limit of one namespace (bytes) */
 export const NAMESPACE_LIMIT_BYTES = 1024 * 1024;
 
 export class CardStorage {
-  /** 每张卡的命名空间（内存里的那份，落盘是它的镜像） */
+  /** The namespace of each card (the copy in memory; on disk is its mirror) */
   private readonly cache = new Map<string, Record<string, unknown>>();
 
   constructor(private readonly deps: { dir: string }) {}
 
-  /** 读一个键 */
+  /** Reads a key */
   get(cardId: string, key: string): unknown {
     const ns = this.namespace(cardId);
     return ns[key];
   }
 
-  /** 写一个键 */
+  /** Writes a key */
   set(cardId: string, key: string, value: unknown): StorageResult {
-    // **`__` 前缀留给宿主**（契约 §6.2）——**理由码要说对**：
-    // 这不是「值序列化不了」，是「这个键名你不许用」
+    // **The `__` prefix is reserved for the host** (contract §6.2) — **the reason code has to say so**:
+    // it is not "the value cannot be serialised", it is "you may not use this key name"
     if (key.startsWith('__')) return { ok: false, reason: 'reserved_key' };
 
     let encoded: string;
@@ -74,7 +76,7 @@ export class CardStorage {
     return { ok: true };
   }
 
-  /** 删一个键 */
+  /** Deletes a key */
   remove(cardId: string, key: string): StorageResult {
     const ns = { ...this.namespace(cardId) };
     if (!(key in ns)) return { ok: true };
@@ -84,19 +86,19 @@ export class CardStorage {
     return { ok: true };
   }
 
-  /** 这个命名空间的全部键 */
+  /** All the keys of this namespace */
   keys(cardId: string): string[] {
     return Object.keys(this.namespace(cardId)).sort();
   }
 
-  /** 清空这个命名空间 */
+  /** Clears this namespace */
   clear(cardId: string): StorageResult {
     this.cache.set(cardId, {});
     this.persist(cardId, {});
     return { ok: true };
   }
 
-  /** 取（并读盘）一个命名空间 */
+  /** Fetches a namespace (and reads it from disk) */
   private namespace(cardId: string): Record<string, unknown> {
     const cached = this.cache.get(cardId);
     if (cached !== undefined) return cached;
@@ -109,7 +111,7 @@ export class CardStorage {
           loaded = raw as Record<string, unknown>;
         }
       } catch {
-        // **文件坏了 → 当空的**（不是崩溃的理由）
+        // **A broken file → treated as empty** (not a reason to crash)
         loaded = {};
       }
     }

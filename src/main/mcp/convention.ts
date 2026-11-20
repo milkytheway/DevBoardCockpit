@@ -1,24 +1,26 @@
 /**
- * **MCP 响应的共同约定**（契约 `spec/04` §四 ✓）。
+ * The **common convention of the MCP responses** (contract `spec/04` §4 ✓).
  *
- * ── 为什么单独一个模块 ──
+ * ── Why it is a module of its own ──
  *
- * → **每个响应都要带 `apiVersion`** ✓（契约 §四 ✓）——
- *   流程工具与读侧工具**都要用** ✓ → **一份实现** ✓（各抄一份迟早漂 ✓）。
+ * → **Every response carries `apiVersion`** ✓ (contract §4 ✓) — both the
+ *   workflow tools and the read tools **have to use it** ✓ → **one
+ *   implementation** ✓ (a copy in each place drifts eventually ✓).
  *
- * → **列表是每一项都带** ✓（不是只在顶层带一个 ✓）——
- *   契约原话：「`apiVersion` 字段在每个响应里都带上」✓。
+ * → **In a list every entry carries it** ✓ (and not only one at the top ✓) —
+ *   the words of the contract: "the `apiVersion` field is carried in every
+ *   response" ✓.
  */
 
-/** 契约版本（**响应里的 `apiVersion` 表示契约版本** ✓ —— 不是工具集自己的版本 ✓） */
+/** The contract version (the `apiVersion` in a response means the contract version ✓ — not the version of the tool set itself ✓) */
 export const API_VERSION = 'devboard/v1';
 
-/** 给一个值补上 `apiVersion` ✓ */
+/** Adds `apiVersion` to a value ✓ */
 export function withVersion<T>(value: T): T & { apiVersion: string } {
   return { apiVersion: API_VERSION, ...value };
 }
 
-/** 列表的每一项都补上 ✓ */
+/** Adds it to every entry of a list ✓ */
 export function withVersionEach<T>(items: T[]): (T & { apiVersion: string })[] {
   return items.map((item) => ({ apiVersion: API_VERSION, ...item }));
 }

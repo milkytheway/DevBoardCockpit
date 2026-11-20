@@ -9,24 +9,27 @@ import { withVersion, withVersionEach } from './convention';
 export { withVersion, withVersionEach };
 
 /**
- * **读侧工具的投影**（契约 `spec/04` §2.1 / §2.2 / §2.3 ✓ · ADR-D40 ✓）。
+ * The **projection of the read-side tools** (contract `spec/04` §2.1 / §2.2 /
+ * §2.3 ✓ · ADR-D40 ✓).
  *
- * ── 这一层只做「翻译」──
+ * ── This layer only "translates" ──
  *
- * → **宿主侧的词 → 契约的词** ✓：
- * | 宿主侧 | 契约 |
+ * → **The words of the host side → the words of the contract** ✓:
+ * | Host side | Contract |
  * |---|---|
  * | `TagReading.tag` | `name` ✓ |
  * | `LayoutUnit.cardId` | `card_id` ✓ |
  * | `LayoutUnit.units` | `cards` ✓ |
  * | `reader.id` | `id` ✓ |
  *
- * → **判断不在这里** ✓ —— 全部在宿主侧算好 ✓（`cards/state.ts` ✓ · `tags/pack-view.ts` ✓）✓
- * → **这里只做形状** ✓（契约 §六「MCP server 应该是薄的」✓）。
+ * → **No decision is made here** ✓ — everything is computed on the host side ✓
+ *   (`cards/state.ts` ✓ · `tags/pack-view.ts` ✓) ✓
+ * → **Only the shape is done here** ✓ (contract §6 "the MCP server should be
+ *   thin" ✓).
  */
 
 /* ══════════════════════════════════════════════════════════════════
-   感知现状（契约 §2.1 ✓）
+   Perceiving the current state (contract §2.1 ✓)
    ══════════════════════════════════════════════════════════════════ */
 
 /** `list_connections` ✓ */
@@ -36,16 +39,16 @@ export function listConnections(deps: McpHostDeps): Record<string, unknown>[] {
     id: profile.id,
     label: profile.label,
     transport: profile.transport,
-    // **绑定的板型包 id** ✓ —— **没绑就是 `null`** ✓（**不给版本** ✓ —— 版本是包自己的属性 ✓）
+    // **The id of the bound board pack** ✓ — **without a binding it is `null`** ✓ (**no version** ✓ — the version is a property of the pack itself ✓)
     board_pack: profile.board_pack ?? null,
-    // **这块板的标识** ✓（契约 `spec/02` §10.2 ✓）——
-    // **同一块板的多条连接给同一个** ✓ → agent 才知道哪些连接是同一块板 ✓
+    // **The identifier of this board** ✓ (contract `spec/02` §10.2 ✓) —
+    // **Several connections of the same board give the same one** ✓ → so the agent knows which connections are the same board ✓
     device_key: deviceKeyOf(profile),
-    // **它是当前运行时那条连接吗** ✓（**与 `connected` 是两条判据** ✓ —— 不混 ✓）
+    // **Is it the connection of the current runtime** ✓ (**a different criterion from `connected`** ✓ — the two are not mixed ✓)
     current: current === profile.id,
-    // **这条 profile 现在有活连接吗** ✓（**光看「运行时记着它」不够** ✓ —— 那个在连不上时仍有值 ✓）
+    // **Does this profile have a live connection right now** ✓ (**looking only at "the runtime remembers it" is not enough** ✓ — that still has a value when it cannot connect ✓)
     connected: deps.connected(profile.id),
-    // **连接级**能力位 ✓（**不是板级词表** ✓）
+    // The **connection-level** capability bits ✓ (**not the board-level vocabulary** ✓)
     capabilities: deps.capabilities(profile),
   }));
 }
@@ -53,29 +56,31 @@ export function listConnections(deps: McpHostDeps): Record<string, unknown>[] {
 /** `list_data_sources` ✓ */
 export function listDataSources(deps: McpHostDeps): Record<string, unknown>[] {
   const pack = deps.pack();
-  // **没有包 → 空数组** ✓（没有数据源 ✓ —— 不是「一个都没有的包」✓）
+  // **No pack → an empty array** ✓ (there is no data source ✓ — not "a pack with nothing in it" ✓)
   if (pack === null) return [];
   const readings = deps.readings();
   return pack.readers.map((reader) => ({
-    // **reader 的 id** ✓（数据源就是 reader 粒度 ✓ —— 契约 §2.1 原话 ✓）
+    // **The id of the reader** ✓ (a data source is at the granularity of a reader ✓ — the words of contract §2.1 ✓)
     id: reader.id,
-    // **当前板型包的 id** ✓（不是连接 id ✓）
+    // **The id of the current board pack** ✓ (not the connection id ✓)
     board: pack.id,
     poll_group: reader.poll_group,
     kind: reader.kind,
     interval_ms: reader.interval_ms,
-    // **展开成具体 tag 名** ✓（包里写的是模式 ✓ —— agent 要写卡 ✓ 要具体名 ✓）
+    // **Expanded into the concrete tag names** ✓ (the pack holds patterns ✓ — an agent that writes a card ✓ needs the concrete names ✓)
     provides: expandProvides(reader, readings),
     status: readerStatus(reader, readings),
   }));
 }
 
 /**
- * **一个 reader 提供的具体 tag 名** ✓。
+ * The **concrete tag names a reader provides** ✓.
  *
- * → **展开模式** ✓（`cpu.core.*.usage` → 当前实际有的 `cpu.core.0.usage` ✓ · …）✓
- * → **读数里没有的那个核就不给** ✓（**不猜** ✓ —— 采样器也不猜 ✓）
- * → **一个都没有 → 空数组** ✓
+ * → **The patterns are expanded** ✓ (`cpu.core.*.usage` → the
+ *   `cpu.core.0.usage` that really exists right now ✓ · …) ✓
+ * → **The core that is not in the readings is not given** ✓ (**no guessing**
+ *   ✓ — the sampler does not guess either ✓)
+ * → **Not a single one → an empty array** ✓
  */
 function expandProvides(reader: ReaderView, readings: TagReading[]): string[] {
   const out: string[] = [];
@@ -90,15 +95,16 @@ function expandProvides(reader: ReaderView, readings: TagReading[]): string[] {
 }
 
 /**
- * **reader 自身的状态** ✓（契约 §2.1 的映射表 ✓ —— **不是「取最差」** ✓）。
+ * **The state of the reader itself** ✓ (the mapping table of contract §2.1 ✓
+ * — **not "the worst one"** ✓).
  *
- * | 情形 | 状态 |
+ * | Case | State |
  * |---|---|
- * | 它的 tag 一个都不在读数里 | `pending` |
- * | 有 tag，且全部 `unavailable` | `unavailable` |
- * | 有 tag，且存在 `error` | `error` |
- * | 有 tag，且存在 `stale`（无 error） | `stale` |
- * | 全部 `ok` | `ok` |
+ * | none of its tags is in the readings | `pending` |
+ * | there are tags, and all of them are `unavailable` | `unavailable` |
+ * | there are tags, and one of them is `error` | `error` |
+ * | there are tags, and one of them is `stale` (no error) | `stale` |
+ * | all of them are `ok` | `ok` |
  */
 function readerStatus(reader: ReaderView, readings: TagReading[]): TagReading['status'] {
   const mine = readings.filter((r) =>
@@ -116,9 +122,9 @@ function readerStatus(reader: ReaderView, readings: TagReading[]): TagReading['s
 export function listCapabilities(deps: McpHostDeps): Record<string, unknown> {
   const transports = new Set(deps.profiles().map((p) => p.transport));
   return {
-    // **连接级**能力的封闭词表 ✓（`exec` / `pty` / `files` / `exitCode` ✓ —— **不是板级那套** ✓）
+    // The closed vocabulary of the **connection-level** capabilities ✓ (`exec` / `pty` / `files` / `exitCode` ✓ — **not the board-level one** ✓)
     transports: [...transports].sort(),
-    // **工作台自己的能力位** ✓（封闭 ✓ —— **加值要改契约** ✓）
+    // The capability bits of the **workbench itself** ✓ (closed ✓ — **adding a value means changing the contract** ✓)
     features: ['cards', 'mcp', 'layout_share', 'record'],
   };
 }
@@ -130,35 +136,38 @@ export function listTags(deps: McpHostDeps): Record<string, unknown>[] {
   return readings.map((reading) => {
     const vocab = vocabularyEntry(reading.tag);
     return {
-      // **契约叫 `name`** ✓（宿主侧叫 `tag` ✓ —— **改名** ✓）
+      // **The contract calls it `name`** ✓ (the host side calls it `tag` ✓ — **renamed** ✓)
       name: reading.tag,
-      // **核心词表里的类型** ✓ —— 没有词表条目是 `null` ✓
+      // **The type in the core vocabulary** ✓ — without an entry in the vocabulary it is `null` ✓
       type: vocab?.type ?? null,
-      // **单位** ✓ —— 没有词表条目是 `'-'`（**不是 `null`** ✓ —— 无量纲 ✓）
+      // **The unit** ✓ — without an entry in the vocabulary it is `'-'` (**not `null`** ✓ — dimensionless ✓)
       unit: vocab?.unit ?? '-',
-      // **取值域** ✓ —— 二元数组或字符串 ✓ —— 没有词表条目是 `null` ✓
+      // **The range** ✓ — a two-element array or a string ✓ — without an entry in the vocabulary it is `null` ✓
       range: vocab?.range ?? null,
       status: reading.status,
       value: reading.value,
-      // **当前板型包的 id** ✓（**不是连接 id** ✓）
+      // **The id of the current board pack** ✓ (**not the connection id** ✓)
       board: pack?.id ?? null,
-      // **哪个 reader 提供的** ✓ —— 匹配不上是 `null` ✓（不猜 ✓）
+      // **Which reader provides it** ✓ — `null` when it does not match ✓ (no guessing ✓)
       source_reader: sourceReaderOf(reading.tag, pack),
     };
   });
 }
 
-/** 核心词表里匹配这个 tag 的那一条 ✓（**模式匹配** ✓） */
+/** The entry of the core vocabulary that matches this tag ✓ (**the matching is by pattern** ✓) */
 function vocabularyEntry(tag: string): (typeof CORE_VOCABULARY)[number] | undefined {
   return CORE_VOCABULARY.find((entry) => matchTagPattern(entry.pattern, tag));
 }
 
 /**
- * **这个 tag 是哪个 reader 提供的** ✓。
+ * **Which reader provides this tag** ✓.
  *
- * → **含 `custom` 里的 reader** ✓（否则 `custom.*` 的量全都是 `null` ✓）
- * → **一个 tag 至多匹配一个 reader** ✓（板型包规则 2 保证 ✓ —— 不合规的包运行时根本不加载 ✓）
- * → **匹配不上是 `null`** ✓（不猜 ✓）
+ * → **Including the readers of `custom`** ✓ (otherwise every quantity of
+ *   `custom.*` would be `null` ✓)
+ * → **A tag matches at most one reader** ✓ (rule 2 of the board pack
+ *   guarantees it ✓ — a pack that does not comply is not even loaded at
+ *   runtime ✓)
+ * → **`null` when it does not match** ✓ (no guessing ✓)
  */
 function sourceReaderOf(tag: string, pack: PackView | null): string | null {
   if (pack === null) return null;
@@ -180,8 +189,8 @@ export function describeTag(deps: McpHostDeps, name: string): Record<string, unk
     type: vocab?.type ?? null,
     unit: vocab?.unit ?? '-',
     range: vocab?.range ?? null,
-    // **词表原文** ✓（含 Markdown 强调标记 ✓ —— agent 按纯文本读 ✓）
-    // → **没有词表条目（`custom.*` 的私有量）是 `null`** ✓
+    // **The text of the vocabulary** ✓ (it contains the Markdown emphasis markers ✓ — the agent reads it as plain text ✓)
+    // → **Without an entry in the vocabulary (the private quantities of `custom.*`) it is `null`** ✓
     semantics: vocab?.semantics ?? null,
     status: reading?.status ?? 'unavailable',
     value: reading?.value ?? null,
@@ -189,10 +198,10 @@ export function describeTag(deps: McpHostDeps, name: string): Record<string, unk
     source: {
       reader: reader?.id ?? null,
       kind: reader?.kind ?? null,
-      // **脱敏后的参数** ✓ —— **命令与宿主路径已经挡住了** ✓（`tags/pack-view.ts` ✓）
+      // **The redacted arguments** ✓ — **the commands and the host paths are already blocked** ✓ (`tags/pack-view.ts` ✓)
       args_summary: reader?.args ?? {},
     },
-    // **最近的样本** ✓ —— 与 `sample_tag` 同形 ✓
+    // **The most recent samples** ✓ — the same shape as `sample_tag` ✓
     history: deps.history(name, 64),
   };
 }
@@ -203,21 +212,21 @@ export function sampleTag(deps: McpHostDeps, name: string, n: number): TagSample
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   查已有卡片（契约 §2.2 ✓）
+   Looking up the existing cards (contract §2.2 ✓)
    ══════════════════════════════════════════════════════════════════ */
 
 /** `list_cards` ✓ */
 export function listCards(deps: McpHostDeps): Record<string, unknown>[] {
   return deps.cards().map((card: McpCardEntry) => ({
-    // **卡片 id = 目录名** ✓（宿主侧一切按它索引 ✓）
+    // **card id = the name of the directory** ✓ (everything on the host side is indexed by it ✓)
     id: card.cardId,
-    // **manifest 声明的 id** ✓（**可以与目录名不同** ✓ → 所以是两个字段 ✓）
+    // **The id declared in the manifest** ✓ (**it may differ from the directory name** ✓ → so there are two fields ✓)
     manifest_id: card.manifest.id,
     name: card.manifest.name,
     version: card.manifest.version,
-    // **绝对路径** ✓（契约 §四 ✓）
+    // **The absolute path** ✓ (contract §4 ✓)
     path: card.dir,
-    // **目录的最后修改时刻** ✓ —— **不是「人点装上的时刻」** ✓
+    // **The last modification time of the directory** ✓ — **not "the moment the person clicked install"** ✓
     installed_at: card.state.installed_at,
     status: card.state.status,
     degraded: card.state.degraded,
@@ -234,13 +243,13 @@ export function getCardRuntimeLog(
 ): Record<string, unknown>[] {
   const entries = deps.cardLog(cardId);
   return entries
-    // **`since` 过滤在宿主侧做** ✓（契约 §2.3 ✓）
+    // **The `since` filter is done on the host side** ✓ (contract §2.3 ✓)
     .filter((e) => since === undefined || e.at >= since)
     .map((e) => ({ level: e.level, at: e.at, message: e.message, source: e.source }));
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   布局（契约 §2.5 ✓）
+   The layout (contract §2.5 ✓)
    ══════════════════════════════════════════════════════════════════ */
 
 /** `get_layout` ✓ */
@@ -248,9 +257,9 @@ export function getLayout(deps: McpHostDeps): Record<string, unknown> {
   const state = deps.layout();
   return {
     cards: state.units.map((u) => ({
-      // **契约叫 `card_id`** ✓（宿主侧叫 `cardId` ✓ —— **改名** ✓）
+      // **The contract calls it `card_id`** ✓ (the host side calls it `cardId` ✓ — **renamed** ✓)
       card_id: u.cardId,
-      // **补上连接 id** ✓ —— 布局的键是 `(card_id, connection_id)` ✓ —— **不补就丢信息** ✗
+      // **The connection id is added** ✓ — the key of the layout is `(card_id, connection_id)` ✓ — **without it the information is lost** ✗
       connection_id: u.connectionId,
       x: u.x,
       y: u.y,
@@ -261,14 +270,15 @@ export function getLayout(deps: McpHostDeps): Record<string, unknown> {
 }
 
 /**
- * **布局归一**（契约 §2.5 ✓）✓ —— **越界的格子整条丢掉** ✓。
+ * **The normalisation of the layout** (contract §2.5 ✓) ✓ — **a cell that is
+ * out of bounds is dropped as a whole** ✓.
  *
- * | 项 | 规则 |
+ * | Item | Rule |
  * |---|---|
- * | `x` / `y` | 非负整数 ✓ |
+ * | `x` / `y` | a non-negative integer ✓ |
  * | `w` | `1 ≤ w ≤ 12` ✓ |
  * | `h` | `h ≥ 1` ✓ |
- * | **重叠** | **不判** ✓（交给渲染器 ✓） |
+ * | **Overlap** | **not judged** ✓ (left to the renderer ✓) |
  */
 export function normalizeLayoutCards(
   cards: unknown,
@@ -308,7 +318,7 @@ export function normalizeLayoutCards(
       Number.isInteger(h) &&
       h >= 1;
     if (!ok) {
-      // **越界的格子整条丢掉** ✓，**并在 `dropped[]` 里报它的 card_id** ✓
+      // **A cell that is out of bounds is dropped as a whole** ✓, **and its card_id is reported in `dropped[]`** ✓
       dropped.push(cardId);
       continue;
     }

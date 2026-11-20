@@ -2,15 +2,17 @@ import { existsSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * **发现文件**（契约 `spec/04` §7.2 ✓）。
+ * The **discovery file** (contract `spec/04` §7.2 ✓).
  *
- * ── 它是什么 ──
+ * ── What it is ──
  *
- * agent 怎么知道端口和 token？**读这个文件** ✓。
- * → 它是 agent 与 GUI 之间**唯一的耦合点** ✓（契约原话 ✓）。
- * → 换了传输方式，agent 只需要改读文件的方式 ✓。
+ * How does the agent learn the port and the token? **It reads this file** ✓.
+ * → It is the **only coupling point** between the agent and the GUI ✓ (the
+ *   words of the contract ✓).
+ * → When the transport changes, the agent only has to change the way it reads
+ *   the file ✓.
  *
- * ── 它的字段（契约 §7.2 抄下来 ✓）──
+ * ── Its fields (copied from contract §7.2 ✓) ──
  *
  * ```json
  * { "apiVersion": "devboard/v1", "transport": "http", "host": "127.0.0.1",
@@ -18,66 +20,77 @@ import { join } from 'node:path';
  * ```
  */
 
-/** 发现文件的内容（**字段照契约抄** ✓ —— 少一个字段，agent 就连不上 ✓） */
+/** The content of the discovery file (**the fields are copied from the contract** ✓ — one field missing and the agent cannot connect ✓) */
 export interface DiscoveryInfo {
   apiVersion: string;
   transport: 'http';
   host: string;
   port: number;
   pid: number;
-  /** 本次启动生成的 bearer token ✓（**每次重启都换** ✓） */
+  /** The bearer token generated for this start ✓ (**it changes on every restart** ✓) */
   token: string;
-  /** 卡片目录（agent 要往这儿写卡 ✓ —— 契约 §三 ✓） */
+  /** The card directory (the agent writes its cards here ✓ — contract §3 ✓) */
   cards_dir: string;
   started_at: string;
 }
 
-/** 发现文件在**用户数据目录**里的路径（契约 §7.2 ✓） */
+/** The path of the discovery file in the **user data directory** (contract §7.2 ✓) */
 export function discoveryFilePath(dataDir: string): string {
   return join(dataDir, 'mcp.json');
 }
 
 /**
- * **写发现文件** ✓ —— 先写临时文件，再**原子改名** ✓。
+ * **Writes the discovery file** ✓ — a temporary file first, then an **atomic
+ * rename** ✓.
  *
- * → **为什么不能直接写** ✓：agent 可能在写入过程中来读 ✓
- *   → 读到半个 JSON ✓ → 解析失败 ✓ → **agent 不会重试** ✓（契约：连不上就**直接报错** ✓）
- *   → **一次半截文件就让 agent 以为服务没了** ✗。
- * → **改名是原子的** ✓（同一个文件系统内 ✓）→ agent 要么读到旧的 ✓，要么读到新的 ✓，
- *   **不会读到半个** ✓。
+ * → **Why it cannot be written directly** ✓: the agent may read it while it is
+ *   being written ✓
+ *   → it reads half a JSON ✓ → the parsing fails ✓ → **the agent does not
+ *   retry** ✓ (the contract: when it cannot connect it **reports the error
+ *   directly** ✓)
+ *   → **one half-written file makes the agent believe the service is gone** ✗.
+ * → **The rename is atomic** ✓ (within the same filesystem ✓) → the agent
+ *   reads either the old one ✓ or the new one ✓, **never half of one** ✓.
  *
- * → **权限 0600** ✓（仅当前用户可读 ✓ —— 契约 §7.2 ✓）。
- *   Windows 上没有 POSIX 模式 ✓ → 那里靠用户数据目录**本身的 ACL** ✓
- *   （用户数据目录本来就只有当前用户能进 ✓）。
+ * → **The mode 0600** ✓ (readable by the current user only ✓ — contract §7.2
+ *   ✓).
+ *   Windows has no POSIX mode ✓ → there the **ACL of the user data directory
+ *   itself** takes care of it ✓ (only the current user can get into the user
+ *   data directory anyway ✓).
  */
 export function writeDiscoveryFile(path: string, info: DiscoveryInfo): void {
   const tmp = `${path}.tmp`;
-  // **`mode: 0o600` 就够了** ✓（文件**创建**时的权限 ✓ —— 会被 umask 再掩一道 ✓，
-  // 但 0600 & ~umask **还是 0600** ✓ —— umask 最多把「组/其他」那两位去掉 ✓，
-  // 而那两位本来也是 0 ✓）。
-  // → **不需要事后再 chmod** ✓（那是**死代码** ✓ —— 一行看着在做事的代码最会骗人 ✓）。
+  // **`mode: 0o600` is enough** ✓ (the permissions at the moment the file is **created** ✓ — the umask masks them once more ✓,
+  // but 0600 & ~umask **is still 0600** ✓ — the umask can at most clear the two bits of "group / others" ✓,
+  // and those two bits were 0 anyway ✓).
+  // → **No chmod afterwards is needed** ✓ (that would be **dead code** ✓ — a line of code that looks like it does something is the best liar ✓).
   writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   renameSync(tmp, path);
 }
 
 /**
- * **删发现文件** ✓（GUI 退出时 ✓ / 监听失败时也要删 ✓）。
+ * **Deletes the discovery file** ✓ (when the GUI exits ✓ / also when the
+ * listening fails ✓).
  *
- * → **不能留一个指向死进程的发现文件** ✓（契约 §7.2 ✓）：
- *   agent 读到它 → 去连 → 连不上 → **它不重试别的端口** ✓（契约 ✓）
- *   → 直接报错 ✓ → **agent 以为 GUI 没起来** ✗ → 而其实 GUI 起来了只是端口变了 ✗。
+ * → **A discovery file that points at a dead process must not be left
+ *   behind** ✓ (contract §7.2 ✓):
+ *   the agent reads it → it tries to connect → it cannot connect → **it does
+ *   not try another port** ✓ (the contract ✓)
+ *   → it reports the error directly ✓ → **the agent believes the GUI did not
+ *   start** ✗ → while the GUI did start, only the port changed ✗.
  *
- * → **删一个不存在的文件不炸** ✓（退出流程不能因为它挂 ✓）。
+ * → **Deleting a file that does not exist does not blow up** ✓ (the exit
+ *   sequence must not die because of it ✓).
  */
 export function removeDiscoveryFile(path: string): void {
   try {
     rmSync(path, { force: true });
   } catch {
-    // **删不掉就算了** ✓（退出流程不该在这里断 ✓）
+    // **If it cannot be deleted, so be it** ✓ (the exit sequence must not break here ✓)
   }
 }
 
-/** 发现文件在不在（**诊断用** ✓） */
+/** Whether the discovery file is there (**for the diagnostics** ✓) */
 export function discoveryExists(path: string): boolean {
   return existsSync(path);
 }

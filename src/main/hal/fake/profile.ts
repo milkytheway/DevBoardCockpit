@@ -1,14 +1,17 @@
 import type { ConnectionProfile } from '../../profiles/schema';
 
 /**
- * ⚠️ **假设备** —— 它的 profile 是**内存里造的，不落盘**。
+ * ⚠️ **The fake device** — its profile is **made up in memory, never written to
+ * disk**.
  *
- * → 仓库里永远没有「假 profile」这个持久物（`profiles/targets/` 是干净的 ✓）。
+ * → There is never a persistent "fake profile" in the repository
+ * (`profiles/targets/` stays clean ✓).
  *
- * `board_pack` 指向 `rk3588-atk` 是**必须的**：候选挑选只留
- * `board_pack != null` 的 profile（`tags/runtime.ts`）→ 不指就选不上。
- * 而 `board_pack` 指名之后**不会去读 `/proc/device-tree/model`** →
- * 假设备不需要伪造型号 ✓。
+ * Pointing `board_pack` at `rk3588-atk` is **mandatory**: the candidate
+ * selection only keeps the profiles with `board_pack != null`
+ * (`tags/runtime.ts`) → without it it is not selected.
+ * And once `board_pack` is named, **`/proc/device-tree/model` is not read** →
+ * the fake device does not have to fake a model number ✓.
  */
 
 /** The id of the fake profile (it is also the connection's id). */
@@ -25,15 +28,18 @@ export function fakeMode(env: NodeJS.ProcessEnv = process.env): FakeMode {
 }
 
 /**
- * 假设备要扮**几个**角色（`COCKPIT_FAKE_PROFILES=build,target`）。
+ * The fake device has to play **several** roles
+ * (`COCKPIT_FAKE_PROFILES=build,target`).
  *
- * ── 为什么现在需要多个 ──
+ * ── Why several are needed now ──
  *
- * 流程层要在**两个目标**之间跑（客机 → 板子 ✓），
- * 而**每块假板子有自己的虚拟盘**（`fakeFilesystem(profile.id)` ✓）→
- * 两个角色 = **两块盘** ✓ = 两个 profile id ✓。
+ * The workflow layer has to run between **two targets** (the guest → the
+ * board ✓), and **every fake board has its own virtual disk**
+ * (`fakeFilesystem(profile.id)` ✓) → two roles = **two disks** ✓ = two
+ * profile ids ✓.
  *
- * → **默认只有一个**（`fake-board` ✓）→ 行为与从前完全一样 ✓。
+ * → **By default there is only one** (`fake-board` ✓) → the behaviour is
+ * exactly as it was before ✓.
  */
 export function fakeProfileIds(env: NodeJS.ProcessEnv = process.env): string[] {
   const raw = (env['COCKPIT_FAKE_PROFILES'] ?? '').trim();
@@ -49,24 +55,26 @@ export function fakeProfile(id: string = FAKE_PROFILE_ID): ConnectionProfile {
   return {
     id,
     label: id === FAKE_PROFILE_ID ? 'fake board · synthetic data' : `fake target · ${id} · synthetic data`,
-    // **假装自己是一个 ssh 目标**（能力位与 `local` 一样 ✓）：
-    // 流程层有一条硬规矩「**角色不许绑到 `local`**」——
-    // `local` 是**宿主自己的 shell** ✗，假设备也不该走那条路 ✓。
+    // **Pretends to be an ssh target** (the capability bits are the same as for `local` ✓):
+    // The workflow layer has one hard rule: "**a role must not be bound to `local`**" —
+    // `local` is **the shell of the host itself** ✗, and the fake device must not take that path either ✓.
     transport: 'ssh',
     board_pack: 'rk3588-atk',
-    // **这块板是哪块板** ✓（契约 `spec/02` §10.2 ✓）——
-    // **每个假目标就是一块板** ✓（**它有自己的虚拟盘** ✓ —— `fakeFilesystem(profile.id)` ✓）
-    // → **显式写出来** ✓（**别靠缺省** ✓ —— e2e 里要对得上 ✓）
+    // **Which board this is** ✓ (contract `spec/02` §10.2 ✓) —
+    // **Every fake target is a board** ✓ (**it has its own virtual disk** ✓ — `fakeFilesystem(profile.id)` ✓)
+    // → **written out explicitly** ✓ (**do not rely on a default** ✓ — the e2e has to match ✓)
     device_key: id,
     options: {
       /**
-       * **pipe 模式**（不是 pty）。
-       *
-       * pty 模式下宿主**只转发裸键**（xterm 一个键一个字节），
-       * 于是 `uname` 到会话里是 'u','n','a','m','e' 五个字符——
-       * 命令永远匹配不上，而且没有提示符、没有回显
-       * （那些是 pipe 模式宿主做的事：`terminal/line-editor.ts`）。
-       */
+             * **The pipe mode** (not pty).
+             *
+             * In the pty mode the host **only forwards the raw keys** (xterm sends one
+             * key as one byte),
+             * so `uname` arrives in the session as the five characters 'u','n','a','m','e' —
+             * the command never matches, and there is no prompt and no echo
+             * (those are what the host does in the pipe mode:
+             * `terminal/line-editor.ts`).
+             */
       pty: false,
       prompt: 'fake@rk3588',
     },

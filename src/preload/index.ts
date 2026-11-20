@@ -4,7 +4,7 @@ import { appErrorToException } from '../shared/errors';
 import type { TagReading } from '../shared/tag-reading';
 
 /**
- * 宿主能力的唯一出口。
+ * The only exit to the host capabilities.
  *
  * renderer 与卡片都只能经这里触达 main——
  * 没有 `ipcRenderer` 本身，没有 fs，没有 child_process（AGENTS.md §3）。
@@ -59,7 +59,7 @@ export const api: CockpitApi = {
   setTheme: (theme) => invoke(IPC.themeSet, theme),
   workflowsRecent: () => invoke(IPC.workflowsRecent),
   workflowsCancel: (runId: string) => invoke(IPC.workflowsCancel, runId),
-  // **接板向导** ✓ —— **宿主专用** ✓（卡片与 agent 都拿不到 ✓）
+  // **The board setup wizard** ✓ — **host only** ✓ (neither the cards nor an agent get it ✓)
   wizardRun: (input) => invoke(IPC.wizardRun, input),
   permissionsList: () => invoke(IPC.permissionsList),
   permissionsSet: (actor, op, allowed) => invoke(IPC.permissionsSet, actor, op, allowed),

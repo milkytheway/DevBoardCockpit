@@ -13,28 +13,34 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 
 /**
- * ⚠️ **假设备** —— 一条假的连接，跑在 HAL 边界上。
+ * ⚠️ **The fake device** — a fake connection that runs on the HAL boundary.
  *
- * ── 为什么放在这里，而不是直接喂 `TagStore` ──
+ * ── Why it sits here and does not feed the `TagStore` directly ──
  *
- * 因为**五态是契约**：`pending`（首读）、`stale`（读失败但有过好值）、
- * `unavailable`（资源不在）、`error`（在但坏了）。
- * 如果假设备自己造这些状态，那就是**把契约抄了第二份**——
- * 迟早与真实现漂移，而漂移的正是最要紧的那部分。
+ * Because **the five states are the contract**: `pending` (the first read),
+ * `stale` (the read failed but there was a good value before),
+ * `unavailable` (the resource is not there), `error` (it is there but broken).
+ * If the fake device made up these states itself, that would be **a second
+ * copy of the contract** — and it would eventually drift from the real
+ * implementation, and what drifts is exactly the most important part.
  *
- * → 假设备只吐**原始文本**（jiffies / kB / @Hz / 毫度），
- * **百分比与五态由真正的 kind 与真正的 store 判出来** ✓。
+ * → The fake device only emits **raw text** (jiffies / kB / @Hz /
+ * millidegrees), and **the percentages and the five states are judged by the
+ * real kinds and the real store** ✓.
  *
- * 顺带白送两件事：
- * - `cpu.usage` 的**做差语义**自动成立（计数器是积分出来的，单调递增 ✓）
- * - `unavailable` 也自然出现（NPU 的 debugfs 路径**就是不存在** ✓，跟真板一样）
+ * Two things come for free:
+ * - the **difference semantics** of `cpu.usage` hold by themselves (a counter
+ *   is integrated, so it grows monotonically ✓)
+ * - `unavailable` shows up naturally as well (the debugfs path of the NPU
+ *   **simply does not exist** ✓, just like on a real board)
  */
 
 /**
  * The fake connection's knobs.
  *
- * **故障注入是可选的**（`0` = 不注入）：默认值给调试用，
- * 测试要**确定性地**命中某一轮，所以把节奏交出去。
+ * **The fault injection is optional** (`0` = no injection): the defaults are
+ * there for debugging, a test has to hit a given round **deterministically**,
+ * so the rhythm is handed over.
  */
 export interface FakeConnectionOptions {
   /** The clock (milliseconds). */
@@ -67,9 +73,9 @@ const DEFAULT_TIMEOUT_EVERY = 20;
 const DEFAULT_BREAK_MEMINFO_EVERY = 5;
 
 export class FakeConnection implements Connection {
-  /** 连接的 id **跟着 profile 走**（假设备扮多个角色时每条线各有各的 id ✓） */
+  /** The id of the connection **follows the profile** (when the fake device plays several roles every line has its own id ✓) */
   readonly id: string;
-  /** 传输**跟着 profile 走**（能力位也只有一份算法 ✓——`capabilitiesFor(this.profile)`） */
+  /** The transport **follows the profile** (the capability bits have only one algorithm either ✓ — `capabilitiesFor(this.profile)`) */
   readonly transport: 'local' | 'ssh' | 'adb' | 'serial';
 
   private readonly device: FakeDevice;
@@ -116,14 +122,14 @@ export class FakeConnection implements Connection {
   }
 
   async exec(command: string, _opts?: { timeoutMs?: number }): Promise<ExecResult> {
-    // ── 文件命令先认 ──
+    // ── The file commands are recognised first ──
     //
-    // **动作的命令是单语句的**（`echo 128 > /p`、`cat -- '/p'`、
-    // `test -s /p`、`grep -qF 'x' /p`）——它们要的是**退出码**与**副作用**。
-    // 而采样器的取数命令是**多语句**的（`echo '<marker>'; cat -- '<p>'; …`）
-    // → 那归小 shell（`fake/exec.ts`）管，**一个字都不能多**。
+    // **The command of an action is a single statement** (`echo 128 > /p`, `cat -- '/p'`,
+    // `test -s /p`, `grep -qF 'x' /p`) — what they want is the **exit code** and the **side effect**.
+    // while the fetch command of the sampler is **multi-statement** (`echo '<marker>'; cat -- '<p>'; …`)
+    // → that belongs to the little shell (`fake/exec.ts`), and **not one character more**.
     //
-    // 认不出来就返回 `null` → 往下走原来的路（**不猜**）。
+    // When it is not recognised it returns `null` → the original path continues (**no guessing**).
     const fileResult = fakeFileCommand(command, {
       fs: this.fs,
       deviceRead: (path) => this.device.read(path),
@@ -136,14 +142,14 @@ export class FakeConnection implements Connection {
     // an interface that never shows "unavailable" is an interface whose
     // unavailable state was never designed.
     //
-    // **注入要落在对的组上**：
-    // 三个轮询组共用一条连接，按「这条连接上的第几次 exec」计数的话，
-    // 「每 17 轮坏一次 meminfo」几乎永远落在**不读 meminfo** 的组上
-    // （于是 error 那一态基本看不见），
-    // 而「每 7 轮超时」则多半落在快组 → CPU/GPU 几乎一直 stale。
+    // **The injection has to land on the right group**:
+    // The three polling groups share one connection, so counting by "the n-th exec on this connection"
+    // makes "break meminfo every 17 rounds" land almost always on a group that **does not read meminfo**
+    // (so the error state is practically never seen),
+    // while "time out every 7 rounds" mostly lands on the fast group → the CPU/GPU are almost always stale.
     //
-    // → **按命令里的路径分别计数**：超时算快组（`/proc/stat`），
-    // meminfo 的坏算真的读 meminfo 的那一轮。
+    // → **Count per path in the command**: a timeout counts for the fast group (`/proc/stat`),
+    // and the broken meminfo counts for the round that really reads meminfo.
     const isFast = command.includes('/proc/stat');
     const isMeminfo = command.includes('/proc/meminfo');
 
@@ -178,19 +184,22 @@ export class FakeConnection implements Connection {
   }
 
   /**
-   * The fake board **has a disk now** —— pulling really writes the file.
-   *
-   * ── 为什么不能继续「直接抛错」──
-   *
-   * 写侧（M6）的回读有三种形式落在文件上（`file_equals` / `command_ok` / `verify`）。
-   * 假设备若连文件都没有，**「动作 → 回读 → 界面按回读值渲染」这条判据
-   * 在假设备上根本跑不了**（只能靠真板 → 不可自动化）。
-   *
-   * ── 仍然诚实的地方 ──
-   *
-   * **拉一个不存在的文件 → 报错**，不是「报告成功」——
-   * 「报告成功却不传文件 = 骗人」（这条规矩没变，只是现在它有文件可传了）。
-   */
+     * The fake board **has a disk now** —— pulling really writes the file.
+     *
+     * ── Why it cannot keep "just throwing an error" ──
+     *
+     * The readback of the write side (M6) has three forms that land on a file
+     * (`file_equals` / `command_ok` / `verify`).
+     * If the fake device had no files at all, **the criterion "action → readback
+     * → the interface renders the value of the readback" could not be run on the
+     * fake device** (it would depend on a real board → not automatable).
+     *
+     * ── Where it is still honest ──
+     *
+     * **Pulling a file that does not exist → an error**, not "reports success" —
+     * "reporting success without transferring the file = lying" (that rule has
+     * not changed; it simply has files to transfer now).
+     */
   async pull(remotePath: string, localPath: string): Promise<void> {
     const content = this.fs.read(remotePath);
     if (content === null) {
@@ -201,11 +210,13 @@ export class FakeConnection implements Connection {
   }
 
   /**
-   * Push: the file really lands on the fake board's disk.
-   *
-   * **远端是目录**（HAL 的统一约定）→ 补上 basename ✓。
-   * **字节保真**：读的是 Buffer（`.ko` 是二进制，转码即损坏）。
-   */
+     * Push: the file really lands on the fake board's disk.
+     *
+     * **The remote is a directory** (the uniform convention of the HAL) → the
+     * basename is appended ✓.
+     * **The bytes are preserved**: what is read is a Buffer (a `.ko` is binary,
+     * and transcoding it destroys it).
+     */
   async push(localPath: string, remotePath: string): Promise<void> {
     if (!existsSync(localPath)) {
       throw makeError('CONN_OPEN_FAILED', `there is no ${localPath} on this host (nothing to push)`);
@@ -233,18 +244,20 @@ export class FakeConnection implements Connection {
 }
 
 /**
- * A fake shell: it knows two commands.
- *
- * Enough to design the terminal page against (a prompt, a banner, a
- * command that answers) without a board plugged in.
- *
- * ── 它是 **pipe 模式**（profile 声明 `pty: false`）──
- *
- * pipe 模式下**回显与提示符是宿主的事**（`terminal/line-editor.ts`）：
- * 宿主把整行送过来、把用户打的字回显出来、把提示符画出来。
- * → 所以这里**不回显**（回了就是两行字），
- * 而且**收到的是整行**（`uname` 是一个词，不是五个键）。
- */
+   * A fake shell: it knows two commands.
+   *
+   * Enough to design the terminal page against (a prompt, a banner, a
+   * command that answers) without a board plugged in.
+   *
+   * ── It is the **pipe mode** (the profile declares `pty: false`) ──
+   *
+   * In the pipe mode **the echo and the prompt are the business of the host**
+   * (`terminal/line-editor.ts`): the host sends the whole line over, echoes
+   * what the user typed, and draws the prompt.
+   * → So nothing is echoed here (an echo would be two lines of text),
+   * and **what arrives is the whole line** (`uname` is one word, not five
+   * keys).
+   */
 class FakeShellSession extends Session {
   readonly exitCode = null;
   private readonly sinks: ((chunk: string) => void)[] = [];
@@ -266,12 +279,12 @@ class FakeShellSession extends Session {
     }
     if (line.includes('exit')) {
       this.emit('logout\r\n');
-      // **会话要真的结束**：否则界面留着一个死标签，
-      // 用户继续往死通道里打字（契约 §七：界面要显示板子**实际**在做什么）。
+      // **The session has to really end**: otherwise the interface keeps a dead tab,
+      // the user keeps typing into the dead channel (contract §7: the interface has to show what the board **actually** is doing).
       for (const cb of this.exitCbs) cb(0);
       return;
     }
-    // **不回显**：pipe 模式由宿主回显（回了就是两行字）
+    // **No echo**: in the pipe mode the host echoes (an echo would be two lines of text)
   }
 
   resize(_cols: number, _rows: number): void {
@@ -286,15 +299,15 @@ class FakeShellSession extends Session {
     const isFirst = this.sinks.length === 0;
     this.sinks.push(cb);
     if (!isFirst) return;
-    // **横幅在第一个监听者来了之后再发**。
+    // **The banner is sent after the first listener has come**.
     //
-    // 构造那一刻还没有监听者（宿主的 `session.onData(...)` 在
-    // `openSession()` **之后**才注册）→ 那时候发等于没发。
+    // At the moment of the construction there is no listener yet (the
+    // `session.onData(...)` of the host is registered **after** `openSession()`) → sending it then is sending it into the void.
     //
-    // 横幅里带着标记串：
-    // ① 终端上**明说这是合成数据**（不然有人会把假数当真数看）；
-    // ② 标记串因此**留在产物里**，构建自检才验得到它
-    //    （导出但没人用的常量会被 rollup 摇掉——检查就成了摆设）。
+    // The banner carries the marker string:
+    // ① the terminal **says out loud that this is synthetic data** (otherwise somebody takes the fake numbers for real ones);
+    // ② the marker string therefore **stays in the artefact**, so that the build self-check can find it
+    //    (a constant that is exported but never used is shaken out by rollup — the check would be a sham).
     this.emit(`⚠ synthetic data (${FAKE_DEVICE_MARKER}) — this is not a real board; type help to see what it can do\r\n`);
   }
 

@@ -3,35 +3,42 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 卡片目录的**内容指纹**。
+ * A **content fingerprint** of a card directory.
  *
- * ── 它撑着什么 ──
+ * ── What it carries ──
  *
- * 契约 §八 与验收清单承诺：「改卡片里的一个字 → 不用重启，卡片就变了」
- * （「卡片即文件」是这个产品的核心主张）。
+ * The contract `spec/03` §8 and the acceptance checklist promise: "change one
+ * character in a card → no restart, the card changes" ("cards are files" is
+ * the core claim of this product).
  *
- * **光刷新清单是不够的**：iframe 的 `src` 没变 → 浏览器**不重新加载** →
- * 卡片里跑的还是**旧代码**。清单刷新了、卡片没变 —— 用户看到的是「改了没反应」。
+ * **Refreshing the manifest is not enough**: the iframe's `src` has not
+ * changed → the browser **does not reload** → the card still runs **the old
+ * code**. The manifest was refreshed, the card did not change — the user sees
+ * "I changed it and nothing happened".
  *
- * → 所以「卡片内容变了」必须体现在**实例 id** 上：
- * 实例 id 变 → URL 变 → React 的 key 变 → **iframe 重建** → 新代码生效 ✓
+ * → So "the card content changed" must be reflected in the **instance id**:
+ * the instance id changes → the URL changes → the React key changes → the
+ * **iframe is rebuilt** → the new code takes effect ✓
  *
- * ── 为什么算**内容**哈希，不用 mtime ──
+ * ── Why a **content** hash and not mtime ──
  *
- * 文件系统的时间戳粒度不一（有的地方只到 1 秒），
- * 「刚写完又改一次」可能落在**同一秒**里 → mtime 一样 → **不会重载**。
- * 卡片文件都很小，直接算内容哈希最稳。
+ * Filesystem timestamp granularity varies (some places resolve only to one
+ * second), so "write it and change it again right away" may land **within the
+ * same second** → mtime is unchanged → **no reload**. Card files are small, so
+ * hashing the content directly is the most reliable choice.
  *
- * ── 跳过 `node_modules` / `.git` ──
+ * ── `node_modules` / `.git` are skipped ──
  *
- * 它们很大，而且跟卡片代码无关（一个 `npm i` 不该让所有卡片重载）。
+ * They are large and unrelated to the card code (an `npm i` should not reload
+ * every card).
  */
 const SKIP_DIRS = new Set(['node_modules', '.git']);
 
 /**
- * 算一个卡片目录的内容指纹。
+ * Computes the content fingerprint of a card directory.
  *
- * @returns 同样的内容 → 同样的字符串；内容变了 → 不同的字符串
+ * @returns the same content → the same string; different content → a different
+ *          string
  */
 export function cardRevision(dir: string): string {
   const hash = createHash('sha1');
@@ -42,7 +49,7 @@ export function cardRevision(dir: string): string {
     try {
       entries = readdirSync(current, { withFileTypes: true });
     } catch {
-      // 读不到（目录没了 / 没权限）→ 当它不存在
+      // Unreadable (the directory is gone / no permission) → treat it as absent
       return;
     }
     for (const entry of entries) {
@@ -58,13 +65,13 @@ export function cardRevision(dir: string): string {
       try {
         hash.update(readFileSync(join(current, entry.name)));
       } catch {
-        // 读不到内容 → 只算文件名（够用：内容变了文件名通常也变了）
+        // Content unreadable → fall back to the file names (good enough: if the content changed, the names usually changed too)
       }
     }
   };
 
   walk(dir, '');
-  // **文件顺序也要稳定**（readdir 的顺序不保证）
+  // **The file order must be stable** too (the order of `readdir` is not guaranteed)
   files.sort();
   hash.update(files.join('\n'));
   return hash.digest('hex').slice(0, 12);

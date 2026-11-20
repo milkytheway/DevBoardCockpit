@@ -241,7 +241,7 @@ export function decodeActions(bytes: string): EditAction[] {
         out.push('interrupt');
         break;
       default:
-        if (ch < ' ') break; // 其余控制字符丢掉
+        if (ch < ' ') break; // The remaining control characters are dropped
         out.push('insert');
         break;
     }
@@ -310,9 +310,9 @@ export function displayWidth(text: string): number {
 /** Combining marks and zero-width characters: 0 columns */
 function isZeroWidth(cp: number): boolean {
   return (
-    (cp >= 0x0300 && cp <= 0x036f) || // 组合附加符号
-    (cp >= 0x200b && cp <= 0x200f) || // 零宽空格与方向标记
-    (cp >= 0xfe00 && cp <= 0xfe0f) || // 变体选择符
+    (cp >= 0x0300 && cp <= 0x036f) || // Combining marks
+    (cp >= 0x200b && cp <= 0x200f) || // Zero-width spaces and directional marks
+    (cp >= 0xfe00 && cp <= 0xfe0f) || // Variation selectors
     cp === 0xfeff
   );
 }

@@ -1,19 +1,21 @@
 import type { CardCspViolation } from '../../shared/ipc-contract';
 
 /**
- * CSP 违规 → 运行时日志里的一句话。
+ * A CSP violation rendered as one line in the runtime log.
  *
- * ── agent 看到的就是这一句 ──
+ * ── This line is what the agent sees ──
  *
- * 契约 `spec/03` §6.1：「浏览器的 CSP 违规会记在卡片运行时日志里，
- * agent 因此能看到『这张卡试图联网』」。
+ * The contract `spec/03` §6.1: "the CSP violation of the browser is recorded in
+ * the card runtime log, so the agent can see that the card tried to reach the
+ * network".
  *
- * → 这句话必须**说清楚它想干什么**：
- * 「哪条指令被违反了」（`effectiveDirective`）+
- * 「它想访问什么」（`blockedURI`）+
- * 「在卡片的哪个文件第几行」（`sourceFile` / `lineNumber`）。
+ * → The line must say **what it was trying to do**:
+ * "which directive was violated" (`effectiveDirective`) +
+ * "what it wanted to reach" (`blockedURI`) +
+ * "in which file of the card, at which line" (`sourceFile` / `lineNumber`).
  *
- * 写成英文的 "CSP violation" 谁也看不懂——**卡片作者要照着改，agent 要照着判**。
+ * A bare "CSP violation" tells nobody anything — **the card author has to fix
+ * it, the agent has to judge it**.
  */
 export function cspViolationMessage(violation: CardCspViolation): string {
   const directive = violation.effectiveDirective || violation.violatedDirective || '(unknown directive)';

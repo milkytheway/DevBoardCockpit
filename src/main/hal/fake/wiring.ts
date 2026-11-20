@@ -2,19 +2,23 @@ import type { ConnectionProfile } from '../../profiles/schema';
 import { fakeProfile, fakeProfileIds, type FakeMode } from './profile';
 
 /**
- * 假设备的**接线规则** —— 纯函数，所以能单测。
+ * The **wiring rules of the fake device** — pure functions, so they can be
+ * unit tested.
  *
- * ── 为什么规则要单独成文件 ──
+ * ── Why the rules are a file of their own ──
  *
- * `main/index.ts` 引了 Electron，**单测进不去**——
- * 而这几条恰恰是「静默失效」的重灾区：
+ * `main/index.ts` imports Electron, so **a unit test cannot reach it** —
+ * and these rules are exactly where a silent failure is most likely:
  *
- * 假设备没载入成功时，profile 还在列表里，
- * 而连接回落成了**真本机连接**（Windows 上就是开发者自己的 cmd.exe）：
- * 列表里写着「假板子 · 合成数据」，打开却是自己的机器，
- * 面板上的数还是**真机器的数**。
+ * When the fake device fails to load, the profile is still in the list, but
+ * the connection falls back to a **real local connection** (on Windows that is
+ * the developer's own cmd.exe):
+ * the list says "fake board · synthetic data", but opening it gives you your
+ * own machine, and the numbers on the panel are **the numbers of the real
+ * machine**.
  *
- * → 规则抽成纯函数，**判据能单测**。
+ * → The rules are extracted into pure functions, **so that the criterion can
+ * be unit tested**.
  */
 
 /**
@@ -23,7 +27,8 @@ import { fakeProfile, fakeProfileIds, type FakeMode } from './profile';
  * @param profiles The real profiles (from disk).
  * @param mode The switch.
  * @param fakeReady Did the fake device actually load?
- *   **没载入成功 → 就不列它**：列了却拿真连接顶替，比不列更坏。
+ *   **When it did not load it is not listed**: listing it while a real
+ *   connection takes its place is worse than not listing it.
  */
 export function profilesWithFake(
   profiles: ConnectionProfile[],
@@ -33,7 +38,7 @@ export function profilesWithFake(
 ): ConnectionProfile[] {
   if (mode === 'off') return profiles;
   if (!fakeReady) return profiles;
-  // **假设备可以扮多个角色**（`COCKPIT_FAKE_PROFILES=build,target` ✓）
+  // **The fake device can play several roles** (`COCKPIT_FAKE_PROFILES=build,target` ✓)
   const fakes = fakeProfileIds(env).map((id) => fakeProfile(id));
   return mode === 'only' ? fakes : [...fakes, ...profiles];
 }
@@ -42,16 +47,18 @@ export function profilesWithFake(
 export type FakeRoute = 'fake' | 'refuse' | 'not-fake';
 
 /**
- * 这个 profile 该走哪条路。
+ * Which way this profile has to go.
  *
- * - `fake` —— 走假设备；
- * - `refuse` —— **明确拒绝**（假设备没载入成功）；
- * - `not-fake` —— 不是假设备的 profile，走正常传输。
+ * - `fake` —— it goes through the fake device;
+ * - `refuse` —— it is **explicitly refused** (the fake device did not load);
+ * - `not-fake` —— a profile that is not the fake device, it goes through the
+ *   normal transport.
  *
- * **`refuse` 与 `not-fake` 必须分开**：
- * 混在一起的话，「假设备没载入成功」就会掉进正常传输里，
- * 于是用户看到的是**自己机器的 shell**（`transport: 'local'`）——
- * 标着「合成数据」，其实是真机器。
+ * **`refuse` and `not-fake` have to be separate**:
+ * mixed together, "the fake device did not load" would fall into the normal
+ * transport, and the user would see **the shell of his own machine**
+ * (`transport: 'local'`) — labelled "synthetic data" while it is the real
+ * machine.
  */
 export function fakeRouteFor(
   profileId: string,

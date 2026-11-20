@@ -5,21 +5,23 @@ import type { TagReading } from '../../shared/tag-reading';
 import type { CardRequest, CardResponse } from '../../shared/ipc-contract';
 
 /**
- * 一个卡片实例的**会话**。
+ * The **session** of one card instance.
  *
- * ── 会话是权限的载体 ──
+ * ── The session is the carrier of the permissions ──
  *
- * 权限集在**建卡时**定死（契约 §3.3：卡片不能运行时提权）。
- * 会话把它带在身上，于是「这个实例能看什么」在**每一层**都是同一个答案：
- * 读侧过滤、订阅过滤、列表过滤，都用 `session.perms`。
+ * The permission set is fixed **when the card is installed** (contract §3.3: a
+ * card cannot raise its permissions at runtime).
+ * The session carries it, so "what this instance may see" is **the same
+ * answer** on **every** layer: the read filter, the subscription filter and
+ * the list filter all use `session.perms`.
  *
- * ── 为什么会话在 main 而不是页面 ──
+ * ── Why the session lives in main and not in the page ──
  *
- * 页面是不可信的一侧（卡片就住在它旁边）。
+ * The page is the untrusted side (the card lives right next to it).
  * The permission decision **has to be made in a trusted process**.
  */
 
-/** 读数的来源（TagStore 满足它） */
+/** The source of the readings (the TagStore satisfies it) */
 export interface RuntimeReader {
   readings(): TagReading[];
   subscribe(cb: (r: TagReading) => void): () => void;
@@ -35,79 +37,87 @@ export interface CardSession {
 }
 
 export interface CardSessionManagerDeps {
-  /** 读数的来源 */
+  /** The source of the readings */
   runtime: RuntimeReader;
-  /** 这张卡的权限集（来自 manifest + 已授权的动作） */
+  /** The permission set of this card (from the manifest plus the authorised actions) */
   permsFor: (cardId: string) => CardPermissions;
   now?: () => number;
-  /** 推给某个实例（Task 10 接上） */
+  /** Pushes to one instance (wired up in task 10) */
   push?: (instanceId: string, payload: unknown) => void;
   /**
-   * 每张卡的存储（**按卡片 id 分开**——存储是每卡一个命名空间）。
-   *
-   * 做成「工厂」而不是一个实例：会话是**每卡一份**的，
-   * 存储也必须跟着卡走，否则 A 卡的写入会落到 B 卡上。
-   */
+     * The storage of each card (**separated per card id** — the storage is one
+     * namespace per card).
+     *
+     * Made a "factory" and not a single instance: the session is **one per
+     * card**, and the storage has to follow the card, otherwise a write of card
+     * A would land on card B.
+     */
   storageFor?: (cardId: string) => CardServices['storage'];
-  /** 每张卡的日志 */
+  /** The log of each card */
   logFor?: (cardId: string) => (level: 'error' | 'warn' | 'info', message: string) => void;
   /**
-   * 每张卡的写侧（动作执行器）。
-   *
-   * 做成**工厂**而不是一个实例：执行器要拿着**这张卡的授权**，
-   * 而授权是每卡一份的。
-   */
+     * The write side of each card (the action executor).
+     *
+     * Made a **factory** and not a single instance: the executor has to hold the
+     * **authorisation of this card**, and the authorisation is one per card.
+     */
   actionsFor?: (cardId: string) => CardServices['actions'];
   /**
-   * 每张卡的**流程侧**（计划 7 ✓）。
-   *
-   * 做成**工厂**：流程的授权是每卡一份的 ✓（与 `actionsFor` 同形 ✓）。
-   */
+     * The **workflow side** of each card (plan 7 ✓).
+     *
+     * Made a **factory**: the authorisation of a workflow is one per card ✓
+     * (the same shape as `actionsFor` ✓).
+     */
   workflowsFor?: (cardId: string) => CardServices['workflows'];
-  /** 当前连接的身份（给 `capabilities()` 用） */
+  /** The identity of the current connection (for `capabilities()`) */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
 
 /**
- * 一个实例最多能订阅几次（RF-4）。
+ * How many subscriptions one instance may hold at most (RF-4).
  *
- * ── 为什么要有上限 ──
+ * ── Why there is an upper bound ──
  *
- * 卡片是 AI 写的任意网页。它可以**循环订阅**：
+ * A card is an arbitrary web page written by an AI. It can **subscribe in a
+ * loop**:
  * ```
  * setInterval(() => cockpit.tags.subscribe('cpu.usage', cb), 100)
  * ```
- * 每订阅一次，运行时上就多一个监听器 → 每次推送都 fan-out N 份 →
- * **main 的内存与 IPC 被打满**，工作台跟着卡死。
+ * Every subscription adds one more listener to the runtime → every push fans
+ * out into N copies → **the memory and the IPC of main are flooded** and the
+ * workbench freezes with them.
  *
- * 契约 §六：「**单卡崩溃不影响其他卡，也不影响工作台**」——
- * 「影响」在这里就是「把 main 打满」。
+ * Contract §6: "**one card crashing does not affect the other cards, and does
+ * not affect the workbench**" — here "affects" means "fills main up".
  *
- * → 上限由**宿主**来守（卡片不会自觉）。超了回
- * `{ ok:false, reason:'too_many_subscriptions' }`（契约 §7.7：不抛异常，回失败）。
+ * → The upper bound is kept by the **host** (a card does not restrain itself).
+ * When it is exceeded the answer is
+ * `{ ok:false, reason:'too_many_subscriptions' }` (contract §7.7: it does not
+ * throw, it returns a failure).
  */
 export const MAX_SUBSCRIPTIONS_PER_SESSION = 64;
 
 export class CardSessionManager {
   private readonly sessions = new Map<string, CardSession>();
   /**
-   * 每个实例的订阅 → 退订函数（RF-4）。
-   *
-   * **为什么必须存着**：`deps.subscribe` 返回的退订函数是**唯一**能真正
-   * 把监听器从运行时摘掉的东西。丢掉它 = 订阅永远解不掉。
-   */
+     * The subscriptions of each instance → the unsubscribe function (RF-4).
+     *
+     * **Why it has to be kept**: the unsubscribe function returned by
+     * `deps.subscribe` is the **only** thing that can really take the listener
+     * off the runtime. Losing it = the subscription can never be released.
+     */
   private readonly subscriptions = new Map<string, Map<string, () => void>>();
 
   constructor(private readonly deps: CardSessionManagerDeps) {}
 
-  /** 开一个会话（同一实例重复调用是同一个会话） */
+  /** Opens a session (calling it again for the same instance returns the same session) */
   open(instanceId: string, cardId: string, connectionId: string | null): CardSession {
     const existing = this.sessions.get(instanceId);
     if (existing !== undefined) return existing;
 
     const perms = this.deps.permsFor(cardId);
     const now = this.deps.now ?? (() => Date.now());
-    /** 这个实例的订阅（订阅 id → 退订函数） */
+    /** The subscriptions of this instance (subscription id → unsubscribe function) */
     const subs = new Map<string, () => void>();
     this.subscriptions.set(instanceId, subs);
     const tagsDeps: TagsServiceDeps = {
@@ -126,7 +136,7 @@ export class CardSessionManager {
           if (subs.size >= MAX_SUBSCRIPTIONS_PER_SESSION) {
             return { ok: false, reason: 'too_many_subscriptions' };
           }
-          // **退订函数要存着**——不然这个订阅永远解不掉（RF-4）
+          // **The unsubscribe function has to be kept** — otherwise this subscription can never be released (RF-4)
           const dispose = tags.subscribe(name, (reading) => {
             push?.(instanceId, { type: 'push', subscriptionId, value: reading });
           });
@@ -146,7 +156,7 @@ export class CardSessionManager {
         degradation: () => tags.degradation(),
       },
       actions: this.deps.actionsFor?.(cardId) ?? emptyActions(),
-      // **流程侧**（计划 7 ✓）——没接上时**一律拒绝** ✓（不是「放行」✗）
+      // **The workflow side** (plan 7 ✓) — while it is not wired up everything is **refused** ✓ (not "let it pass" ✗)
       workflows: this.deps.workflowsFor?.(cardId) ?? emptyWorkflows(),
       storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
@@ -159,25 +169,27 @@ export class CardSessionManager {
     return session;
   }
 
-  /** 取一个会话 */
+  /** Fetches a session */
   get(instanceId: string): CardSession | undefined {
     return this.sessions.get(instanceId);
   }
 
   /**
-   * 关一个会话（卡片没了 / 连接变了 / 卡片重载了）。
-   *
-   * **退订函数在这里被调用**——这是「订阅不会一直挂着」的唯一保证。
-   */
+     * Closes a session (the card is gone / the connection changed / the card was
+     * reloaded).
+     *
+     * **The unsubscribe functions are called here** — this is the only guarantee
+     * that "the subscriptions do not hang around forever".
+     */
   close(instanceId: string): void {
     const subs = this.subscriptions.get(instanceId);
     if (subs !== undefined) {
       for (const dispose of subs.values()) {
-        // 退订失败**不能挡住宿主**（一张卡的问题不该拖垮整个会话）
+        // A failing unsubscribe **must not block the host** (a problem of one card must not bring down the whole session)
         try {
           dispose();
         } catch {
-          /* 忽略 */
+          /* ignored */
         }
       }
       this.subscriptions.delete(instanceId);
@@ -185,22 +197,22 @@ export class CardSessionManager {
     this.sessions.delete(instanceId);
   }
 
-  /** 这个实例现在有几个订阅（诊断用） */
+  /** How many subscriptions this instance has right now (for the diagnostics) */
   subscriptionCount(instanceId: string): number {
     return this.subscriptions.get(instanceId)?.size ?? 0;
   }
 
   /**
-   * 处理卡片的一个请求。
-   *
-   * ── 鉴权在这一层 ──
-   *
-   * | 权限 | 判什么 |
-   * |---|---|
-   * | `write` | 动作 id 必须在 `permissions.write` 里 → 否则 `denied` |
-   * | `read` | **不在这里判**——交给读侧（`TagsService`）过滤，**「没权限」与「没有这个 tag」长得一样**（不泄露存在性） |
-   * | `none` | 放行 |
-   */
+     * Handles one request of a card.
+     *
+     * ── The authorisation happens on this layer ──
+     *
+     * | Permission | What is judged |
+     * |---|---|
+     * | `write` | the action id has to be in `permissions.write` → otherwise `denied` |
+     * | `read` | **not judged here** — it is left to the read side (`TagsService`) to filter, because **"no permission" and "no such tag" look the same** (the existence is not leaked) |
+     * | `none` | let it pass |
+     */
   async handle(req: CardRequest): Promise<CardResponse> {
     const session = this.sessions.get(req.instanceId);
     if (session === undefined) {
@@ -213,12 +225,12 @@ export class CardSessionManager {
 
     const args = (req.args ?? {}) as Record<string, unknown>;
     if (api.permission === 'write' || api.permission === 'workflow') {
-      // **两维各看各的** ✓（契约 §2.3 / §3.3 ✓ —— 流程 id **不许混进 write** ✓）
+      // **The two dimensions are judged separately** ✓ (contract §2.3 / §3.3 ✓ — a workflow id **must not be mixed into write** ✓)
       const allowed =
         api.permission === 'write' ? session.perms.write : (session.perms.workflows ?? []);
       const argName = api.scopeArg;
-      // **`scopeArg` 为空 → 这一层不判** ✓
-      // （`workflows.status` 的参数是 **run id** ✓ —— 归属校验**在实现里做** ✓）
+      // **`scopeArg` is empty → this layer does not judge it** ✓
+      // (the argument of `workflows.status` is the **run id** ✓ — the ownership check is done **in the implementation** ✓)
       if (argName !== undefined) {
         const value = args[argName];
         if (typeof value !== 'string' || !allowed.includes(value)) {
@@ -236,9 +248,9 @@ export class CardSessionManager {
     };
     try {
       const value = await api.make(session.services)(ctx, args);
-      // **方法级的失败要提到信封上**：
-      // 契约 §7.7 说「失败时返回 `{ ok: false, reason }`」——
-      // 卡片看到的就是这一层，不能让它自己去翻 `value`。
+      // **A failure of the method has to be lifted onto the envelope**:
+      // Contract §7.7 says "on failure it returns `{ ok: false, reason }`" —
+      // this is the layer the card sees; it must not have to dig through `value` itself.
       if (isMethodFailure(value)) {
         return { id: req.id, ok: false, reason: value.reason };
       }
@@ -254,33 +266,37 @@ export class CardSessionManager {
 }
 
 /**
- * 方法自己返回的失败（`{ ok:false, reason }`）。
+ * A failure returned by the method itself (`{ ok:false, reason }`).
  *
- * 契约 §7.7：「所有方法都不抛异常：失败时返回 `{ ok: false, reason }`」——
- * 所以「方法失败了」这件事必须出现在**信封**上（`CardResponse.ok/reason`），
- * 否则卡片只看到 `ok:true` + 一个藏在 `value` 里的失败。
+ * Contract §7.7: "no method throws: on failure it returns
+ * `{ ok: false, reason }`" — so "the method failed" has to show up on the
+ * **envelope** (`CardResponse.ok/reason`), otherwise the card only sees
+ * `ok:true` plus a failure hidden inside `value`.
  *
- * ── 例外：**动作的结果对象** ──
+ * ── The exception: **the result object of an action** ──
  *
- * 契约 `spec/04` §2.4 的动作结果**自己就有 `ok` 与 `reason`**：
- * `{ ok:false, reason:'denied', detail:'…' }` ✓（**契约 §2.4.1 的封闭理由码** ✓）。
+ * The action result of contract `spec/04` §2.4 **has `ok` and `reason` of its
+ * own**: `{ ok:false, reason:'denied', detail:'…' }` ✓ (the closed reason codes
+ * of contract §2.4.1 ✓).
  *
- * 把它塌成信封失败 → **动作自己的原因码就没了** ✓ →
- * 卡片只看见一个笼统的「方法失败」✗ → **分不清是「没权限」还是「参数不对」** ✗。
+ * Collapsing it into an envelope failure → **the reason code of the action
+ * itself is gone** ✓ → the card only sees a vague "the method failed" ✗ →
+ * **it cannot tell "no permission" from "wrong parameter"** ✗.
  *
- * → **带 `verified` 的值是「结果」，不是「方法级失败」**：
- * 契约的结果形状里 `verified` 是**必有**的字段（成功与失败都有）✓，
- * 而方法级失败（订阅超限、存储不可用）没有它 ✓。
+ * → **A value that carries `verified` is a "result", not a "method-level
+ * failure"**: in the result shape of the contract `verified` is a **mandatory**
+ * field (it is there on success and on failure) ✓, while a method-level
+ * failure (too many subscriptions, storage unavailable) does not have it ✓.
  */
 function isMethodFailure(value: unknown): value is { ok: false; reason: string } {
   if (value === null || typeof value !== 'object') return false;
   const v = value as { ok?: unknown; reason?: unknown; verified?: unknown };
-  // **结果对象**（契约 spec/04 §2.4）→ 不塌
+  // **The result object** (contract spec/04 §2.4) → not collapsed
   if (typeof v.verified === 'boolean') return false;
   return v.ok === false && typeof v.reason === 'string';
 }
 
-/** 还没接上写侧时的占位（**调用一律被拒**，不是「假装成功」） */
+/** The placeholder for the write side before it is wired up (**every call is refused**, not "pretending to succeed") */
 function emptyActions(): CardServices['actions'] {
   return {
     invoke: (id: string) => ({ ok: false, reason: 'unknown_action', actionId: id }),
@@ -288,10 +304,12 @@ function emptyActions(): CardServices['actions'] {
 }
 
 /**
- * 还没接上流程侧时的占位（**一律拒绝** ✓）。
+ * The placeholder for the workflow side before it is wired up (**everything is
+ * refused** ✓).
  *
- * → **不是「放行」** ✗ —— 没接上就意味着「宿主不知道这个流程」✓
- *   → 放行 = 让卡片以为流程能跑 ✗。
+ * → **Not "let it pass"** ✗ — not being wired up means "the host does not know
+ *   this workflow" ✓ → letting it pass = letting the card believe the
+ *   workflow can run ✗.
  */
 function emptyWorkflows(): CardServices['workflows'] {
   return {
@@ -301,7 +319,7 @@ function emptyWorkflows(): CardServices['workflows'] {
   };
 }
 
-/** 还没接上存储时的占位（Task 10 会换成真的） */
+/** The placeholder for the storage before it is wired up (task 10 replaces it with the real one) */
 function emptyStorage(): CardServices['storage'] {
   return {
     get: () => undefined,
@@ -312,5 +330,5 @@ function emptyStorage(): CardServices['storage'] {
   };
 }
 
-/** 读权限覆盖（会话对外用） */
+/** The read permission coverage (for the outside of the session) */
 export { permissionCovers };

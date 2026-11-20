@@ -1,26 +1,28 @@
 import { makeError } from '../../shared/errors';
 
 /**
- * 卡片 manifest 的**封闭 schema**（契约 `spec/03` §2.5）。
+ * The **closed schema** of a card manifest (contract `spec/03` §2.5).
  *
- * ── 为什么每一层都封闭 ──
+ * ── Why every layer is closed ──
  *
- * 被静默忽略的字段，就是**拼错的字段**。
- * 一张卡写 `"permissons": {...}`（少一个 i）→ 静默忽略 → 卡片**没有读权限**
- * → 什么都不显示，而作者**永远查不出原因**。
+ * A field that is silently ignored is a **field that was misspelled**.
+ * A card that writes `"permissons": {...}` (one i missing) → silently ignored →
+ * the card has **no read permission** → nothing is displayed and the author
+ * **never finds out why**.
  *
- * 措辞与板型包加载器（`src/main/tags/pack.ts`）保持一致：
- * `卡片包 <source>：<位置>字段不认识（可能是拼错的）：<字段名>`
+ * The wording is kept consistent with the board pack loader
+ * (`src/main/tags/pack.ts`):
+ * `card pack <source>: unknown field <path> (it may be misspelled): <field>`
  */
 
 export interface CardParamSchema {
   type: 'integer' | 'number' | 'string' | 'boolean' | 'enum';
   min?: number;
   max?: number;
-  /** 字符串的长度上限。**`string` 必填**——没有上限的字符串参数就是注入面 */
+  /** The upper bound of a string length. **`string` is mandatory** — a string parameter without an upper bound is an injection surface */
   maxLength?: number;
   pattern?: string;
-  /** `enum` 的取值（必填非空） */
+  /** The values of an `enum` (mandatory, not empty) */
   values?: string[];
   default?: unknown;
 }
@@ -28,7 +30,7 @@ export interface CardParamSchema {
 export interface CardActionDef {
   id: string;
   label: string;
-  /** 板型包里的动作 id。**没有** = 视图内动作（不碰板子） */
+  /** An action id of a board pack. **Absent** = an in-view action (it does not touch the board) */
   target?: string;
   params?: Record<string, CardParamSchema>;
 }
@@ -47,7 +49,7 @@ export interface CardManifest {
   actions?: CardActionDef[];
 }
 
-/* ── 白名单（契约 §2.5：每一层都封闭）── */
+/* ── The allow list (contract §2.5: every layer is closed) ── */
 
 export const TOP_ALLOWED = [
   'apiVersion',
@@ -67,17 +69,18 @@ export const TOP_REQUIRED = ['apiVersion', 'kind', 'id', 'name', 'version', 'ent
 
 export const REQUIRES_ALLOWED = ['tags', 'actions', 'workflows', 'min_board_pack'] as const;
 /**
- * `permissions` 的封闭字段表。
+ * The closed field table of `permissions`.
  *
- * → **`workflows` 在这里**（2026-11-15 加 ✓）：
- * 契约 §九 规则 3 说「requires ⊆ permissions」——
- * 而卡片声明 `requires.workflows` 就**必须**有一个 permissions 字段覆盖它 ✓，
- * 否则规则 3 无从判定 ✓（评审 35 的 V2-C2 ✓）。
+ * → **`workflows` lives here** (added 2026-11-15 ✓):
+ * rule 3 of contract §9 says "requires ⊆ permissions" — and a card that
+ * declares `requires.workflows` **must** have a permissions field that covers
+ * it ✓, otherwise rule 3 cannot be judged ✓ (review 35, V2-C2 ✓).
  *
- * → **它为什么不是 `permissions.write`** ✓：
- * `permissions.write` 装的是**板型包里的动作 id** ✓，
- * 而规则 5/6 会对它做「在板型包里存在吗」「不许通配符」的检查 ✓——
- * **流程 id 不是动作 id** ✓ → 混进去会让那两条规则误判 ✓。
+ * → **Why it is not `permissions.write`** ✓:
+ * `permissions.write` holds the **action ids of a board pack** ✓, and rules
+ * 5/6 check it for "does it exist in the board pack" and "no wildcards" ✓ —
+ * **a workflow id is not an action id** ✓ → mixing them in would make those
+ * two rules misjudge ✓.
  */
 export const PERMISSIONS_ALLOWED = ['read', 'write', 'workflows'] as const;
 export const PERMISSIONS_REQUIRED = ['read', 'write'] as const;
@@ -86,7 +89,7 @@ export const ACTION_ALLOWED = ['id', 'label', 'target', 'params'] as const;
 export const ACTION_REQUIRED = ['id', 'label'] as const;
 export const PARAM_ALLOWED = ['type', 'min', 'max', 'maxLength', 'pattern', 'values', 'default'] as const;
 
-/** 参数类型的封闭取值（契约 §2.4 / §九 规则 13） */
+/** The closed values of a parameter type (contract §2.4 / §9 rule 13) */
 export const PARAM_TYPES = ['integer', 'number', 'string', 'boolean', 'enum'] as const;
 
 interface Ctx {
@@ -99,7 +102,7 @@ function fail(ctx: Ctx, message: string, detail?: Record<string, unknown>): neve
   });
 }
 
-/** 未知字段必须报错（契约规则 10 / 11 / 13 的前半段） */
+/** An unknown field must be an error (the first half of contract rules 10 / 11 / 13) */
 function checkKeys(
   ctx: Ctx,
   obj: Record<string, unknown>,
@@ -152,7 +155,7 @@ function asStringArray(ctx: Ctx, value: unknown, path: string): string[] {
   return value.map((v, i) => asString(ctx, v, `${path}[${i}]`));
 }
 
-/** 解析一个参数的 schema（契约 §九 规则 13） */
+/** Parses the schema of one parameter (contract §9 rule 13) */
 function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   const obj = asObject(ctx, raw, path);
   checkKeys(ctx, obj, path, PARAM_ALLOWED);
@@ -175,7 +178,7 @@ function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   if (obj['default'] !== undefined) param.default = obj['default'];
 
   if (type === 'string') {
-    // **没有上限的字符串参数就是注入面**（契约 §2.4）
+    // **A string parameter without an upper bound is an injection surface** (contract §2.4)
     if (param.maxLength === undefined) {
       fail(ctx, `${path} is a string, it must declare maxLength (a string parameter without an upper bound is an injection surface)`, {
         path,
@@ -197,7 +200,7 @@ function parseParam(ctx: Ctx, raw: unknown, path: string): CardParamSchema {
   return param;
 }
 
-/** 解析一个动作定义（契约 §五） */
+/** Parses one action definition (contract §5) */
 function parseAction(ctx: Ctx, raw: unknown, path: string): CardActionDef {
   const obj = asObject(ctx, raw, path);
   checkKeys(ctx, obj, path, ACTION_ALLOWED);
@@ -221,10 +224,11 @@ function parseAction(ctx: Ctx, raw: unknown, path: string): CardActionDef {
 }
 
 /**
- * 解析一张卡片的 manifest。
+ * Parses the manifest of a card.
  *
- * @param source 卡片目录名（出现在错误信息里）
- * @throws 未知字段 / 缺必填字段 / 类型不对 —— **都抛错，不静默忽略**
+ * @param source the name of the card directory (it appears in the error message)
+ * @throws an unknown field / a missing mandatory field / a wrong type — **all
+ *         of them throw, nothing is ignored silently**
  */
 export function parseManifest(raw: unknown, source: string): CardManifest {
   const ctx: Ctx = { source };

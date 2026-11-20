@@ -4,31 +4,34 @@ import { join } from 'node:path';
 import type { CardRoot } from './roots';
 
 /**
- * 卡片目录的监听（热插拔）。
+ * Watching the card directories (hot plug).
  *
- * ── 为什么不用 chokidar ──
+ * ── Why not chokidar ──
  *
- * 一个依赖换来「递归监听 + 去抖 + 跨平台」，而我们只需要
- * 「卡片根目录变了 + 每个卡片目录变了」这两件事。
- * **`fs.watch` 够用**（Electron 跑在 Node 上，它有 `recursive` 选项，
- * 但**不是所有平台都支持**——所以只监听一层 + 每个卡片目录各挂一个）。
+ * A dependency would buy "recursive watching + debounce + cross-platform",
+ * while all that is needed here is "the card root changed + each card
+ * directory changed".
+ * **`fs.watch` is enough** (Electron runs on Node, which has a `recursive`
+ * option, but **not every platform supports it** — so watch one level and
+ * attach one watcher per card directory).
  *
- * ── 去抖 ──
+ * ── Debounce ──
  *
- * 一次保存可能触发**好几个**事件（写文件、rename、权限变更）。
- * 不去抖 → 一次保存刷新三遍 → 卡片闪三下。
+ * A single save may fire **several** events (file write, rename, permission
+ * change). Without debouncing → one save refreshes three times → the card
+ * flickers three times.
  */
 export function watchCardRoots(roots: CardRoot[], onChange: () => void): () => void {
-  /** 已挂上的监听（按目录记——同一个目录不挂两次） */
+  /** The watchers already attached (per directory — the same directory is never watched twice) */
   const watchers = new Map<string, FSWatcher>();
   const pending = new Set<NodeJS.Timeout>();
 
   const fire = (): void => {
-    // **去抖 200ms**：一次保存只刷新一遍
+    // **Debounced by 200ms**: one save refreshes once
     const timer = setTimeout(() => {
       pending.delete(timer);
-      // **每次都重新挂一遍**：新装进来的卡目录这时才存在
-      // （不重新挂 → 它的文件改了没人知道 →「改文件即生效」对它无效）
+      // **Everything is attached again on every change**: the directory of a newly installed card only exists by then
+      // (without re-attaching → a change in its files goes unnoticed → "edit a file and it takes effect" does not hold for it)
       ensureWatching();
       onChange();
     }, 200);
@@ -41,39 +44,41 @@ export function watchCardRoots(roots: CardRoot[], onChange: () => void): () => v
     try {
       watchers.set(dir, watch(dir, fire));
     } catch {
-      // 目录没了 / 不许看 → 不监听（**不是错误**：目录本来就可能没有）
+      // The directory is gone / not accessible → do not watch it (**not an error**: the directory may legitimately not exist)
     }
   };
 
   /**
-   * 把该监听的目录都挂上。
-   *
-   * ── 为什么每次变化后都要重来一遍 ──
-   *
-   * `fs.watch` **不递归** → 卡片目录**里面**的文件变了，根目录收不到事件。
-   * 所以每个卡片目录都要各挂一个；而**启动之后才装进来的卡**，
-   * 它的目录在启动时还不存在 → 只能在它出现之后（根目录的事件）再挂 ✓。
-   */
+     * Attaches every directory that needs watching.
+     *
+     * ── Why everything is redone after every change ──
+     *
+     * `fs.watch` is **not recursive** → a file **inside** a card directory does
+     * not produce an event on the root. So every card directory needs a watcher
+     * of its own; and a card **installed after startup** does not have its
+     * directory yet → it can only be watched once it appears (an event on the
+     * root) ✓.
+     */
   const ensureWatching = (): void => {
     for (const root of roots) {
-      // **用户根目录：没有就建出来**
+      // **The user root is created if it is missing**
       //
-      // 第一次跑应用时它还不存在 → 不建 → 不监听 →
-      // 用户把卡放进去 → **应用永远不知道** → 卡片区永远是空的（除非重启）。
-      // 而「卡片即文件」的第一步就是「有个地方放卡」——
-      // 这个地方**应该由应用准备好**，不该让用户自己去建。
+      // On the first run of the application it does not exist yet → not created → not watched →
+      // the user drops a card in → **the application never learns of it** → the card area stays empty (unless it is restarted).
+      // And the first step of "cards are files" is "there is a place to put the cards" —
+      // that place **should be prepared by the application**, the user should not have to create it.
       //
-      // **内置根不建**：那是应用安装目录，**只读**（装在 Program Files 里）。
+      // **The built-in root is not created**: that is the installation directory, and it is **read-only** (it lives in Program Files).
       if (root.kind === 'user') {
         try {
           mkdirSync(root.dir, { recursive: true });
         } catch {
-          // 建不了（权限）→ 不建，监听也挂不上（不是错误）
+          // It cannot be created (permissions) → not created, and no watcher can be attached either (not an error)
         }
       }
       watchDir(root.dir);
       if (!existsSync(root.dir)) continue;
-      // 每个已装的卡片目录也各挂一个（卡片目录里改文件也算热更新）
+      // Every installed card directory gets a watcher of its own as well (a change inside a card directory counts as a hot update)
       for (const entry of readdirSync(root.dir, { withFileTypes: true })) {
         if (entry.isDirectory()) watchDir(join(root.dir, entry.name));
       }
@@ -89,7 +94,7 @@ export function watchCardRoots(roots: CardRoot[], onChange: () => void): () => v
       try {
         watcher.close();
       } catch {
-        // 已经关了
+        // Already closed
       }
     }
     watchers.clear();

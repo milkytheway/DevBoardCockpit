@@ -3,45 +3,49 @@ import { permissionCovers } from './permissions';
 import { isCoreTag } from '../tags/vocabulary';
 
 /**
- * 卡片 manifest 的校验（契约 `spec/03` §九 的 **13 条**）。
+ * The validation of a card manifest (the **13 rules** of contract `spec/03` §9).
  *
- * ── 报告里必须带规则号 ──
+ * ── The report has to carry the rule number ──
  *
- * 「这张卡不合法」没用；「**规则 5**：这个动作当前板型包里没有」才有用——
- * 人能照着改，agent 能照着改。
+ * "This card is invalid" is useless; "**rule 5**: this action is not in the
+ * current board pack" is useful — a person can fix it, an agent can fix it.
  *
- * ── 「未验证」≠「不合法」 ──
+ * ── "Not verified" is not "invalid" ──
  *
- * 规则 5 在**连不上板**的时候没法查——那时候**不是**这张卡有问题，
- * 是**我们还没查**。所以离线时它进 `warnings`（琥珀），不进 `errors`（红）。
+ * Rule 5 cannot be checked **while the board is unreachable** — at that moment
+ * it is **not** this card that has a problem, it is **that we have not checked
+ * yet**. So while offline it goes into `warnings` (amber), not into `errors`
+ * (red).
  *
- * ── 规则 10 / 11 / 13 为什么这里看不到 ──
+ * ── Why rules 10 / 11 / 13 are not visible here ──
  *
- * 这三条是**结构性的**（未知字段、卡片不许声明 `danger`、参数类型封闭），
- * 已经被**解析器**挡住了（`manifest.ts` 的封闭 schema）——
- * 解析不过的东西**根本到不了这里**。
- * 本文件仍然**复查** 11 与 13（手写的 manifest 对象也能被挡住）；
- * 规则 10 只有解析器能查（解析后字段已经被丢了）。
+ * Those three are **structural** (an unknown field, a card may not declare
+ * `danger`, the parameter types are closed) and are already blocked by the
+ * **parser** (the closed schema of `manifest.ts`) — anything that does not
+ * parse **never reaches this file**.
+ * This file still **re-checks** 11 and 13 (a hand-written manifest object is
+ * blocked as well); only the parser can check rule 10 (after the parsing the
+ * field is already gone).
  */
 
 export interface CardIssue {
   severity: 'error' | 'warning';
-  /** 契约 §九 的规则号 */
+  /** The rule numbers of contract §9 */
   rule: number;
   path: string;
   message: string;
 }
 
 export interface ValidateCardContext {
-  /** 当前板型包提供的 tag。`null` = **离线**（连不上板） */
+  /** The tags the current board pack provides. `null` = **offline** (the board is unreachable) */
   availableTags: string[] | null;
-  /** 当前板型包声明的动作 id。`null` = **离线** */
+  /** The action ids the current board pack declares. `null` = **offline** */
   availableActions: string[] | null;
-  /** 宿主里已声明的流程 id（规则 14 ✓）。`null` = **离线**（查不到 ✓） */
+  /** The workflow ids declared in the host (rule 14 ✓). `null` = **offline** (it cannot be looked up ✓) */
   availableWorkflows: string[] | null;
-  /** 已经装着的卡片 id（规则 2） */
+  /** The ids of the cards that are already installed (rule 2) */
   installedCardIds: string[];
-  /** 卡片目录里有没有这个相对路径（规则 9） */
+  /** Does this relative path exist in the card directory (rule 9) */
   fileExists: (relPath: string) => boolean;
 }
 
@@ -56,7 +60,7 @@ export interface ValidateCardResult {
   };
 }
 
-/** 已知的契约版本 */
+/** The known contract versions */
 const KNOWN_API_VERSIONS = ['devboard/v1'] as const;
 
 /** The grid a card may declare (12 columns). */
@@ -75,18 +79,19 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     warnings.push({ severity: 'warning', rule, path, message });
   };
 
-  /* ── 规则 1：apiVersion ── */
+  /* ── Rule 1: apiVersion ── */
   if (!(KNOWN_API_VERSIONS as readonly string[]).includes(manifest.apiVersion)) {
     error(1, 'apiVersion', `unknown contract version "${manifest.apiVersion}"`);
   }
 
-  /* ── 规则 2：id 全局唯一 ── */
+  /* ── Rule 2: the id is globally unique ── */
   if (ctx.installedCardIds.includes(manifest.id)) {
     error(2, 'id', `a card with the id "${manifest.id}" is already installed`);
   }
 
-  /* ── 规则 3：requires ⊆ permissions（按模式覆盖判定，契约 §2.2）──
-     **逐项报**：只说「有一条没被覆盖」，人得自己去找是哪一条。 */
+  /* ── Rule 3: requires ⊆ permissions (judged by pattern coverage, contract §2.2) ──
+       **Reported per entry**: saying only "one of them is not covered" leaves the
+       reader to find out which one. */
   const requires = manifest.requires ?? {};
   const perms = manifest.permissions;
   for (const tag of requires.tags ?? []) {
@@ -99,24 +104,26 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
       error(3, 'requires.actions', `action "${actionId}" does not appear in permissions.write`);
     }
   }
-  // **流程 id 同理**（评审 35 的 V2-C2 ✓）：
-  // 声明了 `requires.workflows` 却没在 `permissions.workflows` 里覆盖 → **报错** ✓
-  // （否则规则 3 有个例外口子 = 「愿望可以超出授权」✗）
+  // **The same for workflow ids** (review 35, V2-C2 ✓):
+  // `requires.workflows` is declared but not covered in `permissions.workflows` → **an error** ✓
+  // (otherwise rule 3 has an exception = "a wish may exceed the authorisation" ✗)
   for (const workflowId of requires.workflows ?? []) {
     if (!(perms.workflows ?? []).includes(workflowId)) {
       error(3, 'requires.workflows', `workflow "${workflowId}" does not appear in permissions.workflows`);
     }
   }
 
-  /* ── 规则 4：读权限里的 tag 必须在核心词表或 custom.* 下 ── */
+  /* ── Rule 4: a tag in the read permissions has to be under the core vocabulary or under `custom.*` ── */
   for (const tag of perms.read) {
     if (!isCoreTag(tag) && !tag.startsWith('custom.')) {
       error(4, 'permissions.read', `"${tag}" is neither in the core vocabulary nor under custom.*`);
     }
   }
 
-  /* ── 规则 6：写权限不许通配符（契约 §2.3）──
-     先查这条：通配的动作 id 报出来之后，规则 5 就别再报一遍「板型包里没有它」── */
+  /* ── Rule 6: no wildcards in the write permissions (contract §2.3) ──
+       This one is checked first: once the wildcard action id has been reported,
+       rule 5 should not report "the board pack does not have it" a second
+       time ── */
   const writeIds: string[] = [];
   for (const id of perms.write) {
     if (id.includes('*')) {
@@ -126,7 +133,7 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── 规则 5：写权限里的动作，当前板型包要有 ── */
+  /* ── Rule 5: an action in the write permissions has to be in the current board pack ── */
   for (const id of writeIds) {
     if (ctx.availableActions === null) {
       warn(5, 'permissions.write', `action "${id}" is **unverified** (the board cannot be reached, so the board pack cannot be confirmed to have it)`);
@@ -135,10 +142,12 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── 规则 14：流程权限只许精确 id，且**必须是宿主里已声明的流程** ──
-     （契约 §九 的最后一条 ✓ —— 计划 7 补上 ✓）
-     → 「通配」与写权限同款理由 ✓（§2.3 ✓）：写侧的通配会让授权范围变大 ✓
-     → 「宿主里没有」与规则 5 同款处理 ✓：**离线时是警告** ✓（不是「不合法」✓） */
+  /* ── Rule 14: a workflow permission only allows an exact id, and it **has to be a workflow declared in the host** ──
+       (the last rule of contract §9 ✓ — added in plan 7 ✓)
+       → "no wildcards" for the same reason as the write permissions ✓ (§2.3 ✓):
+       a wildcard on the write side widens the scope of the authorisation ✓
+       → "not in the host" is handled like rule 5 ✓: **a warning while offline** ✓
+       (not "invalid" ✓) */
   const workflowIds: string[] = [];
   for (const id of perms.workflows ?? []) {
     if (id.includes('*')) {
@@ -155,10 +164,10 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── 规则 7 / 12：动作与写权限对得上 ── */
+  /* ── Rules 7 / 12: the actions and the write permissions match ── */
   for (const [index, action] of (manifest.actions ?? []).entries()) {
     if (action.target === undefined) {
-      // 视图内动作：它**不碰板子**，所以不该出现在写权限里
+      // An in-view action: it **does not touch the board**, so it must not appear in the write permissions
       if (perms.write.includes(action.id)) {
         error(12, `actions[${index}].id`, `the view-local action "${action.id}" must not appear in permissions.write`);
       }
@@ -167,7 +176,7 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── 规则 8：布局尺寸 ── */
+  /* ── Rule 8: the size of the layout ── */
   const layout = manifest.layout;
   if (layout !== undefined) {
     const w = layout.w ?? 3;
@@ -182,12 +191,12 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── 规则 9：entry 文件存在 ── */
+  /* ── Rule 9: the entry file exists ── */
   if (!ctx.fileExists(manifest.entry)) {
     error(9, 'entry', `the entry file "${manifest.entry}" does not exist`);
   }
 
-  /* ── 规则 11 / 13 的复查（结构性的两条，解析器已经挡过一道）── */
+  /* ── The re-check of rules 11 / 13 (the two structural ones, the parser has already blocked them once) ── */
   for (const [index, action] of (manifest.actions ?? []).entries()) {
     const raw = action as unknown as Record<string, unknown>;
     for (const forbidden of ['danger', 'readback']) {
@@ -207,7 +216,7 @@ export function validateCard(manifest: CardManifest, ctx: ValidateCardContext): 
     }
   }
 
-  /* ── resolved：解析出来的清单 ── */
+  /* ── resolved: the list that came out of the parsing ── */
   const resolvedLayout =
     layout === undefined
       ? null

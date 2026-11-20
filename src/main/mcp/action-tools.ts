@@ -4,109 +4,123 @@ import type { ActionDef } from '../tags/schema';
 import type { GrantedActions } from '../actions/authorization';
 
 /**
- * **agent 的动作执行**（契约 `spec/04` §2.4 / §2.4.1 ✓ · ADR-D40 ✓）。
+ * The **action execution of the agent** (contract `spec/04` §2.4 / §2.4.1 ✓ ·
+ * ADR-D40 ✓).
  *
- * ── agent 的授权与卡片**不是同一套** ✓ ──
+ * ── The authorisation of the agent and the card are **not the same set** ✓ ──
  *
- * | | 卡片 | agent |
+ * | | card | agent |
  * |---|---|---|
- * | 授权集 | **当前板型包声明的全部动作** ✓（**卡片与 agent 同一套** ✓ —— ADR-D46 ✓） | **当前板型包声明的全部动作** ✓ |
- * | 参数域 | **动作自己的 `guard`** ✓（**没有人授过的更窄域** ✓ —— ADR-D46 ✓） | **动作自己的 `guard`** ✓ |
+ * | authorisation set | **all the actions declared by the current board pack** ✓ (**the card and the agent use the same one** ✓ — ADR-D46 ✓) | **all the actions declared by the current board pack** ✓ |
+ * | range of the parameters | **the `guard` of the action itself** ✓ (**there is no narrower range that was authorised** ✓ — ADR-D46 ✓) | **the `guard` of the action itself** ✓ |
  *
- * → 契约 §2.4.1：「agent 不是卡片，它有一套自己的授权」✓
- *   「agent 可以直接调任何动作，**不需要先装一张卡**」✓。
+ * → Contract §2.4.1: "the agent is not a card, it has an authorisation of its
+ *   own" ✓
+ *   "the agent can call any action directly, **without installing a card
+ *   first**" ✓.
  *
- * → **`destructive` 不再逐次问人** ✓（**2026-11-16** ✓ · ADR-D48 ✓）→
- *   **闸在设置里的统一权限区** ✓（ADR-D47 ✓ —— **那类动作默认关** ✓）。
+ * → **`destructive` is no longer approved one by one** ✓ (**2026-11-16** ✓ ·
+ *   ADR-D48 ✓) →
+ *   **the gate is the unified permission area of the settings** ✓ (ADR-D47 ✓ —
+ *   **that kind of action is off by default** ✓).
  *
- * ── `dry_run` 的位置（**契约 §2.4 的行为表** ✓）──
+ * ── Where `dry_run` stands (**the behaviour table of contract §2.4** ✓) ──
  *
  * ```
- * 1. 查存在性 → not_found
- * 2. 查授权   → denied
- * 3. 校验参数 → invalid_params
- * 4. dry_run  → 返回将执行的命令（**不执行、不回读、不写审计** ✓）
- * 7. 执行 → 8. 回读 → 9. 审计 ✓
+ * 1. check the existence → not_found
+ * 2. check the authorisation → denied
+ * 3. validate the parameters → invalid_params
+ * 4. dry_run  → return the command that would be run (**it does not execute, does not read back and does not write the audit** ✓)
+ * 7. execute → 8. read back → 9. audit ✓
  * ```
  *
- * → **第 4 步在第 5/6 步之前** ✓ —— 否则 agent 永远拿不到 destructive 动作的预览 ✗。
+ * → **Step 4 comes before steps 5/6** ✓ — otherwise the agent would never get
+ *   a preview of a destructive action ✗.
  */
 
 /**
- * 执行器依赖（**与卡片侧同一个执行器** ✓ —— 语义天然一致 ✓）。
+ * The dependencies of the executor (**the same executor as the card side** ✓ —
+ * the semantics are consistent by nature ✓).
  *
- * → **`packId` 保持执行器要的形状**（**字符串** ✓）——
- *   **签发与消费绑的必须是同一个值** ✓（契约 §2.4.1 的绑定表 ✓）→
- *   两边不一致 → **凭据永远消费不掉** ✗（那是**最隐蔽的一种坏** ✓ —— 症状是「人点了也没用」✓）。
+ * → **`packId` keeps the shape the executor wants** (**a string** ✓) —
+ *   **the issuing side and the consuming side have to be bound to the same
+ *   value** ✓ (the binding table of contract §2.4.1 ✓) →
+ *   when the two differ → **the credential can never be consumed** ✗ (that is
+ *   **the most insidious kind of defect** ✓ — the symptom is "the person
+ *   clicked and nothing happened" ✓).
  */
 export interface AgentActionDeps extends Omit<ActionExecutorDeps, 'granted' | 'actor'> {
-  /** 当前板型包里声明的动作（**agent 的授权集就是它们** ✓） */
+  /** The actions declared in the current board pack (**the authorisation set of the agent is exactly those** ✓) */
   actions: () => ActionDef[];
   /**
-   * **当前板型包 id**（**凭据要绑它** ✓）。
-   *
-   * → **必须与执行器用的那个是同一个值** ✓（**同一个来源** ✓）✓
-   * → 宿主侧接线时**从同一处取** ✓。
-   */
+     * The **id of the current board pack** (**the credential is bound to it** ✓).
+     *
+     * → **It has to be the same value as the one the executor uses** ✓ (**the
+     *   same source** ✓) ✓
+     * → **It is taken from the same place** when the host is wired up ✓.
+     */
   packIdOf: () => string;
   /**
-   * **当前运行时那块板的 `device_key`** ✓（**从 `ActionExecutorDeps` 继承** ✓）。
-   *
-   * → **`execute_action` 的设备检查靠它** ✓（契约 `spec/04` §2.4 ✓）
-   * → **凭据也绑它** ✓（§2.4.1 第六项 ✓）。
-   */
+     * The **`device_key` of the board of the current runtime** ✓ (**inherited
+     * from `ActionExecutorDeps`** ✓).
+     *
+     * → **The device check of `execute_action` relies on it** ✓ (contract
+     *   `spec/04` §2.4 ✓)
+     * → **The credential is bound to it as well** ✓ (§2.4.1, sixth item ✓).
+     */
   deviceKey: () => string;
 }
 
-/** agent 的授权集（**包里的全部动作** ✓ —— 契约 §2.4.1 ✓） */
+/** The authorisation set of the agent (**all the actions of the pack** ✓ — contract §2.4.1 ✓) */
 export function agentGrants(actions: ActionDef[]): GrantedActions {
   const granted: GrantedActions['actions'] = {};
   for (const action of actions) {
-    // **`undefined` = 批准了这个动作但**没缩小参数域** ✓
-    // → 参数域回落到**动作自己的 `guard`** ✓（契约 §2.4.1 细则 2 ✓）
+    // **`undefined` = this action was approved but its range of parameters was **not narrowed** ✓
+    // → The range of the parameters falls back to **the `guard` of the action itself** ✓ (contract §2.4.1, detail 2 ✓)
     granted[action.id] = undefined;
   }
   return { actions: granted };
 }
 
-/** 动作不存在 → `not_found` ✓ */
+/** The action does not exist → `not_found` ✓ */
 export interface ActionNotFound {
   ok: false;
   reason: 'not_found';
   detail: string;
 }
 
-/** 执行的结果（**契约 §2.4 的形状** ✓） */
+/** The result of the execution (**the shape of contract §2.4** ✓) */
 export interface AgentActionResult {
   ok: boolean;
-  /** 回读到的真实状态 */
+  /** The real state that was read back */
   readback?: { value?: unknown; unit?: string; status?: string; at: number };
-  /** 板子真的进入目标状态了吗 ✓（`verified: false` ≠ 失败 ✓ —— 契约 §2.4 ✓） */
+  /** Did the board really enter the target state ✓ (`verified: false` is not a failure ✓ — contract §2.4 ✓) */
   verified?: boolean;
-  /** 追责单位 ✓ */
+  /** The unit of accountability ✓ */
   audit_id?: string;
-  /** 失败原因（**封闭表** ✓ —— 契约 §四 ✓） */
+  /** The reason of the failure (**a closed table** ✓ — contract §4 ✓) */
   reason?: string;
-  /** 要人点头时给的凭据 ✓ */
-  /** 参数超出了 guard 域 ✓（**标志位，不是 reason 码** ✓） */
+  /** The credential that is given when a person has to approve ✓ */
+  /** The parameters are outside the range of the guard ✓ (**a flag, not a reason code** ✓) */
   guard_exceeded?: boolean;
-  /** 期望值 / 实际值 ✓ */
+  /** The expected value / the actual value ✓ */
   expected?: unknown;
   actual?: unknown;
-  /** 给人看的一句话 ✓ */
+  /** One sentence meant for a human ✓ */
   detail?: string;
-  /** dry-run 的形状 ✓ */
+  /** The shape of the dry run ✓ */
   dry_run?: boolean;
-  /** dry-run 要返回的最终命令 ✓（**编码后的** ✓ —— 不是模板 ✓） */
+  /** The final command the dry run has to return ✓ (**the encoded one** ✓ — not the template ✓) */
   command?: string;
-  /** 回读要读哪个 tag ✓ */
+  /** The tag the readback has to read ✓ */
   readback_tag?: string | null;
 }
 
 /**
- * **执行一个动作**（agent 侧）✓。
+ * **Executes an action** (agent side) ✓.
  *
- * → **薄封装** ✓：复用**同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）。
+ * → **A thin wrapper** ✓: it reuses **the same executor** ✓ (the card side
+ *   uses the same one ✓ — there is only one chain of seven steps ✓).
  */
 export async function executeAction(
   deps: AgentActionDeps,
@@ -114,24 +128,24 @@ export async function executeAction(
   params: Record<string, unknown>,
   opts: { dryRun?: boolean; deviceKey?: string } = {},
 ): Promise<AgentActionResult> {
-  // ── **第 0 步 · 设备对不对** ✓（契约 `spec/04` §2.4 ✓ · ADR-D43 ✓）──
+  // ── **Step 0 · is it the right device** ✓ (contract `spec/04` §2.4 ✓ · ADR-D43 ✓) ──
   //
-  // → **给了 `device_key` → 它必须是当前运行时那条连接的 `device_key`** ✓
-  // → 否则 **`not_found`** ✓（detail 写清「没有这个设备：X」✓）
-  // → **绝不允许「忽略 `device_key` 然后打当前那块」** ✓
-  //   （**那是「静默地做另一件事」** ✗ —— agent 以为动了 b、实际动了 a ✗）
+  // → **When a `device_key` is given it has to be the `device_key` of the connection of the current runtime** ✓
+  // → otherwise **`not_found`** ✓ (the detail says "no such device: X" ✓)
+  // → **"Ignore the `device_key` and hit the current board" is never allowed** ✓
+  //   (**that is "silently doing something else"** ✗ — the agent thinks it moved b while it moved a ✗)
   //
-  // → **它在第 1 步之前** ✓ —— **设备不对**比**动作不存在**更基本 ✓
+  // → **It comes before step 1** ✓ — **the wrong device** is more fundamental than **the action not existing** ✓
   const deviceError = checkDevice(deps, opts.deviceKey);
   if (deviceError !== undefined) return deviceError;
 
   const action = deps.actions().find((a) => a.id === actionId);
-  // **① 存在性先查** ✓（契约 §2.4 ✓ —— **顺序有讲究** ✓）
+  // **① The existence is checked first** ✓ (contract §2.4 ✓ — **the order matters** ✓)
   if (action === undefined) {
     return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };
   }
 
-  // **③ 参数校验 + 编码** ✓（**dry-run 也要过这一步** ✓ —— 不然给的不是「将要执行的」✓）
+  // **③ Validation of the parameters + encoding** ✓ (**the dry run has to pass this step as well** ✓ — otherwise what it returns is not "what will be run" ✓)
   let command: string;
   try {
     command = buildCommand(action.command, action.params ?? {}, params).command;
@@ -143,21 +157,21 @@ export async function executeAction(
     };
   }
 
-  // **④ dry_run** ✓ —— **在执行之前** ✓（契约 §2.4 的行为表 ✓）
+  // **④ dry_run** ✓ — **before the execution** ✓ (the behaviour table of contract §2.4 ✓)
   if (opts.dryRun === true) {
     return {
       ok: true,
       dry_run: true,
       command,
       readback_tag: readbackTagOf(action),
-      // **不执行、不回读、不写审计** ✓（**不是一次尝试** ✓）
+      // **It does not execute, does not read back and does not write the audit** ✓ (**it is not an attempt** ✓)
     };
   }
 
-  // **走同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）
+  // **It goes through the same executor** ✓ (the card side uses the same one ✓ — there is only one chain of seven steps ✓)
   const outcome: ActionOutcome = await invokeAction(action, params, {
     ...deps,
-    // **agent 的授权集 = 包里的全部动作** ✓（契约 §2.4.1 ✓）
+    // **The authorisation set of the agent = all the actions of the pack** ✓ (contract §2.4.1 ✓)
     granted: () => agentGrants(deps.actions()),
     actor: 'agent',
   });
@@ -166,11 +180,12 @@ export async function executeAction(
 }
 
 /**
- * **`device_key` 对不对** ✓（契约 `spec/04` §2.4 ✓）。
+ * **Is the `device_key` right** ✓ (contract `spec/04` §2.4 ✓).
  *
- * → **不给就放过** ✓（**当前运行时那块板** ✓ —— 从前的行为 ✓）
- * → **给了就必须对得上** ✓ → 否则 **`not_found`** ✓
- * → **绝不静默地打当前那块** ✓。
+ * → **Leaving it out lets it pass** ✓ (**the board of the current runtime** ✓
+ *   — the behaviour of before ✓)
+ * → **When it is given it has to match** ✓ → otherwise **`not_found`** ✓
+ * → **It never silently hits the current board** ✓.
  */
 function checkDevice(
   deps: AgentActionDeps,
@@ -186,7 +201,7 @@ function checkDevice(
   };
 }
 
-/** **把执行器的结果投影成契约的形状** ✓ */
+/** **Projects the result of the executor into the shape of the contract** ✓ */
 function projectOutcome(outcome: ActionOutcome): AgentActionResult {
   const result: AgentActionResult = { ok: outcome.ok };
   if (outcome.readback !== undefined) {
@@ -197,7 +212,7 @@ function projectOutcome(outcome: ActionOutcome): AgentActionResult {
       at: outcome.readback.at,
     };
   }
-  // **`verified: false` 是「已执行但没回读」** ✓ —— **不是失败** ✓（契约 §2.4 ✓）
+  // **`verified: false` means "it was executed but not read back"** ✓ — **not a failure** ✓ (contract §2.4 ✓)
   result.verified = outcome.verified;
   if (outcome.audit_id !== undefined) result.audit_id = outcome.audit_id;
   if (outcome.reason !== undefined) result.reason = outcome.reason;
@@ -207,7 +222,7 @@ function projectOutcome(outcome: ActionOutcome): AgentActionResult {
   return result;
 }
 
-/** 这个动作的回读要读哪个 tag（**不是 tag 形式就是 `null`** ✓） */
+/** Which tag the readback of this action has to read (**`null` when it is not in the form of a tag** ✓) */
 function readbackTagOf(action: ActionDef): string | null {
   const readback = action.readback;
   if (readback === undefined) return null;

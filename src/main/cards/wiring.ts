@@ -24,13 +24,15 @@ import { join, resolve, sep } from 'node:path';
 import { mimeFor } from './paths';
 
 /**
- * 卡片宿主的**接线**：把注册表、会话、协议、存储、日志接成一坨。
+ * The **wiring** of the card host: the registry, the session, the protocol, the
+ * storage and the log are connected into one thing.
  *
- * ── 为什么单独一个模块 ──
+ * ── Why it is a module of its own ──
  *
- * `main/index.ts` 是 Electron 的入口（窗口、IPC、标题栏），
- * **它不该长成一张卡片接线图**。这里把「卡片怎么活起来」收在一处，
- * 入口只调三行：
+ * `main/index.ts` is the entry point of Electron (window, IPC, title bar),
+ * **it must not grow into a wiring diagram of the cards**. Here "how a card
+ * comes alive" is collected in one place, and the entry point only calls three
+ * lines:
  *
  * ```ts
  * const cards = createCardWiring({ … });
@@ -39,53 +41,58 @@ import { mimeFor } from './paths';
  * ```
  */
 export interface CardWiringDeps {
-  /** 卡片目录的两个根 */
+  /** The two roots of the card directories */
   roots: CardRoot[];
-  /** 读数的来源 */
+  /** The source of the readings */
   runtime: RuntimeReader;
-  /** 推送通道（main → 页面 → 卡片） */
+  /** The push channel (main → page → card) */
   broadcast: (channel: string, ...args: unknown[]) => void;
-  /** 当前连接（v1 只有一条） */
+  /** The current connection (in v1 there is only one) */
   currentConnectionId: () => string | null;
-  /** 当前连接的身份（给 `capabilities()` 用） */
+  /** The identity of the current connection (for `capabilities()`) */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
-  /** 这张卡的权限集（manifest + 已授权） */
+  /** The permission set of this card (manifest + authorised) */
   permsFor: (cardId: string) => CardPermissions;
   /**
-   * 宿主里已声明的流程 id（规则 14 ✓）。
-   *
-   * → `null` = **离线**（查不到 ✓）→ 规则 14 降级成**警告** ✓。
-   */
+     * The workflow ids declared in the host (rule 14 ✓).
+     *
+     * → `null` = **offline** (it cannot be looked up ✓) → rule 14 is degraded
+     *   into a **warning** ✓.
+     */
   availableWorkflows?: () => string[] | null;
   /**
-   * 当前板型包里的**动作 id**（规则 5 ✓）。
-   *
-   * → `null` = **离线**（查不到 ✓）→ 规则 5 降级成**警告** ✓
-   * → **不是 `null` 就给真表** ✓ —— **与 MCP 的 `validate_card` 同口径** ✓
-   *   （两条路给的答案必须一样 ✓ —— 否则「同一个产品两个答案」✗）
-   */
+     * The **action ids** of the current board pack (rule 5 ✓).
+     *
+     * → `null` = **offline** (it cannot be looked up ✓) → rule 5 is degraded into
+     *   a **warning** ✓
+     * → **When it is not `null` the real table is given** ✓ — **the same reading
+     *   as the MCP `validate_card`** ✓ (both routes have to give the same
+     *   answer ✓ — otherwise "one product, two answers" ✗).
+     */
   availableActions?: () => string[] | null;
   /**
-   * 每张卡的写侧（动作执行器，M6）。
-   *
-   * 做成**工厂**：执行器要拿着**这张卡的授权**，而授权是每卡一份的。
-   */
+     * The write side of each card (the action executor, M6).
+     *
+     * Made a **factory**: the executor has to hold the **authorisation of this
+     * card**, and the authorisation is one per card.
+     */
   actionsFor?: (cardId: string) => CardServices['actions'];
   /**
-   * 每张卡的**流程侧**（计划 7 ✓）。
-   *
-   * 做成**工厂**：流程的授权是每卡一份的 ✓（与 `actionsFor` 同形 ✓）。
-   */
+     * The **workflow side** of each card (plan 7 ✓).
+     *
+     * Made a **factory**: the authorisation of a workflow is one per card ✓ (the
+     * same shape as `actionsFor` ✓).
+     */
   workflowsFor?: (cardId: string) => CardServices['workflows'];
-  /** 存储的根目录 */
+  /** The root directory of the storage */
   storageDir: string;
-  /** 布局文件（**宿主记的账**：哪张卡在哪个格子里） */
+  /** The layout file (**the book of the host**: which card sits in which cell) */
   layoutFile: string;
-  /** 外壳的构建产物目录（`cockpit://app/` 从这里伺服） */
+  /** The build output directory of the shell (`cockpit://app/` is served from here) */
   shellDir?: string;
-  /** 外壳的 CSP（生产用；**开发时走 Vite，不用它**） */
+  /** The CSP of the shell (for the production build; **in development Vite is used, not it**) */
   shellCsp?: string;
-  /** 当前皮肤 */
+  /** The current skin */
   theme?: () => ThemeName;
   now?: () => number;
 }
@@ -95,21 +102,21 @@ export interface CardWiring {
   sessions: CardSessionManager;
   storage: CardStorage;
   log: CardRuntimeLog;
-  /** `cockpit://` 的处理器 */
+  /** The handler of `cockpit://` */
   protocol: (request: Request) => Response;
-  /** 装着的卡片（页面据此渲染卡片区） */
+  /** The installed cards (the page renders the card area from them) */
   list: () => CardInstanceInfo[];
-  /** 卡片的一个请求 */
+  /** One request of a card */
   handleRequest: (req: CardRequest) => Promise<CardResponse>;
-  /** 读布局 */
+  /** Reads the layout */
   layoutGet: () => LayoutState;
-  /** 存布局 */
+  /** Stores the layout */
   layoutSet: (state: LayoutState) => void;
-  /** 重新发现卡片（热插拔） */
+  /** Discovers the cards again (hot plug) */
   refresh: () => void;
-  /** 把一条 CSP 违规归到卡片的运行时日志 */
+  /** Attributes a CSP violation to the runtime log of a card */
   captureCspViolation: (details: { message: string; sourceUrl: string }) => string | null;
-  /** 停止监听 */
+  /** Stops the watching */
   stop: () => void;
 }
 
@@ -129,7 +136,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
   const storage = new CardStorage({ dir: deps.storageDir });
   const log = new CardRuntimeLog({ now });
   const layout = new LayoutStore({ file: deps.layoutFile, now });
-  /** 卡片 id → 当前实例 id（用来发现「实例换了」） */
+  /** card id → the current instance id (used to notice "the instance changed") */
   const instanceByCard = new Map<string, string>();
 
   const sessions = new CardSessionManager({
@@ -163,12 +170,13 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
   });
 
   /**
-   * `cockpit://` 的处理器：`app` 是外壳，`card` 是卡片。
-   *
-   * **为什么外壳也走协议**：`file://` 上的 `'self'` **匹配不到任何东西**
-   * （本地 scheme 的 origin 是 opaque 的）——外壳想用 CSP 就得有个真源。
-   * → 生产的外壳从 `cockpit://app/` 伺服 ✓
-   */
+     * The handler of `cockpit://`: `app` is the shell, `card` is a card.
+     *
+     * **Why the shell goes through the protocol as well**: `'self'` on `file://`
+     * **matches nothing at all** (the origin of a local scheme is opaque) — the
+     * shell needs a real origin to have a CSP.
+     * → The shell of the production build is served from `cockpit://app/` ✓
+     */
   const protocol = (request: Request): Response => {
     let url: URL;
     try {
@@ -193,8 +201,8 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       for (const card of cards) {
         const { instanceId, url } = registry.instanceFor(card.cardId, connectionId);
         const previous = instanceByCard.get(card.cardId);
-        // **实例换了（连接变了）→ 旧会话要关掉**：
-        // 它的订阅还挂在运行时上，不关就永远解不掉（RF-4）
+        // **The instance changed (the connection changed) → the old session has to be closed**:
+        // its subscriptions are still attached to the runtime; without closing it they can never be released (RF-4)
         if (previous !== undefined && previous !== instanceId) {
           sessions.close(previous);
         }
@@ -206,8 +214,8 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
           url,
           connectionId,
           degraded: card.issues.some((i) => i.severity === 'error'),
-          // **卡片自报的默认尺寸**（manifest 的 layout.w/h）——
-          // 页面把卡摆进主区时用它（作者的心愿，宿主读得到 manifest）
+          // **The default size the card declares for itself** (the layout.w/h of the manifest) —
+          // the page uses it when it places the card in the main area (the wish of the author, the host can read the manifest)
           ...(card.manifest.layout === undefined
             ? {}
             : {
@@ -224,7 +232,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
               }),
         });
       }
-      // 卡片没了（被删了）→ 它的会话也要关
+      // The card is gone (it was deleted) → its session has to be closed too
       const alive = new Set(cards.map((c) => c.cardId));
       for (const [cardId, instanceId] of [...instanceByCard]) {
         if (!alive.has(cardId)) {
@@ -235,14 +243,14 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       return out;
     },
     handleRequest: (req) => sessions.handle(req),
-    // ── 布局 = **主区摆了哪些卡** ──
+    // ── The layout = **which cards are placed in the main area** ──
     //
-    // v3：一个布局，没有视图。**主区默认是空的**——用户从左二级的卡片目录
-    // 里点哪张才摆进来（`units` 里只有摆过的卡）。
+    // v3: one layout, no views. **The main area is empty by default** — the user clicks a card in the card library
+    // of the second level on the left to place it (only the placed cards are in `units`).
     //
-    // → 宿主的活只剩两件：
-    //   ① 读出来（v1/v2 旧文件也读得出来 ✓ 在 `normalizeLayout` 里）
-    //   ② 存的时候**别把没装的卡的格子丢了**（卡片卸载了再装回来，位置还在）
+    // → Only two jobs are left for the host:
+    //   ① read it (the v1/v2 files are still readable ✓ in `normalizeLayout`)
+    //   ② when storing, **do not lose the cells of the cards that are not installed** (a card that is uninstalled and installed again keeps its position)
     layoutGet: () => layout.get(),
     layoutSet: (input) => {
       const connectionId = deps.currentConnectionId();
@@ -252,7 +260,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
       const previous = layout.get();
       const state = normalizeLayout(input, now());
       const incoming = new Set(state.units.map((u) => layoutKey(u.cardId, u.connectionId)));
-      // **没装着的卡**（已卸载但用户摆过）→ 保留它的格子，装回来位置还在
+      // **A card that is not installed** (uninstalled but the user placed it) → keep its cell, so the position is still there when it comes back
       const kept = previous.units.filter(
         (u) => !installed.has(layoutKey(u.cardId, u.connectionId)) && !incoming.has(layoutKey(u.cardId, u.connectionId)),
       );
@@ -266,18 +274,18 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
   };
 }
 
-/* ── 两个小工具 ── */
+/* ── Two small helpers ── */
 
-/** 布局单元的键（`(cardId, connectionId)`） */
+/** The key of a layout unit (`(cardId, connectionId)`) */
 function layoutKey(cardId: string, connectionId: string | null): string {
   return `${cardId}::${connectionId ?? ''}`;
 }
 
-/** 外壳的静态文件（`cockpit://app/…`） */
+/** The static files of the shell (`cockpit://app/…`) */
 function serveShell(url: URL, shellDir: string | undefined, shellCsp: string | undefined): Response {
   if (shellDir === undefined) return new Response('not found', { status: 404 });
   const rel = url.pathname === '/' || url.pathname === '' ? 'index.html' : url.pathname.slice(1);
-  // **外壳自己的目录也要防穿越**（它伺服的是构建产物，不是卡片）
+  // **The directory of the shell has to be protected against traversal as well** (it serves the build output, not a card)
   const resolved = resolve(shellDir, rel);
   if (resolved !== shellDir && !resolved.startsWith(shellDir + sep)) {
     return new Response('forbidden', { status: 403 });
@@ -302,22 +310,22 @@ function validateManifest(
   availableActions?: () => string[] | null,
 ): ReturnType<typeof validateCard> {
   return validateCard(manifest, {
-    // **离线**：连不上板 → 动作与 tag 的存在性「未验证」，不是「不合法」
+    // **Offline**: the board is unreachable → the existence of the actions and the tags is "not verified", not "invalid"
     availableTags: null,
-    // **动作表** ✓ —— **别再硬编码 null** ✓（2026-11-19 修 ✓）
+    // **The action table** ✓ — **do not hard-code `null` again** ✓ (fixed on 2026-11-19 ✓)
     //
-    // → 之前**永远**是 `null` ✓ → **规则 5 永远走「未验证」分支** ✓ →
-    //   **凡是能写板子的卡，装上就是「降级」** ⚠️
-    // → 而 MCP 的 `validate_card` 那条路给的是**真表** ✓ → **同一个产品两个答案** ✗
-    // → **开发期看不见** ✗（那条路是真表 ✓）→ **装机后才暴露** ✗
+    // → Before it was **always** `null` ✓ → **rule 5 always took the "not verified" branch** ✓ →
+    //   **every card that can write to the board was "degraded" as soon as it was installed** ⚠️
+    // → while the MCP `validate_card` route gives the **real table** ✓ → **one product, two answers** ✗
+    // → **invisible during development** ✗ (that route has the real table ✓) → **only exposed after the installation** ✗
     //
-    // → **板型包绑上了就给真表** ✓（`null` 只表示**真离线** ✓）
+    // → **Once a board pack is bound the real table is given** ✓ (`null` only means **truly offline** ✓)
     availableActions: availableActions?.() ?? null,
-    // **流程 id 宿主自己就知道** ✓（不像板子要连上才查得到 ✓）
+    // **The host knows the workflow ids itself** ✓ (unlike the board, they are only found out when it is connected ✓)
     availableWorkflows: availableWorkflows?.() ?? null,
-    // 规则 2 比的是 **manifest 的 id**，而且**要排除自己**：
-    // 比目录名的话，卡片**改一次文件**（热更新必然触发一次 refresh）
-    // 就会在第二次 refresh 里把自己判成「重名」→ 卡片无缘无故变成 degraded。
+    // Rule 2 compares the **id of the manifest**, and it **has to exclude itself**:
+    // Comparing the directory name means that a card **that changes one file** (a hot update always triggers one refresh)
+    // judges itself a "duplicate" in the second refresh → the card becomes degraded for no reason.
     installedCardIds: registry
       .cards()
       .filter((c) => c.dir !== dir)
@@ -326,7 +334,7 @@ function validateManifest(
   });
 }
 
-/** 主题切换时，把新的别名值推给所有卡片（不重载 iframe） */
+/** When the theme changes, the new alias values are pushed to all the cards (the iframe is not reloaded) */
 export function themePush(theme: ThemeName): Record<string, string> {
   return aliasVars(theme);
 }

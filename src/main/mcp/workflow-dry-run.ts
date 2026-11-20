@@ -2,73 +2,80 @@ import { substituteCommand } from '../workflows/substitute';
 import type { WorkflowPack, WorkflowStep } from '../workflows/format';
 
 /**
- * **流程的 dry_run**（契约 `spec/04` §2.4 的 `run_workflow(id, inputs, dry_run)` ✓）。
+ * The **dry run of a workflow** (the `run_workflow(id, inputs, dry_run)` of
+ * contract `spec/04` §2.4 ✓).
  *
- * ── 为什么要有 ──
+ * ── Why there is one ──
  *
- * **流程会改别人的机器** ✓（编译 ✓ · 写 `authorized_keys` ✓ · 装模块 ✓ · 重启 ✓）
- * → agent 在跑之前**应该能看见它要干什么** ✓。
+ * **A workflow changes somebody else's machine** ✓ (compiling ✓ · writing
+ * `authorized_keys` ✓ · installing a module ✓ · rebooting ✓)
+ * → before it runs, the agent **should be able to see what it is going to
+ *   do** ✓.
  *
- * ── 三条底线 ──
+ * ── Three bottom lines ──
  *
- * | # | 底线 | 为什么 |
+ * | # | Bottom line | Why |
  * |---|---|---|
- * | 1 | **不执行任何一步** ✓ | 它是**预览** ✓ |
- * | 2 | **不写审计** ✓ | 审计记的是「每一次尝试」✓ —— 预览**连尝试都不是** ✓ |
- * | 3 | **不产生 `run_id`** ✓ | 没有运行 → 没有运行 id ✓ |
+ * | 1 | **Not a single step is executed** ✓ | it is a **preview** ✓ |
+ * | 2 | **Nothing is written to the audit** ✓ | the audit records "every attempt" ✓ — a preview **is not even an attempt** ✓ |
+ * | 3 | **No `run_id` is produced** ✓ | no run → no run id ✓ |
  *
- * ── 「不猜」的边界 ──
+ * ── The boundary of "no guessing" ──
  *
- * → **角色事实（`{role:x.host}`）留成占位** ✓ —— **dry_run 时没有连接** ✓
- *   （**建连接就是「做」了** ✓ —— 哪怕只是握手 ✓）→ **不填假值** ✓。
- * → **输出槽（`{output:...}`）也留占位** ✓ —— **它要跑起来才有** ✓。
- * → **输入值是真的** ✓ —— 那**agent 自己给的** ✓。
+ * → **The role facts (`{role:x.host}`) stay placeholders** ✓ — **there is no
+ *   connection during a dry run** ✓
+ *   (**opening a connection is already "doing" something** ✓ — even just the
+ *   handshake ✓) → **no fake values are filled in** ✓.
+ * → **The output slots (`{output:...}`) stay placeholders as well** ✓ — **they
+ *   only exist once it has run** ✓.
+ * → **The input values are real** ✓ — those **the agent gave itself** ✓.
  */
 export interface DryRunStep {
-  /** 步骤 id */
+  /** The id of the step */
   id: string;
-  /** 步骤类型 */
+  /** The kind of the step */
   kind: string;
-  /** 执行角色（**没有就是没有** ✓ —— 不猜 ✓） */
+  /** The role that executes it (**there is none, then there is none** ✓ — no guessing ✓) */
   role?: string;
-  /** **将要执行的命令**（**替换了输入值** ✓ · **没跑的命令** ✓） */
+  /** **The command that will be run** (**the input values are substituted** ✓ · **the command is not run** ✓) */
   command?: string;
-  /** 引用的动作 id（`action` 步 ✓） */
+  /** The action id it refers to (the `action` step ✓) */
   action?: string;
   /**
-   * 这一步的判据（**回读读什么** ✓）。
-   *
-   * → **`kind` 可省** ✓ —— **形式 1（`tag`）不带 `kind`** ✓（同 `spec/02` §4.4 ✓）
-   * → **不填假值** ✓（**不猜** ✓）。
-   */
+     * The criterion of this step (**what the readback reads** ✓).
+     *
+     * → **`kind` may be left out** ✓ — **form 1 (`tag`) has no `kind`** ✓ (the
+     *   same as `spec/02` §4.4 ✓)
+     * → **No fake values are filled in** ✓ (**no guessing** ✓).
+     */
   readback?: { kind?: string; tag?: string; path?: string };
-  /** 危险等级（**默认 `reversible`** ✓） */
+  /** The danger grading (**`reversible` by default** ✓) */
   danger: 'reversible' | 'destructive';
-  /** 超时（毫秒） */
+  /** The timeout (milliseconds) */
   timeout_ms?: number;
 }
 
 export interface DryRunResult {
   ok: boolean;
-  /** 将要跑的步骤（**没跑** ✓） */
+  /** The steps that are going to run (**they do not run** ✓) */
   steps?: DryRunStep[];
-  /** 没有运行 → 没有运行 id ✓ */
+  /** No run → no run id ✓ */
   run_id?: undefined;
   reason?: 'invalid_params' | 'not_found';
   detail?: string;
 }
 
 /**
- * **预览一条流程** ✓。
+ * **Previews a workflow** ✓.
  *
- * @param pack 流程包
- * @param inputs 输入值（**agent 自己给的** ✓）
+ * @param pack the workflow pack
+ * @param inputs the input values (**the agent gave them itself** ✓)
  */
 export function dryRunWorkflow(
   pack: WorkflowPack,
   inputs: Record<string, unknown>,
 ): DryRunResult {
-  // ── 必填输入齐吗 ──
+  // ── Are the mandatory inputs there ──
   for (const [name, spec] of Object.entries(pack.inputs)) {
     const value = inputs[name];
     if (value === undefined && spec.default === undefined) {
@@ -80,14 +87,14 @@ export function dryRunWorkflow(
     }
   }
 
-  // ── 角色绑的 profile **不在这里判** ✓ ──
+  // ── The profile a role is bound to is **not judged here** ✓ ──
   //
-  // → **dry_run 不连任何机器** ✓（**建连接就是「做」了** ✓ —— 哪怕只是握手 ✓）
-  // → 所以**「这个 profile 存不存在」这件事，dry_run 答不了** ✓
-  //   → **不猜** ✓ → **不报一个自己验不了的错** ✓。
-  // → **真的跑之前**（`run_workflow` 不带 dry_run ✓）**流程层会查** ✓（**注册表里有这个包** ✓ + 目标登记处 ✓）。
+  // → **A dry run does not connect to any machine** ✓ (**opening a connection is already "doing" something** ✓ — even just the handshake ✓)
+  // → So **the question "does this profile exist" cannot be answered by a dry run** ✓
+  //   → **no guessing** ✓ → **it does not report an error it cannot verify itself** ✓.
+  // → **Before it really runs** (`run_workflow` without dry_run ✓) **the workflow layer checks it** ✓ (**this pack is in the registry** ✓ + the target registration ✓).
 
-  // ── 输入按类型编码（命令模式用**编码片段** ✓ —— 同 runner ✓）──
+  // ── The inputs are encoded by type (the command mode uses an **encoded fragment** ✓ — the same as the runner ✓) ──
   const encoded: Record<string, string> = {};
   for (const [name, spec] of Object.entries(pack.inputs)) {
     const raw = inputs[name] ?? spec.default;
@@ -95,13 +102,13 @@ export function dryRunWorkflow(
     encoded[name] = encodeInput(spec.type, raw);
   }
 
-  // ── 逐步预览 ──
+  // ── Step by step preview ──
   const steps: DryRunStep[] = pack.steps.map((step) => previewStep(step, inputs, encoded));
 
   return { ok: true, steps };
 }
 
-/** 一步的预览 ✓ */
+/** The preview of one step ✓ */
 function previewStep(
   step: WorkflowStep,
   inputs: Record<string, unknown>,
@@ -110,7 +117,7 @@ function previewStep(
   const out: DryRunStep = {
     id: step.id,
     kind: step.kind,
-    // **危险等级默认 `reversible`** ✓（契约 §5.2 那一档 ✓）
+    // **The danger grading defaults to `reversible`** ✓ (the tier of contract §5.2 ✓)
     danger: step.danger ?? 'reversible',
   };
   if (step.role !== undefined) out.role = step.role;
@@ -118,7 +125,7 @@ function previewStep(
   if (step.action !== undefined) out.action = step.action;
 
   if (step.cmd !== undefined) {
-    // **只替换输入** ✓ —— **角色事实与输出槽留占位** ✓（**没连接、没跑** ✓ → 不知道 ✓）
+    // **Only the inputs are substituted** ✓ — **the role facts and the output slots stay placeholders** ✓ (**no connection, nothing ran** ✓ → unknown ✓)
     out.command = substituteCommand(step.cmd, {
       inputs,
       encoded,
@@ -129,7 +136,7 @@ function previewStep(
 
   if (step.readback !== undefined) {
     const rb: { kind?: string; tag?: string; path?: string } = {};
-    // **形式 1 只有 `tag`，没有 `kind`** ✓（同 `spec/02` §4.4 ✓）→ **不填 `kind: undefined`** ✓
+    // **Form 1 only has `tag`, no `kind`** ✓ (the same as `spec/02` §4.4 ✓) → **`kind: undefined` is not filled in** ✓
     if (step.readback.kind !== undefined) rb.kind = step.readback.kind;
     if (step.readback.tag !== undefined) rb.tag = step.readback.tag;
     if (step.readback.path !== undefined) rb.path = step.readback.path;
@@ -140,14 +147,16 @@ function previewStep(
 }
 
 /**
- * **输入值按类型编码** ✓（命令模式要**编码片段** ✓ —— 同 `encoder` 的规矩 ✓）。
+ * **The input values are encoded by type** ✓ (the command mode wants an
+ * **encoded fragment** ✓ — the same rule as the `encoder` ✓).
  *
- * → **只用三种类型** ✓（流程包的输入声明只有那三种 ✓ —— `string` / `integer` / `number` ✓）。
+ * → **Only three types are used** ✓ (the input declaration of a workflow pack
+ *   only has those three ✓ — `string` / `integer` / `number` ✓).
  */
 function encodeInput(type: string, raw: unknown): string {
   if (type === 'integer' || type === 'number') {
     return String(raw);
   }
-  // **字符串按 shell 片段包引号** ✓（同 `actions/encoder` 的 `quoteShellValue` ✓）
+  // **A string is quoted as a shell fragment** ✓ (the same as the `quoteShellValue` of `actions/encoder` ✓)
   return `'${String(raw).replace(/'/g, "'\\''")}'`;
 }

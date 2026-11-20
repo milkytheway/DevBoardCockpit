@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseManifest } from '../cards/manifest';
 import type { CardRegistry } from '../cards/registry';
-/** 动作的**最小视图**（**只要装卡要用的那几项** ✓ —— 不给整份定义 ✓） */
+/** The **minimal view** of an action (**only the few fields the installation needs** ✓ — not the whole definition ✓) */
 export interface PackActionView {
   id: string;
   danger: 'reversible' | 'destructive';
@@ -11,34 +11,42 @@ export interface PackActionView {
 }
 
 /**
- * **装卡与卸卡**（契约 `spec/04` §2.3 ✓ · ADR-D40 ✓）。
+ * **Installing and uninstalling a card** (contract `spec/04` §2.3 ✓ ·
+ * ADR-D40 ✓).
  *
- * ── 装卡 = 复制目录 + 触发热重载 ✓ ──
+ * ── Installing = copying the directory + triggering the hot reload ✓ ──
  *
- * → **复制到用户卡片根** ✓（**不是内置目录** ✓ —— 内置在应用目录里 ✓ 是只读的 ✓）。
- * → **同 id 重复安装 = 替换** ✓（契约 §2.3 ✓ —— **不是新增** ✓）。
+ * → **Copied into the user card root** ✓ (**not into the built-in directory** ✓
+ *   — the built-in one lives in the application directory ✓ and is read-only ✓).
+ * → **Installing the same id again = replacing it** ✓ (contract §2.3 ✓ — **not
+ *   adding a second one** ✓).
  *
- * ── **装卡不再要「同意」** ✓（契约 §2.3 · ADR-D46 ✓）──
+ * ── **Installing a card does not need a "consent" any more** ✓ (contract §2.3
+ *   · ADR-D46 ✓) ──
  *
- * → **板型包说了算** ✓：**板上能做什么由板型包声明** ✓；
- *   **这张卡能做什么由它的 manifest 声明** ✓ —— **会话层守着** ✓
- *   （**声明之外的一律 denied** ✓ —— **卡片说一套做一套是不行的** ✓）。
- * → **用户点一下就是同意** ✓ → **不再有第二道「你授过这张卡吗」** ✓。
- * → **卡片那条路没有「问」** ✓（**点一下就是同意** ✓ —— ADR-D46 ✓）；
- *   **agent 那条路仍然要问** ✓（**agent 不是人** ✓）。
+ * → **The board pack has the last word** ✓: **what the board can do is
+ *   declared by the board pack** ✓; **what this card can do is declared by
+ *   its manifest** ✓ — **the session layer keeps it** ✓
+ *   (**anything outside the declaration is denied** ✓ — **a card that says
+ *   one thing and does another is not allowed** ✓).
+ * → **The user clicking once is the consent** ✓ → there is **no second
+ *   "did you authorise this card"** any more ✓.
+ * → **The route through a card has no "asking"** ✓ (**a click is the
+ *   consent** ✓ — ADR-D46 ✓); **the route through an agent still has to
+ *   ask** ✓ (**an agent is not a person** ✓).
  */
 export interface CardToolDeps {
-  /** 用户卡片根（**装到这里** ✓） */
+  /** The user card root (**the cards are installed here** ✓) */
   cardsRoot: string;
-  /** 卡片注册表（**重载** ✓） */
+  /** The card registry (**the reload** ✓) */
   registry: CardRegistry;
-  /** 当前板型包声明的动作（**判断「这个动作存不存在」** ✓） */
+  /** The actions declared by the current board pack (**to judge "does this action exist"** ✓) */
   packActions?: () => PackActionView[];
-  /** 内置卡 id（**内置卡不许删** ✓） */
+  /** The ids of the built-in cards (**a built-in card may not be deleted** ✓) */
   builtinIds?: string[];
 }
 
-/** 装卡的结果（契约 §2.3 的三个形状 ✓） */
+/** The result of an installation (the three shapes of contract §2.3 ✓) */
 export interface InstallCardResult {
   ok: boolean;
   installed: boolean;
@@ -49,7 +57,7 @@ export interface InstallCardResult {
   detail?: string;
 }
 
-/** 卸卡的结果 */
+/** The result of an uninstallation */
 export interface UninstallCardResult {
   ok: boolean;
   reason?: 'not_found' | 'denied' | 'failed';
@@ -57,18 +65,18 @@ export interface UninstallCardResult {
 }
 
 /**
- * **装一张卡**（契约 §2.3 ✓）。
+ * **Installs a card** (contract §2.3 ✓).
  *
- * @param path 卡片目录（**绝对路径** ✓）
+ * @param path the card directory (**an absolute path** ✓)
  */
 export function installCard(deps: CardToolDeps, path: string): InstallCardResult {
   const manifestPath = join(path, 'manifest.json');
-  // **没有 manifest → 不装** ✓（**不是「装个空卡」** ✓）
+  // **No manifest → not installed** ✓ (**not "install an empty card"** ✓)
   if (!existsSync(manifestPath)) {
     return { ok: false, installed: false, reason: 'invalid', detail: 'No manifest.json in this directory' };
   }
 
-  // ── 解析 manifest ──
+  // ── Parse the manifest ──
   let manifest;
   try {
     manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown, path);
@@ -84,8 +92,8 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   const cardId = manifest.id;
   const target = join(deps.cardsRoot, cardId);
 
-  // ── **这张卡要写的动作是不是真的存在** ✓（**板型包说了算** ✓）──
-  // → **不存在 → 装不了** ✓（**不装一张一半是空的卡** ✓ —— 契约 §2.3 ✓）
+  // ── **Do the actions this card wants to write really exist** ✓ (**the board pack has the last word** ✓) ──
+  // → **They do not exist → it cannot be installed** ✓ (**installing a card that is half empty is not done** ✓ — contract §2.3 ✓)
   const known = new Set((deps.packActions?.() ?? []).map((a) => a.id));
   const missing = manifest.permissions.write.filter((id) => !known.has(id));
   if (missing.length > 0) {
@@ -101,7 +109,7 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   return doInstall(deps, path, target, cardId);
 }
 
-/** **真的装** ✓ —— 复制目录 + 重载 ✓ */
+/** **Really installs it** ✓ — copies the directory + reloads ✓ */
 function doInstall(
   deps: CardToolDeps,
   path: string,
@@ -110,10 +118,10 @@ function doInstall(
 ): InstallCardResult {
   try {
     mkdirSync(deps.cardsRoot, { recursive: true });
-    // **同 id 重复安装 = 替换** ✓（契约 §2.3 ✓）→ **先删旧的** ✓
+    // **Installing the same id again = replacing it** ✓ (contract §2.3 ✓) → **the old one is deleted first** ✓
     if (existsSync(target)) rmSync(target, { recursive: true, force: true });
     cpSync(path, target, { recursive: true });
-    // **热重载** ✓（目录变了 ✓ → watcher 会发现 ✓ → 这里再刷一次 ✓ 免得等那一拍 ✓）
+    // **The hot reload** ✓ (the directory changed ✓ → the watcher notices it ✓ → it is refreshed once more here ✓ so that one does not have to wait for that tick ✓)
     deps.registry.refresh();
     return { ok: true, installed: true, card_id: cardId, degraded: false, missing: [] };
   } catch (err) {
@@ -128,13 +136,16 @@ function doInstall(
 }
 
 /**
- * **卸一张卡**（契约 §2.3 ✓）。
+ * **Uninstalls a card** (contract §2.3 ✓).
  *
- * → **只删用户卡片根下的** ✓（**内置卡删不掉** ✓ —— 它在应用目录里 ✓）。
- * → **授权账一并清** ✓（否则装回来就带着旧的授权 ✗ —— 那不是「重新装」✓）。
+ * → **Only the ones under the user card root** ✓ (**a built-in card cannot be
+ *   deleted** ✓ — it lives in the application directory ✓).
+ * → **The authorisation ledger is cleared as well** ✓ (otherwise installing
+ *   it again would bring the old authorisation along ✗ — that would not be a
+ *   "fresh install" ✓).
  */
 export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCardResult {
-  // **内置卡 → 不许删** ✓
+  // **A built-in card → it may not be deleted** ✓
   if ((deps.builtinIds ?? []).includes(cardId)) {
     return { ok: false, reason: 'denied', detail: 'Builtin cards cannot be removed' };
   }
@@ -144,7 +155,7 @@ export function uninstallCard(deps: CardToolDeps, cardId: string): UninstallCard
   }
   try {
     rmSync(dir, { recursive: true, force: true });
-    // **没有授权账要清** ✓（**2026-11-16 删了** ✓ —— ADR-D46 ✓）
+    // **There is no authorisation ledger to clear** ✓ (**it was removed on 2026-11-16** ✓ — ADR-D46 ✓)
     deps.registry.refresh();
     return { ok: true };
   } catch (err) {

@@ -1,20 +1,25 @@
 /**
- * ⚠️ **假设备** —— 这里产出的一切都是**合成数据**，不是真板子。
+ * ⚠️ **The fake device** — everything produced here is **synthetic data**, not
+ * a real board.
  *
- * 存在的理由：**调 UI 需要一块板子**。
- * 真实板子不插电、adb 没起、串口被占的时候，外壳就调不动。
+ * The reason it exists: **developing the UI needs a board**.
+ * When the real board is not plugged in, adb is not up and the serial line is
+ * taken, the shell cannot be worked on.
  *
- * ── 它只吐**原始文本**，不吐解析好的数 ──
+ * ── It only emits **raw text**, not parsed numbers ──
  *
- * `/proc/stat` 给 jiffies 计数、`/proc/meminfo` 给 kB、devfreq 给
- * `<占空比>@<频率>Hz`、thermal_zone 给毫度——
- * **百分比与五态由真正的 kind 与真正的 store 算出来**。
+ * `/proc/stat` gives jiffies counters, `/proc/meminfo` gives kB, devfreq gives
+ * `<duty cycle>@<frequency>Hz`, thermal_zone gives millidegrees —
+ * **the percentages and the five states are computed by the real kinds and the
+ * real store**.
  *
- * → 这样「cpu.usage 首读是 pending 而不是 0」「计数器倒退报 parse_error」
- * 「读不到报 unavailable」这些**契约里的行为是被真代码判出来的**，
- * 不是假设备假装出来的。
+ * → That way the behaviours of the contract — "the first read of `cpu.usage`
+ * is pending and not 0", "a counter that goes backwards reports a parse_error",
+ * "a file that cannot be read reports unavailable" — are **judged by the real
+ * code** and not pretended by the fake device.
  *
- * 开关：`COCKPIT_FAKE=1`（假设备优先）或 `COCKPIT_FAKE=only`（只有假设备）。
+ * The switches: `COCKPIT_FAKE=1` (the fake device comes first) or
+ * `COCKPIT_FAKE=only` (only the fake device).
  */
 
 /**
@@ -28,20 +33,20 @@
  */
 export const FAKE_DEVICE_MARKER = 'cockpit-fake-device/1';
 
-/** jiffies 每秒（Linux 的 USER_HZ） */
+/** The jiffies per second (the USER_HZ of Linux) */
 const HZ = 100;
 
-/** 内存总量：8 GiB */
+/** The total memory: 8 GiB */
 const MEM_TOTAL_KB = 8 * 1024 * 1024;
 
-/** 假的板子有几个核（前 4 个 A55，后 4 个 A76） */
+/** How many cores the fake board has (the first 4 are A55, the last 4 are A76) */
 const CORE_COUNT = 8;
 
-/** A55 / A76 的 CPU part（`/proc/cpuinfo` 里认这个） */
+/** The CPU part of the A55 / A76 (this is what `/proc/cpuinfo` recognises) */
 const PART_A55 = '0xd05';
 const PART_A76 = '0xd0b';
 
-/** 一条确定的「噪声」：同一个时间桶永远是同一个值（测试可复现） */
+/** A deterministic "noise": the same time bucket always has the same value (reproducible in a test) */
 function noise(seed: number, t: number): number {
   const bucket = Math.floor(t);
   let h = (bucket * 2654435761 + seed * 40503) >>> 0;
@@ -118,8 +123,8 @@ export class FakeDevice {
   private procStat(): string {
     this.advance();
     const lines: string[] = [];
-    // **汇总行是各核之和**（真板上的 `/proc/stat` 就是这样）：
-    // 汇总与各核**对不上**的话，卡片上「总占用率」与八个核的数会互相矛盾。
+    // **The aggregate line is the sum of the cores** (that is how `/proc/stat` looks on a real board):
+    // if the aggregate and the cores do **not** add up, the "total utilisation" on the card and the numbers of the eight cores contradict each other.
     let sumBusy = 0;
     let sumTotal = 0;
     for (let index = 0; index < CORE_COUNT; index += 1) {
@@ -140,8 +145,8 @@ export class FakeDevice {
     lines.push('processes 1');
     lines.push('procs_running 1');
     lines.push('procs_blocked 0');
-    // **真文件的最后一行带换行**（`/proc/stat` 就是这样）——
-    // 不带的话，下一段的分隔行会粘在最后一行上。
+    // **The last line of a real file carries a newline** (that is how `/proc/stat` looks) —
+    // without it the separator of the next fragment sticks to the last line.
     return `${lines.join('\n')}\n`;
   }
 
@@ -166,12 +171,12 @@ export class FakeDevice {
    */
   private procMeminfo(): string {
     const t = this.uptime();
-    // **可用内存是「GiB」那个量级**（总量 8 GiB，可用约 4 GiB ± 1.5 GiB）。
+    // **The available memory is of the order of "GiB"** (8 GiB in total, about 4 GiB ± 1.5 GiB available).
     //
-    // ⚠️ 这里曾经写成 `4 * 1024 * 1024`（**MiB**）——
-    // 总量 8 GiB 对上可用 4 MiB → **占用率 99.9%**：
-    // **面板说满载，板子其实闲着**——契约 N2 说的「最坏的那种假数」。
-    // （真机跑起来才发现的：单测里没人看那个数。）
+    // ⚠️ This used to be written as `4 * 1024 * 1024` (**MiB**) —
+    // 8 GiB in total against 4 MiB available → **a utilisation of 99.9%**:
+    // **the panel says fully loaded while the board is idle** — the "worst kind of fake number" that contract N2 talks about.
+    // (it only showed up once it ran on a real machine: nobody looked at that number in the unit tests.)
     const availableKb = Math.round(
       (4 * 1024 * 1024 * 1024 + 1.5 * 1024 * 1024 * 1024 * Math.sin((2 * Math.PI * t) / 29)) / 1024,
     );
@@ -205,7 +210,7 @@ export class FakeDevice {
       'DirectMap4k:      65536 kB',
       'DirectMap2M:       8192 kB',
       'DirectMap1G:          0 kB',
-      // **真文件的最后一行带换行**
+      // **The last line of a real file carries a newline**
     ].join('\n') + '\n';
   }
 

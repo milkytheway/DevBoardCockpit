@@ -1,51 +1,56 @@
 /**
- * 卡片 API 的**单一真源**。
+ * The **single source of truth** of the card APIs.
  *
- * ── 为什么必须是「一份」 ──
+ * ── Why it has to be "one" ──
  *
- * 宿主实现与注入给卡片的 bridge 脚本，**如果各写一份**，
- * 它们迟早对不上——卡片调 `cockpit.tags.get` 而宿主只有 `cockpit.tagsGet`，
- * 症状是「卡片说方法不存在」，而**没人查得出是哪边错了**。
+ * If the host implementation and the bridge script injected into the card are
+ * **written separately**, they will eventually drift apart — the card calls
+ * `cockpit.tags.get` while the host only has `cockpit.tagsGet`,
+ * the symptom is "the card says the method does not exist", and **nobody can
+ * tell which side is wrong**.
  *
- * → 注册表是**唯一的清单**，bridge 脚本由它**生成** ✓。
- * 加一个新方法只改这里一处。
+ * → The registry is the **only inventory**, and the bridge script is
+ * **generated** from it ✓. Adding a new method touches this one place.
  *
- * ── `scopeArg`：权限检查看哪个参数 ──
+ * ── `scopeArg`: which argument the permission check looks at ──
  *
- * 读权限按 **tag** 判（`permissions.read` 的模式覆盖），
- * 写权限按 **动作 id** 判。
- * → 每个方法说清楚「我的哪个参数是要被授权的那个」，
- * 宿主就不必按方法名硬编码（那是第二套规则）。
+ * A read permission is judged by **tag** (the pattern coverage of
+ * `permissions.read`), a write permission by **action id**.
+ * → Every method states which of its arguments is the one to be authorised,
+ * so the host does not have to hard-code it per method name (that would be a
+ * second set of rules).
  */
 import type { ReasonCode, TagReading } from '../../shared/tag-reading';
 
 /**
- * 权限的**种类** ✓。
+ * The **kind of permission** ✓.
  *
- * → `'workflow'` 是**第四维** ✓（契约 §3.3 ✓）：
- * 流程**不是动作** ✓（不在板型包里 ✓），但它**一样能在用户机器上执行命令** ✗ →
- * 它**必须**有自己的授权面 ✓ → **不许混进 `permissions.write`** ✓
- * （那一维的语义是「动作 id」✓ —— 混进去就成了两套规则 ✓）。
+ * → `'workflow'` is the **fourth dimension** ✓ (contract §3.3 ✓):
+ * a workflow **is not an action** ✓ (it is not in a board pack ✓), but it
+ * **can just as well run commands on the machine of the user** ✗ → it
+ * **must** have an authorisation surface of its own ✓ → **it must not be
+ * mixed into `permissions.write`** ✓ (the semantics of that dimension are
+ * "action id" ✓ — mixing them in would make it two sets of rules ✓).
  */
 export type CardApiPermission = 'read' | 'write' | 'workflow' | 'none';
 
-/** 一次调用的上下文（宿主注入） */
+/** The context of one call (injected by the host) */
 export interface CardApiContext {
   cardId: string;
   instanceId: string;
   connectionId: string | null;
-  /** 当前连接的身份（**不给 connectionId**——契约 §7.8：卡片代码里没有这个词） */
+  /** The identity of the current connection (**no connectionId** — contract §7.8: the word does not appear in the card code) */
   connection: { label: string; transport: string } | null;
-  /** 会话服务（读侧 / 存储 / 日志 / 通知）——由 main 侧注入 */
+  /** The session service (read side / storage / log / notification) — injected by the main side */
   services: CardServices;
 }
 
 /**
- * 会话要提供的能力（**端口**）。
+ * The capabilities the session has to provide (the **port**).
  *
- * 实现由 Task 9 落；这里只定形状 —— 于是
- * 「注册表 → handler → bridge 脚本」三层只依赖这一个接口，
- * 不会互相咬住。
+ * The implementation lands with task 9; here only the shape is fixed — so
+ * that the three layers "registry → handler → bridge script" depend on this
+ * single interface and do not lock into each other.
  */
 export interface CardServices {
   tags: {
@@ -64,28 +69,31 @@ export interface CardServices {
   };
   log(level: 'error' | 'warn' | 'info', message: string): void;
   /**
-   * 写侧（M6 · 契约 §7.7 的写侧行）。
-   *
-   * **权限按动作 id 判**（写权限不用模式，契约 §2.3）——
-   * 会话层已经有一道检查（`permissions.write` 里有没有这个 id），
-   * 这里的 `invoke` 再走执行器那条链（编码 → 地板 → 授权 → 确认 → 执行 → 回读 → 审计）。
-   */
+     * The write side (M6 · the write-side row of contract §7.7).
+     *
+     * **The permission is judged by action id** (the write permissions do not
+     * use patterns, contract §2.3) — the session layer already has one check
+     * (is this id in `permissions.write`), and here `invoke` goes through the
+     * chain of the executor (encode → floor → authorisation → confirm → execute
+     * → readback → audit).
+     */
   actions: {
     invoke(id: string, params: Record<string, unknown>): Promise<unknown> | unknown;
   };
   /**
-   * 流程侧（计划 7 · 契约 `spec/03` §7.7 的三行 ✓）。
-   *
-   * → **每卡一份** ✓（做成工厂 ✓ —— 与 `actions` 同形 ✓：
-   *   流程的授权是每卡一份的 ✓）。
-   * → **返回的是给卡片看的那一份** ✓（投影 ✓ —— `workflow-view.ts` ✓）。
-   */
+     * The workflow side (plan 7 · the three rows of contract `spec/03` §7.7 ✓).
+     *
+     * → **One per card** ✓ (made a factory ✓ — the same shape as `actions` ✓:
+     *   the authorisation of a workflow is one per card ✓).
+     * → **What is returned is the copy meant for the card** ✓ (the projection ✓
+     *   — `workflow-view.ts` ✓).
+     */
   workflows: {
-    /** 列流程（**只列用户批过的** ✓ —— 契约 `05` §7.2 ✓） */
+    /** Lists the workflows (**only the ones the user has approved** ✓ — contract `05` §7.2 ✓) */
     list(): unknown;
-    /** 起一条流程（**授权已经判过了** ✓ —— 会话层与宿主层各一道门 ✓） */
+    /** Starts a workflow (**the authorisation has already been judged** ✓ — one gate at the session layer and one at the host layer ✓) */
     run(id: string, inputs: Record<string, unknown>): Promise<unknown> | unknown;
-    /** 看一次运行的状态（**缩减投影** ✓） */
+    /** Looks at the state of a run (**a reduced projection** ✓) */
     status(runId: string): Promise<unknown> | unknown;
   };
 }
@@ -93,39 +101,44 @@ export interface CardServices {
 export type CardApiHandler = (ctx: CardApiContext, args: Record<string, unknown>) => Promise<unknown> | unknown;
 
 export interface CardApiDef {
-  /** 全名，如 `tags.get`。bridge 按点号拆成命名空间 */
+  /** The full name, e.g. `tags.get`. The bridge splits it at the dot into a namespace */
   name: string;
   /**
-   * **一句人话**（这个方法什么时候用 ✓）。
-   *
-   * → **它进 SDK 活文档** ✓（`get_card_sdk_docs` ✓ —— 契约 §2.3 ✓）——
-   *   **光有方法名不够** ✓：agent 看到 `degradation()` **不知道它什么时候用** ✗。
-   * → **手写在这里，不在手抄的文档里** ✓ —— **它跟方法同生共死** ✓
-   *   （方法删了，说明也一起没了 ✓ → 文档不会漂 ✓）。
-   */
+     * **One sentence in plain words** (when this method is used ✓).
+     *
+     * → **It goes into the live SDK documentation** ✓ (`get_card_sdk_docs` ✓ —
+     *   contract §2.3 ✓) — **the method name alone is not enough** ✓: an agent
+     *   that sees `degradation()` **does not know when to use it** ✗.
+     * → **It is written here, not in a hand-copied document** ✓ — **it lives and
+     *   dies with the method** ✓ (when the method is deleted, the description
+     *   goes with it ✓ → the documentation cannot drift ✓).
+     */
   summary: string;
   permission: CardApiPermission;
-  /** 权限检查看 `args` 里的哪个参数（tag 名 / 动作 id）。`none` 的方法没有 */
+  /** Which argument of `args` the permission check looks at (a tag name / an action id). The methods with `none` have none */
   scopeArg?: string;
-  /** 位置参数的顺序（bridge 按它把实参拼成对象） */
+  /** The order of the positional arguments (the bridge joins the actual arguments into an object in this order) */
   params: string[];
-  /** 这张卡能不能订阅它（订阅是**长连接**，要走权限） */
+  /** May this card subscribe to it (a subscription is a **long-lived connection**, so it goes through the permission check) */
   subscribable?: boolean;
 
-  /** 造出这个方法的 handler。**注入会话**，所以实现不必认识 main 的其他模块 */
+  /** Builds the handler of this method. It **receives the session**, so the implementation does not have to know the other modules of main */
   make: (services: CardServices) => CardApiHandler;
 }
 
 /**
- * 卡片 API 的全集（**本 build 实际有的**）。
+ * The full set of card APIs (**what this build actually has**).
  *
- * **写侧 `actions.invoke` 自 M6 起有**（契约 §7.7 的写侧行）。
+ * **The write side `actions.invoke` exists since M6** (the write-side row of
+ * contract §7.7).
  *
- * **仍然没有 `notify`** —— 宿主的通知通道还没接上。
- * 契约 §7.7 明写「**本宿主没有实现的方法**，调用返回
- * `{ ok: false, reason: 'unknown_method' }`」，
- * 而 `capabilities().methods` 列的是「**本 build 实际有的方法**」——
- * 所以**没实现的就不该列**（列了 = 卡片以为通知发出去了，其实没人管）。
+ * **There is still no `notify`** — the notification channel of the host is not
+ * wired up yet.
+ * Contract §7.7 says explicitly: "**a method this host does not implement**
+ * answers `{ ok: false, reason: 'unknown_method' }`",
+ * while `capabilities().methods` lists "**the methods this build actually
+ * has**" — so **what is not implemented must not be listed** (listing it = the
+ * card believes the notification went out, while nobody handles it).
  */
 export function cardApis(): CardApiDef[] {
   return [
@@ -134,7 +147,7 @@ export function cardApis(): CardApiDef[] {
       summary: 'Ask the host: which methods can I call, which board am I connected to, and which tags are on it. **A card asks this first when it starts**.',
       permission: 'none',
       params: [],
-      // **本 build 实际有的方法**（不是契约全集）——否则卡片会以为能调还不存在的方法
+      // **The methods this build actually has** (not the full set of the contract) — otherwise the card believes it can call a method that does not exist
       make: (services) => (ctx) => ({
         apiVersion: 'devboard/v1',
         methods: cardApis().map((api) => api.name),
@@ -157,8 +170,8 @@ export function cardApis(): CardApiDef[] {
       scopeArg: 'name',
       params: ['name'],
       subscribable: true,
-      // 订阅的**回调**留在卡片那边（函数不能过 postMessage）；
-      // 这里只登记「哪个订阅 id 要收哪个 tag 的推送」
+      // The **callback** of a subscription stays on the card side (a function cannot cross postMessage);
+      // here only "which subscription id receives the pushes of which tag" is registered
       make: (services) => (_ctx, args) =>
         services.tags.subscribe(String(args['name']), String(args['subscriptionId'])),
     },
@@ -190,17 +203,17 @@ export function cardApis(): CardApiDef[] {
       name: 'actions.invoke',
       summary: 'Execute an action declared by the board pack (the write side). **Use it to change the state of the board** (subject to the danger grading).',
       permission: 'write',
-      // **写权限按动作 id 判**（契约 §2.3：读权限用模式，写权限不用——
-      // 模式让授权范围变大，对读来说方便，对写来说**危险**）
+      // **The write permission is judged by action id** (contract §2.3: the read permissions use patterns, the write ones do not —
+      // a pattern widens the scope of the authorisation, which is convenient for reading and **dangerous** for writing)
       scopeArg: 'id',
       params: ['id', 'params'],
-      // **返回的是结果对象**（契约 spec/04 §2.4：`{ok, verified, readback, reason, audit_id}`）
-      // → 会话层**不把它塌成信封失败**（塌了 `confirm_id` 就没了 → 确认通道形同虚设）
+      // **What is returned is the result object** (contract spec/04 §2.4: `{ok, verified, readback, reason, audit_id}`)
+      // → The session layer **does not collapse it into an envelope failure** (collapsing it would lose the `confirm_id` → the confirmation channel would be a sham)
       make: (services) => (_ctx, args) =>
         services.actions.invoke(String(args['id']), (args['params'] ?? {}) as Record<string, unknown>),
     },
     {
-      // **列流程**（契约 §7.7：权限「无」——只列**用户批过的** ✓）
+      // **List the workflows** (contract §7.7: the permission is "none" — it only lists the ones **the user has approved** ✓)
       name: 'workflows.list',
       summary: 'List the workflows the user has approved (only id / name / input declarations).',
       permission: 'read',
@@ -208,7 +221,7 @@ export function cardApis(): CardApiDef[] {
       make: (services) => () => services.workflows.list(),
     },
     {
-      // **起一条流程**（契约 §7.7：写侧 ✓ —— 权限看**流程 id** ✓）
+      // **Start a workflow** (contract §7.7: the write side ✓ — the permission looks at the **workflow id** ✓)
       name: 'workflows.run',
       summary: 'Run a workflow, **returning the run_id immediately**; poll `workflows.status` for progress.',
       permission: 'workflow',
@@ -222,12 +235,14 @@ export function cardApis(): CardApiDef[] {
     },
     {
       /**
-       * **看一次运行的状态**（契约 §7.7：读侧 ✓）。
-       *
-       * → **`scopeArg` 是空的** ✓：方法的参数是 **run id** ✓，
-       *   而权限要看的是**这个 run 属于哪个流程** ✓ —— 那个映射**只有宿主知道** ✓
-       *   → 所以归属校验**在实现里做** ✓（会话层这一层不判 ✓）。
-       */
+             * **Look at the state of a run** (contract §7.7: the read side ✓).
+             *
+             * → **`scopeArg` is empty** ✓: the argument of the method is the **run
+             *   id** ✓, while the permission has to look at **which workflow this
+             *   run belongs to** ✓ — and that mapping **only the host knows** ✓
+             *   → so the ownership check is done **in the implementation** ✓ (this
+             *   layer of the session does not judge it ✓).
+             */
       name: 'workflows.status',
       summary: 'Inspect the status and stage timeline of a run.',
       permission: 'workflow',
@@ -286,7 +301,7 @@ export function cardApis(): CardApiDef[] {
   ];
 }
 
-/** 按全名查（宿主分发时用） */
+/** Looks it up by the full name (used when the host dispatches) */
 export function apiByName(): Map<string, CardApiDef> {
   return new Map(cardApis().map((api) => [api.name, api]));
 }

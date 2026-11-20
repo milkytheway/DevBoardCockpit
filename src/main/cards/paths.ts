@@ -2,70 +2,73 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, resolve, sep } from 'node:path';
 
 /**
- * 卡片目录里的路径解析与**穿越防护**。
+ * Path resolution and **traversal protection** inside a card directory.
  *
- * ── 这是安全边界，不是工具函数 ──
+ * ── This is a security boundary, not a utility function ──
  *
- * 卡片是 **AI 写的任意网页**。它能请求 `cockpit://card/<id>/<路径>`。
- * 路径没守住 = 卡片能读**宿主文件系统**。
+ * A card is **an arbitrary web page written by an AI**. It can request
+ * `cockpit://card/<id>/<path>`.
+ * A path that is not held back = the card can read the **host file system**.
  *
- * 要挡的：`..` · 绝对路径 · Windows 盘符 · `%2e%2e`（URL 编码过的 `..`）·
- * 目录（结尾 `/`）· 空路径。
+ * What has to be blocked: `..` · absolute paths · Windows drive letters ·
+ * `%2e%2e` (a URL-encoded `..`) · directories (a trailing `/`) · an empty
+ * path.
  */
 
 /**
- * 把相对路径解析到卡片目录里。
+ * Resolves a relative path inside the card directory.
  *
- * @returns 越界就是 `null`（**不猜**——契约的「不猜」口径）
+ * @returns `null` when it leaves the directory (**no guessing** — the
+ * contract's "do not guess" stance)
  */
 export function resolveInsideCard(root: string, relPath: string): string | null {
   if (relPath === '') return null;
 
-  // **先 decode**：浏览器给我们的路径可能已经编码过一遍
+  // **Decode first**: the path the browser hands us may already be encoded
   let decoded: string;
   try {
     decoded = decodeURIComponent(relPath);
   } catch {
-    return null; // 编码坏了的路径 → 不处理
+    return null; // A path with a broken encoding is left alone
   }
   if (decoded === '') return null;
-  // 目录不是文件
+  // A directory is not a file
   if (decoded.endsWith('/') || decoded.endsWith('\\')) return null;
 
-  // 绝对路径（POSIX 的 `/` 与 Windows 的 `C:\`）一律不认
+  // An absolute path (the POSIX `/` and the Windows `C:\`) is never accepted
   if (decoded.startsWith('/') || decoded.startsWith('\\') || /^[a-zA-Z]:[\\/]/.test(decoded)) {
     return null;
   }
 
   const base = resolve(root);
   const full = resolve(base, decoded);
-  // **判据不是字符串比较**：是「解出来的路径还在 base 底下吗」
+  // **The criterion is not a string comparison**: it is "is the resolved path still below the base"
   if (full !== base && !full.startsWith(base + sep)) return null;
 
-  // ── 符号链接 ──
+  // ── Symbolic links ──
   //
-  // 上面的判据是**词法**的：软链在词法上「在目录里」，
-  // 指向的却可能在**目录之外**（软链是最常见的绕过）。
+  // The criterion above is **lexical**: a symbolic link is lexically "inside the directory",
+  // but what it points at may be **outside of it** (a symbolic link is the most common way around).
   //
-  // → 对**真实路径**再判一次。
+  // → Judge the **real path** as well.
   const realBase = realpathOrNull(base);
   if (realBase === null) {
-    // 根目录自己都不存在 → 里面不可能有文件可读（404 即可）
+    // The root directory itself does not exist → there can be no readable file inside it (404 is enough)
     return full;
   }
   const realFull = realpathOrNull(full);
   if (realFull !== null) {
-    // 文件存在 → 判它**真实**的位置
+    // The file exists → judge its **real** location
     if (!isInside(realBase, realFull)) return null;
     return full;
   }
-  // 文件不存在 → 判它的**上一级**（上一级可能是软链）
+  // The file does not exist → judge its **parent** (the parent may be a symbolic link)
   const realParent = realpathOrNull(dirname(full));
   if (realParent !== null && !isInside(realBase, realParent)) return null;
   return full;
 }
 
-/** 真实路径（解析软链）；不存在就是 null */
+/** The real path (the symbolic links resolved); `null` when it does not exist */
 function realpathOrNull(path: string): string | null {
   try {
     return realpathSync(path);
@@ -74,7 +77,7 @@ function realpathOrNull(path: string): string | null {
   }
 }
 
-/** `child` 是不是在 `base` 底下（**不含 base 自己**） */
+/** Is `child` below `base` (**not** `base` itself) */
 function isInside(base: string, child: string): boolean {
   if (child === base) return true;
   return child.startsWith(base + sep);
@@ -103,12 +106,12 @@ const MIME_BY_EXT: Record<string, string> = {
   '.wasm': 'application/wasm',
 };
 
-/** 按扩展名给 MIME。**不认识的给二进制**（不猜） */
+/** The MIME type by extension. **An unknown extension is binary** (no guessing) */
 export function mimeFor(path: string): string {
   return MIME_BY_EXT[extname(path).toLowerCase()] ?? 'application/octet-stream';
 }
 
-/** 文件在不在、是不是文件（目录不算） */
+/** Does the file exist, and is it a file (a directory does not count) */
 export function isFile(path: string): boolean {
   try {
     return existsSync(path) && statSync(path).isFile();
@@ -117,7 +120,7 @@ export function isFile(path: string): boolean {
   }
 }
 
-/** 读一个文件（不存在就是 null） */
+/** Reads a file (`null` when it does not exist) */
 export function readFileOrNull(path: string): Buffer | null {
   try {
     return isFile(path) ? readFileSync(path) : null;

@@ -2,27 +2,31 @@ import { mimeFor, readFileOrNull, resolveInsideCard } from './paths';
 import { cspScriptTag } from './csp-script';
 
 /**
- * `cockpit://` 协议处理器。
+ * The handler of the `cockpit://` protocol.
  *
- * ── 契约 §6.1 的三条硬承诺，全在这个文件里兑现 ──
+ * ── The three hard promises of contract §6.1 are all kept in this file ──
  *
- * | 承诺 | 怎么兑现 |
+ * | Promise | How it is kept |
  * |---|---|
- * | **断网** | 每个 HTML 响应都带 `CARD_CSP`（`connect-src 'none'`）——**响应头**，卡片改不了（`meta` 里的 CSP 管不了自己） |
- * | **卡片资源离线可用** | 资源由本协议伺服；MIME 给对（给错 → module script 被浏览器拒） |
- * | **卡片碰不到宿主的文件系统** | 路径解析 + 穿越防护（`paths.ts`） |
+ * | **No network** | every HTML response carries `CARD_CSP` (`connect-src 'none'`) — a **response header**, which the card cannot change (a CSP in a `meta` tag cannot restrict itself) |
+ * | **The resources of a card work offline** | the resources are served by this protocol; the MIME type has to be right (a wrong one → the browser rejects the module script) |
+ * | **A card cannot reach the file system of the host** | path resolution + traversal protection (`paths.ts`) |
  *
- * ── 形状：`(Request) => Response` ──
+ * ── The shape: `(Request) => Response` ──
  *
- * `Request` / `Response` 是 **web 标准的全局对象**（Node 20 就有），
- * 所以这个处理器的每一条行为**都能在单测里验**，不必等真浏览器。
- * 浏览器那一层（真沙箱、真断网、CSP 违规归属）留给 e2e。
+ * `Request` / `Response` are **global objects of the web standard** (Node 20
+ * already has them), so every behaviour of this handler **can be verified in a
+ * unit test** without waiting for a real browser.
+ * The browser layer (the real sandbox, the real network cut, the attribution
+ * of a CSP violation) is left to the e2e tests.
  */
 
 /**
- * 卡片 HTML 的 CSP 头（**契约 `spec/03` §6.1 的逐条原文**）。
+ * The CSP header of the card HTML (**the text of contract `spec/03` §6.1,
+ * clause by clause**).
  *
- * **一个字都不改**——它是「卡片不能联网」这条承诺的执行者。
+ * **Not one character is changed** — it is the executor of the promise "a card
+ * cannot reach the network".
  */
 export const CARD_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
@@ -30,26 +34,28 @@ export const CARD_CSP =
   "form-action 'none'; frame-src 'none'; base-uri 'none'";
 
 /**
- * 宿主注入的 bridge 脚本标签。
+ * The tag of the bridge script injected by the host.
  *
- * ── 必须是**带实例 id 的绝对 URL** ──
+ * ── It has to be an **absolute URL with the instance id** ──
  *
- * 卡片页面的地址是 `cockpit://card/<实例 id>/index.html`。
- * 若这里写 `/__host/bridge.js`（相对根路径），浏览器会解析成
- * `cockpit://card/__host/bridge.js`——**实例 id 被吃掉了** →
- * 协议处理器拿 `__host` 当实例 id → 404 → `window.cockpit` 恒 undefined。
+ * The address of a card page is `cockpit://card/<instance id>/index.html`.
+ * If this were `/__host/bridge.js` (a root-relative path), the browser would
+ * resolve it to `cockpit://card/__host/bridge.js` — **the instance id is
+ * swallowed** → the protocol handler takes `__host` for the instance id → 404
+ * → `window.cockpit` stays undefined for good.
  *
- * → 所以用**绝对 URL**（`cockpit://card/<实例 id>/__host/bridge.js`）。
+ * → Therefore an **absolute URL** (`cockpit://card/<instance id>/__host/bridge.js`).
  *
- * 代价：**每个实例的标签不一样**（实例 id 不同）——
- * 这正是我们要的：bridge 脚本里带着自己的实例 id（RF-1 的凭据）。
+ * The cost: **the tag differs per instance** (the instance id differs) —
+ * which is exactly what is wanted: the bridge script carries its own instance
+ * id (the credential of RF-1).
  */
 function bridgeTagFor(instanceId: string): string {
   const id = encodeURIComponent(instanceId);
   return `<script type="module" src="cockpit://card/${id}/__host/bridge.js"></script>`;
 }
 
-/** 把标签插到文档最前面（`<head>` 之后，没有 `<head>` 就 `<html>` 之后） */
+/** Inserts the tag at the very front of the document (after `<head>`, after `<html>` when there is no `<head>`) */
 function injectAtStart(html: string, tags: string): string {
   const head = /<head\b[^>]*>/i.exec(html);
   if (head !== null) {
@@ -61,37 +67,38 @@ function injectAtStart(html: string, tags: string): string {
     const at = htmlTag.index + htmlTag[0].length;
     return html.slice(0, at) + tags + html.slice(at);
   }
-  // 连 `<html>` 都没有 → 前置到文档开头
+  // Not even an `<html>` → put it at the beginning of the document
   return tags + html;
 }
 
 /**
- * 把 bridge 脚本标签插进 HTML。
+ * Inserts the tag of the bridge script into the HTML.
  *
- * 位置有讲究：**必须在卡片自己的脚本之前**——
- * 否则卡片脚本一跑，`window.cockpit` 还不存在。
+ * The position matters: **it has to be before the scripts of the card** —
+ * otherwise `window.cockpit` does not exist yet when the card script runs.
  *
- * @param instanceId 这个实例的 id（标签里要带上它）
+ * @param instanceId the id of this instance (the tag has to carry it)
  */
 export function injectBridge(html: string, instanceId: string): string {
   return injectAtStart(html, bridgeTagFor(instanceId));
 }
 
 /**
- * 把**宿主注入的两个脚本**插进 HTML。
+ * Inserts the **two scripts injected by the host** into the HTML.
  *
- * | 顺序 | 脚本 | 为什么在这个位置 |
+ * | Order | Script | Why it sits there |
  * |---|---|---|
- * | 1 | `__host/csp.js` | **经典脚本**（解析时同步执行）→ 在卡片自己的脚本之前就装上 CSP 违规监听 → 卡片在**解析期**的违规也抓得到 |
- * | 2 | `__host/bridge.js` | module（defer）→ 卡片脚本跑之前 `window.cockpit` 就绪 |
+ * | 1 | `__host/csp.js` | a **classic script** (synchronous during parsing) → the CSP violation listener is installed before the scripts of the card → violations during **parsing** are caught too |
+ * | 2 | `__host/bridge.js` | a module (deferred) → `window.cockpit` is ready before the card scripts run |
  *
- * 顺序不能反：csp 必须在 bridge 之前（监听要早）。
+ * The order must not be reversed: csp has to come before bridge (the listener
+ * has to be early).
  */
 export function injectHostScripts(html: string, instanceId: string): string {
   return injectAtStart(html, cspScriptTag(instanceId) + bridgeTagFor(instanceId));
 }
 
-/** 把主题样式（`:root{--cockpit-*:…}`）插进 HTML */
+/** Inserts the theme styles (`:root{--cockpit-*:…}`) into the HTML */
 export function injectTheme(html: string, style: string): string {
   if (style.trim() === '') return html;
   const tag = `<style>${style}</style>`;
@@ -109,22 +116,23 @@ export function injectTheme(html: string, style: string): string {
 }
 
 export interface CardProtocolDeps {
-  /** 这个实例的卡片目录。**没登记就是 null**（不猜） */
+  /** The card directory of this instance. **`null` when it is not registered** (no guessing) */
   dirOfInstance: (instanceId: string) => string | null;
-  /** 这个实例的入口文件（相对卡片目录） */
+  /** The entry file of this instance (relative to the card directory) */
   entryOfInstance: (instanceId: string) => string;
-  /** 注入给这个实例的 bridge 脚本（**每个实例一份**：它带着 instanceId） */
+  /** The bridge script injected into this instance (**one per instance**: it carries the instanceId) */
   bridgeScript: (instanceId: string) => string;
-  /** 注入给这个实例的 CSP 违规监听脚本（**每个实例一份**：它带着 instanceId） */
+  /** The CSP violation listener injected into this instance (**one per instance**: it carries the instanceId) */
   cspScript: (instanceId: string) => string;
-  /** 当前主题的 CSS 变量块（Task 11 接上） */
+  /** The block of CSS variables of the current theme (wired up in task 11) */
   themeStyle?: () => string;
 }
 
 /**
- * 造一个 `cockpit://` 的处理器。
+ * Builds a handler for `cockpit://`.
  *
- * URL 形状：`cockpit://card/<实例 id>/<卡片目录内的相对路径>`
+ * The shape of the URL: `cockpit://card/<instance id>/<relative path inside the
+ * card directory>`
  */
 export function createCardProtocol(
   deps: CardProtocolDeps,
@@ -147,7 +155,7 @@ export function createCardProtocol(
 
     const rel = segments.slice(1).join('/');
 
-    // 宿主注入的 bridge 脚本（**不走文件系统**——它是生成的）
+    // The bridge script injected by the host (**not read from the file system** — it is generated)
     if (rel === '__host/bridge.js') {
       return new Response(deps.bridgeScript(instanceId), {
         status: 200,
@@ -158,7 +166,7 @@ export function createCardProtocol(
       });
     }
 
-    // 宿主注入的 CSP 违规监听脚本（**经典脚本**——要赶在卡片自己的脚本之前）
+    // The CSP violation listener injected by the host (**a classic script** — it has to be ahead of the scripts of the card)
     if (rel === '__host/csp.js') {
       return new Response(deps.cspScript(instanceId), {
         status: 200,
@@ -177,7 +185,7 @@ export function createCardProtocol(
 
     const headers: Record<string, string> = {
       'Content-Type': mimeFor(filePath),
-      // 卡片是**开发时反复改**的 → 不缓存（否则改了文件看不到变化）
+      // A card is **edited over and over during development** → no caching (otherwise a change to a file is not visible)
       'Cache-Control': 'no-store',
     };
 
@@ -186,10 +194,10 @@ export function createCardProtocol(
       return new Response(body, { status: 200, headers });
     }
 
-    // **每个 HTML 都带 CSP**（卡片里的第二个页面也一样）
+    // **Every HTML carries the CSP** (the second page of a card as well)
     headers['Content-Security-Policy'] = CARD_CSP;
     let html = body.toString('utf8');
-    // bridge 与主题只注入**入口**（其它页面是卡片自己的资源）
+    // The bridge and the theme are injected into the **entry** only (the other pages are resources of the card)
     if (rel === deps.entryOfInstance(instanceId)) {
       html = injectHostScripts(html, instanceId);
       const theme = deps.themeStyle?.() ?? '';

@@ -1,40 +1,45 @@
 import type { FakeDevice } from './device';
 
 /**
- * ⚠️ **假设备** —— 把采样器的命令「执行」在虚拟板子上。
+ * ⚠️ **The fake device** — it "executes" the commands of the sampler on a
+ * virtual board.
  *
- * ── 为什么自己写一个小 shell ──
+ * ── Why it has a little shell of its own ──
  *
- * 因为**采样器的取数命令就是 shell 命令**：
+ * Because **the commands the sampler uses to fetch data are shell commands**:
  *
  * ```
- * echo '<marker>'; cat -- '<路径>'; echo '<分隔行>'; cat -- '<另一路径>'; echo '<marker>'
+ * echo '<marker>'; cat -- '<path>'; echo '<separator>'; cat -- '<other path>'; echo '<marker>'
  * ```
  *
- * 加上 thermal 的 `for d in <glob>; do printf …; done`。
+ * plus the `for d in <glob>; do printf …; done` of the thermal zone.
  *
- * ── 为什么不能按 marker 切字符串 ──
+ * ── Why the string cannot be cut at the markers ──
  *
- * 因为 `proc_stat` 的取数片段里**自己带一个 echo**（分隔行 `--- cpuinfo ---`）。
- * 按 marker 切，**切到哪一步全靠运气**：分隔行被当成 marker 的时候，
- * kind 报的是 parse_error，而**原因在假设备里，看板子里看不出来**——
- * 那是**假的板子教错了真的代码**。
+ * Because the fragment of `proc_stat` **carries an echo of its own** (the
+ * separator `--- cpuinfo ---`).
+ * Cutting at the markers means **where the cut lands is a matter of luck**:
+ * when the separator is taken for a marker, the kind reports a parse_error,
+ * and **the cause is inside the fake device** and cannot be seen on the board —
+ * that is **a fake board teaching the real code the wrong thing**.
  *
- * → 所以这里**按 shell 语义跑**：`;` 分语句、引号包住参数、
- * `$( )` 做命令替换、`for … do … done` 展开 glob。
+ * → So it **runs with shell semantics** here: `;` separates the statements,
+ * the quotes wrap the arguments, `$( )` does the command substitution, and
+ * `for … do … done` expands the glob.
  *
- * ── 认不出来的语句一律不输出 ──
+ * ── A statement that is not understood produces no output at all ──
  *
- * **不猜**：假设备宁可说「我不知道」，也不要编一个数出来。
+ * **No guessing**: the fake device would rather say "I do not know" than make
+ * up a number.
  */
 
-/** 一个词：文本 + 有没有被引号包过（被包过的不做变量替换） */
+/** One word: the text + whether it was quoted (a quoted word is not substituted) */
 interface Word {
   text: string;
   quoted: boolean;
 }
 
-/** 找到与 `open` 位置上的 `(` 配对的 `)`（跳过引号里的括号） */
+/** Finds the `)` that matches the `(` at the position of `open` (the brackets inside the quotes are skipped) */
 function findClosingParen(text: string, open: number): number {
   let depth = 0;
   let quote: string | null = null;
@@ -58,12 +63,14 @@ function findClosingParen(text: string, open: number): number {
 }
 
 /**
- * 读一个**双引号**包住的词。
+ * Reads one word wrapped in **double quotes**.
  *
- * 双引号里可以有 `$( )`（命令替换照样求值），
- * 而且**命令替换里面还能有引号**——
- * `"$(cat -- "$d/type")"` 是 shell 里最常见的写法之一，
- * 所以这里必须**递归**地读，不能简单地「找下一个 `"`」。
+ * A `$( )` may appear inside the double quotes (the command substitution is
+ * evaluated as well), and **there may be quotes inside the command
+ * substitution** —
+ * `"$(cat -- "$d/type")"` is one of the most common shell idioms,
+ * so this has to read **recursively**; it cannot simply "look for the next
+ * `"`".
  */
 function readDoubleQuoted(
   device: FakeDevice,
@@ -93,11 +100,11 @@ function readDoubleQuoted(
 }
 
 /**
- * 把一条语句切成词。
+ * Splits one statement into words.
  *
- * - `'...'`：原样（**不做任何替换**）
- * - `"..."`：原样，但 `$( )` 照样求值
- * - `$(...)`：命令替换——**递归求值**
+ * - `'...'`: as it is (**no substitution at all**)
+ * - `"..."`: as it is, but `$( )` is evaluated as well
+ * - `$(...)`: a command substitution — **evaluated recursively**
  */
 function splitWords(device: FakeDevice, statement: string): Word[] {
   const words: Word[] = [];
@@ -136,15 +143,15 @@ function splitWords(device: FakeDevice, statement: string): Word[] {
   return words;
 }
 
-/** 是不是重定向（`2>/dev/null`）或选项（`--`）——这两类不是路径 */
+/** Is it a redirection (`2>/dev/null`) or an option (`--`) — neither of them is a path */
 function isNotAPath(word: Word): boolean {
   return word.text.startsWith('-') || word.text.includes('>');
 }
 
 /**
- * 跑一条语句，返回它打印出来的东西。
+ * Runs one statement and returns what it printed.
  *
- * **认不出来的 → 空输出**（不猜）。
+ * **A statement that is not understood → no output** (no guessing).
  */
 function evalStatement(device: FakeDevice, statement: string): string {
   const words = splitWords(device, statement);
@@ -152,14 +159,14 @@ function evalStatement(device: FakeDevice, statement: string): string {
   const command = words[0]!.text;
 
   if (command === 'echo') {
-    // 真的 `echo` 用空格连参数
+    // A real `echo` joins the arguments with spaces
     return `${words.slice(1).map((w) => w.text).join(' ')}\n`;
   }
 
   if (command === 'cat') {
     const path = words.slice(1).find((w) => !isNotAPath(w));
     if (path === undefined) return '';
-    // **文件不存在 → 一个字都没有**（真 cat 也是这样：错在 stderr）
+    // **The file does not exist → not a single character** (a real `cat` behaves the same way: the error goes to stderr)
     return device.read(path.text) ?? '';
   }
 
@@ -185,12 +192,13 @@ function evalStatement(device: FakeDevice, statement: string): string {
     return out;
   }
 
-  // **认不出来 → 什么都不给**
+  // **Not understood → nothing at all**
   return '';
 }
 
 /**
- * 按 `;` 切语句（引号与括号里的 `;` 不算）。
+ * Splits the statements at `;` (a `;` inside the quotes or the brackets does
+ * not count).
  */
 function splitStatements(text: string): string[] {
   const out: string[] = [];
@@ -223,10 +231,11 @@ function splitStatements(text: string): string[] {
 }
 
 /**
- * 跑一串语句。
+ * Runs a series of statements.
  *
- * `for <变量> in <glob>; do <循环体>; done` 会被**展开**：
- * 循环体里的 `$变量` 先替换成 glob 的每一项，再逐项跑一遍。
+ * `for <variable> in <glob>; do <body>; done` is **expanded**: the
+ * `$variable` of the body is replaced with every item of the glob, and the
+ * body is run once per item.
  */
 function runShell(device: FakeDevice, statements: string[]): string {
   let out = '';
@@ -242,7 +251,7 @@ function runShell(device: FakeDevice, statements: string[]): string {
     if (forHead !== null) {
       const variable = forHead[1]!;
       const pattern = forHead[2]!.trim();
-      // 循环体：从 `do` 那句到 `done` 之前
+      // The body of the loop: from the `do` statement up to before the `done`
       const body: string[] = [];
       i += 1;
       while (i < statements.length && !/^done\b/.test(statements[i]!.trim())) {

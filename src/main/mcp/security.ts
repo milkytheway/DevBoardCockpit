@@ -1,47 +1,53 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 /**
- * **MCP server 的本机安全基线**（契约 `spec/04` §7.1 ✓）。
+ * The **security baseline of the local MCP server** (contract `spec/04` §7.1 ✓).
  *
- * ── 为什么这几条是**硬要求**而不是「建议」 ──
+ * ── Why these rules are a **hard requirement** and not a "recommendation" ──
  *
- * 本地 HTTP MCP server 若不校验 `Origin` / `Host` ✓，
- * **任何用户访问过的恶意网页**都能通过 DNS rebinding 向 `127.0.0.1` 发请求 ✓
- * → 直接驱动 `execute_action` 改用户的板子 ✓。
- * （MCP 规范原话：「Servers **MUST** validate the `Origin` header on all incoming connections
- * to prevent DNS rebinding attacks」✓ —— 契约把它写成了硬要求 ✓。）
+ * If a local HTTP MCP server does not validate `Origin` / `Host` ✓,
+ * **every malicious web page the user has ever visited** can send requests to
+ * `127.0.0.1` through DNS rebinding ✓
+ * → and drive `execute_action` to change the board of the user ✓.
+ * (The words of the MCP specification: "Servers **MUST** validate the
+ * `Origin` header on all incoming connections to prevent DNS rebinding
+ * attacks" ✓ — the contract turned that into a hard requirement ✓.)
  *
- * ── 为什么 `Origin` 与 `Host` **都要**查 ──
+ * ── Why **both** `Origin` and `Host` have to be checked ──
  *
- * - 只查 `Origin` ✗ → 挡不住**非浏览器客户端**（但那要本机有恶意程序 ✓）；
- * - 只查 `Host` ✗ → 挡不住**浏览器发来的合法 Host + 恶意 Origin**（proxy 场景 ✓）。
- * → **两个都要** ✓ → 各自堵一半 ✓ → 合起来才是闭环 ✓。
+ * - only `Origin` ✗ → does not block a **non-browser client** (that would
+ *   require malicious software on the machine ✓);
+ * - only `Host` ✗ → does not block a **legitimate Host with a malicious Origin
+ *   sent by a browser** (the proxy case ✓).
+ * → **Both of them** ✓ → each blocks half ✓ → together they close the loop ✓.
  */
 
-/** MCP 协议版本（2025-06-18 ✓ —— 规范里最新的那版 ✓） */
+/** The version of the MCP protocol (2025-06-18 ✓ — the latest one in the specification ✓) */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
 
-/** 一次会话的 token（**每次启动重新生成** ✓ —— 契约 §7.1 ✓） */
+/** The token of one session (**regenerated on every start** ✓ — contract §7.1 ✓) */
 export function generateToken(): string {
-  // **32 随机字节** ✓（契约：≥32 字节 ✓）→ base64url ✓（44 字符 ✓，无填充 ✓）
+  // **32 random bytes** ✓ (the contract: ≥32 bytes ✓) → base64url ✓ (44 characters ✓, no padding ✓)
   return randomBytes(32).toString('base64url');
 }
 
 /**
- * **`Origin` 合不合法** ✓。
+ * **Is the `Origin` legitimate** ✓.
  *
- * → **存在且不合法** → 403 ✓（契约原文 ✓）。
- * → **不存在** → 放行 ✓（**不是浏览器**的客户端 ✓ —— 比如 agent 自己 ✓）。
+ * → **It is there and not legitimate** → 403 ✓ (the words of the contract ✓).
+ * → **It is not there** → let it pass ✓ (a client that is **not a browser** ✓
+ *   — the agent itself, for instance ✓).
  *
- * 什么算合法？**本机** ✓：`http://127.0.0.1:<port>` / `http://localhost:<port>` /
- * `file://` ✓（Electron 自己的页面 ✓）。
+ * What counts as legitimate? **The local machine** ✓:
+ * `http://127.0.0.1:<port>` / `http://localhost:<port>` / `file://` ✓ (the
+ * pages of Electron itself ✓).
  */
 export function checkOrigin(origin: string | undefined): boolean {
   if (origin === undefined || origin === '') return true;
-  // **`null` 是浏览器的「不透明来源」** ✓ —— 它不是本机 ✓ → 拒 ✓
+  // **`null` is the "opaque origin" of the browser** ✓ — it is not the local machine ✓ → refuse ✓
   if (origin === 'null') return false;
   if (origin === 'file://') return true;
-  // **只认 http/https 的本机** ✓
+  // **Only the local machine over http/https is accepted** ✓
   let url: URL;
   try {
     url = new URL(origin);
@@ -53,13 +59,15 @@ export function checkOrigin(origin: string | undefined): boolean {
 }
 
 /**
- * **`Host` 合不合法** ✓（契约 §7.1：只接受 `127.0.0.1:<port>` 与 `localhost:<port>` ✓）。
+ * **Is the `Host` legitimate** ✓ (contract §7.1: only `127.0.0.1:<port>` and
+ * `localhost:<port>` are accepted ✓).
  *
- * → 端口也必须对上 ✓（否则能把请求打到**别的**端口上 ✓）。
+ * → The port has to match as well ✓ (otherwise the request could be aimed at
+ *   **another** port ✓).
  */
 export function checkHost(host: string | undefined, port: number): boolean {
   if (host === undefined || host === '') return false;
-  // **`[::1]:port`** ✓（IPv6 回环 ✓）
+  // **`[::1]:port`** ✓ (the IPv6 loopback ✓)
   const match = /^\[?([^\]]+)\]?:(\d+)$/.exec(host);
   if (match === null) return false;
   const name = match[1] as string;
@@ -69,10 +77,11 @@ export function checkHost(host: string | undefined, port: number): boolean {
 }
 
 /**
- * **Bearer 认证** ✓（契约 §7.1：每个请求必须带 `Authorization: Bearer <token>` ✓）。
+ * **Bearer authentication** ✓ (contract §7.1: every request has to carry
+ * `Authorization: Bearer <token>` ✓).
  *
- * → 比较用**定长比较** ✓（`timingSafeEqual` ✓）——
- * 普通的 `===` **会因比较耗时泄露前缀** ✓。
+ * → The comparison is a **constant-time comparison** ✓ (`timingSafeEqual` ✓) —
+ *   a plain `===` **leaks the prefix through the time it takes** ✓.
  */
 export function checkAuthorization(header: string | undefined, token: string): boolean {
   if (header === undefined) return false;
@@ -81,7 +90,7 @@ export function checkAuthorization(header: string | undefined, token: string): b
   const given = header.slice(prefix.length);
   const a = Buffer.from(given, 'utf8');
   const b = Buffer.from(token, 'utf8');
-  // **长度不等就不能比** ✓（`timingSafeEqual` 要求等长 ✓ —— 不等长时直接拒 ✓）
+  // **A different length cannot be compared** ✓ (`timingSafeEqual` requires the same length ✓ — a different length is refused directly ✓)
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

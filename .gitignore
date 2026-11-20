@@ -45,6 +45,17 @@ venv/
 # superpowers 计划工作区（ledger / briefs / review package）
 .superpowers/
 
+# Scratch workspace for one-shot analysis scripts
+.work/
+
+# One-shot scripts and intermediate artefacts of the release cleanup
+/.tmp-*.cjs
+/.my-*.cjs
+/.scan-*.cjs
+/.scan-*.json
+/.prot.txt
+/.stage-test.txt
+
 # 平台专属原生包的备份（共享 node_modules 的固有代价）
 .cache/
 

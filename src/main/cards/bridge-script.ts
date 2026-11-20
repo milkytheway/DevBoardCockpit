@@ -1,26 +1,28 @@
 import type { CardApiDef } from './api-registry';
 
 /**
- * 从注册表**生成**注入给卡片的 bridge 脚本。
+ * Generates the bridge script that is injected into cards, from the registry.
  *
- * ── 为什么是「生成」而不是「手写」 ──
+ * ── Why it is generated rather than hand-written ──
  *
- * 宿主实现与 bridge 脚本**各写一份**的话，它们迟早对不上：
- * 卡片调 `cockpit.tags.get`，宿主那边只有 `tagsGet`，
- * 症状是「卡片说方法不存在」，而**没人查得出是哪边错了**。
+ * If the host implementation and the bridge script are written **separately**,
+ * they will eventually drift apart:
+ * the card calls `cockpit.tags.get`, the host only has `tagsGet`,
+ * the symptom is "the card says the method does not exist", and **nobody can
+ * tell which side is wrong**.
  *
- * → 注册表是唯一的清单，这里把它**变成代码** ✓。
+ * → The registry is the single inventory; here it is **turned into code** ✓.
  *
- * ── 生成的脚本跑在哪 ──
+ * ── Where the generated script runs ──
  *
- * 卡片的 iframe 里（**不透明源**）：
- * - **没有 Node** → 不能有 `require` / `import`
- * - **不能联网** → 不能拉任何外部脚本
- * - 唯一的出口是 `postMessage` → 宿主
+ * Inside the card's iframe (an **opaque origin**):
+ * - **no Node** → no `require` / `import`
+ * - **no network** → no external script may be fetched
+ * - the only exit is `postMessage` → the host
  */
 export const BRIDGE_SOURCE_MARKER = '/* cockpit-bridge:v1 */';
 
-/** 全名拆成「命名空间 / 方法名」 */
+/** Splits a full name into "namespace / method name" */
 function splitName(name: string): [string, string] {
   const at = name.indexOf('.');
   if (at < 0) return [name, ''];
@@ -28,23 +30,24 @@ function splitName(name: string): [string, string] {
 }
 
 /**
- * 生成 bridge 脚本。
+ * Generates the bridge script.
  *
- * @param apis 卡片 API 全集（`cardApis()`）
- * @param instanceId 这个实例的 id —— **握手时带上它**，宿主据此认人
- *        （否则卡片 A 导航到卡片 B 的 URL 就会借到 A 的权限，RF-1）
+ * @param apis the full set of card APIs (`cardApis()`)
+ * @param instanceId the id of this instance — **carry it in the handshake**, the
+ *        host uses it to tell who is calling (otherwise card A navigating to
+ *        card B's URL would borrow A's permissions, RF-1)
  */
 export function bridgeScriptFor(apis: CardApiDef[], instanceId: string): string {
   const groups = new Map<string, string[]>();
-  /** **顶层方法**（`capabilities` / `degradation` / `log` / `notify`） */
+  /** **Top-level methods** (`capabilities` / `degradation` / `log` / `notify`) */
   const topLevel: string[] = [];
   for (const api of apis) {
     const [ns, fn] = splitName(api.name);
     if (fn === '') {
-      // ── 顶层方法**自己就是一个函数** ──
-      // 契约 §7.7 的用法是 `cockpit.log(level, message)`、`cockpit.capabilities()`——
-      // **不是** `cockpit.log.log(...)`。
-      // （原来把它们放进了「同名命名空间」里 → 卡片按契约写就 TypeError。）
+      // ── A top-level method **is itself a function** ──
+      // The usage in contract §7.7 is `cockpit.log(level, message)`, `cockpit.capabilities()` —
+      // **not** `cockpit.log.log(...)`.
+      // (They used to sit in a namespace of the same name → a card written to the contract got a TypeError.)
       topLevel.push(
         `  ${ns}: (${api.params.join(', ')}) => ask(${JSON.stringify(api.name)}, { ${argsOf(api)} }),`,
       );
@@ -208,7 +211,7 @@ ${namespaces}
 `;
 }
 
-/** 把位置参数拼成对象字面量：`{ key: key, value: value }` */
+/** Turns positional arguments into an object literal: `{ key: key, value: value }` */
 function argsOf(api: CardApiDef): string {
   return api.params.map((p) => `${p}: ${p}`).join(', ');
 }

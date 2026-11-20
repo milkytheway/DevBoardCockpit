@@ -1,42 +1,46 @@
 import { matchTagPattern } from '../tags/vocabulary';
 
 /**
- * 卡片的权限集（契约 `spec/03` §2）。
+ * The permission set of a card (contract `spec/03` §2).
  *
- * ── 一句话 ──
+ * ── In one line ──
  *
- * > `requires` 里的每一项，必须被 `permissions` 里的**某一项**覆盖。
+ * > Every entry of `requires` must be covered by **some** entry of
+ * > `permissions`.
  *
- * **注意是「覆盖」不是「相等」**——这让卡片既能声明精确需求，
- * 又能申请一个更宽的读权限（反过来不成立）。
+ * **"Covered", not "equal"** — that lets a card state an exact need and still
+ * ask for a broader read permission (the other way round does not hold).
  *
- * **为什么读权限用模式、写权限不用**（契约 §2.3）：
- * 读一个 `cpu.usage` 没有副作用；写一个动作会改板子。
- * 模式让授权范围变大，对读来说方便，对写来说**危险**。
+ * **Why the read permissions are patterns and the write ones are not**
+ * (contract §2.3): reading a `cpu.usage` has no side effect; writing an action
+ * changes the board. A pattern widens the scope of the authorisation, which is
+ * convenient for reading and **dangerous** for writing.
  */
 export interface CardPermissions {
   read: string[];
   write: string[];
-  /** 允许这张卡触发的**流程 id**（第二个授权维度 ✓ —— 评审 37 的 V3-I9 ✓） */
+  /** The **workflow ids** this card may trigger (the second authorisation dimension ✓ — review 37, V3-I9 ✓) */
   workflows?: string[];
 }
 
 /**
- * 这个 tag 被读权限覆盖了吗？
+ * Is this tag covered by the read permissions?
  *
- * 实现就是 `perms.read.some((p) => matchTagPattern(p, tag))`——
- * **复用词表层那一个匹配器**，不自己写第二套规则
- * （第二套规则迟早和第一套对不上）。
+ * The implementation is `perms.read.some((p) => matchTagPattern(p, tag))` —
+ * it **reuses the one matcher of the vocabulary layer** instead of writing a
+ * second set of rules (a second set will eventually disagree with the first).
  */
 export function permissionCovers(perms: CardPermissions, tag: string): boolean {
   return perms.read.some((pattern) => matchTagPattern(pattern, tag));
 }
 
 /**
- * `requires` 的每一项都被读权限覆盖了吗？（契约 §2.2 的布尔形式）
+ * Is every entry of `requires` covered by the read permissions? (the boolean
+ * form of contract §2.2)
  *
- * **M5 的校验器不用它**——规则 3 是**逐项报**的（告诉人「是哪一条没被覆盖」），
- * 比一个布尔值有用。M6 的授权检查用它。
+ * **The M5 validator does not use it** — rule 3 reports **per entry** (it
+ * tells the reader "which one is not covered"), which is more useful than a
+ * boolean. The M6 authorisation check uses it.
  */
 export function requiresSatisfied(requires: string[], perms: CardPermissions): boolean {
   return requires.every((tag) => permissionCovers(perms, tag));

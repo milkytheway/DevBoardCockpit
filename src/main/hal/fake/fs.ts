@@ -1,31 +1,40 @@
 /**
- * ⚠️ **假设备** —— 一块**虚拟文件系统**。
+ * ⚠️ **The fake device** — a **virtual file system**.
  *
- * ── 为什么假设备要有一块盘 ──
+ * ── Why the fake device needs a disk ──
  *
- * 写侧（M6）要证明的是「**动作执行 → 回读 → 界面按回读值渲染**」，
- * 而回读的五种形式里有三种落在**文件与命令**上：
- * `file_equals`（读文件比值）、`command_ok`（看退出码）、`verify`（跑二次命令）。
+ * What the write side (M6) has to prove is "**the action executes → the
+ * readback → the interface renders the value of the readback**", and three of
+ * the five forms of the readback land on **files and commands**:
+ * `file_equals` (read the file and compare the value), `command_ok` (look at
+ * the exit code), `verify` (run a second command).
  *
- * → 假设备**不能只会吐 `/proc` 文本**：它得能**写文件、能读回、能被 grep**。
- * 否则「动作闭环」这条判据在假设备上根本跑不了（只能靠真板 → 不可自动化）。
+ * → The fake device **cannot only emit `/proc` text**: it has to be able to
+ * **write files, read them back and be grepped**.
+ * Otherwise the criterion "the action loop closes" cannot be run on the fake
+ * device at all (it would depend on a real board → not automatable).
  *
- * ── 三条「诚实」的要求 ──
+ * ── Three demands of "honesty" ──
  *
- * 1. **真传**：推上去的文件真的落在虚拟盘里，拉下来的文件真的落在宿主磁盘上
- *    ——「报告成功却不传文件」这种骗人的事不再发生；
- * 2. **不假装有**：拉一个不存在的文件**报错**，不是**报告成功**；
- * 3. **字节保真**：存的是 **Buffer** 不是字符串
- *    —— `.ko` 是二进制，用字符串存会把它毁掉（转码即损坏）。
+ * 1. **A real transfer**: a file that is pushed really lands on the virtual
+ *    disk, and a file that is pulled really lands on the disk of the host —
+ *    the lying kind of "reporting success without transferring the file" no
+ *    longer happens;
+ * 2. **No pretending**: pulling a file that does not exist **is an error**,
+ *    not a **reported success**;
+ * 3. **The bytes are preserved**: what is stored is a **Buffer** and not a
+ *    string — a `.ko` is binary, and storing it as a string destroys it (the
+ *    transcoding is the damage).
  *
- * ── 一块板子只有一块盘 ──
+ * ── A board has only one disk ──
  *
- * 所以这块 fs **按 profile id 分**：同一个假 profile 的两条连接
- * （运行时的连接、终端标签的连接）看到**同一块盘**——
- * 运行时写进去的文件，文件浏览器看得见。
+ * So this fs is **split per profile id**: the two connections of the same fake
+ * profile (the connection of the runtime, the connection of the terminal tab)
+ * see **the same disk** — a file the runtime wrote is visible in the file
+ * browser.
  */
 
-/** 一个目录项（与 HAL 的 `FileEntry` 同形，但这里多一个 size） */
+/** One directory entry (the same shape as the `FileEntry` of the HAL, but with a size here) */
 export interface VirtualEntry {
   name: string;
   path: string;
@@ -34,36 +43,36 @@ export interface VirtualEntry {
 }
 
 export class VirtualFs {
-  /** 绝对路径 → 内容 */
+  /** absolute path → content */
   private readonly files = new Map<string, Buffer>();
 
-  /** 写一个文件（建不建父目录都无所谓——这是一块扁平的文件系统） */
+  /** Writes a file (whether the parent directory is created does not matter — this is a flat file system) */
   write(path: string, content: string | Buffer): void {
     this.files.set(normalizePath(path), Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'));
   }
 
-  /** 读一个文件；没有就是 `null`（**不是空串**——空文件与没有文件是两件事） */
+  /** Reads a file; `null` when there is none (**not an empty string** — an empty file and a missing file are two different things) */
   read(path: string): Buffer | null {
     return this.files.get(normalizePath(path)) ?? null;
   }
 
-  /** 读一个文件（当文本用） */
+  /** Reads a file (as text) */
   readText(path: string): string | null {
     const buffer = this.read(path);
     return buffer === null ? null : buffer.toString('utf8');
   }
 
-  /** 这个路径上有东西吗 */
+  /** Is there anything on this path */
   exists(path: string): boolean {
     return this.files.has(normalizePath(path));
   }
 
-  /** 删一个文件（没有就是 `false`） */
+  /** Deletes a file (`false` when there is none) */
   remove(path: string): boolean {
     return this.files.delete(normalizePath(path));
   }
 
-  /** 列一个目录的**直接子项**（文件与子目录） */
+  /** Lists the **direct children** of a directory (the files and the subdirectories) */
   list(dir: string): VirtualEntry[] {
     const base = normalizePath(dir);
     const prefix = base === '' || base === '/' ? '/' : `${base}/`;
@@ -83,7 +92,7 @@ export class VirtualFs {
         });
         continue;
       }
-      //  deeper → 是个子目录
+      //  deeper → it is a subdirectory
       dirs.add(rest.slice(0, slash));
     }
     const out: VirtualEntry[] = [];
@@ -96,13 +105,13 @@ export class VirtualFs {
     return out;
   }
 
-  /** 全部路径（诊断用） */
+  /** All the paths (for the diagnostics) */
   paths(): string[] {
     return [...this.files.keys()];
   }
 }
 
-/** 路径归一：去掉重复的 `/`、去掉结尾的 `/`（根目录除外） */
+/** The normalisation of a path: the duplicate `/` are removed, the trailing `/` is removed (except for the root) */
 function normalizePath(path: string): string {
   const trimmed = path.trim();
   if (trimmed === '') return '';
@@ -112,10 +121,11 @@ function normalizePath(path: string): string {
 }
 
 /**
- * 每块假板子一块 fs（**按 profile id 分**）。
+ * One fs per fake board (**split per profile id**).
  *
- * → 同一个假 profile 的两条连接看到同一块盘 ✓
- * → 换一个 profile id 就是**另一块板子**（互不串台）✓
+ * → The two connections of the same fake profile see the same disk ✓
+ * → Another profile id means **another board** (they do not talk to each
+ *   other) ✓
  */
 const FILESYSTEMS = new Map<string, VirtualFs>();
 
@@ -123,8 +133,8 @@ export function fakeFilesystem(profileId: string): VirtualFs {
   const existing = FILESYSTEMS.get(profileId);
   if (existing !== undefined) return existing;
   const created = new VirtualFs();
-  // **给这块盘放两个惯例文件**——文件浏览器一打开就有东西看
-  // （以前那是 `list()` 硬编出来的两个条目；现在它们**真的在盘上**）。
+  // **Put the two conventional files on this disk** — the file browser has something to show as soon as it is opened
+  // (they used to be two hard-coded entries in `list()`; now they **really are on the disk**).
   created.write('/README.txt', 'This is a fake board. Everything here is synthetic data.\n');
   created.write('/etc/hostname', 'fake-board\n');
   FILESYSTEMS.set(profileId, created);

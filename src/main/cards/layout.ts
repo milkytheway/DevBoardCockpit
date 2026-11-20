@@ -2,33 +2,39 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 
 /**
- * 布局的**落盘**（core 轨的部分）。
+ * **Persistence** of the layout (the core-track part).
  *
- * ── 它是什么 ──
+ * ── What it is ──
  *
- * 「哪张卡在哪个格子里」是**宿主的账**：
- * 契约 §七说「绑定发生处：**布局层**：布局单元记录 `(cardId, connectionId)`」。
- * 卡片不知道自己在哪，页面也不该自己记（刷新就没了）。
+ * "Which card sits in which cell" is **the host's book**: the contract
+ * `spec/03` §7 says "where the binding happens: in the layout layer, a layout
+ * cell records `(cardId, connectionId)`". A card does not know where it is, and
+ * the page must not keep track of it either (a refresh would lose it).
  *
- * ── 键是 `(cardId, connectionId)` ──
+ * ── The key is `(cardId, connectionId)` ──
  *
- * 契约 §7.8：一张卡可以在多条连接上各有一个实例 → 每个实例**各占一格**。
- * 所以只按 `cardId` 记会撞车（两张卡挤进同一格）。
+ * The contract `spec/03` §7.8: one card can have an instance on each of
+ * several connections → each instance **occupies its own cell**. Keying on
+ * `cardId` alone would collide (two cards pushed into the same cell).
  *
- * ── 一个布局（不再有视图）──
+ * ── One layout (no more views) ──
  *
- * v3 起布局就是一份（主区摆了哪些卡）。旧文件照样读得出来：
- * v1（`{units, updatedAt}`）直接用，v2（多视图）取**当前视图**那份。
- * 
- * ── 为什么落盘要「坏了也不抛」 ──
+ * From v3 the layout is a single one (which cards are placed in the main area).
+ * Older files are still readable: v1 (`{units, updatedAt}`) is used as is,
+ * v2 (multiple views) takes **the current view**.
  *
- * 布局文件在用户目录里，可能被写了一半、被人手改坏。
- * **一个文件坏了不该让应用起不来**——那等于用户的布局问题变成了应用的问题。
- * → 读不出来就当空布局（用户重新摆一次），并把坏文件原样留着（不覆盖它，
- * 免得把用户的现场毁掉）。
+ * ── Why persistence must not throw on a broken file ──
+ *
+ * The layout file lives in the user directory; it may be half-written or
+ * hand-edited into a broken state.
+ * **One broken file must not stop the app from starting** — that would turn a
+ * layout problem of the user into a problem of the application.
+ * → If it cannot be read, treat it as an empty layout (the user places the
+ * cards again) and leave the broken file as it is (do not overwrite it, so the
+ * user's state is not destroyed).
  */
 
-// **形状住在 `shared/`**（它要过 IPC）——这里再导出一次，调用方不用改 import
+// **The shape lives in `shared/`** (it has to cross IPC) — it is re-exported here so that callers do not have to change their import
 export type { LayoutUnit, LayoutState } from '../../shared/layout';
 
 import { normalizeLayout } from '../../shared/layout';
@@ -37,7 +43,7 @@ import type { LayoutState, LayoutStateInput } from '../../shared/layout';
 export class LayoutStore {
   constructor(private readonly deps: { file: string; now: () => number }) {}
 
-  /** 读布局。**读不出来就是空布局**（不抛；v1/v2 旧文件都读得出来） */
+  /** Reads the layout. **If it cannot be read the layout is empty** (no throw; v1/v2 files are still readable) */
   get(): LayoutState {
     const now = this.deps.now();
     if (!existsSync(this.deps.file)) return normalizeLayout(undefined, now);
@@ -45,20 +51,20 @@ export class LayoutStore {
     try {
       parsed = JSON.parse(readFileSync(this.deps.file, 'utf8'));
     } catch {
-      // **文件坏了 → 当空的**（不是崩溃的理由）
+      // **A broken file → treated as empty** (not a reason to crash)
       return normalizeLayout(undefined, now);
     }
     return normalizeLayout(parsed, now);
   }
 
-  /** 存布局（**原子写**：先写临时文件再改名——免得写一半断电） */
+  /** Stores the layout (**atomic write**: write a temporary file and rename it — a power cut halfway through must not corrupt it) */
   set(state: LayoutStateInput): void {
     state = normalizeLayout(state, this.deps.now());
     const file = this.deps.file;
     mkdirSync(dirname(file), { recursive: true });
     const tmp = `${file}.tmp`;
     writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
-    // **改名是原子的**（同一个文件系统内）
+    // **The rename is atomic** (within the same filesystem)
     renameSync(tmp, file);
   }
 }

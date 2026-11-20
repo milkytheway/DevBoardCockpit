@@ -2,17 +2,19 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * 卡片目录的两个根。
+ * The two roots of the card directories.
  *
- * | 根 | 在哪 | 谁放 |
- *---|---|---|
- * `builtin` | 应用目录下的 `cards/` | 产品自带（目标切换器之类） |
- * `user` | 用户数据目录下的 `cards/` | **人**与 agent |
+ * | Root | Where | Who writes |
+ * |---|---|---|
+ * `builtin` | `cards/` under the application directory | shipped with the product (the target switcher, for instance) |
+ * `user` | `cards/` under the user data directory | **people** and agents |
  *
- * ── 「用户优先」是「卡片即文件」的前提 ──
+ * ── "User first" is a precondition of "cards are files" ──
  *
- * 人（或 agent）改一张内置卡 = 在用户目录里放一个**同 id** 的目录。
- * **用户目录赢**——否则「改文件即生效」这句话对内置卡就是假的。
+ * A person (or an agent) who edits a built-in card places a directory with the
+ * **same id** in the user directory.
+ * **The user root wins** — otherwise the claim "edit a file and it takes
+ * effect" would be false for the built-in cards.
  */
 export interface CardRoot {
   dir: string;
@@ -20,12 +22,13 @@ export interface CardRoot {
 }
 
 /**
- * 找一张卡的目录。
+ * Finds the directory of a card.
  *
- * @returns 找不到是 `null`（**不猜**——契约的「不猜」口径）
+ * @returns `null` when there is none (**no guessing** — the contract's "do not
+ * guess" stance)
  */
 export function findCardDir(roots: CardRoot[], cardId: string): string | null {
-  // **用户根优先**：roots 的顺序不决定优先级，kind 决定
+  // **The user root comes first**: the order of the roots does not decide the priority, the kind does
   const ordered = [...roots].sort((a, b) => (a.kind === 'user' ? -1 : 1) - (b.kind === 'user' ? -1 : 1));
   for (const root of ordered) {
     const dir = join(root.dir, cardId);
@@ -35,16 +38,17 @@ export function findCardDir(roots: CardRoot[], cardId: string): string | null {
 }
 
 /**
- * 列出所有卡（目录里有 `manifest.json` 的才算）。
+ * Lists all cards (only a directory that holds a `manifest.json` counts).
  *
- * 同 id 的按**用户根赢**——一份清单里**一张卡只有一个目录**，
- * 不然协议处理器该伺服哪一个就成了猜。
+ * For the same id the **user root wins** — a card has exactly one directory
+ * in one manifest, otherwise the protocol handler would have to guess which
+ * one to serve.
  */
 export function listCardDirs(
   roots: CardRoot[],
 ): { cardId: string; dir: string; rootKind: 'builtin' | 'user' }[] {
   const found = new Map<string, { cardId: string; dir: string; rootKind: 'builtin' | 'user' }>();
-  // **先用户根**，这样后面遇到同 id 的内置卡**不覆盖**它
+  // **The user root first**, so that a built-in card with the same id does **not** overwrite it
   const ordered = [...roots].sort((a, b) => (a.kind === 'user' ? -1 : 1) - (b.kind === 'user' ? -1 : 1));
   for (const root of ordered) {
     if (!existsSync(root.dir)) continue;

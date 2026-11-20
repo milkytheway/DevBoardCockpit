@@ -2,11 +2,14 @@ import { makeError } from '../../shared/errors';
 import type { ConnectionCapabilities, Connection, FileEntry } from '../hal/connection';
 
 /**
- * 文件互传。
+ * The file transfer.
  *
- * **不是所有连接都能传文件**——串口传文件没有意义（事实 S7），
- * 串口的 `capabilities()` 不含 `files`，UI 相应禁用文件浏览器。
- * 这个检查做**两道**：UI 禁用入口（防误操作）+ 服务端拒绝（防绕过）。
+ * **Not every connection can transfer files** — transferring a file over a
+ * serial line makes no sense (fact S7), the `capabilities()` of a serial
+ * connection does not contain `files`, and the interface disables the file
+ * browser accordingly.
+ * This check is made **twice**: the interface disables the entry point (against
+ * a misoperation) + the server refuses it (against a bypass).
  */
 
 export type { FileEntry };
@@ -17,7 +20,7 @@ export interface FileTransfer {
   push(connectionId: string, localPath: string, remotePath: string): Promise<void>;
 }
 
-/** 连接不支持文件传输时抛错 */
+/** Throws when the connection does not support the file transfer */
 export function assertTransferAllowed(caps: ConnectionCapabilities): void {
   if (!caps.files) {
     throw makeError('FILE_TRANSFER_FAILED', 'this connection does not support file transfer');
@@ -25,7 +28,7 @@ export function assertTransferAllowed(caps: ConnectionCapabilities): void {
 }
 
 export interface TransferServiceOptions {
-  /** 按 id 取连接；取不到返回 undefined */
+  /** Fetches a connection by id; `undefined` when there is none */
   getConnection(id: string): Connection | undefined;
 }
 
@@ -33,15 +36,17 @@ export class TransferService implements FileTransfer {
   constructor(private readonly opts: TransferServiceOptions) {}
 
   /**
-   * 列远端目录。
-   *
-   * **按传输分派**（计划 Task 9 Step 3）：
-   * adb 走 `adb shell ls -la`，ssh 走 sftp 的 readdir，本机走 fs。
-   *
-   * 原来这里对所有传输都跑一条 `ls -la`——
-   * 本机在 Windows 上那是 cmd.exe，**根本没有 ls**，
-   * 于是本机连接的文件树永远是空的。
-   */
+     * Lists a remote directory.
+     *
+     * **Dispatched per transport** (plan task 9, step 3):
+     * adb goes through `adb shell ls -la`, ssh through the readdir of sftp, the
+     * local one through fs.
+     *
+     * This used to run one `ls -la` for every transport —
+     * on the local transport under Windows that is cmd.exe, which **has no ls
+     * at all**,
+     * so the file tree of a local connection was always empty.
+     */
   async list(connectionId: string, remotePath: string): Promise<FileEntry[]> {
     const conn = this.require(connectionId);
     return conn.list(remotePath);
@@ -50,14 +55,14 @@ export class TransferService implements FileTransfer {
   async pull(connectionId: string, remotePath: string, localPath: string): Promise<void> {
     const conn = this.require(connectionId);
     if (localPath.length === 0) {
-      // 空路径会让 `adb pull <remote> ''` / `copyFile(remote, '')` 直接失败，
-      // 而且失败信息毫无意义。**宿主必须先定好落盘位置。**
+      // An empty path makes `adb pull <remote> ''` / `copyFile(remote, '')` fail right away,
+      // and the failure message means nothing. **The host has to decide the destination first.**
       throw makeError('FILE_TRANSFER_FAILED', 'there is no local destination path', {
         detail: { remotePath },
       });
     }
-    // **按传输分派**：adb 用 `adb pull`，ssh 用 sftp，本机用 fs。
-    // 不能跑远端的 `pull` 命令——板子上没有这个命令。
+    // **Dispatched per transport**: adb uses `adb pull`, ssh uses sftp, the local one uses fs.
+    // The remote `pull` command cannot be run — the board does not have such a command.
     await conn.pull(remotePath, localPath);
   }
 
@@ -69,7 +74,7 @@ export class TransferService implements FileTransfer {
     await conn.push(localPath, remotePath);
   }
 
-  /** 取连接并检查能力位。取不到或不支持都直接拒 */
+  /** Fetches the connection and checks the capability. It refuses when it is missing or does not support it */
   private require(connectionId: string): Connection {
     const conn = this.opts.getConnection(connectionId);
     if (!conn) {

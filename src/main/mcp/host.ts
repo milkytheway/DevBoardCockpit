@@ -10,71 +10,84 @@ import type { AgentActionDeps } from './action-tools';
 import type { CardToolDeps } from './card-tools';
 
 /**
- * **The host dependencies the MCP layer needs** ✓.
+ * The **host dependencies the MCP layer needs** ✓.
  *
- * ── 它是「薄封装」的形状 ──
+ * ── It has the shape of a "thin wrapper" ──
  *
- * MCP 层**只做转发与投影** ✓ —— **不含任何业务判断** ✓
- * （判断都在宿主侧 ✓ —— 与卡片侧**共用同一套** ✓）。
+ * The MCP layer **only forwards and projects** ✓ — **it holds no business
+ * decision at all** ✓
+ * (the decisions are on the host side ✓ — and it **shares the same set** with
+ * the card side ✓).
  *
- * → **为什么用窄接口而不是直接给宿主对象** ✓：
- * 两边**形状会不一样** ✓（比如卡片侧不给 `audit_id` ✓ · agent 侧给 ✓）→
- * **直接搬同一份对象就等于把一侧的形状泄露给另一侧** ✗。
+ * → **Why narrow interfaces instead of handing over the host objects** ✓:
+ *   the two sides **have different shapes** ✓ (the card side does not give
+ *   the `audit_id` ✓ · the agent side does ✓) →
+ *   **handing over the same object means leaking the shape of one side to the
+ *   other** ✗.
  *
- * → **每个依赖都是「一个函数」或「几个字段」** ✓ —— 不给内部对象 ✓。
+ * → **Every dependency is "one function" or "a few fields"** ✓ — the internal
+ *   objects are not handed over ✓.
  */
 export interface McpHostDeps {
-  /** 当前板型包的脱敏视图（**没有就是 `null`** ✓） */
+  /** The redacted view of the current board pack (**`null` when there is none** ✓) */
   pack: () => PackView | null;
-  /** 当前读数（**全部** ✓ —— 工具自己筛 ✓） */
+  /** The current readings (**all of them** ✓ — the tools filter themselves ✓) */
   readings: () => TagReading[];
-  /** 最近 n 个样本（**给 `sample_tag` 与 `describe_tag.history` ✓） */
+  /** The last n samples (**for `sample_tag` and `describe_tag.history` ✓**) */
   history: (tag: string, n: number) => TagSampleLike[];
-  /** 定向采一次（**`sample_tag` 要先采 ✓**） */
+  /** Samples it in a directed way once (**`sample_tag` has to sample first** ✓) */
   refreshTag: (tag: string) => Promise<void>;
 
-  /** 连接 profile 清单 */
+  /** The list of the connection profiles */
   profiles: () => ConnectionProfile[];
-  /** 这条 profile 的连接级能力位 */
+  /** The connection-level capability bits of this profile */
   capabilities: (profile: ConnectionProfile) => ConnectionCapabilities;
-  /** **这条 profile 现在有活连接吗** ✓ */
+  /** **Does this profile have a live connection right now** ✓ */
   connected: (profileId: string) => boolean;
   /**
-   * **当前运行时那条连接是哪个** ✓（**没有就是 `null`** ✓）。
-   *
-   * → **`list_connections` 的 `current` 靠它** ✓（契约 `spec/04` §2.1 ✓）
-   * → **与 `connected` 是两条判据** ✓：**开着终端会话**也算 `connected` ✓
-   *   但**不是运行时那条** ✓ → **两件事** ✓（不混 ✓）。
-   */
+     * **Which connection the current runtime uses** ✓ (**`null` when there is
+     * none** ✓).
+     *
+     * → **The `current` of `list_connections` relies on it** ✓ (contract
+     *   `spec/04` §2.1 ✓)
+     * → **`connected` is a different criterion** ✓: **a terminal session that is
+     *   open** also counts as `connected` ✓
+     *   but it is **not the connection of the runtime** ✓ → **two different
+     *   things** ✓ (they are not mixed ✓).
+     */
   currentProfileId: () => string | null;
 
-  /** 装着的卡片 */
+  /** The installed cards */
   cards: () => McpCardEntry[];
-  /** 卡片目录的绝对路径（**给 `validate_card` 用** ✓） */
+  /** The absolute path of a card directory (**for `validate_card`** ✓) */
   cardDir: (cardId: string) => string | null;
   /**
-   * **校验一个卡片目录**（**不安装** ✓ —— 契约 §2.3 ✓）。
-   *
-   * → **判断在宿主侧** ✓（`cards/validate.ts` ✓ —— 规则是契约 §九 的 14 条 ✓）。
-   */
+     * **Validates a card directory** (**it does not install it** ✓ — contract
+     * §2.3 ✓).
+     *
+     * → **The decision is made on the host side** ✓ (`cards/validate.ts` ✓ —
+     *   the rules are the 14 rules of contract §9 ✓).
+     */
   validateCard: (path: string) => McpValidateResult;
-  /** 卡片的运行时日志 */
+  /** The runtime log of the cards */
   cardLog: (cardId: string) => CardLogEntry[];
-  /** 当前布局 */
+  /** The current layout */
   layout: () => LayoutState;
-  /** 保存布局 */
+  /** Saves the layout */
   saveLayout: (state: LayoutState) => void;
   /**
-   * **agent 的动作执行依赖**（**写侧** ✓ —— 契约 §2.4 ✓）。
-   *
-   * → **复用同一个执行器** ✓（卡片侧同一个 ✓ —— 七步链只有一处 ✓）。
-   */
+     * The **action execution dependencies of the agent** (**the write side** ✓ —
+     *   contract §2.4 ✓).
+     *
+     * → **The same executor is reused** ✓ (the card side uses the same one ✓ —
+     *   there is only one chain of seven steps ✓).
+     */
   actions: AgentActionDeps;
-  /** 装卡与卸卡（**契约 §2.3** ✓）—— **没接就不提供这两个工具** ✓ */
+  /** Installing and uninstalling a card (**contract §2.3** ✓) — **without them these two tools are not offered** ✓ */
   cardTools?: CardToolDeps;
 }
 
-/** 一个样本（**与 `TagStore` 的那个同形** ✓ —— 宿主侧换个类型也不改形状 ✓） */
+/** One sample (**the same shape as the one of the `TagStore`** ✓ — the host side changing the type does not change the shape ✓) */
 export interface TagSampleLike {
   value: number | string | boolean | null;
   unit: string;
@@ -82,14 +95,14 @@ export interface TagSampleLike {
   at: number;
 }
 
-/** 宿主侧给 MCP 的卡片条目（**已经算好状态了** ✓ —— 判断在宿主侧 ✓） */
+/** The card entry the host gives to the MCP (**the state is already computed** ✓ — the decision is made on the host side ✓) */
 export interface McpCardEntry {
-  /** 卡片 id = 目录名 ✓ */
+  /** card id = the name of the directory ✓ */
   cardId: string;
   dir: string;
   manifest: CardManifest;
   issues: CardIssue[];
-  /** 这张卡在当前板上的状态（**宿主侧算好** ✓） */
+  /** The state of this card on the current board (**computed on the host side** ✓) */
   state: {
     installed_at: number;
     status: 'ok' | 'degraded' | 'invalid';
@@ -100,25 +113,27 @@ export interface McpCardEntry {
 }
 
 /**
- * **`validate_card` 的结果**（契约 `spec/04` §2.3 ✓ · ADR-D40 ✓）。
+ * The **result of `validate_card`** (contract `spec/04` §2.3 ✓ · ADR-D40 ✓).
  *
- * → **`resolved.tags` / `resolved.actions` 是「声明 ∩ 当前可用」** ✓
- *   （**不是**声明值 ✓ —— agent 要知道的是「这张卡真能绑上什么」✓）。
+ * → **`resolved.tags` / `resolved.actions` are "declared ∩ currently
+ *   available"** ✓
+ *   (**not** the declared values ✓ — what the agent wants to know is "what
+ *   this card can really bind" ✓).
  */
 export interface McpValidateResult {
   ok: boolean;
   errors: { severity: string; rule: number; path: string; message: string }[];
   warnings: { severity: string; rule: number; path: string; message: string }[];
   resolved: {
-    /** 要读、**且当前板上可读**的 tag（**具体名** ✓） */
+    /** The tags it reads that are **readable on the current board** (**the concrete names** ✓) */
     tags: string[];
-    /** 要写、**且当前板型包里确实有**的动作 id ✓ */
+    /** The action ids it writes that **really exist in the current board pack** ✓ */
     actions: string[];
-    /** 解出来的格子尺寸（**没有 layout 就是 `null`** ✓） */
+    /** The cell size that came out of the parsing (**`null` when there is no layout** ✓) */
     layout: { w: number; h: number; min_w: number; min_h: number } | null;
-    /** 要读但**当前不可读**的 tag ✓ */
+    /** The tags it reads that are **not readable right now** ✓ */
     missing_tags: string[];
-    /** 要写但**当前板型包里没有**的动作 id ✓ */
+    /** The action ids it writes that are **not in the current board pack** ✓ */
     missing_actions: string[];
   };
 }

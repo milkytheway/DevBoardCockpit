@@ -8,48 +8,51 @@ import type { TagReading } from '../../shared/tag-reading';
 import { matchTagPattern } from '../tags/vocabulary';
 
 /**
- * **校验一个卡片目录**（契约 `spec/04` §2.3 ✓ · ADR-D40 ✓）。
+ * **Validates a card directory** (contract `spec/04` §2.3 ✓ · ADR-D40 ✓).
  *
- * ── 静态校验，**不安装** ✓ ──
+ * ── A static validation, **no installation** ✓ ──
  *
- * → 规则是**契约 §九 的 14 条** ✓（`cards/validate.ts` ✓ —— 不重写 ✓）。
+ * → The rules are the **14 rules of contract §9** ✓ (`cards/validate.ts` ✓ —
+ * not rewritten ✓).
  *
- * ── `resolved` 的三个口径 ──
+ * ── The three readings of `resolved` ──
  *
- * | 字段 | 口径 |
+ * | Field | Reading |
  * |---|---|
- * | `tags` | **声明 ∩ 当前可读** ✓（**具体名** ✓） |
- * | `actions` | **声明 ∩ 当前包里有** ✓ |
- * | `missing_tags` | 声明了但**当前不可读** ✓ |
- * | `missing_actions` | 声明了但**当前包里没有** ✓ |
+ * | `tags` | **declared ∩ currently readable** ✓ (**the concrete names** ✓) |
+ * | `actions` | **declared ∩ present in the current pack** ✓ |
+ * | `missing_tags` | declared but **not readable right now** ✓ |
+ * | `missing_actions` | declared but **not in the current pack** ✓ |
  *
- * → **不是**把 `permissions.read` 原样搬出来 ✓ —— 那样 agent 不知道「真能绑上什么」✓。
+ * → It is **not** `permissions.read` copied verbatim ✓ — otherwise the agent
+ * would not know "what can really be bound" ✓.
  */
 
-/** 算 `validate_card` 要的东西 */
+/** Computes what `validate_card` needs */
 export interface ValidateCardInput {
-  /** 卡片目录的绝对路径 ✓ */
+  /** The absolute path of the card directory ✓ */
   dir: string;
-  /** 当前板型包的脱敏视图（**没有就是 `null`** ✓ —— 那就没有「包里有」这回事 ✓） */
+  /** The redacted view of the current board pack (**`null` when there is none** ✓ — then there is no such thing as "in the pack" ✓) */
   pack: PackView | null;
-  /** 当前读数（**判「可读」用** ✓） */
+  /** The current readings (**used to decide what is "readable"** ✓) */
   readings: TagReading[];
-  /** 板型包里声明的动作 id（**没有包就是空** ✓） */
+  /** The action ids declared in the board pack (**empty when there is no pack** ✓) */
   actionIds: string[];
-  /** 已经装着的卡片 id（**规则 2** ✓ —— **要排除自己** ✓） */
+  /** The ids of the cards that are already installed (**rule 2** ✓ — **it has to exclude itself** ✓) */
   installedCardIds: string[];
 }
 
 /**
- * **校验一个卡片目录** ✓。
+ * **Validates a card directory** ✓.
  *
- * → **manifest 读不出来 → 报成错误** ✓（**不是抛异常** ✓ —— 契约 §四「不抛异常」✓）。
- * → **规则是契约 §九 的那几条** ✓（`validateCard` ✓）。
+ * → **The manifest cannot be read → reported as an error** ✓ (**not thrown**
+ * ✓ — contract §4 "does not throw" ✓).
+ * → **The rules are the ones of contract §9** ✓ (`validateCard` ✓).
  */
 export function validateCardAt(input: ValidateCardInput): McpValidateResult {
   const manifestPath = join(input.dir, 'manifest.json');
 
-  // **目录里没有 manifest** → `not_found` 那类错误 ✓
+  // **There is no manifest in the directory** → an error of the `not_found` kind ✓
   if (!existsSync(manifestPath)) {
     return {
       ok: false,
@@ -71,7 +74,7 @@ export function validateCardAt(input: ValidateCardInput): McpValidateResult {
     const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown;
     manifest = parseManifest(raw, input.dir);
   } catch (err) {
-    // **manifest 读不出来 / 不合法** → 报成错误 ✓（规则 10 ✓ —— 那是「结构性的」那一族 ✓）
+    // **The manifest cannot be read / is invalid** → reported as an error ✓ (rule 10 ✓ — that is the "structural" family ✓)
     return {
       ok: false,
       errors: [
@@ -88,26 +91,26 @@ export function validateCardAt(input: ValidateCardInput): McpValidateResult {
   }
 
   const result = validateCard(manifest, {
-    // **当前板上可读的 tag**（**具体名** ✓）—— 规则 5 的「动作在不在包里」那个是另一个 ✓
+    // **The tags that are readable on the current board** (**the concrete names** ✓) — the "is the action in the pack" of rule 5 is another thing ✓
     availableTags: input.readings.filter((r) => r.status === 'ok').map((r) => r.tag),
     availableActions: input.pack === null ? null : input.actionIds,
-    // **流程 id 宿主自己知道** ✓ —— 这里不传（**null = 离线** ✓ → 降级成警告 ✓）
+    // **The host knows the workflow ids itself** ✓ — they are not passed here (**`null` = offline** ✓ → degraded into a warning ✓)
     availableWorkflows: null,
-    // **规则 2 比的是 manifest 的 id** ✓，**且要排除自己** ✓
+    // **Rule 2 compares the id of the manifest** ✓, **and it has to exclude itself** ✓
     installedCardIds: input.installedCardIds,
     fileExists: (rel) => existsSync(join(input.dir, rel)),
   });
 
-  // ── `resolved` 的三个口径 ──
-  // **「可读的」**：声明的模式覆盖了当前**可读的具体名** ✓
+  // ── The three readings of `resolved` ──
+  // **"Readable"**: the declared pattern covers a currently **readable concrete name** ✓
   const tags: string[] = [];
   for (const reading of input.readings) {
     if (reading.status !== 'ok') continue;
     if (!manifest.permissions.read.some((p) => matchTagPattern(p, reading.tag))) continue;
     if (!tags.includes(reading.tag)) tags.push(reading.tag);
   }
-  // **「当前不可读的」**：**逐个模式**判 ✓ —— 那个模式**一个具体名都没绑上** ✓
-  // → **记模式本身** ✓（宿主侧**没有「模式 → 具体名」的展开器** ✓ —— 不猜 ✓）
+  // **"Not readable right now"**: judged **per pattern** ✓ — that is, the pattern **bound no concrete name at all** ✓
+  // → **The pattern itself is recorded** ✓ (the host has **no "pattern → concrete name" expander** ✓ — no guessing ✓)
   const missingTags: string[] = [];
   for (const pattern of manifest.permissions.read) {
     const bound = input.readings.some((r) => matchTagPattern(pattern, r.tag));
@@ -136,7 +139,7 @@ export function validateCardAt(input: ValidateCardInput): McpValidateResult {
   };
 }
 
-/** 校验问题 → 工具返回的那份（**字段名一致** ✓） */
+/** A validation problem → the copy the tool returns (**the field names are the same** ✓) */
 function issueView(issue: CardIssue): {
   severity: string;
   rule: number;

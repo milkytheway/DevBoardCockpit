@@ -13,11 +13,25 @@
  * except the Chinese locale" cannot be checked by reading. This script is
  * that check.
  *
+ * ── How the comments are found ──
+ *
+ * The comments are collected with the TypeScript scanner rather than by
+ * walking the syntax tree. The tree does not visit a standalone `//`
+ * comment, and it only reaches a documentation block through the node it
+ * is attached to; the scanner sees every comment in the file, whatever it is
+ * attached to. An earlier version of this script walked the tree and
+ * therefore missed every standalone comment.
+ *
  * ── What is allowed ──
  *
  *   1. The `zh-Hans` value of a localised pair. That is the whole point of
  *      having a language switch.
- *   2. The files listed in `ALLOWED_FILES`. They are the Chinese front door
+ *   2. A comment that mentions the Chinese locale. The one place a comment
+ *      has to show a Chinese string is the example that documents a
+ *      localised pair.
+ *   3. A test that pins the Chinese locale. It asserts Chinese text on
+ *      purpose.
+ *   4. The files listed in `ALLOWED_FILES`. They are the Chinese front door
  *      of the repository and they are Chinese on purpose.
  */
 
@@ -73,6 +87,35 @@ function excerpt(text: string): string {
   return first.trim().slice(0, 90);
 }
 
+/** Every comment in the file, whether it is attached to a node or not. */
+function scanComments(source: string, lineOf: (pos: number) => number): Finding[] {
+  const findings: Finding[] = [];
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    ts.LanguageVariant.Standard,
+    source,
+  );
+  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (
+      kind !== ts.SyntaxKind.SingleLineCommentTrivia &&
+      kind !== ts.SyntaxKind.MultiLineCommentTrivia
+    ) {
+      continue;
+    }
+    const text = scanner.getTokenText();
+    if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
+      findings.push({
+        file: '',
+        line: lineOf(scanner.getTokenPos()),
+        kind: 'comment',
+        text: excerpt(text),
+      });
+    }
+  }
+  return findings;
+}
+
 function scanScript(file: string, source: string): Finding[] {
   const findings: Finding[] = [];
   const ext = extname(file);
@@ -86,6 +129,10 @@ function scanScript(file: string, source: string): Finding[] {
   }
   const lineOf = (pos: number): number => sf.getLineAndCharacterOfPosition(pos).line + 1;
 
+  for (const finding of scanComments(source, lineOf)) {
+    findings.push({ ...finding, file });
+  }
+
   const visit = (node: ts.Node): void => {
     // A localised pair: the `zh-Hans` half may contain Chinese.
     if (ts.isPropertyAssignment(node)) {
@@ -93,24 +140,6 @@ function scanScript(file: string, source: string): Finding[] {
       if (name === "'zh-Hans'" || name === '"zh-Hans"' || name === '`zh-Hans`') {
         ts.forEachChild(node.name, visit);
         return;
-      }
-    }
-    const kind = node.kind;
-    const isComment =
-      kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia;
-    if (isComment) {
-      const text = node.getText(sf);
-      if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
-        findings.push({ file, line: lineOf(node.getStart(sf)), kind: 'comment', text: excerpt(text) });
-      }
-    }
-    const jsDoc = (node as { jsDoc?: ts.NodeArray<ts.JSDoc> }).jsDoc;
-    if (jsDoc) {
-      for (const doc of jsDoc) {
-        const text = doc.getText(sf);
-        if (CJK.test(text) && !COMMENT_ALLOWED.test(text)) {
-          findings.push({ file, line: lineOf(doc.getStart(sf)), kind: 'comment', text: excerpt(text) });
-        }
       }
     }
     if (

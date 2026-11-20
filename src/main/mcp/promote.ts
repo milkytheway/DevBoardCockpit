@@ -1,46 +1,55 @@
 import type { LayoutState, LayoutUnit } from '../../shared/layout';
 
 /**
- * **把一张卡提为全屏**（契约 `spec/04` §2.5 ✓ · ADR-D40 ✓）。
+ * **Promotes a card to full screen** (contract `spec/04` §2.5 ✓ · ADR-D40 ✓).
  *
- * ── 它改的是布局** ✓ ──
+ * ── What it changes is the layout ** ✓ ──
  *
- * → **全屏是布局的一个状态** ✓（`LayoutState.promoted` ✓），**不是**一次性的渲染指令 ✓。
+ * → **Full screen is a state of the layout** ✓ (`LayoutState.promoted` ✓),
+ * **not** a one-off rendering instruction ✓.
  *
- * ── 为什么宿主侧**不**算「铺满几行」──
+ * ── Why the host does **not** compute "how many rows it fills" ──
  *
- * **行高与视口高度只有 renderer 知道** ✓（`ROW_HEIGHT` 是渲染层的常量 ✓）。
- * → **宿主记「谁要全屏」✓，渲染层算「铺几行」✓** —— **两边都不猜** ✓。
+ * **Only the renderer knows the row height and the height of the viewport** ✓
+ * (`ROW_HEIGHT` is a constant of the rendering layer ✓).
+ * → **The host records "who wants to be full screen" ✓, the rendering layer
+ *   computes "how many rows it fills" ✓** — **neither side guesses** ✓.
  *
- * → **这个取舍要写进契约** ✓（v5 说「由宿主按视口算」✓ → **改成「渲染层按视口算」** ✓）。
+ * → **This trade-off has to be written into the contract** ✓ (v5 says "the
+ *   host computes it from the viewport" ✓ → **changed to "the rendering layer
+ *   computes it from the viewport"** ✓).
  *
- * ── 「让开」在布局模型里怎么表达 ──
+ * ── How "make room" is expressed in the layout model ──
  *
- * `LayoutUnit` 只有 6 个字段 ✓ —— **没有「隐藏」这个概念** ✓ → **不删、不隐藏** ✓
- * → 其它格**保持自己的 w/h** ✓，`y` **统一后移** ✓。
+ * A `LayoutUnit` has only 6 fields ✓ — there is **no "hidden" concept** ✓ →
+ * **nothing is removed and nothing is hidden** ✓
+ * → the other cells **keep their own w/h** ✓ and their `y` is **moved down
+ *   uniformly** ✓.
  */
 export interface PromoteResult {
   ok: boolean;
   mode?: 'fullscreen';
   reason?: 'not_found' | 'invalid_params' | 'failed';
   detail?: string;
-  /** 改完之后的布局 ✓（**调用方要存** ✓） */
+  /** The layout after the change ✓ (**the caller has to store it** ✓) */
   layout?: LayoutState;
 }
 
 /**
- * 提为全屏。
+ * Promotes to full screen.
  *
- * @param state 当前布局
- * @param cardId 要提哪张卡
- * @param connectionId 哪条连接（**缺省 = 该卡唯一的实例** ✓ · **多于一个时报错** ✓ —— 不猜 ✓）
+ * @param state the current layout
+ * @param cardId which card to promote
+ * @param connectionId which connection (**the default = the only instance of
+ *        that card** ✓ · **an error when there is more than one** ✓ — no
+ *        guessing ✓)
  */
 export function promoteCard(
   state: LayoutState,
   cardId: string,
   connectionId: string | undefined,
 ): PromoteResult {
-  // ── 找到那一格 ──
+  // ── Find that cell ──
   const candidates = state.units.filter((u) => u.cardId === cardId);
   if (candidates.length === 0) {
     return { ok: false, reason: 'not_found', detail: `This card is not in the main area: ${cardId}` };
@@ -54,7 +63,7 @@ export function promoteCard(
     }
     target = found;
   } else {
-    // **缺省 = 该卡唯一的实例** ✓ —— **多于一个就报错** ✓（不猜 ✓）
+    // **The default = the only instance of that card** ✓ — **an error when there is more than one** ✓ (no guessing ✓)
     if (candidates.length > 1) {
       return {
         ok: false,
@@ -65,7 +74,7 @@ export function promoteCard(
     target = candidates[0] as LayoutUnit;
   }
 
-  // ── 记「谁要全屏」✓（**渲染层去算铺几行** ✓）──
+  // ── Record "who wants to be full screen" ✓ (**the rendering layer computes how many rows it fills** ✓) ──
   return {
     ok: true,
     mode: 'fullscreen',

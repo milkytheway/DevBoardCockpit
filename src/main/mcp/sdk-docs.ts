@@ -16,53 +16,65 @@ import {
 import { API_VERSION } from './convention';
 
 /**
- * **SDK 活文档**（契约 `spec/04` §2.3 的 `get_card_sdk_docs` ✓ · ADR-D40 ✓）。
+ * The **live SDK documentation** (the `get_card_sdk_docs` of contract
+ * `spec/04` §2.3 ✓ · ADR-D40 ✓).
  *
- * ── 为什么必须是「从活代码生成」──
+ * ── Why it has to be "generated from the live code" ──
  *
- * **手抄的静态文本会漂** ✓ —— API 加一个方法它不会自己更新 ✓
- * → agent 照着写会调一个**不存在的 API** ✗ → 卡片一调就报「方法不存在」✗
- * → **而没人查得出是哪边错了** ✗（那跟 API 注册表自己漂了一样 ✗）。
+ * **A hand-copied static text drifts** ✓ — when the API gains a method it does
+ * not update itself ✓
+ * → an agent that follows it calls an **API that does not exist** ✗ → as soon
+ * as the card calls it it reports "the method does not exist" ✗
+ * → **and nobody can tell which side is wrong** ✗ (that is the same drift as
+ * the API registry itself ✓).
  *
- * → **形状取自代码** ✓（注册表 ✓ · 封闭 schema 白名单 ✓）
- * → **语义取自契约** ✓（字段是什么意思 ✓ —— 代码里没有那个 ✓）。
+ * → **The shape comes from the code** ✓ (the registry ✓ · the closed schema
+ * allow list ✓)
+ * → **The semantics come from the contract** ✓ (what a field means ✓ — that
+ *   is not in the code ✓).
  *
- * ── 「本 build 实际有的」与「契约全集」是两回事 ──
+ * ── "What this build actually has" and "the full set of the contract" are two
+ * different things ──
  *
- * `capabilities().methods` 列的是**实际有的** ✓ —— 所以**没实现的就不列** ✓
- * （`notify` 至今没接上 ✓ —— 列了 = 卡片以为通知发出去了 ✓，其实没人管 ✓）。
+ * `capabilities().methods` lists **what is actually there** ✓ — so **what is
+ * not implemented is not listed** ✓
+ * (`notify` has still not been wired up ✓ — listing it = the card believes the
+ * notification went out ✓ while nobody handles it ✓).
  */
 
-/** 四个主题（**契约 §2.3 列的就是这四个** ✓） */
-/** **内置卡片目录**（宿主接线时设它 ✓ —— 打包后是 app 里的 `cards/` ✓） */
+/** The four topics (**the contract §2.3 lists exactly these four** ✓) */
+/** **The built-in card directory** (the host sets it when it wires things up ✓ — after the packaging it is the `cards/` of the app ✓) */
 let cardsDir: string | undefined;
 
-/** 告诉它内置卡在哪儿 ✓（**没设就没有 examples** ✓ —— 不猜 ✓） */
+/** Tells it where the built-in cards are ✓ (**without it there are no examples** ✓ — no guessing ✓) */
 export function setSdkCardsDir(dir: string | undefined): void {
   cardsDir = dir;
 }
 
 export const SDK_TOPICS = ['manifest', 'api', 'examples', 'layout'] as const;
 
-/** 一个主题 */
+/** One topic */
 export type SdkTopic = (typeof SDK_TOPICS)[number];
 
-/** SDK 文档的返回（契约 §2.3 ✓） */
+/** The return of the SDK documentation (contract §2.3 ✓) */
 export interface SdkDocs {
   apiVersion: string;
   topics: string[];
-  /** **一个字符串** ✓（agent 把它当提示词的一部分读 ✓） */
+  /** **One string** ✓ (the agent reads it as part of a prompt ✓) */
   content: string;
 }
 
 /**
- * **内置卡片的清单**（`examples` 主题用 ✓）。
+ * **The list of the built-in cards** (used by the `examples` topic ✓).
  *
- * → **从真目录读** ✓ —— 不是编的 ✓（编的会与实际不符 ✓）。
- * → **读不到就空** ✓（不猜 ✓ —— 打包后可能没有源目录 ✓）。
+ * → **Read from the real directory** ✓ — and not made up ✓ (a made-up list
+ *   would not match reality ✓).
+ * → **Empty when it cannot be read** ✓ (no guessing ✓ — after the packaging
+ *   there may be no source directory ✓).
  *
- * → **用注入而不是直接 import fs** ✓：这个模块会被单测直接调 ✓ ——
- *   测试里塞假的清单 ✓，运行时塞真的 ✓。
+ * → **Injected instead of importing fs directly** ✓: this module is called
+ *   directly by the unit tests ✓ — the test feeds a fake list ✓, the runtime
+ *   feeds the real one ✓.
  */
 function builtinCardSummaries(cardsDir: string | undefined): string[] {
   if (cardsDir === undefined || cardsDir.length === 0) return [];
@@ -84,7 +96,7 @@ function builtinCardSummaries(cardsDir: string | undefined): string[] {
       const r = raw as Record<string, unknown>;
       const id = typeof r['id'] === 'string' ? r['id'] : name;
       const label = typeof r['name'] === 'string' ? r['name'] : id;
-      // **`permissions` 是一个对象** ✓（不是数组 ✓ —— 那是 `requires` 的形状 ✓）
+      // **`permissions` is an object** ✓ (not an array ✓ — that is the shape of `requires` ✓)
       const perms = (r['permissions'] ?? {}) as { read?: unknown };
       const tags = Array.isArray(perms.read)
         ? perms.read.filter((t): t is string => typeof t === 'string')
@@ -96,16 +108,16 @@ function builtinCardSummaries(cardsDir: string | undefined): string[] {
           '- Use it as a template: copy the directory → edit the manifest → edit the entry file.',
       );
     } catch {
-      // **读不出来就跳过** ✓（不猜 ✓）—— 坏卡不该让整份文档失败 ✓
+      // **Skipped when it cannot be read** ✓ (no guessing ✓) — a broken card must not make the whole document fail ✓
     }
   }
   return out;
 }
 
 /**
- * **生成 SDK 文档** ✓。
+ * **Generates the SDK documentation** ✓.
  *
- * @param topic 要哪一块（**省略 = 全部** ✓ —— 契约 §2.3 ✓）
+ * @param topic which part is wanted (**left out = all of it** ✓ — contract §2.3 ✓)
  */
 export function sdkDocs(
   topic?: string,
@@ -129,7 +141,7 @@ export function sdkDocs(
   };
 }
 
-/** 一个主题的内容 ✓ */
+/** The content of one topic ✓ */
 function sectionOf(topic: SdkTopic, examples: string[]): string {
   switch (topic) {
     case 'manifest':
@@ -143,7 +155,7 @@ function sectionOf(topic: SdkTopic, examples: string[]): string {
   }
 }
 
-/** `manifest` 主题 —— **形状从代码取** ✓，语义是手写的 ✓（代码里没有那个 ✓） */
+/** The `manifest` topic — **the shape comes from the code** ✓, the semantics are written by hand ✓ (that is not in the code ✓) */
 function manifestSection(): string {
   return [
     '# Card manifest format',
@@ -183,7 +195,7 @@ function manifestSection(): string {
   ].join('\n');
 }
 
-/** `api` 主题 —— **从注册表生成** ✓ */
+/** The `api` topic — **generated from the registry** ✓ */
 function apiSection(): string {
   const lines = [
     '# APIs available to cards',
@@ -204,7 +216,7 @@ function apiSection(): string {
   return lines.join('\n');
 }
 
-/** `examples` 主题 —— **真卡** ✓ */
+/** The `examples` topic — **real cards** ✓ */
 function examplesSection(examples: string[]): string {
   const lines = [
     '# Example cards',
@@ -224,7 +236,7 @@ function examplesSection(examples: string[]): string {
   return lines.join('\n');
 }
 
-/** `layout` 主题 —— **用契约的词** ✓（`cards` / `card_id` ✓ —— 不是实现的内部词 ✓） */
+/** The `layout` topic — **the words of the contract** ✓ (`cards` / `card_id` ✓ — not the internal words of the implementation ✓) */
 function layoutSection(): string {
   return [
     '# Main area layout',

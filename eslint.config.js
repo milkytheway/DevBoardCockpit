@@ -4,7 +4,16 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 export default [
   {
-    ignores: ['out/**', 'dist/**', 'node_modules/**', '.superpowers/**', 'docs/**'],
+    ignores: [
+      'out/**',
+      'dist/**',
+      'node_modules/**',
+      '.superpowers/**',
+      '.work/**',
+      'docs/**',
+      // The one-shot scripts and the intermediate artefacts of the release cleanup.
+      './*.cjs',
+    ],
   },
   js.configs.recommended,
   {

@@ -1,40 +1,44 @@
 import { basename, extname, join } from 'node:path';
 
 /**
- * 下载的默认落盘位置。
+ * The default place a download is written to.
  *
- * **为什么宿主定**：renderer 只知道远端路径，不知道宿主上该放哪。
- * 早先 renderer 传空串，宿主的注释写着「宿主用它的默认落盘位置」——
- * 而那个「默认落盘位置」**根本不存在**，
- * 于是 `adb pull <remote> ''` / `sftp.fastGet(remote, '')` / `copyFile(remote, '')` 必挂。
+ * **Why the host decides it**: the renderer only knows the remote path, not
+ * where it belongs on the host.
+ * Earlier the renderer passed an empty string and the comment of the host said
+ * "the host uses its default destination" — and that "default destination"
+ * **did not exist at all**,
+ * so `adb pull <remote> ''` / `sftp.fastGet(remote, '')` / `copyFile(remote, '')`
+ * always failed.
  *
- * 所以：**宿主定位置，并把定好的路径回传给 renderer**，
- * 让界面能告诉用户「已保存到 …」。
+ * So: **the host decides the place and hands the decided path back to the
+ * renderer**, so that the interface can tell the user "saved to …".
  */
 
-/** Windows 文件名里不能用的字符，外加控制字符 */
+/** The characters that are not allowed in a Windows file name, plus the control characters */
 // eslint-disable-next-line no-control-regex
 const INVALID = /[<>:"/\\|?*\u0000-\u001f]/g;
 
 /**
- * Windows 的保留设备名。
+ * The reserved device names of Windows.
  *
- * **带扩展名的那种也是设备**：`con.txt` / `nul.log` / `COM1.tar`
- * 在 Windows 上照样是设备名，写到这些名字上会失败（`ERROR_INVALID_NAME`），
- * 而那个错误消息对用户毫无意义。
+ * **The ones with an extension are devices as well**: `con.txt` / `nul.log` /
+ * `COM1.tar` are device names on Windows too, and writing to them fails
+ * (`ERROR_INVALID_NAME`) — an error message that means nothing to the user.
  */
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 
 /**
- * 把远端文件名收拾成一个能落在 Windows 上的名字。
+ * Turns a remote file name into a name that can land on Windows.
  *
- * 远端路径是**外部输入**（将来卡片与 MCP 都能传参），
- * 而落盘位置在宿主文件系统上——所以这里必须挡住路径穿越与非法字符。
+ * The remote path is **external input** (in the future both the cards and the
+ * MCP can pass it), and the destination is on the file system of the host — so
+ * the path traversal and the illegal characters have to be blocked here.
  */
 export function sanitizeFileName(name: string): string {
   let out = name.replace(INVALID, '_').trim();
-  // Windows 会悄悄去掉结尾的点和空格——那会让「a.txt.」变成「a.txt」，
-  // 于是两次下载覆盖同一个文件。直接砍掉。
+  // Windows silently drops a trailing dot or space — that turns "a.txt." into "a.txt",
+  // and two downloads then overwrite the same file. They are cut off directly.
   out = out.replace(/[. ]+$/, '');
   if (out.length === 0) out = 'download';
   if (RESERVED.test(out)) out = `_${out}`;
@@ -42,20 +46,23 @@ export function sanitizeFileName(name: string): string {
 }
 
 /**
- * 下载的默认落盘路径 = 下载目录 + 远端文件名。
+ * The default destination path of a download = the download directory + the
+ * remote file name.
  *
- * @param downloadsDir 宿主的下载目录（`app.getPath('downloads')`）
- * @param remotePath   远端路径
+ * @param downloadsDir the download directory of the host (`app.getPath('downloads')`)
+ * @param remotePath   the remote path
  */
 export function defaultDownloadPath(downloadsDir: string, remotePath: string): string {
   return join(downloadsDir, sanitizeFileName(basename(remotePath)));
 }
 
 /**
- * 下载的落盘路径，**撞名就换一个**（`a.txt` → `a-1.txt` → `a-2.txt`）。
+ * The destination path of a download, **with another name when it collides**
+ * (`a.txt` → `a-1.txt` → `a-2.txt`).
  *
- * 静默覆盖是数据安全问题：用户从板子上拉三次同名文件，
- * 前两次的结果被第三次盖掉，而他一点提示都没收到。
+ * Overwriting silently is a data safety problem: the user pulls three files
+ * with the same name from the board, the result of the first two is covered by
+ * the third, and he is not given a single hint.
  */
 export function uniqueDownloadPath(
   downloadsDir: string,

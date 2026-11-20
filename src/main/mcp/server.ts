@@ -22,24 +22,27 @@ import {
 } from './read-tools';
 
 /**
- * **MCP 的 JSON-RPC 层**（协议照 MCP 官方规范 2025-06-18 ✓）。
+ * The **JSON-RPC layer of the MCP** (the protocol follows the official MCP
+ * specification 2025-06-18 ✓).
  *
- * ── 为什么自己写而不用 SDK ──
+ * ── Why it is written by hand instead of using the SDK ──
  *
  * The transport selection table chose `@modelcontextprotocol/sdk` ✓,
- * **这一轮推翻它** ✓（**ADR-D39** ✓）：
+ * **this round overturns it** ✓ (**ADR-D39** ✓):
  *
- * | # | 理由 |
+ * | # | Reason |
  * |---|---|
- * | 1 | SDK 带 **91 个包 / 29MB** ✓（express · hono · cors · jose · zod 全家桶 ✓）—— 本工程**零 web 框架依赖** ✓ |
- * | 2 | 沙箱与宿主**共用一份 `node_modules`** ✓ → 装新依赖会**把两边的平台二进制搞坏** ✓ → **MCP server 的代码在沙箱里根本没法验** ✓ |
- * | 3 | 这个工程的规矩是「**证据先于断言**」✓ → 引了 SDK 就交一批**没验过**的代码 ✗ |
+ * | 1 | The SDK brings **91 packages / 29MB** ✓ (express · hono · cors · jose · zod, the whole set ✓) — this project has **zero web framework dependencies** ✓ |
+ * | 2 | The sandbox and the host **share one `node_modules`** ✓ → installing a new dependency **breaks the platform binaries of both sides** ✓ → **the code of the MCP server cannot be verified in the sandbox at all** ✓ |
+ * | 3 | The rule of this project is "**the evidence comes before the assertion**" ✓ → bringing in the SDK means handing over a batch of **unverified** code ✗ |
  *
- * → **代价（诚实说）**：SDK 附带的那些（SSE 推送 · resumability · prompt/resource · OAuth）**本轮不做** ✓
- *   —— **契约里也没有** ✓（`spec/04` §7.1 只要「agent 能发现并连上」✓）。
+ * → **The cost (stated honestly)**: what comes with the SDK (SSE push ·
+ * resumability · prompt/resource · OAuth) is **not done in this round** ✓
+ *   — **it is not in the contract either** ✓ (`spec/04` §7.1 only asks for
+ *   "an agent can discover it and connect" ✓).
  */
 
-/** JSON-RPC 2.0 的请求/通知（**我们只用到这几个形状** ✓） */
+/** The requests / notifications of JSON-RPC 2.0 (**only these shapes are used** ✓) */
 interface JsonRpcMessage {
   jsonrpc: string;
   id?: string | number | null;
@@ -47,12 +50,12 @@ interface JsonRpcMessage {
   params?: Record<string, unknown>;
 }
 
-/** JSON-RPC 的错误码（**规范里的那几个** ✓） */
+/** The error codes of JSON-RPC (**the ones of the specification** ✓) */
 const JSON_RPC_METHOD_NOT_FOUND = -32601;
 const JSON_RPC_INVALID_PARAMS = -32602;
 const JSON_RPC_INTERNAL_ERROR = -32603;
 
-/** 一个工具的声明（**照规范 §「Tool」** ✓） */
+/** The declaration of a tool (**as in the specification §"Tool"** ✓) */
 export interface McpToolDef {
   name: string;
   title?: string;
@@ -64,18 +67,19 @@ export interface McpToolDef {
   };
 }
 
-/** 工具的实现（**入参 → 出参** ✓） */
+/** The implementation of a tool (**input → output** ✓) */
 export type McpToolImpl = (args: Record<string, unknown>) => Promise<unknown> | unknown;
 
-/** MCP server 依赖的宿主能力（**只有这一处** ✓ —— 契约 §9.2「工具是薄封装」✓） */
+/** The host capabilities the MCP server depends on (**only in this one place** ✓ — contract §9.2 "the tools are thin wrappers" ✓) */
 export interface McpServerDeps {
-  /** 流程服务（**卡片侧与 agent 侧共用同一个** ✓ —— ADR-D34 ✓） */
+  /** The workflow service (**the card side and the agent side share the same one** ✓ — ADR-D34 ✓) */
   workflows: WorkflowService;
   /**
-   * **The host dependencies of the read-side tools** ✓.
-   *
-   * → **可选** ✓：不传就只有四个流程工具 ✓（**接线之前也能用** ✓ —— 测试与渐进接线 ✓）。
-   */
+     * **The host dependencies of the read-side tools** ✓.
+     *
+     * → **Optional** ✓: without them there are only the four workflow tools ✓
+     *   (**it works before the wiring** ✓ — the tests and the gradual wiring ✓).
+     */
   host?: McpHostDeps;
 }
 
@@ -85,24 +89,27 @@ export class McpServer {
 
   constructor(deps: McpServerDeps) {
     this.tools = buildTools(deps);
-    // **没接宿主依赖 → 不列读侧工具** ✓（**不列一个调不通的工具** ✓ —— 契约 §七.4 的那条要求 ✓）
+    // **Without the host dependencies the read-side tools are not listed** ✓ (**a tool that cannot be called is not listed** ✓ — the requirement of contract §7.4 ✓)
     this.toolDefs =
       deps.host === undefined ? [...TOOL_DEFS] : [...TOOL_DEFS, ...READ_TOOL_DEFS];
   }
 
-  /** 工具清单（**规范 §「Listing Tools」** ✓） */
+  /** The list of the tools (**the specification §"Listing Tools"** ✓) */
   listTools(): McpToolDef[] {
     return [...this.toolDefs];
   }
 
   /**
-   * **处理一条 JSON-RPC 消息** ✓。
-   *
-   * → **通知**（没有 `id` ✓）→ 返回 `null` ✓（HTTP 层给 **202 空体** ✓ —— 规范 §「Sending Messages」第 4 条 ✓）。
-   * → **请求**（有 `id` ✓）→ 返回 `{ jsonrpc, id, result }` 或 `{ jsonrpc, id, error }` ✓。
-   */
+     * **Handles one JSON-RPC message** ✓.
+     *
+     * → A **notification** (no `id` ✓) → returns `null` ✓ (the HTTP layer gives
+     *   it **a 202 with an empty body** ✓ — the specification §"Sending
+     *   Messages", point 4 ✓).
+     * → A **request** (with an `id` ✓) → returns `{ jsonrpc, id, result }` or
+     *   `{ jsonrpc, id, error }` ✓.
+     */
   async handle(message: JsonRpcMessage): Promise<Record<string, unknown> | null> {
-    // **通知** → 不回响应 ✓
+    // A **notification** → no response ✓
     if (message.id === undefined) {
       await this.runNotification(message);
       return null;
@@ -123,7 +130,7 @@ export class McpServer {
     }
   }
 
-  /** 调一个工具（**工具内部抛错 → 转成 `isError` 的结果** ✓ —— 规范 §「Tool Execution Errors」✓） */
+  /** Calls a tool (**an error inside the tool → turned into a result with `isError` ✓** — the specification §"Tool Execution Errors" ✓) */
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     const impl = this.tools.get(name);
     if (impl === undefined) {
@@ -151,7 +158,7 @@ export class McpServer {
           const value = await this.callTool(params.name, args);
           return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], isError: false };
         } catch (err) {
-          // **工具执行失败** → `isError: true` 的结果 ✓（不是协议错误 ✓ —— 规范 §「Tool Execution Errors」✓）
+          // **The tool failed** → a result with `isError: true` ✓ (not a protocol error ✓ — the specification §"Tool Execution Errors" ✓)
           return {
             content: [
               {
@@ -175,12 +182,12 @@ export class McpServer {
   }
 
   private async runNotification(message: JsonRpcMessage): Promise<void> {
-    // **本轮只有 initialized 这一条通知** ✓（规范 §「Lifecycle」✓）→ 别的忽略 ✓
+    // **In this round `initialized` is the only notification** ✓ (the specification §"Lifecycle" ✓) → everything else is ignored ✓
     if (message.method === 'notifications/initialized') return;
   }
 }
 
-/** 带错误码的异常（**协议错误** ✓） */
+/** An exception that carries an error code (**a protocol error** ✓) */
 class RpcError extends Error {
   constructor(
     readonly code: number,
@@ -195,7 +202,7 @@ function errorCodeOf(err: unknown): number {
   return JSON_RPC_INTERNAL_ERROR;
 }
 
-/** 工具失败的**封闭理由码** ✓（契约 §四：失败用 `ok:false + reason` ✓） */
+/** The **closed reason codes** of a tool failure ✓ (contract §4: a failure uses `ok:false + reason` ✓) */
 export type McpReason =
   | 'denied'
   | 'not_found'
@@ -204,10 +211,12 @@ export type McpReason =
   | 'failed';
 
 /**
- * 把宿主侧的异常翻成**封闭理由码** ✓。
+ * Turns a host-side exception into a **closed reason code** ✓.
  *
- * → **不靠解析中文消息** ✓（那是「解析错误消息」的坏味道 ✗）→
- *   宿主侧的错误带 `detail.reason` ✓（`registry.ts` 登记的 ✓）→ 直接取 ✓。
+ * → **It does not rely on parsing the error messages** ✓ (that is the bad
+ *   smell of "parsing error messages" ✗) →
+ *   the errors of the host side carry `detail.reason` ✓ (registered by
+ *   `registry.ts` ✓) → it is taken directly ✓.
  */
 function reasonOf(err: unknown): McpReason {
   const detail = (err as { detail?: { reason?: string } } | undefined)?.detail;
@@ -217,7 +226,7 @@ function reasonOf(err: unknown): McpReason {
   return 'failed';
 }
 
-/** 工具的失败结果（**契约 §四** ✓：`ok:false + reason` ✓） */
+/** The failure result of a tool (**contract §4** ✓: `ok:false + reason` ✓) */
 export interface McpFailure {
   ok: false;
   reason: McpReason;
@@ -228,12 +237,14 @@ function failure(reason: McpReason, detail?: string): McpFailure {
   return { ok: false, reason, ...(detail === undefined ? {} : { detail }) };
 }
 
-/** 四个流程工具的声明（**契约 `spec/04` §2.4** ✓） */
+/** The declarations of the four workflow tools (**contract `spec/04` §2.4** ✓) */
 /**
- * 工具的声明（**契约 `spec/04` §2.4** ✓）。
+ * The declaration of a tool (**contract `spec/04` §2.4** ✓).
  *
- * → **导出来** ✓ —— 为了让「**这里没有 cancel**」这条**契约边界**能被**测到** ✓
- *   （契约 A4 ✓：**agent 不给「停不停」** ✓ —— 那条边界**值得守着** ✓）。
+ * → **Exported** ✓ — so that the contract boundary "**there is no cancel
+ *   here**" **can be tested** ✓
+ *   (contract A4 ✓: **the agent does not get to decide "stop or not"** ✓ —
+ *   that boundary **is worth keeping** ✓).
  */
 export const TOOL_DEFS: McpToolDef[] = [
   {
@@ -331,10 +342,14 @@ export const TOOL_DEFS: McpToolDef[] = [
 ];
 
 /**
- * **读侧工具的声明**（契约 `spec/04` §2.1 / §2.2 / §2.3 / §2.5 ✓ · ADR-D40 ✓）。
+ * The **declarations of the read-side tools** (contract `spec/04` §2.1 / §2.2
+ * / §2.3 / §2.5 ✓ · ADR-D40 ✓).
  *
- * → **单独一份** ✓ —— 不与流程工具混在一张表里 ✓（那一张是「流程那一组」✓）。
- * → **接了宿主依赖才有** ✓（`host` 没传就不列 ✓ —— **不列一个调不通的工具** ✓）。
+ * → **A separate list** ✓ — not mixed into one table with the workflow tools ✓
+ *   (that one is "the workflow group" ✓).
+ * → **They exist only once the host dependencies are there** ✓ (without the
+ *   `host` they are not listed ✓ — **a tool that cannot be called is not
+ *   listed** ✓).
  */
 export const READ_TOOL_DEFS: McpToolDef[] = [
   {
@@ -471,14 +486,14 @@ export const READ_TOOL_DEFS: McpToolDef[] = [
   },
 ];
 
-/** 四个流程工具的实现（**薄封装** ✓ —— 契约 §9.2 ✓） */
+/** The implementations of the four workflow tools (**thin wrappers** ✓ — contract §9.2 ✓) */
 function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
   const { workflows } = deps;
   const tools = new Map<string, McpToolImpl>([
     [
       'list_workflows',
       () =>
-        // **只给 id / name / 输入声明** ✓（契约 §2.4 ✓ —— 不给拓扑 ✓）
+        // **Only the id / name / the declarations of the inputs are given** ✓ (contract §2.4 ✓ — no topology ✓)
         withVersionEach(
           workflows.list().map((w) => ({
             id: w.id,
@@ -499,7 +514,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
         if (dryRun !== undefined && typeof dryRun !== 'boolean') {
           return withVersion(failure('invalid_params', 'dry_run must be omitted or a boolean'));
         }
-        // **dry_run：预览** ✓（**不跑任何一步** ✓ · **不写审计** ✓ · **没有 run_id** ✓）
+        // **dry_run: a preview** ✓ (**not a single step is run** ✓ · **nothing is written to the audit** ✓ · **there is no run_id** ✓)
         if (dryRun === true) {
           try {
             const pack = workflows.pack(id);
@@ -520,7 +535,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
           const { runId } = workflows.start(id, inputs);
           return withVersion({ ok: true, run_id: runId });
         } catch (err) {
-          // **失败用 `ok:false + reason`** ✓（契约 §四 ✓ —— 不抛异常 ✓）
+          // **A failure uses `ok:false + reason`** ✓ (contract §4 ✓ — it does not throw ✓)
           return withVersion(
             failure(reasonOf(err), err instanceof Error ? err.message : String(err)),
           );
@@ -535,7 +550,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
           return withVersion(failure('invalid_params', 'workflow_status is missing run_id'));
         }
         try {
-          // **agent 侧投影** ✓（`04` §2.4 ✓ —— 含 audit_id ✓，不含明细 ✓）
+          // **The projection of the agent side** ✓ (`04` §2.4 ✓ — it carries the audit_id ✓ and not the details ✓)
           return withVersion({ ok: true, ...projectRunStatusForAgent(workflows.status(runId)) });
         } catch {
           return withVersion(failure('not_found', 'No such run'));
@@ -591,7 +606,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
             ),
           );
         }
-        // **存下去** ✓（**全屏是布局状态** ✓ —— 不存就不生效 ✓）
+        // **It is stored** ✓ (**full screen is a state of the layout** ✓ — without storing it it does not take effect ✓)
         deps.host.saveLayout(result.layout);
         return withVersion({ ok: true, mode: 'fullscreen' });
       },
@@ -607,7 +622,7 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
       },
     ],
   ]);
-  // **读侧工具** ✓（**接了宿主依赖才有** ✓）
+  // **The read-side tools** ✓ (**only once the host dependencies are there** ✓)
   if (deps.host !== undefined) {
     for (const [name, impl] of buildReadTools(deps.host)) tools.set(name, impl);
   }
@@ -615,10 +630,13 @@ function buildTools(deps: McpServerDeps): Map<string, McpToolImpl> {
 }
 
 /**
- * **读侧工具的实现**（契约 `spec/04` §2.1 / §2.2 / §2.3 / §2.5 ✓）。
+ * The **implementations of the read-side tools** (contract `spec/04` §2.1 /
+ * §2.2 / §2.3 / §2.5 ✓).
  *
- * → **全部是薄封装** ✓（契约 §六 ✓）—— 转发 + 投影 ✓，**不含业务判断** ✓。
- * → **没接宿主依赖 → 一个都不注册** ✓（**不列一个调不通的工具** ✓）。
+ * → **They are all thin wrappers** ✓ (contract §6 ✓) — forwarding + projection
+ *   ✓, **no business decision** ✓.
+ * → **Without the host dependencies not one of them is registered** ✓ (**a
+ *   tool that cannot be called is not listed** ✓).
  */
 function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
   return new Map<string, McpToolImpl>([
@@ -637,8 +655,8 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
     [
       'list_tags',
       (args) => {
-        // **`board` 参数**：v1 只有一块板 ✓ → **省略就是当前那块** ✓
-        // → **给了别的 board → 空数组** ✓（不猜 ✓ —— 契约 §2.1 说「不给就不给」✓）
+        // **The `board` argument**: in v1 there is only one board ✓ → **leaving it out means the current one** ✓
+        // → **Another board → an empty array** ✓ (no guessing ✓ — contract §2.1 says "without it, nothing is given" ✓)
         const wanted = args['board'];
         if (typeof wanted === 'string' && wanted.length > 0) {
           const current = host.pack()?.id ?? null;
@@ -672,7 +690,7 @@ function buildReadTools(host: McpHostDeps): Map<string, McpToolImpl> {
         if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
           return withVersion(failure('invalid_params', 'sample_tag n must be a positive integer'));
         }
-        // **先定向采一次** ✓（契约 §2.1 ✓ —— 不采的话拿到的是**冻结的旧样本** ✓）
+        // **Sample it in a directed way once first** ✓ (contract §2.1 ✓ — without the sampling what comes out is **a frozen old sample** ✓)
         await host.refreshTag(name);
         return withVersionEach(sampleTag(host, name, n));
       },

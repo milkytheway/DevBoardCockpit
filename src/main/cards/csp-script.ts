@@ -1,43 +1,48 @@
 /**
- * 注入给卡片的 **CSP 违规监听脚本**。
+ * The **CSP violation listener script** injected into cards.
  *
- * ── 为什么是它（而不是 `console-message`）──
+ * ── Why this and not `console-message` ──
  *
- * 宿主原来靠渲染进程的 `console-message` 事件抓 CSP 违规。**实测抓不全**：
+ * The host used to catch CSP violations through the renderer's
+ * `console-message` event. **In practice it did not catch them all**:
  *
- * | 违规类型 | `console-message` 的 `sourceId`（Electron 34.5.8） | 能归属到卡吗 |
+ * | Violation type | `sourceId` of `console-message` (Electron 34.5.8) | Attributable to a card? |
  * |---|---|---|
- * | `img-src`（外链图片） | 卡片的 URL | 能 |
- * | `connect-src`（`fetch` 外网） | **空串** | **不能** |
- * | `script-src`（内联脚本） | **空串** | **不能** |
+ * | `img-src` (external image) | the card's URL | yes |
+ * | `connect-src` (`fetch` to the network) | **empty string** | **no** |
+ * | `script-src` (inline script) | **empty string** | **no** |
  *
- * 而契约 `spec/03` §6.1 承诺的正是「agent 能看到**这张卡试图联网**」——
- * 「试图联网」就是 `connect-src` → **恰恰是宿主抓不到的那一类**。
+ * The contract `spec/03` §6.1 promises exactly that an agent can see **this
+ * card tried to reach the network** — and "tried to reach the network" is
+ * `connect-src`, which is **precisely the kind the host could not catch**.
  *
- * → 改用浏览器唯一的标准信号：**DOM 的 `securitypolicyviolation` 事件**。
- * 它**在违规发生的那张卡的文档里**触发 → 归属天然精确；
- * 而且带 `blockedURI` / `effectiveDirective` / `violatedDirective`，
- * agent 能直接看出「它想干什么」。
+ * → Use the browser's only standard signal: the DOM
+ * **securitypolicyviolation** event.
+ * It fires **inside the document of the card that violated the policy** →
+ * attribution is exact by construction; and it carries `blockedURI` /
+ * `effectiveDirective` / `violatedDirective`, so an agent can see directly
+ * what it was trying to do.
  *
- * ── 为什么是**经典脚本**（不是 module）──
+ * ── Why a **classic script** and not a module ──
  *
- * 监听必须**在卡片自己的脚本之前**装上。
- * `type="module"` 的脚本是 defer 的 → 整个文档解析完才执行 →
- * 卡片在**解析期**造成的违规（内联脚本、外链图片）会漏掉。
- * 经典脚本在解析时**同步执行** → 装得早 ✓。
+ * The listener must be installed **before the card's own scripts**.
+ * A `type="module"` script is deferred → it runs after the whole document is
+ * parsed → violations caused during **parsing** (inline script, external
+ * image) are missed. A classic script runs **synchronously during parsing** →
+ * it is installed early ✓.
  *
- * ── 它怎么报 ──
+ * ── How it reports ──
  *
- * 直接 `parent.postMessage`（**不经 bridge**）：
- * bridge 是 module → 装得太晚；而且这条消息**不是卡片 API**——
- * 卡片自己伪造一条也只能污染**它自己**的日志。
+ * It calls `parent.postMessage` directly (**not through the bridge**):
+ * the bridge is a module → installed too late; and this message is **not a
+ * card API** — a card forging one could only pollute **its own** log.
  */
 export const CSP_SCRIPT_MARKER = '/* cockpit-csp:v1 */';
 
 /**
- * 生成监听脚本。
+ * Generates the listener script.
  *
- * @param instanceId 这个实例的 id —— **归属的依据**
+ * @param instanceId the id of this instance — **the basis for attribution**
  */
 export function cspScriptFor(instanceId: string): string {
   const id = JSON.stringify(instanceId);
@@ -67,9 +72,10 @@ export function cspScriptFor(instanceId: string): string {
 }
 
 /**
- * 注入的标签。
+ * The injected tag.
  *
- * **不带 `type="module"`** —— 经典脚本在解析时同步执行，装得早。
+ * **No `type="module"`** — a classic script runs synchronously during parsing,
+ * so it is installed early.
  */
 export function cspScriptTag(instanceId: string): string {
   const id = encodeURIComponent(instanceId);
