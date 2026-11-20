@@ -258,7 +258,7 @@ function runShell(device: FakeDevice, statements: string[]): string {
         body.push(statements[i]!.trim().replace(/^do\s+/, ''));
         i += 1;
       }
-      i += 1; // 跳过 done
+      i += 1; // skip the "done"
       const bodyText = body.join('; ');
       for (const match of device.glob(pattern)) {
         const substituted = bodyText.replace(

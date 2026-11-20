@@ -34,8 +34,9 @@ export default [
     },
   },
   {
-    // `.cjs` 按定义就是 CommonJS —— 与 `.mjs` 分开配，
-    // 不然 sourceType 写成 module 会把合法的 CJS（顶层 return、sloppy mode）报成解析错误。
+    // A `.cjs` file is CommonJS by definition — it is configured apart from
+    // `.mjs`, because writing sourceType "module" for it would report the
+    // legal CJS constructs (a top-level return, sloppy mode) as parse errors.
     files: ['**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -54,13 +55,14 @@ export default [
     },
   },
   {
-    // 脚本是纯 Node（.mjs），跑在仓库根，不进浏览器也不进 Electron。
-    // 它们用 console / process / setTimeout——这些在 Node 里是全局的。
+    // The scripts are plain Node (.mjs); they run at the repository root and
+    // never in a browser or in Electron.
+    // They use console / process / setTimeout — those are globals in Node.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-      // Node 22 的全局：fetch 与 WebSocket 都是内建的
+      // The Node 22 globals: fetch and WebSocket are built in
       globals: {
         console: 'readonly',
         process: 'readonly',
@@ -77,8 +79,10 @@ export default [
     },
   },
   {
-    // **卡片自己的代码**（`cards/**`，产品的内置卡）跑在**浏览器的沙箱 iframe** 里：
-    // 有 document / window / 定时器；`cockpit` 是**宿主注入的**（契约 §七）。
+    // **The code of the cards themselves** (`cards/**`, the built-in cards of
+    // the product) runs in a **sandboxed iframe in the browser**: it has
+    // document / window / timers; `cockpit` is **injected by the host**
+    // (contract section 7).
     files: ['cards/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -91,7 +95,7 @@ export default [
         clearInterval: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
-        // 宿主注入的能力（契约 §七 的白名单）
+        // The capabilities the host injects (the allow list of contract section 7)
         cockpit: 'readonly',
       },
     },

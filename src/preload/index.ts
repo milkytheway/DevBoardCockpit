@@ -6,18 +6,20 @@ import type { TagReading } from '../shared/tag-reading';
 /**
  * The only exit to the host capabilities.
  *
- * renderer 与卡片都只能经这里触达 main——
- * 没有 `ipcRenderer` 本身，没有 fs，没有 child_process（AGENTS.md §3）。
+ * The renderer and the cards can only reach the main process through here —
+ * no `ipcRenderer` itself, no fs, no child_process (AGENTS.md §3).
  *
- * **这里做两件主进程不做的事**：
+ * **Two things happen here that the main process does not do**:
  *
- * 1. **把结构化结果拆包**：主进程返回 `{ok:true,value}` 或 `{ok:false,error}`，
- *    这里把失败还原成**带错误码的异常**抛出去。
- *    不这么做的话，Electron 会把主进程的错误包成
- *    `Error invoking remote method 'x': [object Object]`——
- *    用户看到的是 `[object Object]`，「串口 COM3 被占用」到不了眼前。
- * 2. **代理 `webUtils.getPathForFile`**：Electron 32 起 `File.path` 已被移除，
- *    而 `webUtils` 只能在渲染进程/preload 里调。
+ * 1. **Unpacking the structured result**: the main process returns
+ *    `{ok:true,value}` or `{ok:false,error}`; here the failure is turned back
+ *    into an **exception that carries the error code** and thrown.
+ *    Without this, Electron wraps a main-process error into
+ *    `Error invoking remote method 'x': [object Object]` —
+ *    the user sees `[object Object]`, and "the serial port COM3 is busy" never
+ *    reaches the screen.
+ * 2. **Proxying `webUtils.getPathForFile`**: since Electron 32 `File.path` is
+ *    gone, and `webUtils` can only be called in the renderer / preload.
  */
 async function invoke<T>(channel: IpcChannel, ...args: unknown[]): Promise<T> {
   const result = (await ipcRenderer.invoke(channel, ...args)) as IpcResult<T>;
