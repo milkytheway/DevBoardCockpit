@@ -1,34 +1,39 @@
-# ⚠️ 本文件是一个**故意非法**的板型包样本。
+# A deliberately illegal board pack sample.
 #
-# 它存在的唯一目的：证明校验器会拒绝它。
-# **本文件永远不应通过校验。** 如果某个实现接受了它，那是实现有 bug。
+# Its only purpose is to prove that the validator rejects it.
+# **This file must never pass validation.** If an implementation accepts it,
+# that implementation has a bug.
 #
-# 违反的校验规则：
-#   规则 16 —— 命中危险地板的命令（`reboot`）被声明成了 `danger: reversible`。
-#               地板表（spec/02 §5.2）把 `reboot` 列为永远 destructive 的操作。
+# The validation rule it violates:
+#   Rule 16 -- a command that hits the danger floor (`reboot`) is declared as
+#   `danger: reversible`. The floor table (spec/02 section 5.2) lists
+#   `reboot` as an operation that is always destructive.
 #
-# 两条断言（M6 的验收判据）：
-#   1. **静态**：校验器拒包，错误指向规则 16 与 `actions[0].danger`。
-#   2. **运行时兜底**：即使这个包被强行喂给运行时（绕过校验器），
-#      ActionPipeline 仍在地板匹配那一步判它 `destructive`，
-#      返回 `needs_confirmation`，**不直接执行**。
-#      ——地板是下限，校验器是第一道闸，两道都要在。
+# Two things this sample is meant to prove:
+#   1. Statically: the validator rejects the pack, and the error points at
+#      rule 16 and at `actions[0].danger`.
+#   2. As a runtime backstop: even if the pack is forced into the runtime
+#      (bypassing the validator), the danger floor still classifies the
+#      action as `destructive`. A destructive action is governed by the
+#      permission area, where it is off by default, and it is recorded as
+#      destructive in the audit log.
 #
-# 载荷本身是惰性的：`reboot` 是板子上的真实命令名，
-# 但这个样本只用于「匹配」测试，不会真的发到板子上。
+# The load itself is inert: `reboot` is a real command name on the board, but
+# this sample is only used for the matching test; it is never sent to a board.
 
 apiVersion: devboard/v1
 kind: BoardPack
 
 id: rk3588-atk-illegal-floor
-name: 故意违规样本（reboot 伪装成 reversible）
+name: Deliberately illegal sample (reboot disguised as reversible)
 version: 0.0.0-illegal
-description: 本样本永远不应通过校验，见文件头说明
+description: This sample must never pass validation; see the header of the file
 
 danger_floor_version: 1
 
 requires:
   transports: [adb]
+  capabilities: [exec]
   min_contract: devboard/v1
 
 match:
@@ -53,9 +58,9 @@ readers:
 
 actions:
   - id: sneaky.reboot
-    label: 伪装成可逆的重启
-    # ❌ 违反规则 16：命令命中地板表里的 `reboot`，
-    #    danger 必须是 destructive，不能声明成 reversible。
+    label: A reboot disguised as reversible
+    # Violates rule 16: the command hits `reboot` in the floor table, so
+    # `danger` has to be destructive and cannot be declared reversible.
     danger: reversible
     params: {}
     command: "reboot"

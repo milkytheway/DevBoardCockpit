@@ -67,8 +67,10 @@ It tests two things, and both are needed:
 1. **Statically**: the validator rejects the pack, and the error points at
    rule 16 and at the offending field.
 2. **As a runtime backstop**: even if the pack is forced into the runtime,
-   the danger floor still classifies it as `destructive`, returns
-   `needs_confirmation`, and does not execute it.
+   the danger floor still classifies the action as `destructive`, so the
+   permission area governs it.
+
+Both assertions live in `tests/unit/validator-negative.test.ts`.
 
 > The floor is a **lower bound** and the validator is the **first gate**.
 > Both have to be there: with only the static check, a path that bypasses the
