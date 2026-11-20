@@ -6,38 +6,43 @@ import { SessionLog } from '../logging/session-log';
 import { runWizard, type WizardDeps, type WizardResult } from './run';
 
 /**
- * **向导在 main 侧的接线** ✓ —— 2026-11-19 加 ✓。
+ * The wiring of the wizard on the main side — added 2026-11-19.
  *
- * ── 为什么单独一个文件（**而不是塞进 `index.ts`** ✓）──
+ * ── Why it is a file of its own (and not stuffed into `index.ts`) ──
  *
- * → `index.ts` 已经是**一千行的接线板** ✓ → 再往里塞向导的细节 = 继续长 ✓
- * → **这一块有它自己的依赖** ✓（会话日志 ✓ · 连接工厂 ✓ · 两个目录 ✓）→
- *   → **收在这里** ✓ → `index.ts` 只调一个函数 ✓。
+ * → `index.ts` already is a thousand-line wiring board → stuffing the
+ *   details of the wizard in there means it keeps growing
+ * → This part has dependencies of its own (the session log · the
+ *   connection factory · the two directories) → they are collected
+ *   here → `index.ts` calls one function ✓.
  *
- * ── ⚠️ **它会写用户的目录** ✓ ──
+ * ── ⚠️ It writes into the directories of the user ──
  *
- * → 落**连接 profile** ✓（用户数据目录 ✓ · `userProfilesDir()` ✓）
- * → 落**板型包** ✓（用户数据目录 ✓ · `userBoardsDir()` ✓）
- * → **所以它是宿主专用** ✓ —— **卡片与 agent 都拿不到** ✓（IPC 契约 ✓）。
+ * → It writes the connection profile ✓ (the user data directory ✓ ·
+ *   `userProfilesDir()` ✓)
+ * → It writes the board pack ✓ (the user data directory ✓ ·
+ *   `userBoardsDir()` ✓)
+ * → So it is host-only ✓ — a card and an agent cannot get at it ✓
+ *   (the IPC contract ✓).
  */
 
-/** 接线的依赖（**可注入** ✓ —— 好测 ✓） */
+/** The dependencies of the wiring (injectable ✓ — easy to test ✓) */
 export interface WizardWiringOptions {
-  /** 应用根目录（**内置包在这儿** ✓） */
+  /** The root of the application (the built-in packs are here ✓) */
   appRoot: string;
-  /** 用户连接 profile 目录 ✓ */
+  /** The directory of the connection profiles of the user ✓ */
   userProfilesDir: string;
-  /** 用户板型包目录 ✓ */
+  /** The directory of the board packs of the user ✓ */
   userBoardsDir: string;
-  /** 用户数据目录（**会话日志在这儿** ✓） */
+  /** The user data directory (the session logs are here ✓) */
   userDataDir: string;
-  /** 建连接 ✓（**默认用真的** ✓） */
+  /** Build the connection ✓ (the real one by default ✓) */
   createConnection?: (profile: ConnectionProfile, log: SessionLog) => ReturnType<typeof createConnection>;
-  /** 建会话日志 ✓ */
+  /** Build the session log ✓ */
   createLog?: (label: string, transport: string) => SessionLog;
 }
 
-/** 一次向导的依赖 ✓ */
+/** The dependencies of one wizard run ✓ */
 export function wizardDeps(opts: WizardWiringOptions): WizardDeps {
   const settings = loadSettings(join(opts.appRoot, 'profiles', 'settings.json'));
   const adbPath = resolveAdbPath(settings);
@@ -60,9 +65,10 @@ export function wizardDeps(opts: WizardWiringOptions): WizardDeps {
 }
 
 /**
- * **跑一次向导** ✓ —— 返回给界面的话 ✓。
+ * Run the wizard once ✓ — it returns what the interface shows ✓.
  *
- * → **四种结果** ✓ —— **它们是不同的故障** ✓（见 `WizardRunResult` ✓）。
+ * → Four results ✓ — they are different faults ✓ (see
+ *   `WizardRunResult` ✓).
  */
 export async function runWizardForHost(
   input: { port: string; baudrate: number; boardName: string; transport?: 'serial' | 'adb' },
@@ -103,7 +109,7 @@ export async function runWizardForHost(
         ? 'port-unopenable'
         : 'no-reply',
     message: result.message,
-    // **传输层的 hint 排第一** ✓（**它说的是最准的那条** ✓ —— 串口知道「回包被吃了」✓）
+    // The hint of the transport goes first ✓ (it is the most accurate one ✓ — the serial line knows "the reply was swallowed" ✓)
     hints: result.hint !== undefined ? [result.hint] : [],
     greenCount,
     redCount,

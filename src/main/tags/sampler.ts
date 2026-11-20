@@ -8,27 +8,29 @@ import type { ExecResult } from '../hal/connection';
 import type { ReasonCode } from '../../shared/tag-reading';
 
 /**
- * 采样器 —— 把前面几件事串起来：
- * **取数 → 分段 → 逐 reader 解析 → sample 绑成 tag → 入 store**。
+ * The sampler — it strings the earlier pieces together:
+ * fetch → split → parse per reader → bind the samples to tags → put them in
+ * the store.
  *
- * ── 它是「一个组的一次往返」──
+ * ── It is "one round trip of one group" ──
  *
- * 一个 poll group = 一次往返（契约 §1.2）：
- * 同组的所有 reader 合成**一条**命令，一次取回。
+ * A poll group = one round trip (contract section 1.2): all the readers of
+ * the group are composed into one command, fetched in one go.
  *
- * ── 为什么 reader 的解析状态存在这里 ──
+ * ── Why the parsing state of a reader lives here ──
  *
- * `proc_stat` 需要**两次采样**做差（契约 §2.4）。
- * 那份历史**属于这条连接上的这个 reader**，所以存在采样器里——
- * 不在 kind 里（那会让两个连接共用一份历史），
- * 也不在 store 里（那是读数的汇点，不是采样状态）。
+ * `proc_stat` needs two samples to be differenced (contract section 2.4).
+ * That history belongs to this reader on this connection, so it is kept in
+ * the sampler — not in the kind (that would give two connections a shared
+ * history) and not in the store (that is where the readings meet, not the
+ * sampling state).
  */
 
 export interface ExecRunner {
   exec(command: string, opts?: { timeoutMs?: number }): Promise<ExecResult>;
 }
 
-/** 一次往返失败时，reason 是什么 */
+/** The reason when one round trip fails */
 function reasonForError(err: unknown): ReasonCode {
   if (err instanceof AppError && err.code === 'CONN_TIMEOUT') return 'timeout';
   const message = err instanceof Error ? err.message : String(err);
@@ -37,7 +39,7 @@ function reasonForError(err: unknown): ReasonCode {
 }
 
 export class TagSampler {
-  /** 每个 reader 的解析状态（两次采样之间的历史） */
+  /** The parsing state of each reader (the history between two samples) */
   private readonly contexts = new Map<string, ReaderContext>();
 
   constructor(
@@ -47,7 +49,7 @@ export class TagSampler {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
-  /** 某个 reader 的解析上下文（**每个 reader 一份**） */
+  /** The parsing context of one reader (one per reader) */
   private contextFor(readerId: string): ReaderContext {
     let ctx = this.contexts.get(readerId);
     if (ctx === undefined) {
@@ -57,7 +59,7 @@ export class TagSampler {
     return ctx;
   }
 
-  /** 在包里找一个 reader（readers 或 custom） */
+  /** Find a reader in the pack (readers or custom) */
   private findReader(readerId: string): ReaderDef {
     const reader = [...this.pack.readers, ...this.pack.custom].find((r) => r.id === readerId);
     if (reader === undefined) {
@@ -69,9 +71,10 @@ export class TagSampler {
   }
 
   /**
-   * 采一个 poll group。
+   * Sample one poll group.
    *
-   * **这一组里的 reader 共享一次往返**——所以它们的取数片段合成一条命令。
+   * The readers of this group share one round trip — so their fetch
+   * fragments are composed into one command.
    */
   async sampleGroup(groupId: string): Promise<void> {
     const group = this.pack.poll_groups.find((g) => g.id === groupId);
@@ -83,11 +86,12 @@ export class TagSampler {
 
     const readers = group.readers.map((id) => this.findReader(id));
 
-    // 取数片段。
-    // **需要远端路径的 reader（script）**：运行时还没把脚本推到板子上，
-    // 就**不生成那条注定失败的命令**——如实报「没推上去」。
+    // The fetch fragments.
+    // A reader that needs a remote path (`script`): while the runtime has
+    // not pushed the script onto the board, it does not build the command
+    // that is bound to fail — it reports honestly that it was not pushed.
     const plans: { id: string; fragment: string }[] = [];
-    // **没进这条命令的 reader**（运行时还没准备好）——后面那一轮不许再报一次
+    // The readers that did not get into this command (the runtime is not ready yet) — the next round must not report it again
     const skipped = new Set<string>();
     for (const r of readers) {
       const kind = getKind(r.kind);
@@ -117,7 +121,7 @@ export class TagSampler {
     try {
       const result = await this.connection.exec(groupCommand.command);
       if (result.timedOut) {
-        // 传输层可能带了「下一步查什么」（串口超时的头号嫌疑是**端口被别的程序占用**）
+        // The transport layer may carry a "what to check next" (the first suspect of a serial timeout is the port being held by another program)
         const detail = result.hint ?? 'this round trip timed out (Fact G1: 124 in every case)';
         for (const reader of readers) {
           this.reportRoundTripFailure(reader, 'timeout', detail);
@@ -137,18 +141,21 @@ export class TagSampler {
     const sections = splitSections(stdout, groupCommand.markers);
 
     for (const reader of readers) {
-      // 已经报过「没推上去」的，不许再报一次「这一段没有回包」
+      // A reader that already reported "not pushed" must not report "this section got no reply" again
       if (skipped.has(reader.id)) continue;
       const section = sections.get(reader.id);
       if (section === null || section === undefined) {
-        // 这一段没跑起来（marker 没出现）
+        // This section did not run (the marker never appeared)
         this.reportRoundTripFailure(reader, 'service_down', 'there is no reply for this section');
         continue;
       }
       if (!section.complete) {
-        // **截断了**（板子只回了一半）——**不发布半截数据**。
-        // 契约 §2.1.1：「读出来了但值坏了」是 error，不是 ok。
-        // 把 format: integer 的 1000 截成 100 当正常值发布，是**假数**。
+        // It was truncated (the board only replied half) — half data is
+        // not published.
+        // Contract section 2.1.1: "it was read but the value is broken" is
+        // an error, not an ok.
+        // Publishing a `format: integer` 1000 cut to 100 as if it were a
+        // normal value is a false number.
         this.reportStatus(
           reader,
           'error',
@@ -162,15 +169,19 @@ export class TagSampler {
       const result = kind.parse(section.text, reader.args ?? {}, this.contextFor(reader.id));
 
       if (result.status === 'unavailable' || result.status === 'error') {
-        // 「资源不在」与「读出来了但坏了」是**两件事**（契约 §2.1.1）：
-        // 前者要引导用户去挂 debugfs，后者是「读失败」。
+        // "the resource is not there" and "it was read but it is broken" are
+        // two different things (contract section 2.1.1): the first one has
+        // to send the user to mount debugfs, the second one is "the read
+        // failed".
         this.reportStatus(reader, result.status, result.reason, result.detail);
         continue;
       }
 
       if (result.status === 'pending') {
-        // 首读：还没有 sample。**没有通配符的 tag** 可以先报 pending，
-        // 通配符的 tag 现在还不知道具体名字（等第二次采样）。
+        // The first read: there is no sample yet. A tag without a wildcard
+        // can already be reported as pending; the concrete name of a tag
+        // with a wildcard is not known yet (it comes with the second
+        // sampling).
         for (const p of reader.provides) {
           if (p.tag.includes('*')) continue;
           this.store.put({
@@ -184,7 +195,7 @@ export class TagSampler {
         continue;
       }
 
-      // ok：把 sample 绑成 tag
+      // ok: bind the samples to the tags
       for (const p of reader.provides) {
         for (const [sampleName, value] of Object.entries(result.samples)) {
           const tag = bindSampleToTag(p.tag, p.sample, sampleName);
@@ -202,18 +213,24 @@ export class TagSampler {
   }
 
   /**
-   * 这个 reader 不可用/出错：它那些 tag 全部报同一个状态。
+   * This reader is unavailable or broken: all of its tags report the same
+   * status.
    *
-   * ── 通配 tag 怎么办（**C27 的那条洞** ✓）──
+   * ── What to do with a wildcard tag (the hole of C27) ──
    *
-   * → **首读**时通配 tag 的具体名字**还不知道** ✓ → **跳过** ✓（**不猜** ✓）
-   * → 但**读过之后**具体名字**已经知道了** ✓ → **这时跳过就是漏洞** ✓
-   *   （一个 `cpu` reader 整个挂了 → `cpu.core.3.usage` 还是 `ok` + 旧值 ✓
-   *    → **依赖它的卡片不会被判 degraded** ✓ → **陈旧数据被当成新的** ✓）
+   * → On the first read the concrete name of a wildcard tag is not known
+   *   yet → skip it (do not guess)
+   * → But after a read the concrete names are known → skipping it then is
+   *   a hole (a `cpu` reader that fails completely leaves
+   *   `cpu.core.3.usage` at `ok` with the old value → the cards that depend
+   *   on it are not judged degraded → stale data is taken for fresh)
    *
-   * → **修法**：标**已经读到过的那些实例** ✓（**用已知的** ✓ —— **不是编一个出来** ✓ ✓）
-   * → 契约 §2.3 本来就说「**刷新停了 → stale**」✓ → **这是实现层的洞** ✓，
-   *   **不需要新的契约概念** ✓（族级状态？不需要 ✓ —— 族里的每个成员各标各的 ✓ 就够了 ✓）
+   * → The fix: mark the instances that have already been read (use the
+   *   known ones — do not invent one)
+   * → Contract section 2.3 says it anyway ("the refresh stopped → stale") —
+   *   this is a hole of the implementation, it needs no new concept in the
+   *   contract (a family level status? not needed — every member of the
+   *   family marks itself, that is enough).
    */
   private reportStatus(
     reader: ReaderDef,
@@ -223,7 +240,7 @@ export class TagSampler {
   ): void {
     for (const p of reader.provides) {
       if (p.tag.includes('*')) {
-        // **标已知的那些实例** ✓（**不猜** ✓ —— 用读过的 ✓）
+        // Mark the known instances (do not guess — use the ones that were read)
         for (const tag of this.knownInstancesOf(p.tag)) {
           this.store.put({
             tag,
@@ -250,10 +267,12 @@ export class TagSampler {
   }
 
   /**
-   * 这个通配模式**已经读到过的那些具体 tag** ✓。
+   * The concrete tags that this wildcard pattern has already produced.
    *
-   * → **不猜** ✓（契约 §十 ✓）—— 只用**读到过的** ✓，**不编一个出来** ✓
-   * → 一个都没有 → **空数组** ✓（那就是「还没读出来过」✓ → 首读那一档 ✓）
+   * → Do not guess (contract section 10) — only the ones that were read,
+   *   never an invented one
+   * → None at all → an empty array (that is "it has never been read", the
+   *   first-read case).
    */
   private knownInstancesOf(tagPattern: string): string[] {
     return this.store
@@ -263,16 +282,21 @@ export class TagSampler {
   }
 
   /**
-   * 一次**往返失败**（超时、传输断了）：该组的 tag 报 stale 或 error。
+   * One round trip failed (a timeout, the transport broke): the tags of
+   * that group report stale or error.
    *
-   * 契约 §2.1：「ok → stale = 本次刷新失败，但**保留上一次的值**」——
-   * 一次 ADB 抖动不该让面板上的仪表整片消失（那是「假数」的另一种：没有数）。
+   * Contract section 2.1: "ok → stale = this refresh failed, but the last
+   * value is kept" — one hiccup of ADB must not make every gauge on the
+   * panel disappear (that is the other kind of false number: no number).
    */
   private reportRoundTripFailure(reader: ReaderDef, reason: ReasonCode, detail: string): void {
     for (const p of reader.provides) {
       if (p.tag.includes('*')) {
-        // **通配 tag：标已知的那些实例** ✓（**C27** ✓ —— 契约 §2.3：「刷新停了 → stale」✓）
-        // → **不猜** ✓（用读到过的 ✓）→ **陈旧数据不再被当成新的** ✓
+        // A wildcard tag: mark the known instances (C27 — contract section
+        // 2.3: "the refresh stopped → stale")
+        // → Do not guess (use the ones that were read) → stale data is no
+        //   longer taken for fresh
+
         for (const tag of this.knownInstancesOf(p.tag)) {
           const status = this.store.failureStatusFor(tag);
           this.store.put({

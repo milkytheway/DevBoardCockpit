@@ -16,85 +16,98 @@ import { resolvePack } from './binding';
 import { validatePack, errorsOf } from './validator';
 
 /**
- * 运行时的状态类型**住在 shared**（`src/shared/runtime-status.ts`）——
- * 它要经 IPC 上屏（面板得说「为什么没有数」），而 shared 是 IPC 类型的唯一住处。
- * 这里再导出一次，既有 import 不断。
+ * The type of the runtime state lives in shared
+ * (`src/shared/runtime-status.ts`) — it has to reach the screen over IPC (the
+ * panel has to say "why there is no number"), and shared is the only place
+ * the IPC types live. It is exported here as well so that the existing
+ * imports keep working.
  */
 export type { RuntimeState, RuntimeStatus };
 
 /**
- * tag 运行时 —— 把 M3/M4 写好的库**接进应用**。
+ * The tag runtime — it wires the library built in M3/M4 into the
+ * application.
  *
- * ── 它管四件事 ──
+ * ── The four things it is responsible for ──
  *
- * | 事 | 为什么 |
+ * | Thing | Why |
  * |---|---|
- * | 建连接 → 绑包 → 校验 → 起调度器 | 「值要自己会动」的四个前提，缺一不可 |
- * | 读数**只经 TagStore** 进出 | ADR-D22：一份状态只有一份副本 |
- * | 晚订阅**不丢当前值** | 晚打开的窗口也该看到现在的数（契约 §2.1） |
- * | 失败**说清楚** | 「这块板没有板型包」与「连不上」是两件事 |
+ * | build the connection → bind the pack → validate → start the scheduler | the four preconditions of "the values move on their own", none of them optional |
+ * | the readings enter and leave only through the TagStore | ADR-D22: one state has one copy |
+ * | a late subscriber does not miss the current value | a window that opens late should see the current numbers too (contract section 2.1) |
+ * | a failure says what it is | "this board has no board pack" and "it cannot be reached" are two different things |
  *
- * ── 连接是谁的？──
+ * ── Whose connection is it? ──
  *
- * **运行时自己建一条连接**，与终端标签的连接**分开**。
+ * The runtime builds a connection of its own, separate from the connection
+ * of the terminal tab.
  *
- * 理由：面板必须在**没有终端标签**的时候也有数——
- * 「看板子的读数」是这个产品的主线，终端是附带的。
+ * The reason: the panel has to have numbers even when there is no terminal
+ * tab — "watching the readings of the board" is the main line of this
+ * product, the terminal is the accessory.
  *
- * 代价（**明说，不藏**）：**串口是独占的**——
- * 运行时与终端标签各要一条连接，同一个 COM3 上**只能有一个**。
- * 第二个会失败（端口被占用），而失败是**看得见的**（不是静默）。
- * 这是串口这条路的**已知限制**，不是本模块的 bug。
+ * The cost (stated, not hidden): a serial line is exclusive — the runtime
+ * and the terminal tab each want a connection and only one of them can have
+ * the same COM3. The second one fails (the port is busy), and the failure is
+ * visible (not silent). This is a known limit of the serial route, not a bug
+ * of this module.
  */
 
 export interface TagRuntimeOptions {
-  /** 板型包目录的父目录（**内置那一份** ✓） */
+  /** The parent directory of the board pack directories (the built-in one) */
   packsDir: string;
   /**
-   * **用户自己的板型包目录** ✓（**可选** ✓ —— 不存在就跳过 ✓）。
+   * The user's own board pack directory (optional — it is skipped when it
+   * does not exist).
    *
-   * → **同 id 时用户优先** ✓（与 `profiles/loader.ts` 同款 ✓）。
+   * → On the same id the user's pack wins (the same rule as in
+   *   `profiles/loader.ts`).
    */
   userPacksDir?: string;
-  /** 建连接 */
+  /** Build the connection */
   createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection;
-  /** 建会话日志 */
+  /** Build the session log */
   createLog: (label: string, transport: string) => SessionLog;
 }
 
 export class TagRuntime {
   private readonly store = new TagStore();
   /**
-   * 一切往返都经这条队列（契约 §1.2.1 · ADR-D23）。
+   * Every round trip goes through this queue (contract section 1.2.1 ·
+   * ADR-D23).
    *
-   * **它是实例字段，不是 `start()` 里的局部变量**——
-   * 动作执行器要用**同一条**队列跑「执行 + 回读」那个独占事务
-   * （`runTransaction`）；队列是局部的，动作执行器就够不着它。
+   * It is an instance field and not a local variable of `start()` — the
+   * action executor has to run "execute + read back" on the same queue, as
+   * one exclusive transaction (`runTransaction`); a local queue would be out
+   * of reach for the action executor.
    */
   private readonly queue = new RoundTripQueue();
   private readonly listeners: ((reading: TagReading) => void)[] = [];
   private scheduler: PollScheduler | undefined;
-  /** 采样器（**定向读**要用它） */
+  /** The sampler (a directed read needs it) */
   private sampler: TagSampler | undefined;
   private connection: Connection | undefined;
   private state: RuntimeState = 'idle';
   private detail: string | undefined;
   private profileId: string | undefined;
   /**
-   * **当前那块板的 `device_key`** ✓（契约 `spec/02` §10.2 ✓）。
+   * The `device_key` of the board that is bound right now (contract
+   * `spec/02` section 10.2).
    *
-   * → **板实物与连接是两层** ✓ —— 一块板有 ADB / 串口 / SSH 三条连接 ✓
-   * → **凭据要绑它** ✓（契约 `spec/04` §2.4.1 的第六项 ✓）。
+   * → The physical board and the connection are two layers — one board has
+   *   an ADB, a serial and an SSH connection
+   * → The credentials are bound to it (contract `spec/04` section 2.4.1, the
+   *   sixth item).
    */
   private deviceKey: string | undefined;
-  /** 上次失败的错误码（`RuntimeStatus.detailCode` 的来源） */
+  /** The error code of the last failure (the source of `RuntimeStatus.detailCode`) */
   private detailCode: ErrorCode | undefined;
-  /** 当前绑定的板型包（**执行器要查动作的定义**——`spec/02` §4） */
+  /** The board pack that is bound right now (the executor looks up the action definitions — `spec/02` section 4) */
   private pack: BoardPack | undefined;
 
   constructor(private readonly opts: TagRuntimeOptions) {}
 
-  /** 现在的状态 */
+  /** The state right now */
   get status(): RuntimeStatus {
     return {
       state: this.state,
@@ -105,20 +118,21 @@ export class TagRuntime {
   }
 
   /**
-   * 开始采某个 profile 的读数。
+   * Start sampling the readings of one profile.
    *
-   * **不抛错**——失败都进 `status`：
-   * 「这块板没有板型包」与「连不上」是**两件事**，
-   * 都要让用户看见（契约 §十：「报『这块板没有板型包』」）。
+   * It does not throw — every failure goes into `status`:
+   * "this board has no board pack" and "it cannot be reached" are two
+   * different things, and the user has to see both (contract section 10:
+   * "report 'this board has no board pack'").
    */
   async start(profile: ConnectionProfile): Promise<RuntimeStatus> {
     this.stop();
     this.profileId = profile.id;
-    // **这块板是哪块板** ✓（**板实物与连接是两层** ✓ —— 契约 `spec/02` §10.2 ✓）
+    // Which board this is (the physical board and the connection are two layers — contract `spec/02` section 10.2)
     this.deviceKey = deviceKeyOf(profile);
     this.detailCode = undefined;
 
-    // 1) 建连接
+    // 1) Build the connection
     const log = this.opts.createLog(`tags-${profile.id}`, profile.transport);
     const connection = this.opts.createConnection(profile, log);
     try {
@@ -126,13 +140,13 @@ export class TagRuntime {
     } catch (err) {
       this.state = 'error';
       this.detail = err instanceof Error ? err.message : String(err);
-      // **带上错误码**：判「串口是不是被别的程序占了」要靠封闭的码，不靠中文消息
+      // The error code comes with it: telling "is the serial line held by another program" relies on the closed codes, not on the message
       this.detailCode = err instanceof AppError ? err.code : undefined;
       return this.status;
     }
     this.connection = connection;
 
-    // 2) 绑板型包（连接指名优先，否则按型号自动识别）
+    // 2) Bind the board pack (the connection names one first, otherwise it is detected by the model)
     const binding = await resolvePack({
       connection,
       boardPackId: profile.board_pack ?? null,
@@ -148,7 +162,7 @@ export class TagRuntime {
 
     this.pack = binding.pack;
 
-    // 3) 校验（过不了自己校验器的包不采）
+    // 3) Validate (a pack that does not pass its own validator is not sampled)
     const errs = errorsOf(validatePack(binding.pack));
     if (errs.length > 0) {
       this.state = 'error';
@@ -159,13 +173,13 @@ export class TagRuntime {
       return this.status;
     }
 
-    // 4) 起调度器（一切往返都经队列，契约 §1.2.1）
+    // 4) Start the scheduler (every round trip goes through the queue, contract section 1.2.1)
     const sampler = new TagSampler(binding.pack, connection, this.store);
     this.sampler = sampler;
     this.scheduler = new PollScheduler(binding.pack, sampler, this.queue);
     this.scheduler.start();
 
-    // 读数只经 TagStore 出（ADR-D22）
+    // The readings leave only through the TagStore (ADR-D22)
     this.store.subscribe((reading) => {
       for (const listener of this.listeners) listener(reading);
     });
@@ -176,17 +190,20 @@ export class TagRuntime {
   }
 
   /**
-   * 在**这条连接**上跑一次独占事务。
+   * Run one exclusive transaction on this connection.
    *
-   * ── 谁用这个 ──
+   * ── Who uses this ──
    *
-   * **M6 的动作执行器**：一次动作 = 「执行命令 + 回读」，
-   * 而这两步**必须是一个不可拆分的独占事务**（ADR-D23 / SPEC-D22）：
-   * 回读若被采样插队，读到的可能是**别的命令的输出**——
-   * 「回读不符」就成了假阴性，驾驶舱会显示错的真实状态。
+   * The action executor of M6: one action is "execute the command + read
+   * back", and those two steps have to be one indivisible exclusive
+   * transaction (ADR-D23 / SPEC-D22): if the read back is jumped into by a
+   * sampling, what it reads may be the output of another command — "the
+   * read back does not match" becomes a false negative and the cockpit shows
+   * a wrong real state.
    *
-   * @param fn 拿到连接去干活（执行 + 回读都在里面）
-   * @throws 没连上任何连接（`CONN_CLOSED`）
+   * @param fn gets the connection and does the work (both the execution and
+   *   the read back are inside)
+   * @throws when no connection is open (`CONN_CLOSED`)
    */
   async runTransaction<T>(fn: (connection: Connection) => Promise<T>): Promise<T> {
     const connection = this.connection;
@@ -196,11 +213,13 @@ export class TagRuntime {
     return this.queue.run('action-verify', () => fn(connection));
   }
 
-  /** 当前板型包的 id（**确认凭据要绑它**） */
+  /** The id of the current board pack (the credentials are bound to it) */
   /**
-   * **动作清单**（**给设置页的权限区用** ✓ —— ADR-D47 ✓）。
+   * The list of actions (for the permission area of the settings page —
+   * ADR-D47).
    *
-   * → **只要 id 与 label** ✓ —— **参数与命令不给** ✓（同 `pack-view` 的那条 ✓）
+   * → Only the id and the label — the arguments and the command are not
+   *   given (the same rule as in `pack-view`).
    */
   get actionSummaries(): { id: string; label?: string; danger: string }[] {
     return (this.pack?.actions ?? []).map((action) => ({
@@ -215,39 +234,47 @@ export class TagRuntime {
   }
 
   /**
-   * **当前那块板的 `device_key`** ✓（契约 `spec/02` §10.2 ✓）。
+   * The `device_key` of the board that is bound right now (contract
+   * `spec/02` section 10.2).
    *
-   * → **没有运行时连接就是 `undefined`** ✓（不猜 ✓）
+   * → `undefined` when no connection is running (do not guess).
    */
   get currentDeviceKey(): string | undefined {
     return this.deviceKey;
   }
 
   /**
-   * **当前板型包的脱敏只读投影** ✓（MCP 的读侧工具要它 ✓）。
+   * The redacted read-only projection of the current board pack (the
+   * read-side tools of MCP need it).
    *
-   * → **不给原始的包** ✓ —— 原始 args 里有 `command` 与宿主路径 ✓
-   *   （`tags/pack-view.ts` 的放行表挡掉了 ✓ —— 契约 §1.3 ✓）。
-   * → **没有包就是 `null`** ✓（不猜 ✓）。
+   * → The raw pack is not given — the raw arguments carry a `command` and
+   *   host paths (the allow list of `tags/pack-view.ts` blocks them —
+   *   contract section 1.3).
+   * → `null` when there is no pack (do not guess).
    */
   get packView(): PackView | null {
     return packView(this.pack);
   }
 
   /**
-   * **板型包里声明的动作**（**完整定义** ✓ —— 参数 ✓ · guard ✓ · command ✓ · readback ✓）。
+   * The actions declared in the board pack (the full definition — the
+   * parameters, the guard, the command, the readback).
    *
-   * → **不是** `packView.actions` ✓（那个只有 id ✓ —— 那是给 agent 看的清单 ✓）。
-   * → **执行器要完整定义** ✓（它要 `command` ✓ · `guard` ✓ · `readback` ✓）。
+   * → Not `packView.actions` (that one has only the ids — it is the list
+   *   for the agent).
+   * → The executor needs the full definition (it needs the command, the
+   *   guard, the readback).
    */
   get actionDefs(): ActionDef[] {
     return this.pack?.actions ?? [];
   }
 
   /**
-   * **样本缓冲**（最近若干个样本）✓ —— 支撑 `sample_tag(name, n)` 与 `describe_tag.history` ✓。
+   * The sample buffer (the most recent samples) — it backs `sample_tag(name,
+   * n)` and `describe_tag.history`.
    *
-   * → **先定向采一次** ✓（契约 v5 §2.1 ✓：不采的话 agent 拿到的是**冻结的旧样本** ✓）。
+   * → A directed sampling first (contract v5 section 2.1: without it the
+   *   agent gets a frozen old sample).
    */
   async sampleTagHistory(tag: string, n: number): Promise<TagSample[]> {
     await this.sampleTag(tag);
@@ -255,41 +282,48 @@ export class TagRuntime {
   }
 
   /**
-   * **样本缓冲**（**不采样** ✓ —— 同步 ✓）。
+   * The sample buffer (no sampling — synchronous).
    *
-   * → `describe_tag.history` 要它 ✓（**描述一个量不需要惊动板子** ✓）。
-   * → `sample_tag` 要的是**采过之后**的那份 ✓（`sampleTagHistory` ✓）。
+   * → `describe_tag.history` needs it (describing a quantity does not have
+   *   to bother the board).
+   * → `sample_tag` wants the version taken after a sampling
+   *   (`sampleTagHistory`).
    */
   sampleHistory(tag: string, n: number): TagSample[] {
     return this.store.history(tag, n);
   }
 
   /**
-   * 这条连接**有退出码吗**（串口没有，事实 S5）。
+   * Does this connection have an exit code (a serial line does not, fact
+   * S5).
    *
-   * 回读的形式 3 / 4 都看退出码 → 没有的话必须被拒绝
-   * （契约 §4.4 末尾）。
+   * The readback forms 3 / 4 look at the exit code → without one they have
+   * to be rejected (end of contract section 4.4).
    */
   get hasExitCode(): boolean {
     return this.connection?.capabilities().exitCode === true;
   }
 
   /**
-   * 板型包里声明的动作（按 id）——**执行器要用**（`spec/02` §4）。
+   * The actions declared in the board pack (by id) — the executor needs them
+   * (`spec/02` section 4).
    *
-   * 动作的定义**只在板型包里**（卡片不能自己声明命令，
-   * 那是契约 §五的红线），所以执行器得从这里拿。
+   * The definition of an action lives only in the board pack (a card cannot
+   * declare a command of its own, that is a red line of contract section
+   * 5), so the executor has to get it from here.
    */
   actionDef(actionId: string): ActionDef | undefined {
     return this.pack?.actions.find((action) => action.id === actionId);
   }
 
   /**
-   * **定向**读一次某个 tag（**新鲜的**——不是等下一个周期的那份）。
+   * Read one tag in a directed way (fresh — not the value of the next
+   * period).
    *
-   * 回读的形式 1 要的就是这个（契约 §4.4）：
-   * 「板子说起来了」的标准是一次**当下**的读数，
-   * 等下一个采样周期的话，回读可能读到**动作之前**的值。
+   * The readback form 1 wants exactly this (contract section 4.4): the
+   * standard of "the board says it happened" is a reading of the moment; if
+   * it waits for the next sampling period, the readback may see the value
+   * from before the action.
    */
   async sampleTag(tag: string): Promise<TagReading | undefined> {
     const pack = this.pack;
@@ -305,7 +339,7 @@ export class TagRuntime {
     return this.store.get(tag);
   }
 
-  /** 停下：停调度器、关连接 */
+  /** Stop: stop the scheduler, close the connection */
   stop(): void {
     this.scheduler?.stop();
     this.scheduler = undefined;
@@ -315,12 +349,12 @@ export class TagRuntime {
     this.detailCode = undefined;
   }
 
-  /** 当前的读数快照（**晚订阅的人靠它看到现在的数**） */
+  /** The snapshot of the current readings (a late subscriber sees the current numbers through it) */
   readings(): TagReading[] {
     return this.store.all();
   }
 
-  /** 听读数的变化 */
+  /** Listen for changes of the readings */
   subscribe(cb: (reading: TagReading) => void): () => void {
     this.listeners.push(cb);
     return () => {
@@ -338,38 +372,42 @@ export class TagRuntime {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   起不来了怎么办（计划 4 Task 2）
-   ── 三个真 bug：`docs/19` P1 / P2（2026-11-13 实测）──
+   What to do when it does not come up (plan 4, task 2)
+   ── three real bugs, measured on 2026-11-13 ──
    ══════════════════════════════════════════════════════════════════ */
 
-/** 一个「可以试着起运行时」的候选 */
+/** One candidate on which the runtime can be tried */
 export interface RuntimeCandidate {
   profileId: string;
   profile: ConnectionProfile;
 }
 
 /**
- * 退避档位（毫秒）。
+ * The backoff steps (milliseconds).
  *
- * **为什么有退避**：板子可能**还没插上**、**adb 还没授权**——
- * 这两种情况**过一会儿就会好**，所以要隔一会儿再试。
- * 档位到 30s 封顶：再密就吵了，再疏就慢了。
+ * Why there is a backoff: the board may not be plugged in yet, adb may not
+ * be authorised yet — both get better by themselves after a while, so the
+ * attempt has to be repeated later. The steps are capped at 30 s: denser
+ * than that is noisy, sparser than that is slow.
  */
 export const RETRY_BACKOFF_MS: readonly number[] = [2000, 5000, 10000, 30000];
 
 /**
- * 挑候选：**只留绑了板型包的 profile**。
+ * Pick the candidates: only the profiles that have a board pack bound.
  *
- * **修 P2**：原来用的是 `board_pack !== undefined`——
- * 而 `local.json` 与 `ubuntu-ssh.json` 的 `board_pack` 是 **`null`**，
- * `null !== undefined` 为真 → 它们**被当成了候选** →
- * 运行时去连**本机**和 **192.168.100.10 的 SSH**，读它们的
- * `/proc/device-tree/model`（必然认不出来）。
+ * The fix for P2: the old test was `board_pack !== undefined` — and the
+ * `board_pack` of `local.json` and `ubuntu-ssh.json` is `null`,
+ * `null !== undefined` is true → they were taken as candidates → the
+ * runtime went to connect to the local machine and to the SSH of
+ * 192.168.100.10 and read their `/proc/device-tree/model` (which cannot
+ * possibly be recognised).
  *
- * 代价不是「白开两条连接」那么简单：串口是**独占**的，
- * 一次失败的串口尝试可能占着端口不放，**把能用的 adb 挤掉**。
+ * The cost is not simply "two connections opened for nothing": a serial
+ * line is exclusive, and a failed serial attempt may keep the port and
+ * squeeze out the adb that does work.
  *
- * 判据用 `!= null`（同时剔掉 `null` 与 `undefined`）。
+ * The criterion is `!= null` (it removes `null` and `undefined` at the
+ * same time).
  */
 export function pickCandidates(profiles: ConnectionProfile[]): RuntimeCandidate[] {
   return profiles
@@ -378,11 +416,12 @@ export function pickCandidates(profiles: ConnectionProfile[]): RuntimeCandidate[
 }
 
 /**
- * 判「是不是端口被别的程序占了」。
+ * Decide whether the port is held by another program.
  *
- * **先看错误码**（`PORT_BUSY` 是封闭枚举里的一项，`hal/serial.ts` 就在用），
- * **再退回消息匹配**——消息匹配是兜底，不是主判据
- * （改一个字就失效的那种判据不算判据）。
+ * The error code comes first (`PORT_BUSY` is an item of the closed
+ * enumeration, `hal/serial.ts` already uses it), and the message match is
+ * the fallback — a message match is a fallback, not the main criterion (a
+ * criterion that breaks when one word is changed is not a criterion).
  */
 export function isPortBusy(detail: string, code?: string): boolean {
   if (code === 'PORT_BUSY') return true;
@@ -390,29 +429,35 @@ export function isPortBusy(detail: string, code?: string): boolean {
 }
 
 /**
- * 运行时能被替身冒充的那部分。
+ * The part of the runtime that a substitute can stand in for.
  *
- * **为什么是结构类型而不是 `TagRuntime`**：`TagRuntime` 有私有字段，
- * 替身**冒充不了**（TypeScript 会拒绝）→ 测试就只能靠 `as any` 强转，
- * **测的就不是真接口了**。这里收窄到「只需要 `start`」，
- * 真 `TagRuntime` 天然满足，替身也能进。
+ * Why a structural type and not `TagRuntime`: `TagRuntime` has private
+ * fields, a substitute cannot fake it (TypeScript would refuse) → the tests
+ * would have to force a cast with `as any`, and then they would not be
+ * testing the real interface. This is narrowed to "only `start` is needed",
+ * which the real `TagRuntime` satisfies naturally and a substitute can
+ * enter as well.
  */
 export interface TagRuntimeLike {
   start(profile: ConnectionProfile): Promise<RuntimeStatus>;
 }
 
 /**
- * 起运行时：挨个试候选，失败就退避重试。
+ * Start the runtime: try the candidates one by one, back off and retry
+ * after a failure.
  *
- * **修 P1**：原来每个候选只试一次就放弃 →
- * **板子后插上面板永远空着**，必须重启应用。
+ * The fix for P1: the old code tried each candidate once and gave up → a
+ * board that is plugged in later left the panel empty until the
+ * application was restarted.
  *
- * **串口政策**（2026-11-14 用户拍板）：某个候选**因端口被占**而失败时，
- * **跳过它继续试下一个**，并且**后续轮次不再试它**——
- * 占着端口的是**别的程序**，等它退出才有用，
- * 而**面板不该被一根被占的串口拖死**。
+ * The serial policy (the user ruled on 2026-11-14): when a candidate fails
+ * because the port is busy, skip it and try the next one, and do not try it
+ * again in the later rounds — what holds the port is another program, so
+ * waiting for it to exit is the only thing that helps, and the panel must
+ * not be held hostage by one busy serial line.
  *
- * @param opts.sleep 注入的等待函数（测试用假 sleep，不真的等）
+ * @param opts.sleep the injected waiting function (the tests use a fake
+ *   sleep and do not really wait)
  */
 export async function startWithRetry(
   runtime: TagRuntimeLike,
@@ -425,11 +470,11 @@ export async function startWithRetry(
     return { state: 'error', detail: 'no connection carries a board pack (the candidate list is empty)' };
   }
 
-  /** 端口被占的候选：占着端口的是别的程序，重试它没有意义 */
+  /** The candidates whose port is busy: another program holds the port, retrying them is pointless */
   const skipped = new Set<string>();
   let last: RuntimeStatus = { state: 'error', detail: 'no candidate was tried' };
 
-  // 轮次 = 1（立刻）+ 每个退避档位之后再来一轮
+  // The rounds = 1 (immediately) + one round after each backoff step
   for (let round = 0; round <= RETRY_BACKOFF_MS.length; round += 1) {
     for (const candidate of candidates) {
       if (skipped.has(candidate.profileId)) continue;

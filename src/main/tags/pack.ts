@@ -14,31 +14,34 @@ import type {
 } from './schema';
 
 /**
- * 板型包的加载器。
+ * The loader of a board pack.
  *
- * 契约：`docs/spec/02-board-pack.md` §一；规则 10 / 24（未知字段必须报错）。
+ * Contract: `docs/spec/02-board-pack.md` section 1; rules 10 / 24 (an
+ * unknown field must be an error).
  *
- * ── 这个模块管什么、不管什么 ──
+ * ── What this module does and does not do ──
  *
- * | 管 | 不管 |
+ * | It does | It does not |
  * |---|---|
- * | 字段**在不在**（未知字段报错） | 字段**对不对**（如 `match.mode` 是不是 exact/substring → 规则 11） |
- * | 字段的**类型**对不对 | `args` 里的**参数名**对不对（→ 规则 8，要问 kind 的 schema） |
- * | 必填字段**缺不缺** | 语义自洽（→ 27 条规则） |
+ * | whether a field is there (an unknown field is an error) | whether a field is right (for example whether `match.mode` is exact or substring → rule 11) |
+ * | whether the type of a field is right | whether the argument names inside `args` are right (→ rule 8, which asks the schema of the kind) |
+ * | whether a required field is missing | whether it is semantically consistent (→ the 27 rules) |
  *
- * **为什么分这么清**：混在一起的后果很具体——
- * 「`stat_path` 拼错了」会被报成「包坏了」，
- * 而它其实是「这个 kind 的参数名写错了」。**修法完全不同**，
- * 报错的人（多半是写包的 agent）需要知道该改哪一处。
+ * Why the split is this clean: the consequence of mixing them is very
+ * concrete — "stat_path is misspelled" would be reported as "the pack is
+ * broken", while it really is "the argument name of this kind is wrong". The
+ * fix is completely different, and whoever reads the error (most of the
+ * time the agent that wrote the pack) has to know which place to change.
  *
- * ── 为什么不用 zod ──
+ * ── Why not zod ──
  *
- * zod 默认**剥掉**未知键（不报错），而规则 10 要求**报错**。
- * 要报错得配 `.strict()`，那时错误消息是 zod 的形状——
- * 不如自己写「这个字段不认识，它可能是拼错的」。
+ * zod drops unknown keys by default (no error), while rule 10 requires an
+ * error. Getting an error means configuring `.strict()`, and then the error
+ * messages have zod's shape — it is easier to write "this field is not
+ * known, it may be misspelled" by hand.
  */
 
-/** 顶层字段白名单（规则 10 / 24） */
+/** The allow list of the top-level fields (rules 10 / 24) */
 const TOP_REQUIRED = [
   'apiVersion',
   'kind',
@@ -76,11 +79,11 @@ const READBACK_FIELDS = [
   'consequence',
 ] as const;
 
-/** 报错时的上下文 */
+/** The context used when reporting an error */
 interface Ctx {
-  /** 包的文件来源（给人看的） */
+  /** Where the file of the pack came from (for the reader) */
   source: string;
-  /** 包 id（给人看的）。连 id 都没解析出来时用 source 顶上 */
+  /** The id of the pack (for the reader). Used when even the id could not be parsed */
   id: string;
 }
 
@@ -90,7 +93,7 @@ function fail(ctx: Ctx, message: string, detail?: Record<string, unknown>): neve
   });
 }
 
-/** 给「实际是什么」一句人话 */
+/** One plain sentence about what a value actually is */
 function describe(value: unknown): string {
   if (value === null) return 'null';
   if (value === undefined) return 'none';
@@ -132,9 +135,10 @@ function asStringArray(ctx: Ctx, value: unknown, path: string): string[] {
 }
 
 /**
- * 未知字段必须报错（规则 10 / 24）。
+ * An unknown field must be an error (rules 10 / 24).
  *
- * **被静默忽略的字段就是拼错的字段**——这正是这一条存在的理由。
+ * A field that is silently ignored is a field that is misspelled — that is
+ * exactly why this rule exists.
  */
 function checkKeys(
   ctx: Ctx,
@@ -271,8 +275,9 @@ function parseAction(ctx: Ctx, raw: unknown, path: string): ActionDef {
 
   const danger = asString(ctx, obj['danger'], `${path}.danger`);
   if (danger !== 'reversible' && danger !== 'destructive') {
-    // 契约 §4.2：**只有两档**。这里不是「27 条规则」之一，
-    // 但它是**类型**的一部分——`danger` 的取值域写死在类型里。
+    // Contract section 4.2: there are only two grades. This is not one of
+    // the 27 rules, but it is part of the type — the domain of `danger` is
+    // written into the type.
     fail(ctx, `${path}.danger must be reversible or destructive, it is "${danger}"`, {
       path: `${path}.danger`,
     });
@@ -293,10 +298,10 @@ function parseAction(ctx: Ctx, raw: unknown, path: string): ActionDef {
 }
 
 /**
- * 解析一份板型包。
+ * Parse a board pack.
  *
- * @param text  YAML 原文
- * @param source 文件来源（报错时给人看）
+ * @param text  the YAML source
+ * @param source where the file came from (shown when reporting an error)
  */
 export function parseBoardPack(text: string, source = 'board.yaml'): BoardPack {
   let raw: unknown;
@@ -313,7 +318,7 @@ export function parseBoardPack(text: string, source = 'board.yaml'): BoardPack {
   }
 
   const obj = asObject({ source, id: source }, raw, '');
-  // id 先挑出来，好让后面的报错消息带上包名
+  // The id is picked out first, so that the later error messages carry the name of the pack
   const id = typeof obj['id'] === 'string' ? obj['id'] : source;
   const ctx: Ctx = { source, id };
 
@@ -383,8 +388,9 @@ export function parseBoardPack(text: string, source = 'board.yaml'): BoardPack {
 }
 
 /**
- * 从一个包目录加载板型包（读 `<dir>/board.yaml`）。
+ * Load a board pack from a pack directory (reads `<dir>/board.yaml`).
  */
+
 export function loadBoardPack(dir: string): BoardPack {
   const file = join(dir, 'board.yaml');
   let text: string;

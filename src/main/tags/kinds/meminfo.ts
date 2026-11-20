@@ -4,12 +4,12 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `meminfo` —— 内存总量、可用、已用、占用率。
+ * `meminfo` — total memory, available memory, used memory and the usage.
  *
- * 单次采样即可（契约 §2.4）。
+ * One sample is enough (contract section 2.4).
  *
- * **单位换算是 reader 的责任**（`docs/06` C6）：`/proc/meminfo` 给的是 kB，
- * 契约只认 **byte**——所以这个 kind 必须 ×1024。
+ * Unit conversion is the reader's responsibility ✓: `/proc/meminfo` reports
+ * kB, the contract only knows byte — so this kind has to multiply by 1024.
  */
 
 export const MEMINFO: ReaderKind = {
@@ -17,10 +17,11 @@ export const MEMINFO: ReaderKind = {
   params: {
     path: { type: 'string', required: true },
   },
-  // ⚠️ 契约 §2.4 的表里写的是 `total_bytes, used_bytes, usage`——
-  // **漏了 `available_bytes`**。但核心词表里有 `mem.available_bytes`，
-  // 板型包也真的用它（实测 `MemAvailable`）——所以这个 kind 必须产出它。
-  // 差异记在 `docs/06` C10，由用户拍板是否回写契约表。
+  // ⚠️ The table in contract section 2.4 reads `total_bytes, used_bytes,
+  // usage` — it leaves out `available_bytes`. But the core vocabulary has
+  // `mem.available_bytes` and the board packs really use it (measured
+  // `MemAvailable`), so this kind has to produce it. The contract table
+  // omits it; the user ruled that the reader produces it anyway.
   samples: ['total_bytes', 'available_bytes', 'used_bytes', 'usage'],
   fetch(args) {
     return `cat -- ${quotePath(argStr(args, 'path'))}`;
@@ -30,8 +31,8 @@ export const MEMINFO: ReaderKind = {
       return missing('/proc/meminfo cannot be read (is the path wrong?)');
     }
     let totalKb = 0;
-    // **NaN 而不是 0**：0 是一个合法的取值（「一点都不可用」），
-    // 用 0 当初值就分不清「没读到」与「真的是 0」。
+    // NaN rather than 0: 0 is a legal value ("nothing is available"), so
+    // starting from 0 would not distinguish "not read" from "really 0".
     let availableKb = Number.NaN;
 
     for (const line of raw.split(/\r?\n/)) {
@@ -46,9 +47,10 @@ export const MEMINFO: ReaderKind = {
       return error('parse_error', '/proc/meminfo has no usable MemTotal');
     }
     if (!Number.isFinite(availableKb) || availableKb < 0) {
-      // **不许拿 0 顶上**（N2）：没有 MemAvailable 就不知道「可用」是多少，
-      // 拿 0 顶上会让 usage 变成 100%——**板子其实闲着，面板说满载**。
-      // 那是最坏的那种假数。
+      // 0 may not stand in (N2): without MemAvailable there is no way to know
+      // what "available" is, and a 0 in its place turns the usage into 100% —
+      // the board is in fact idle while the panel reports it as saturated.
+      // That is the worst kind of false number.
       return error(
         'parse_error',
         '/proc/meminfo has no MemAvailable (0 cannot stand in for it — that would turn the usage into 100%)',

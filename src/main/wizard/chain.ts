@@ -1,111 +1,123 @@
 import type { ProbeReaderReport } from '../tags/probe';
 
 /**
- * **接板向导那条链** ✓ —— 2026-11-19 加 ✓。
+ * The chain of the board setup wizard — added 2026-11-19.
  *
- * ── 人只参与一步 ✓（`docs/探索/02` §二 ✓）──
+ * ── the person takes part in one step only ──
  *
  * ```
- * 人：选 COM 口 + 波特率          ← 【整个向导里，人唯一必须做的事】
+ * The person picks the COM port + the baud rate   ← 【the only thing the person has to do in the whole wizard】
  *         ↓
- * 向导：用这条连接跑一条命令        ← 「第一个真相」
+ * The wizard runs one command over this connection  ← "the first truth"
  *         ↓
- *      板子回了 → 真相成立 ✓
- *      板子没回 → 报告「连上了但没回话」+ 常见原因 ✓
+ *      The board answered → the truth holds ✓
+ *      The board did not answer → report "it is connected but it did not reply" + the common causes ✓
  * ```
  *
- * → **其余全自动** ✓（§二.2 ✓）：
- * **逐个试通用元操作** ✓ → **真相表** ✓ → **实例化出初版包** ✓ → **落盘** ✓。
+ * → Everything else is automatic ✓:
+ * try the generic meta-operations one by one ✓ → the truth table ✓ →
+ * instantiate the first version of the pack ✓ → write it to disk ✓.
  *
- * ── ⚠️ **「没回话」与「连接失败」是两件事** ✓（§二.3 ✓）──
+ * ── ⚠️ "it did not reply" and "the connection failed" are two things ✓ ──
  *
- * → 报告要说「**板子没说话**」✓ —— **不是「连接失败」** ✓
- * → **这两个是不同的故障** ✓ → **修法完全不同** ✓：
- *   **端口打不开** → COM 口不对 / **被别的程序占着** ✓（`docs/02` 事实 ✓）→
- *   **打开但无输出** → 波特率不对 ✓ / **不是调试口** ✓ → **有乱码** → 波特率不对 ✓。
+ * → The report has to say "the board said nothing" — not "the
+ *   connection failed" ✓
+ * → These are two different faults → the fixes are completely
+ *   different ✓:
+ *   the port cannot be opened → the COM port is wrong / another
+ *   program is holding it ✓ (a fact of `docs/02-device-facts.md` ✓) →
+ *   it opens but there is no output → the baud rate is wrong ✓ / it
+ *   is not the debug port ✓ → there is garbage → the baud rate is
+ *   wrong ✓.
  *
- * ── 它是**纯函数** ✓ ──
+ * ── It is a pure function ──
  *
- * → **不碰串口** ✓ · **不碰文件** ✓ → **好测** ✓
- * → **I/O 在别处** ✓（`instantiate.ts` ✓ · `install.ts` ✓）。
+ * → It does not touch the serial line · it does not touch the
+ *   files → easy to test ✓
+ * → The I/O is elsewhere ✓ (`instantiate.ts` · `install.ts`).
  */
 
-/** 向导的步骤 ✓ */
+/** The steps of the wizard ✓ */
 export type WizardStep =
-  /** **人选串口参数** ✓ —— 整个向导里人唯一必须做的事 ✓ */
+  /** The person picks the serial parameters ✓ — the only thing the person has to do in the whole wizard ✓ */
   | 'choose-serial'
-  /** **建立第一个真相** ✓ —— 跑一条命令 ✓ */
+  /** Establish the first truth ✓ — run one command ✓ */
   | 'first-truth'
-  /** **逐个试通用元操作** ✓ —— 试出真相表 ✓ */
+  /** Try the generic meta-operations one by one ✓ — the truth table comes out of it ✓ */
   | 'probe-generic'
-  /** **实例化 + 落盘** ✓ */
+  /** Instantiate + write to disk ✓ */
   | 'instantiate'
-  /** **完了** ✓ */
+  /** Done ✓ */
   | 'done';
 
-/** 向导的状态（**人给什么 + 现在到哪** ✓） */
+/** The state of the wizard (what the person gave + where it is now ✓) */
 export interface WizardState {
   step: WizardStep;
-  /** 人选的串口参数 ✓（**不自动枚举** ✓） */
+  /** The serial parameters the person picked ✓ (not enumerated automatically ✓) */
   serial?: { port: string; baudrate: number };
-  /** 第一个真相的结果 ✓ */
+  /** The result of the first truth ✓ */
   firstTruth?: FirstTruth;
-  /** 试通用元操作的结果 ✓ */
+  /** The result of trying the generic meta-operations ✓ */
   outcomes?: ProbeReaderReport[];
 }
 
-/** 「第一个真相」的结果 ✓ */
+/** The result of "the first truth" ✓ */
 export interface FirstTruth {
-  /** 成不成立 ✓ */
+  /** Does it hold ✓ */
   ok: boolean;
-  /** **哪种故障** ✓（**「没回话」与「连不上」是不同的** ✓） */
+  /** Which fault ✓ ("it did not reply" and "it cannot be reached" are different ✓) */
   kind: 'ok' | 'port-unopenable' | 'no-reply' | 'wrong-baud';
-  /** **一句话** ✓ */
+  /** One sentence ✓ */
   detail: string;
   /**
-   * **传输层给的提示** ✓（**可选** ✓）。
+   * The hint the transport gave ✓ (optional ✓).
    *
-   * → **串口的 hint 说了真话** ✓（「**最常见的原因是回包被另一个程序吃掉了**」✓
-   *   —— 串口 HAL 自己知道 ✓ → **别把它丢了** ✗）。
+   * → The hint of the serial line tells the truth ✓ ("the most
+   *   common reason is that the reply was swallowed by another program" ✓
+   *   —— the serial HAL knows that itself ✓ → do not throw it away ✗).
    */
   hint?: string;
 }
 
-/** 真相表 ✓ */
+/** The truth table ✓ */
 export interface TruthTable {
-  /** 绿的（这板有）✓ */
+  /** The green ones (this board has them ✓) */
   green: string[];
-  /** 红的（这板没有 / 读法不对）✓ */
+  /** The red ones (this board does not have them / the reading is wrong ✓) */
   red: { readerId: string; detail: string }[];
 }
 
-/** 向导的「描述」✓ —— **给界面看的** ✓ */
+/** The "description" of the wizard ✓ — what the interface shows ✓ */
 export interface WizardDescription {
-  /** **现在是哪种情况** ✓ */
+  /** Which situation it is right now ✓ */
   kind: 'ok' | 'port-unopenable' | 'no-reply' | 'wrong-baud' | 'connection-dead';
-  /** **一句话** ✓（**说人话** ✓） */
+  /** One sentence ✓ (in plain language ✓) */
   message: string;
-  /** **下一步查什么** ✓（**空数组 = 没什么要提醒的** ✓） */
+  /** What to check next ✓ (an empty array = nothing to remind about ✓) */
   hints: string[];
-  /** **下一步做什么** ✓（`null` = 停了 ✓ —— 得人来解 ✓） */
+  /** What to do next ✓ (`null` = it stopped ✓ — a human has to solve it ✓) */
   next: WizardStep | null;
-  /** **真相表** ✓（**试完才有** ✓） */
+  /** The truth table ✓ (it only exists after the probing ✓) */
   summary?: TruthTable;
 }
 
-/** 状态 → 步骤名（**纯函数** ✓） */
+/** The state → the name of the step (a pure function ✓) */
 export function wizardStepOf(state: WizardState): WizardStep {
   return state.step;
 }
 
 /**
- * **端口打不开** → 说端口的事 ✓。
+ * The port cannot be opened → say something about the port ✓.
  *
- * → **最常见的原因是「被别的程序占着」** ✓
- *   （`docs/02` 事实 ✓ —— 计划 1 验收留下的 `serial-server.py` 独占打开着 COM3 ✓
- *   → **板子是活的、串口是通的** ✓ → **但回包被那个进程吃掉了** ✓
- *   → **于是应用自己的 exec 永远等不到** ✓ → **每个 reader 都报「超时」** ✓
- *   → **说清楚这一点，人就不会往「板子死了」的方向查** ✓）。
+ * → The most common reason is "another program is holding it" ✓
+ *   (a fact of `docs/02-device-facts.md` ✓ — the `serial-server.py` of the
+ *   plan 1 acceptance run holds COM3 exclusively ✓
+ *   → the board is alive and the serial line is fine ✓ → but the
+ *   reply is swallowed by that process ✓
+ *   → so the exec of the application itself never receives anything ✓ →
+ *   every reader reports "timeout" ✓
+ *   → saying this clearly keeps a person from looking for "the board
+ *   died" ✓).
  */
 const PORT_HINTS = [
   '**the most common serial trap: another program is holding the port exclusively** ✓',
@@ -114,7 +126,7 @@ const PORT_HINTS = [
   '  stop that process first, then retry ✓.',
 ];
 
-/** **打开但没回话** → 说「板子没说话」✓ */
+/** It opens but there is no reply → say "the board said nothing" ✓ */
 const NO_REPLY_HINTS = [
   '**the board said nothing** — it is connected, but it did not reply ✓.',
   '  the three most common reasons ✓:',
@@ -123,33 +135,36 @@ const NO_REPLY_HINTS = [
   '  ③ **the replies are swallowed by another program** ✓ (something holds the port exclusively ✓).',
 ];
 
-/** **乱码** → 说波特率 ✓ */
+/** There is garbage → say the baud rate ✓ */
 const WRONG_BAUD_HINTS = [
   '**there are replies but they look like garbage** — the baud rate is wrong ✓.',
   '  try a few common baud rates in a serial tool ✓ — **this board is 1500000** ✓.',
 ];
 
 /**
- * **状态 → 描述** ✓（**给界面看的** ✓）。
+ * The state → the description ✓ (what the interface shows ✓).
  *
- * → **「没回话」与「连接失败」必须分开说** ✓（§二.3 ✓）
- * → **全红时要说「那是连接的问题」** ✓（不是 reader 的问题 ✓ —— `probeHint` 同款 ✓）。
+ * → "It did not reply" and "the connection failed" have to be said
+ *   apart ✓
+ * → When everything is red it has to say "that is a problem of the
+ *   connection" ✓ (not a problem of the readers ✓ — the same as
+ *   `probeHint` ✓).
  */
 export function describeWizard(state: WizardState): WizardDescription {
-  // ── 第一步：人还没选完 ──
+  // ── The first step: the person has not chosen yet ──
   if (state.step === 'choose-serial') {
     return {
       kind: 'ok',
       message: 'choose a serial port and a baud rate — this is the only thing you have to do in the whole wizard ✓',
       hints: [
-        '**do not know the baud rate?** ✓ this board is **1500000** ✓ (a fact from `docs/02` ✓).',
+        '**do not know the baud rate?** ✓ this board is **1500000** ✓ (a fact from `docs/02-device-facts.md` ✓).',
         '**the COM port is in the device manager** ✓ (CH343 USB-UART ✓ — COM3 is common ✓).',
       ],
       next: 'first-truth',
     };
   }
 
-  // ── 第一个真相 ──
+  // ── The first truth ──
   if (state.step === 'first-truth') {
     const truth = state.firstTruth;
     if (truth === undefined) {
@@ -179,12 +194,12 @@ export function describeWizard(state: WizardState): WizardDescription {
         next: null,
       };
     }
-    // **没回话** ✓ —— **明确不说「连接失败」** ✓
+    // It did not reply ✓ — it explicitly does not say "the connection failed" ✓
     return {
       kind: 'no-reply',
       message: `**the board said nothing** ✓ —— ${truth.detail} (**it is connected, it just did not reply** ✓)`,
-      // **传输层的 hint 要排第一** ✓ —— **它说的是最准的那条** ✓
-      // （串口 HAL 自己知道「回包被别的程序吃掉了」✓ → **别压在后面** ✗）
+      // The hint of the transport goes first ✓ — it is the most accurate one ✓
+      // (the serial HAL knows "the reply was swallowed by another program" ✓ → do not push it to the back ✗)
       hints:
         truth.hint !== undefined
           ? [truth.hint, ...NO_REPLY_HINTS]
@@ -193,7 +208,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     };
   }
 
-  // ── 试通用元操作 ──
+  // ── Trying the generic meta-operations ──
   if (state.step === 'probe-generic') {
     const outcomes = state.outcomes ?? [];
     const green = outcomes.filter((o) => o.ok).map((o) => o.readerId);
@@ -202,7 +217,7 @@ export function describeWizard(state: WizardState): WizardDescription {
       .map((o) => ({ readerId: o.readerId, detail: o.problems.join('; ') }));
     const summary: TruthTable = { green, red };
 
-    // **一个数都没出来** → **那是连接的问题** ✓（不是 reader 的问题 ✓）
+    // Not a single number came out → that is a problem of the connection ✓ (not of the readers ✓)
     if (outcomes.length > 0 && green.length === 0) {
       return {
         kind: 'connection-dead',
@@ -231,7 +246,7 @@ export function describeWizard(state: WizardState): WizardDescription {
     };
   }
 
-  // ── 实例化 / 完了 ──
+  // ── Instantiate / done ──
   if (state.step === 'instantiate') {
     return {
       kind: 'ok',

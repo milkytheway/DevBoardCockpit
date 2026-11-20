@@ -3,26 +3,28 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `thermal_zone` —— 温度。
+ * `thermal_zone` — the temperature.
  *
- * **按 `type` 归并，不按序号**（实测：`thermal_zone5` 是 gpu，
- * 序号会随板子变，`type` 不会）。
+ * The zones are merged by `type`, not by index (measured: `thermal_zone5`
+ * is the gpu; the index varies from board to board, the `type` does not).
  *
- * 取数是一个循环：每个 zone 目录读 `type` 与 `temp` 两个文件，
- * 输出一行 `type=value`（**与真机样本、前身工程的采集脚本同一种形状**）。
+ * The fetch is a loop: for every zone directory it reads the two files
+ * `type` and `temp` and prints one line `type=value` (the same shape as the
+ * real-device samples and as the collection script of the predecessor
+ * project).
  *
- * **归并靠 `type_map`**：`soc-thermal` → `soc`。
- * 不在映射里的 zone **被跳过**（板上有的 zone 比映射多——
- * 那不是错误，是「这张卡只关心这几个」）。
+ * The merge is done by `type_map`: `soc-thermal` → `soc`. A zone that is
+ * not in the map is skipped (the board has more zones than the map — that
+ * is not an error, it means "this card only cares about these few").
  *
- * **毫度 → 摄氏度**（÷1000）是 reader 的责任（`docs/06` C6）。
+ * Millidegrees to Celsius (÷1000) is the reader's responsibility.
  */
 
 export const THERMAL_ZONE: ReaderKind = {
   id: 'thermal_zone',
   params: {
     glob: { type: 'glob', required: true },
-    /** `type` 文件里的名字 → sample 里的段（`soc-thermal` → `soc`） */
+    /** The name in the `type` file → the segment in the sample (`soc-thermal` → `soc`) */
     type_map: { type: 'map', required: true },
   },
   samples: ['zone.*'],
@@ -48,7 +50,8 @@ export const THERMAL_ZONE: ReaderKind = {
       const valueText = line.slice(at + 1).trim();
       if (type.length === 0 || valueText.length === 0) continue;
 
-      // 先按原样找，找不到再试剥掉 `-thermal` 后缀
+      // Look up the name as it is first; if that misses, try dropping the
+      // `-thermal` suffix
       const key = map[type] ?? map[type.replace(/-thermal$/, '')];
       if (key === undefined) continue;
 

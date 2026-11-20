@@ -1,89 +1,100 @@
 import type { ParseResult } from './parse-util';
 
 /**
- * reader kind 的形状。
+ * The shape of a reader kind.
  *
- * 契约：`docs/spec/02-board-pack.md` §2.4（内置 reader kind 清单，v1）。
+ * Contract: `docs/spec/02-board-pack.md` section 2.4 (the list of built-in
+ * reader kinds for v1).
  *
- * **每个 kind 声明三件事**：接受什么参数、产出什么 sample、怎么从板子上取。
- * 清单封闭 = AI 的心智模型封闭 = AI 写卡时不会猜。
+ * Every kind declares three things: which arguments it accepts, which
+ * samples it produces and how it fetches from the board. A closed list means
+ * a closed mental model for the AI, so an agent writing a card does not
+ * have to guess.
  */
 
-/** 参数的声明 */
+/** The declaration of one argument */
 export interface ParamSpec {
   type: 'string' | 'integer' | 'number' | 'boolean' | 'enum' | 'glob' | 'map';
-  /** 必填（规则 9） */
+  /** Required (rule 9) */
   required?: boolean;
-  /** `type: enum` 时的取值列表 */
+  /** The list of allowed values for `type: enum` */
   values?: string[];
   default?: unknown;
   /**
-   * 这组参数里**至少要给一个**。
+   * At least one of this group has to be given.
    *
-   * `file_read` 的 `path`/`glob` 是这一类（契约 §2.4 写的是 `path`/`glob`）——
-   * 不是「一个必填、一个可选」，而是「二选一」。
+   * The `path`/`glob` of `file_read` are of this kind (contract section 2.4
+   * names `path`/`glob`) — not "one required and one optional" but "one of
+   * the two".
    */
   oneOf?: string[];
 }
 
 /**
- * 解析时的上下文。
+ * The context handed to the parser.
  *
- * **解析是纯函数**（N1）：同样的输入给同样的输出。
- * 唯一允许的状态是「两次采样之间的历史」（`proc_stat` 的上一次计数器），
- * 且**状态由 runtime 传进来**——不许藏在模块级变量里，
- * 否则两个连接会互相污染对方的历史。
+ * Parsing is a pure function (N1): the same input gives the same output.
+ * The only state allowed is "the history between two samples" (the previous
+ * counters of `proc_stat`), and that state is handed in by the runtime — it
+ * may not hide in a module-level variable, or two connections would pollute
+ * each other's history.
  */
 export interface ReaderContext {
   state: Record<string, unknown>;
 }
 
-/** 一个 reader kind */
+/** One reader kind */
 export interface ReaderKind {
   id: string;
-  /** 参数 schema：名字 → 声明。规则 8/9 查它 */
+  /** The argument schema: name → declaration. Rules 8/9 consult it */
   params: Record<string, ParamSpec>;
   /**
-   * 这个 kind 能产出的 **sample 模式**。
+   * The sample patterns this kind can produce.
    *
-   * 规则 6 拿包里的 `provides[].sample` 与它比对——
-   * 所以这里存的是**模式**（`zone.*`），不是具体名字。
+   * Rule 6 compares the `provides[].sample` of a pack against them — so
+   * what is stored here are patterns (`zone.*`), not concrete names.
    */
   samples: string[];
   /**
-   * sample 名段数不限（契约 §3.3 末段：只有 `script`）。
+   * The number of segments in a sample name is not fixed (contract section
+   * 3.3, last paragraph: only `script`).
    *
-   * `script` 的 sample 来自脚本输出的 JSON 键，
-   * 所以它的 sample **不能**写成固定清单。
+   * The samples of `script` come from the keys of the JSON the script
+   * prints, so its samples cannot be written as a fixed list.
    */
   unboundedSamples?: boolean;
   /**
-   * 需要两次采样（契约 §2.4：只有 `proc_stat`）。
+   * Two samples are needed (contract section 2.4: only `proc_stat`).
    *
-   * 首读的结果是 `pending`——**不是 0**（规则 5）。
+   * The first read yields `pending`, not 0 (rule 5).
    */
   needsTwoSamples?: boolean;
   /**
-   * 这个 kind 的取数片段要用**运行时提供的远端路径**（`args['remote_path']`）。
+   * The fetch fragment of this kind has to use the remote path supplied by
+   * the runtime (`args['remote_path']`).
    *
-   * `script` 是唯一一个：脚本住在宿主上，要先推到板子的 `/tmp` 里才跑得起来
-   * （契约 §3.3）。运行时**还没提供**远端路径时，
-   * 不该生成一条注定失败的命令——**如实报「没推上去」**。
+   * `script` is the only one: the script lives on the host and has to be
+   * pushed into `/tmp` on the board before it can run (contract section
+   * 3.3). While the runtime has not supplied a remote path yet, it must not
+   * build a command that is bound to fail — it reports honestly that the
+   * script was not pushed.
    */
   needsRemotePath?: boolean;
   /**
-   * 取数：从板子上把数据取回来的 shell 片段。
+   * The fetch: the shell fragment that gets the data back from the board.
    *
-   * **必须是一行**——串口一次往返只能是一行命令（事实 S6）。
+   * It has to be a single line — one round trip on a serial line carries
+   * one command (fact S6).
    */
   fetch(args: Record<string, unknown>): string;
   /**
-   * 解析：把板子返回的文本变成 sample。
+   * The parse: turn the text the board returned into samples.
    *
-   * **纯函数**（N1）：同样的输入给同样的输出。
-   * **读不到不是 0**（N2）：解析不出来 → `unavailable`，
-   * 绝不填 0、绝不返回 NaN。
+   * A pure function (N1): the same input gives the same output.
+   * Not readable is not 0 (N2): when it cannot be parsed → `unavailable`;
+   * never fill in 0, never return NaN.
    */
+
   parse(raw: string, args: Record<string, unknown>, ctx: ReaderContext): ParseResult;
 }
 

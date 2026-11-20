@@ -6,72 +6,84 @@ import { makeError } from '../../shared/errors';
 import { parseWorkflow, type WorkflowPack } from './format';
 
 /**
- * 流程包**注册表** —— 「哪些流程可以跑」这本账。
+ * The registry of the workflow packs — the account of "which workflows
+ * can run".
  *
- * ── 为什么要有它（两份独立评审的同一条 Critical）──
+ * ── Why it exists (the same Critical of two independent reviews) ──
  *
- * 评审 32 的原话：**「agent 可以自写一个流程包然后跑它」**。
- * → 原因很直白：**一个流程包就是「一组要在用户机器上执行的命令」**，
- * 而 `npm run workflow:run -- --package <任意路径>` **只认路径，不认人**。
+ * The words of review 32: "an agent can write a workflow pack of its own
+ * and run it".
+ * → The reason is plain: a workflow pack is "a set of commands that have
+ *   to run on the user's machine", and
+ *   `npm run workflow:run -- --package <any path>` only looks at the
+ *   path, not at who.
  *
- * → 于是「谁批准了这个包」这件事**根本没有地方记** ✗ ——
- * **今天这道闸在设置里的统一权限区** ✓（ADR-D47 ✓ —— 不在本模块 ✓）。
+ * → So the question "who approved this pack" had nowhere to be
+ *   recorded ✗ ——
+ * that gate is the unified permission area in the settings today ✓
+ * (ADR-D47 ✓ —— not in this module ✓).
  *
- * ── 这本账怎么记 ──
+ * ── How this account is kept ──
  *
- * | 账 | 记什么 | 谁能改 |
+ * | Account | What it records | Who can change it |
  * |---|---|---|
- * | **注册表** | 目录里有哪些包（id → 包 + **内容摘要**） | 放文件进目录 |
- * | ~~**批准账**~~ | ⛔ **没了** ✓（2026-11-16 ✓ · ADR-D48 ✓） | —— |
+ * | The registry | which packs are in the directory (id → pack + content digest) | dropping a file into the directory |
+ * | ~~The approval account~~ | ⛔ gone ✓ (2026-11-16 ✓ · ADR-D48 ✓) | — |
  *
- * → **放一个文件进目录 ≠ 它就能跑** ✓（否则「能写文件」就等于「能执行命令」✗）
- * → **闸在设置里的统一权限区** ✓（ADR-D47 ✓）—— **那一行还列着每一步命令** ✓
- * → **内容摘要照记** ✓：改了内容 → 摘要变了 → **追责链断得开** ✓。
+ * → Dropping a file into the directory does not mean it can run ✓
+ *   (otherwise "being able to write a file" would be "being able to execute
+ *   a command" ✗)
+ * → The gate is the unified permission area in the settings ✓
+ *   (ADR-D47 ✓) — that row also lists every step of the command ✓
+ * → The content digest is still recorded ✓: the content changes → the
+ *   digest changes → the chain of responsibility stays traceable ✓.
  *
- * ── 与卡片那一套同形 ──
+ * ── The same shape as the cards ──
  *
- * 卡片那边是「**卡片在目录里** + **它的 manifest 说它能做什么**」✓；
- * 这边是「**流程包在目录里** + **权限区那一行说它能不能跑**」✓ → 一个模型 ✓。
+ * On the card side it is "the card is in the directory + its manifest
+ * says what it may do" ✓; on this side it is "the workflow pack is in
+ * the directory + the row in the permission area says whether it may
+ * run" ✓ → one model ✓.
  */
 export interface RegisteredWorkflow {
-  /** 包里的 id */
+  /** The id inside the pack */
   id: string;
-  /** 包的名字 */
+  /** The name of the pack */
   name: string;
-  /** 版本 */
+  /** The version */
   version: string;
-  /** 文件在哪 */
+  /** Where the file is */
   path: string;
-  /** **内容摘要**（**追责链的第一环** ✓ —— 改了内容摘要就变 ✓） */
+  /** The content digest (the first link of the chain of responsibility — the content changes and the digest changes) */
   digest: string;
-  /** 解析出来的包 */
+  /** The parsed pack */
   pack: WorkflowPack;
 }
 
 /**
- * 一个流程包**会干什么**的摘要（**给人过目** ✓）。
+ * A summary of what a workflow pack will do (for a human to read).
  */
 export interface WorkflowPlan {
   id: string;
   name: string;
-  /** 角色 → 它连的是哪台机器（**profile id** ✓） */
+  /** Role → which machine it connects to (the profile id) */
   roles: { role: string; purpose: string; profile: string }[];
-  /** 每个写步骤：在哪跑、跑什么、危不危险、判据读在哪 */
+  /** Every writing step: where it runs, what it runs, whether it is dangerous, where the criterion is read */
   steps: {
     id: string;
     kind: string;
-    /** 执行角色（判据步是「在哪个角色上读」✓） */
+    /** The executing role (for a criterion step it is "on which role it is read") */
     role?: string;
-    /** 命令**模板**（**还没替换输入** ✓ —— **权限区那一行展示的就是它** ✓） */
+    /** The command template (the inputs are not substituted yet — that is what the row in the permission area shows) */
     command?: string;
-    /** 这一步危险吗（destructive → **只是信息** ✓ —— **闸在权限区** ✓ · ADR-D48 ✓） */
+    /** Is this step dangerous (destructive → only information — the gate is in the permission area · ADR-D48) */
     dangerous: boolean;
-    /** 判据读在哪个角色上（跨目标读 = 「板子上真的有那个文件吗」✓） */
+    /** On which role the criterion is read (reading across targets = "does the file really exist on the board") */
     readbackRole?: string;
   }[];
 }
 
-/** 摘要一个流程包 */
+/** Summarise a workflow pack */
 export function planOf(pack: WorkflowPack): WorkflowPlan {
   return {
     id: pack.id,
@@ -92,17 +104,17 @@ export function planOf(pack: WorkflowPack): WorkflowPlan {
   };
 }
 
-/** 注册表的构造参数 */
+/** The constructor arguments of the registry */
 export interface WorkflowRegistryOptions {
-  /** 包目录（内置的 + 用户的，**同 id 时用户优先** ✓） */
+  /** The pack directories (the built-in ones plus the user's, the user's wins on the same id) */
   dirs: string[];
-  /** 记警告的出口 */
+  /** Where the warnings go */
   warn?: (message: string) => void;
-  /** 现在（毫秒） */
+  /** Now (milliseconds) */
   now?: () => number;
 }
 
-/** 内容摘要（sha256，前 16 位够用 —— 它的作用是「变了没有」，不是防篡改 ✓） */
+/** The content digest (sha256, the first 16 digits are enough — its purpose is "did it change", not tamper protection) */
 export function digestOf(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 16);
 }
@@ -115,11 +127,11 @@ export class WorkflowRegistry {
     this.warn = opts.warn ?? ((m: string) => console.warn(m));
   }
 
-  /** 扫目录，重新登记（**坏包不拖垮其余** ✓ —— 与 profile 加载器同规矩 ✓） */
+  /** Scan the directories and register again (a broken pack does not take the rest down — the same rule as the profile loader) */
   scan(): void {
     this.packs = new Map();
 
-    // **后扫的覆盖先扫的** → 用户目录放在后面 ✓（同 id 时用户优先 ✓）
+    // The one scanned later overrides the one scanned earlier → the user directory goes last (the user's wins on the same id)
     for (const dir of this.opts.dirs) {
       if (!existsSync(dir)) continue;
       let files: string[];
@@ -159,11 +171,13 @@ export class WorkflowRegistry {
   }
 
   /**
-   * 这个包**会干什么**（**给权限区那一行看的** ✓）。
+   * What this pack will do (it is for the row in the permission area).
    *
-   * → **开那个开关之前**，人必须知道**会在哪些机器上跑哪些命令** ✓
-   *   （评审 35 的 32-C1 建议第 2 条 ✓）。
-   * → 没有这一条，那个开关就只是「开一个文件名」✓ → **等于没看** ✗。
+   * → Before that switch is turned on, the human has to know which
+   *   commands run on which machines ✓
+   *   (the second recommendation of 32-C1 of review 35 ✓).
+   * → Without this, the switch is only "turn on a file name" → it is the
+   *   same as not looking at all ✗.
    */
   planOf(id: string): WorkflowPlan | undefined {
     const found = this.packs.get(id);
@@ -171,29 +185,34 @@ export class WorkflowRegistry {
     return planOf(found.pack);
   }
 
-  /** 列全部（**注册表里有的全列** ✓ —— **不再有「批过没有」那一列** ✓） */
+  /** List everything (everything in the registry — there is no "approved" column any more) */
   list(): RegisteredWorkflow[] {
     return [...this.packs.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  /** 按 id 取一个包（**不检查别的** ✓ —— 调用方自己决定要不要查 ✓） */
+  /** Get one pack by id (it checks nothing else — the caller decides whether to look) */
   get(id: string): RegisteredWorkflow | undefined {
     return this.packs.get(id);
   }
 
   /**
-   * 按 id 取一个包。
+   * Get one pack by id.
    *
-   * → **不再有「已批准」那一层** ✓（2026-11-16 ✓ · ADR-D48 ✓）——
-   *   **流程包的存在本身就是说明** ✓（**权限区里那一行开关才是闸** ✓ —— ADR-D47 ✓）。
+   * → There is no "approved" layer any more ✓ (2026-11-16 ✓ · ADR-D48
+   *   ✓) — the existence of a workflow pack is the explanation itself
+   *   ✓ (the row of switches in the permission area is the gate ✓ — ADR-D47
+   *   ✓).
    *
-   * @throws 没这个包 → `IPC_INVALID_PAYLOAD` ✓
+   * @throws when there is no such pack → `IPC_INVALID_PAYLOAD` ✓
    */
   require(id: string): RegisteredWorkflow {
     const found = this.packs.get(id);
     if (found === undefined) {
-      // **带上机器可读的 reason** ✓（MCP 那一层要把它回给 agent ✓ —— 契约 §四 ✓；
-      // 不然只能靠中文消息猜 ✓ —— 那是「解析错误消息」的坏味道 ✗）
+      // With a machine-readable reason ✓ (the MCP layer hands it back
+      // to the agent ✓ — contract section 4; otherwise it can only be
+      // guessed from the message — that is the bad smell of "parsing the
+      // error message" ✗)
+
       throw makeError('IPC_INVALID_PAYLOAD', `no such workflow pack: ${id}`, {
         detail: { id, reason: 'not_found' },
       });

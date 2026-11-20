@@ -9,21 +9,23 @@ import { SCRIPT } from './script';
 import type { ReaderKind } from './types';
 
 /**
- * reader kind 注册表。
+ * The reader kind registry.
  *
- * 契约：`docs/spec/02-board-pack.md` §2.4——**这份表是契约的一部分**，
- * 它的机器可读形态由实现层提供。
+ * Contract: `docs/spec/02-board-pack.md` section 2.4 — this table is part of
+ * the contract, and the implementation supplies its machine-readable form.
  *
- * **清单封闭**：v1 就这 8 个（§2.4 的表）。
- * 加一个 kind = 一次契约变更（要评审），不是「顺手加一个」。
+ * The list is closed: v1 has exactly these 8 (the table in section 2.4).
+ * Adding a kind is a contract change that needs a review, not something to
+ * slip in on the side.
  *
- * 规则 6（sample 存在吗）、8（参数名拼错了吗）、9（必填参数缺了吗）
- * 都要查这张表——**所以它必须先于校验器存在**。
+ * Rules 6 (does the sample exist), 8 (is a parameter name misspelled) and
+ * 9 (is a required parameter missing) all consult this table, so it has to
+ * exist before the validator does.
  */
 
 export type { ReaderKind, ParamSpec, ReaderContext, ParseResult } from './types';
 
-/** 全部 kind（顺序 = 契约 §2.4 的表顺序） */
+/** Every kind (in the order of the table in contract section 2.4) */
 export const READER_KINDS: readonly ReaderKind[] = [
   PROC_STAT,
   MEMINFO,
@@ -37,17 +39,17 @@ export const READER_KINDS: readonly ReaderKind[] = [
 
 const BY_ID = new Map<string, ReaderKind>(READER_KINDS.map((k) => [k.id, k]));
 
-/** 全部 kind 的 id（契约 §2.4 的顺序） */
+/** The id of every kind (the order of contract section 2.4) */
 export function kindIds(): string[] {
   return READER_KINDS.map((k) => k.id);
 }
 
 /**
- * 按 id 取一个 kind。
+ * Look up one kind by id.
  *
- * **取不到返回 undefined，不抛异常**——
- * 「这个 kind 不存在」是**校验器**要报的事（规则 6/8），
- * 运行时不该在这里崩。
+ * A miss returns undefined and does not throw: "this kind does not exist" is
+ * the validator's business (rules 6/8), and the runtime must not fall over
+ * here.
  */
 export function getKind(id: string): ReaderKind | undefined {
   return BY_ID.get(id);

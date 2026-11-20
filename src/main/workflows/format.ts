@@ -2,30 +2,36 @@ import { makeError } from '../../shared/errors';
 import { PLACEMENT_IDS, isPlacement } from './placement';
 
 /**
- * 流程包（workflow pack）的格式与校验器 —— **宿主层格式**。
+ * The format and the validator of a workflow pack — a host-level format.
  *
- * > ⚠️ **它不是契约**：`docs/spec/` 五份**一个字不改**（ADR-D31 R1）。
- * > 流程包首版是**宿主层的数据格式**（`docs/29` + `fixtures/`），
- * > 真板跑通**两条**流程之后才谈晋升契约。
+ * > ⚠️ It is not the contract: not one character of the five documents
+ * > in `docs/spec/` changes (ADR-D31 R1).
+ * > The first version of the workflow pack is a host-level data format
+ * > (`fixtures/`); only after two workflows have run on a real board is
+ * > there talk of promoting it to the contract.
  *
- * ── 它回答什么 ──
+ * ── What it answers ──
  *
- * | 包 | 回答 |
+ * | Pack | Answers |
  * |---|---|
- * | 板型包（board pack） | **这块板有什么**（能产生哪些量、能接受哪些写） |
- * | 流程包（workflow pack） | **这件事怎么做**（多目标、多步骤、有判据） |
+ * | Board pack | what this board has (which quantities it can produce, which writes it accepts) |
+ * | Workflow pack | how this task is done (several targets, several steps, with criteria) |
  *
- * ── 三条设计底线 ──
+ * ── The three design floors ──
  *
- * 1. **封闭 schema**：未知字段**一律报错**。流程包是**声明**——
- *    拼错的字段被静默忽略 = 流程照跑，只是少做了一件事，或做在了别的目标上。
- * 2. **step kind 只有 6 个**（ADR-D31 R11）：`exec` / `file.transfer` / `action` /
- *    `await` / `assert` / `discover`。`exec_script` **连「留位置」都不留**。
- * 3. **判据复用 M6 的回读五形式**（ADR-D31 R3）——**不新增第六种形式**，
- *    只是**多了一个「在哪个 role 上读」**（跨目标的验证就靠它）。
+ * 1. A closed schema: an unknown field is always an error. A
+ *    workflow pack is a declaration — a misspelled field that is
+ *    silently ignored means the workflow runs as before, only one thing
+ *    less happens, or it happens on the wrong target.
+ * 2. There are only 6 step kinds (ADR-D31 R11): `exec` / `file.transfer`
+ *    / `action` / `await` / `assert` / `discover`. `exec_script` does not
+ *    even get "a place reserved".
+ * 3. The criteria reuse the five readback forms of M6 (ADR-D31 R3) —
+ *    no sixth form is added, there is only one more "on which role it
+ *    is read" (the verification across targets depends on it).
  */
 
-/** 输入的封闭类型表（照 `spec/02` §4.3，**不另造一套**） */
+/** The closed type table of the inputs (following `spec/02` section 4.3 — not a second one) */
 export const INPUT_TYPES = ['string', 'integer', 'number', 'boolean', 'enum', 'path'] as const;
 export type WorkflowInputType = (typeof INPUT_TYPES)[number];
 
@@ -35,29 +41,33 @@ export interface WorkflowInputDef {
   maxLength?: number;
   min?: number;
   max?: number;
-  /** `enum` 才有：允许的取值（封闭） */
+  /** Only for `enum`: the allowed values (closed) */
   values?: string[];
   /**
-   * 默认值（**调用方没给时用它** ✓ —— `spec/02` §4.3 ✓）。
+   * The default value (it is used when the caller gives none — `spec/02`
+   * section 4.3).
    *
-   * → 宿主**预填**常用输入 ✓（卡片点一下就能跑 ✓）。
-   * → **必须过该类型的取值检查** ✓（它自己也要合法 ✓）。
+   * → The host prefills the common inputs (a card can be run with one
+   *   click).
+   * → It has to pass the value check of its own type (it has to be
+   *   valid itself).
    */
   default?: unknown;
   /**
-   * `string` 时的形状约束（**正则** ✓ —— 注入防线的第二道 ✓）。
+   * The shape constraint for `string` (a regular expression — the second
+   * line of defence against injection).
    *
-   * → `maxLength` 挡长度 ✓、`pattern` 挡形状 ✓。
-   * → **正则本身非法 → 报错** ✓（不是等到运行时才炸 ✗）。
+   * → `maxLength` stops the length, `pattern` stops the shape.
+   * → An invalid regular expression → an error (not a crash at runtime).
    */
   pattern?: string;
   description?: string;
 }
 
-/** 一个角色 = 一个连接 profile（**只许引用，不许覆写字段**——ADR-D31 R7） */
+/** One role = one connection profile (it may only reference, never override a field — ADR-D31 R7) */
 export interface WorkflowRole {
   purpose: string;
-  /** 宿主里存在的连接 profile id */
+  /** The id of a connection profile that exists in the host */
   profile: string;
 }
 
@@ -71,82 +81,88 @@ export const STEP_KINDS = [
 ] as const;
 export type WorkflowStepKind = (typeof STEP_KINDS)[number];
 
-/** 回读的五形式（与 M6 完全一致）+ `role`（在哪个角色上读） */
+/** The five readback forms (exactly as in M6) plus `role` (on which role it is read) */
 export interface WorkflowReadback {
-  /** 形式 1：`tag`（**不带 kind**，与 `spec/02` §4.4 一样） */
+  /** Form 1: `tag` (without a kind, as in `spec/02` section 4.4) */
   tag?: string;
-  /** 形式 2–5 的 kind */
+  /** The kind of the forms 2–5 */
   kind?: 'file_equals' | 'command_ok' | 'verify' | 'none';
-  /** 形式 1 的期望值 */
+  /** The expected value of form 1 */
   expect?: string;
-  /** 形式 2 的路径 */
+  /** The path of form 2 */
   path?: string;
-  /** 形式 2 的容差 */
+  /** The tolerance of form 2 */
   tolerance?: number;
-  /** 形式 4 的二次验证命令 */
+  /** The second verification command of form 4 */
   command?: string;
-  /** 形式 4 的超时 */
+  /** The timeout of form 4 */
   timeout_ms?: number;
-  /** 形式 5 的后果说明（必填非空） */
+  /** The consequence of form 5 (required and non-empty) */
   consequence?: string;
-  /** **在哪个角色上读**（不写 = 本步自己的角色） */
+  /** On which role it is read (not written = the role of this step itself) */
   role?: string;
 }
 
 export interface WorkflowEndpoint {
   role: string;
   path?: string;
-  /** 语义落位（**封闭词表**）；与 `path` 二选一 */
+  /** The semantic placement (a closed vocabulary); one of it with `path` */
   placement?: string;
 }
 
 export interface WorkflowStep {
   id: string;
   kind: WorkflowStepKind;
-  /** 执行角色（`exec` / `discover` / `action` 必填） */
+  /** The executing role (required for `exec` / `discover` / `action`) */
   role?: string;
-  /** `exec` 的命令 */
+  /** The command of `exec` */
   cmd?: string;
-  /** `exec` / `file.transfer` 的超时（毫秒） */
+  /** The timeout of `exec` / `file.transfer` (milliseconds) */
   timeout_ms?: number;
-  /** `action` 引用的动作 id */
+  /** The id of the action that `action` refers to */
   action?: string;
-  /** `action` 的参数（值里可以有占位符） */
+  /** The parameters of `action` (the values may hold placeholders) */
   params?: Record<string, string>;
-  /** `file.transfer` 的源 */
+  /** The source of `file.transfer` */
   from?: WorkflowEndpoint;
-  /** `file.transfer` 的目的地 */
+  /** The destination of `file.transfer` */
   to?: WorkflowEndpoint;
-  /** `discover` 在哪个目录找（默认当前目录） */
+  /** The directory `discover` searches in (the current directory by default) */
   dir?: string;
-  /** `discover` 的发现规则（**不写死文件名**） */
+  /** The discovery rule of `discover` (no hard-coded file name) */
   pattern?: string;
-  /** `discover` 的排除表 */
+  /** The exclude list of `discover` */
   exclude?: string[];
-  /** `discover` 的输出槽名 */
+  /** The name of the output slot of `discover` */
   out?: string;
-  /** `await` / `assert` 的判据 */
+  /** The criterion of `await` / `assert` */
   readback?: WorkflowReadback;
-  /** `assert` 不符时怎么办：`fail`（默认）| `continue` */
+  /** What happens when `assert` does not match: `fail` (default) | `continue` */
   on_mismatch?: 'fail' | 'continue';
   /**
-   * 这一步的**危险等级**（默认 `reversible`）。
+   * The danger level of this step (default `reversible`).
    *
-   * → `destructive` 的步骤**每次都要人确认**（ADR-D31 R2 的信任模型 ✓）。
-   * → **凭据准备那一步必须是 `destructive`**：它写的是目标机器的
-   *   `~/.ssh/authorized_keys`（ADR-D31 R7 / 计划 6 的 A10 ✓）。
-   * → **危险地板命中 → 也按 `destructive` 处理**（取更严的 ✓）。
+   * → A step that is `destructive` has to be confirmed by a human every
+   *   time (the trust model of ADR-D31 R2).
+   * → The step that prepares the credentials has to be `destructive`: it
+   *   writes the `~/.ssh/authorized_keys` of the target machine (ADR-D31 R7
+   *   / A10 of plan 6).
+   * → A hit on the danger floor is treated as `destructive` as well (the
+   *   stricter one wins).
    */
   danger?: 'reversible' | 'destructive';
 }
 
 export interface WorkflowPack {
   /**
-   * 契约版本（**与板型包、卡片 manifest 同一套词汇** ✓ —— ADR-D34-1 ✓）。
+   * The contract version (the same vocabulary as the board pack and the
+   * card manifest — ADR-D34-1).
    *
-   * → 流程包晋升契约后，**它就是契约格式** ✓ → 版本字段必须与别处一样 ✓。
-   *   （评审 38 的 C1 ✓：契约写 `apiVersion`，实现却还停在 `formatVersion` ——
-   *   **一份完全符合契约的包会被实现拒掉** ✗。）
+   * → Once a workflow pack is promoted to the contract, it is the
+   *   contract format → the version field has to be like everywhere else.
+   *   (C1 of review 38: the contract writes `apiVersion` while the
+   *   implementation was still at `formatVersion` — a pack that fully
+   *   matches the contract was rejected by the implementation.)
    */
   apiVersion: 'devboard/v1';
   kind: 'Workflow';
@@ -159,9 +175,9 @@ export interface WorkflowPack {
   steps: WorkflowStep[];
 }
 
-/* ── 校验用的封闭字段表 ────────────────────────────────────────────── */
+/* ── The closed field tables for the validation ────────────────────────────────── */
 
-/** 已知的契约版本（**与板型包、卡片 manifest 同一个** ✓） */
+/** The known contract versions (the same one as the board pack and the card manifest) */
 export const KNOWN_API_VERSION = 'devboard/v1';
 
 const TOP_KEYS = [
@@ -177,13 +193,16 @@ const TOP_KEYS = [
 ] as const;
 
 /**
- * 输入的封闭字段表。
+ * The closed field table of the inputs.
  *
- * → **`default` 与 `pattern`**（2026-11-15 加 ✓ —— 评审 38 的 I1 ✓）：
- * 契约 `spec/05` §二 说「类型表照 `spec/02` §4.3」✓，
- * 而 `02` §4.3 明确有这两个字段 ✓ → **是实现漏了** ✓。
- * → `default`：宿主**预填**常用输入 ✓（卡片点一下就能跑 ✓）；
- * → `pattern`：**注入防线的第二道** ✓（`maxLength` 挡长度、`pattern` 挡形状 ✓）。
+ * → `default` and `pattern` (added 2026-11-15 — I1 of review 38):
+ * the contract `spec/05` section 2 says "the type table follows `spec/02`
+ * section 4.3", and `02` section 4.3 clearly has these two fields → the
+ * implementation had left them out.
+ * → `default`: the host prefills the common inputs (a card can be run
+ *   with one click);
+ * → `pattern`: the second line of defence against injection
+ *   (`maxLength` stops the length, `pattern` stops the shape).
  */
 const INPUT_KEYS = [
   'type',
@@ -232,19 +251,24 @@ const READBACK_KEYS = [
 ] as const;
 
 /**
- * `{role:x.fact}` 能取的事实（**封闭**——不许翻 profile 的任意字段）。
+ * The facts that `{role:x.fact}` can read (closed — it may not reach into
+ * an arbitrary field of the profile).
  *
- * → **没有 `key`**（2026-11-15 加 ✓）：
- * 凭据的**路径**不该被插进命令 ✓ ——
- * ① 它会进审计行（**追责链里多一份敏感信息** ✗）；
- * ② 它会进 `dry_run` 的回显（**未授权方能看到凭据路径** ✗）；
- * ③ 而且它**多半没用**：命令跑在**源目标**上，源目标用的是**它自己的** ~/.ssh 密钥 ✓，
- * 目标目标的密钥路径对源目标没有意义 ✗。
- * → **凭据是宿主的账**（与 ADR-D31 R7「只许引用 profile id」一致 ✓）。
+ * → There is no `key` (added 2026-11-15):
+ * the path of a credential should not be spliced into a command →
+ * ① it would go into the audit line (one more piece of sensitive
+ *   information in the chain of responsibility ✗);
+ * ② it would go into the echo of `dry_run` (an unauthorised party sees
+ *   the credential path ✗);
+ * ③ and it is mostly useless: the command runs on the source
+ *   target, and the source target uses its own ~/.ssh key, so the key
+ *   path of the target target means nothing to the source target ✗.
+ * → The credential is the host's business (in line with ADR-D31 R7 "only
+ *   the profile id may be referenced").
  */
 export const ROLE_FACTS = ['host', 'port', 'user', 'profile_id'] as const;
 
-/* ── 小工具 ────────────────────────────────────────────────────────── */
+/* ── Small helpers ────────────────────────────────────────────────────────────── */
 
 function fail(message: string, source: string, detail?: unknown): never {
   throw makeError('IPC_INVALID_PAYLOAD', message, {
@@ -270,13 +294,16 @@ interface Ctx {
 }
 
 /**
- * **契约 `05` §九 规则 4** ✓：`id` 的格式是「名字.名字」✓。
+ * Contract `05` section 9, rule 4: the format of the `id` is
+ * "name.name".
  *
- * → **两段** ✓ · **每段是小写字母与数字** ✓ · **段内可以用连字符** ✓
- *   （`hello-kernel.build-run` ✓ · `prepare-credentials.authorize-key` ✓）。
- * → **为什么卡它** ✓：`id` 是**权限键**（`workflow:<id>` ✓）· **文件名键** ✓ ·
- *   **agent 看得见的标识** ✓ → **它得是一个不可注入的记号** ✓。
- *   → **所以大写、下划线、空格、多一个点都不行** ✓。
+ * → Two segments · each segment is lowercase letters and digits ·
+ *   a segment may contain hyphens (`hello-kernel.build-run` ·
+ *   `prepare-credentials.authorize-key`).
+ * → Why it is enforced: the `id` is the permission key
+ *   (`workflow:<id>`) · the file name key · an identifier the agent
+ *   can see → it has to be a token that cannot be injected → so no
+ *   uppercase, no underscore, no space and no extra dot.
  */
 const WORKFLOW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -299,27 +326,29 @@ function nonEmptyString(value: unknown, what: string, ctx: Ctx): string {
   return value;
 }
 
-/* ── 占位符 ────────────────────────────────────────────────────────── */
+/* ── The placeholders ─────────────────────────────────────────────────────────── */
 
 /**
  * `{input:x}` / `{role:x.fact}` / `{output:x}` / `{from.path}` / `{to.path}`
  *
- * → **最后两个是内置的**：它们指**这一步自己的**源与目的地。
- * 目的地那个尤其要紧——`placement` 解析出来的路径**宿主才知道**
- * （内核版本要问目标机器）→ 不许用户手写路径 ✓。
+ * → The last two are built in: they point at the source and the
+ *   destination of this step itself. The destination one matters most
+ *   — the path that `placement` resolves to is known only to the host
+ *   (the kernel version has to be asked of the target machine) → the user
+ *   must not write the path by hand.
  */
 const PLACEHOLDER = /\{(input|role|output|from|to):([^}]+)\}/g;
 
 export interface PlaceholderUse {
   kind: 'input' | 'role' | 'output' | 'from' | 'to';
   name: string;
-  /** `role` 占位符的事实名（`host` / `port` / …） */
+  /** The name of the fact of a `role` placeholder (`host` / `port` / …) */
   fact?: string;
-  /** `output` 占位符的属性：`name` = 文件名去掉扩展名（`hello.ko` → `hello`） */
+  /** The attribute of an `output` placeholder: `name` = the file name without the extension (`hello.ko` → `hello`) */
   attr?: 'name';
 }
 
-/** 把一段文本里用到的占位符挖出来 */
+/** Dig out the placeholders that a text uses */
 export function placeholdersOf(text: string): PlaceholderUse[] {
   const out: PlaceholderUse[] = [];
   for (const match of text.matchAll(PLACEHOLDER)) {
@@ -331,7 +360,7 @@ export function placeholdersOf(text: string): PlaceholderUse[] {
       continue;
     }
     if (kind === 'output') {
-      // `{output:slot}` 或 `{output:slot.name}`（文件名去掉扩展名）
+      // `{output:slot}` or `{output:slot.name}` (the file name without the extension)
       const [slot, attr] = body.split('.');
       if (attr !== undefined && attr !== 'name') {
         out.push({ kind, name: body });
@@ -345,14 +374,17 @@ export function placeholdersOf(text: string): PlaceholderUse[] {
   return out;
 }
 
-/* ── 解析 ──────────────────────────────────────────────────────────── */
+/* ── The parsing ─────────────────────────────────────────────────────────────── */
 
 /**
- * 解析并校验一份流程包。
+ * Parse and validate a workflow pack.
  *
- * @param raw    YAML 解析出来的对象
- * @param source 出处（文件路径），写进错误信息里便于定位
- * @throws 未知字段 / 缺必填 / 类型不对 / 占位符指向不存在的东西 —— **都抛错，不静默忽略**
+ * @param raw    the object that the YAML produced
+ * @param source where it came from (the file path), written into the error
+ *   messages so that the position can be found
+ * @throws an unknown field / a missing required field / a wrong type / a
+ *   placeholder that points at something that does not exist — it always
+ *   throws, it never ignores silently
  */
 export function parseWorkflow(raw: unknown, source: string): WorkflowPack {
   const ctx: Ctx = { source, path: '' };
@@ -424,7 +456,7 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
     }
     if (value['pattern'] !== undefined) {
       const pattern = nonEmptyString(value['pattern'], `inputs.${name}.pattern`, ctx);
-      // **正则自己得合法** ✓（非法正则 → 现在报错，不是运行时才炸 ✗）
+      // The regular expression itself has to be valid (an invalid one → an error now, not a crash at runtime ✗)
       try {
         new RegExp(pattern);
       } catch (err) {
@@ -438,14 +470,14 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
     if (value['description'] !== undefined) {
       def.description = nonEmptyString(value['description'], `inputs.${name}.description`, ctx);
     }
-    // enum 必须有 values；string / path 必须有 maxLength（不然是开口的）
+    // enum must have values; string / path must have maxLength (otherwise it is an open mouth)
     if (def.type === 'enum' && (def.values === undefined || def.values.length === 0)) {
       fail(`inputs.${name} is enum → it must declare values (a closed value set)`, ctx.source);
     }
     if ((def.type === 'string' || def.type === 'path') && def.maxLength === undefined) {
       fail(`inputs.${name} is ${def.type} → it must declare maxLength (no unbounded strings)`, ctx.source);
     }
-    // **default 自己也要合法** ✓（它会被当成真的值用 ✓）
+    // The default has to be valid itself (it is used as a real value)
     if (def.default !== undefined) checkDefault(def, name, ctx);
     out[name] = def;
   }
@@ -453,10 +485,11 @@ function parseInputs(raw: unknown, ctx: Ctx): Record<string, WorkflowInputDef> {
 }
 
 /**
- * 默认值**自己也要合法** ✓。
+ * The default value has to be valid itself.
  *
- * → 一个 `default: 999` 配 `max: 255` 的 input → **宿主预填一个非法值** ✗
- * → 到运行时才发现 ✗ → 现在就报错 ✓。
+ * → An input with `default: 999` and `max: 255` → the host prefills an
+ *   illegal value ✗
+ * → it is only noticed at runtime ✗ → it is an error right now.
  */
 function checkDefault(def: WorkflowInputDef, name: string, ctx: Ctx): void {
   const value = def.default;
@@ -589,15 +622,15 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
     step.on_mismatch = value;
   }
 
-  // ── **规则 11**（契约 §九 ✓）：`danger: destructive` 的步不许用 `readback.kind: none` ✓
-  // → 与 `02` §4.4.1 同款 ✓（板型包的规则 15 就是它 ✓ —— 那边有 ✓，这边**一直缺着** ✗）
-  // → 不拦的后果 ✓：不可逆的步可以声明「不验证」✗ → **照样执行** ✓（**今天不再问人** ✓）
-  //   → 时间线报 `ok:true / verified:false` ✓ → 界面把「根本没验证」说成「成功了」✗
+  // ── Rule 11 (contract section 9): a step with `danger: destructive` may not use `readback.kind: none`
+  // → The same as `02` section 4.4.1 (the rule 15 of the board pack is it — it is there, and here it has always been missing ✗)
+  // → The consequence of not blocking it: an irreversible step may declare "no verification" ✗ → it runs anyway ✓ (nobody is asked any more ✓)
+  //   → the timeline reports `ok:true / verified:false` ✓ → the interface calls "not verified at all" a success ✗
   if (step.danger === 'destructive' && step.readback?.kind === 'none') {
     fail('a destructive step must not use readback.kind: none (an irreversible action cannot go unverified ✓ — same as 02 §4.4.1 ✓)', ctx.source);
   }
 
-  // ── 每种 kind 的必填 ──
+  // ── The required fields of each kind ──
   switch (step.kind) {
     case 'exec':
       if (step.role === undefined) fail('an exec step must declare role', ctx.source);
@@ -610,8 +643,8 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
       break;
     case 'file.transfer':
       if (step.from === undefined) fail('a file.transfer step must declare from', ctx.source);
-      // **from.path 是必填** ✓（契约 §4.4 ✓）——
-      // → 不在这里收住 ✓ → 运行时才炸 ✓（而且炸在**步外** ✓ → 时间线上一行都没有 ✗）
+      // from.path is required (contract section 4.4) —
+      // → it is not caught here ✓ → it only crashes at runtime ✓ (and it crashes outside the step ✓ → the timeline does not even get a line ✗)
       if (step.from.path === undefined) {
         fail('the from of a file.transfer step must declare path (the path on the source side)', ctx.source);
       }
@@ -627,8 +660,8 @@ function parseStep(raw: Record<string, unknown>, pack: WorkflowPack, ctx: Ctx): 
     case 'await':
     case 'assert':
       if (step.readback === undefined) fail(`an ${step.kind} step must declare readback`, ctx.source);
-      // **必须说得出「在哪个角色上读」**（自己的 role 或判据的 role ✓）
-      // ——不然「默认读哪」就是猜的 ✗（两条独立评审都点了这一条 ✓）。
+      // It has to be possible to say "on which role it is read" (its own role or the role of the criterion ✓)
+      // — otherwise "which one is read by default" would be a guess ✗ (two independent reviews both pointed at this ✓).
       if (step.role === undefined && step.readback.role === undefined) {
         fail(`an ${step.kind} step must say which role to read on (step.role or readback.role)`, ctx.source);
       }
@@ -673,12 +706,12 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
   checkKeys(ctx, raw, READBACK_KEYS, '');
   const out: WorkflowReadback = {};
 
-  // 形式 1：`readback: {tag, expect}`（**不带 kind**——与 spec/02 §4.4 一样）
+  // Form 1: `readback: {tag, expect}` (without a kind — as in spec/02 section 4.4)
   if (raw['tag'] !== undefined) {
-    // **形式 1（tag）在流程层暂不支持**：
-    // tag 是**板型包的核心词表**里的东西（`spec/02` §六 ✓），
-    // 而流程层**没有板型包** → 查不了它是不是真 tag ✗
-    // → 与其「收下再悄悄丢掉 role」，**直接报错** ✓（两条独立评审都点了这一条 ✓）。
+    // Form 1 (tag) is not supported at the workflow layer for now:
+    // a tag is something of the core vocabulary of the board pack (`spec/02` section 6 ✓),
+    // and the workflow layer has no board pack → it cannot look up whether it is a real tag ✗
+    // → Instead of "accepting it and quietly dropping the role", it is an error right away (two independent reviews both pointed at this ✓).
     fail('workflow criteria do not support form 1 (tag) yet: a tag belongs to the core vocabulary of the board pack, which the workflow layer cannot look up', ctx.source);
   }
 
@@ -714,7 +747,7 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
     out.role = role;
   }
 
-  // 各形式的必填（与 spec/02 §4.4 一致）
+  // The required fields of each form (as in spec/02 section 4.4)
   if (kind === 'file_equals' && (out.path === undefined || out.expect === undefined)) {
     fail('readback form 2 (file_equals) must declare path and expect', ctx.source);
   }
@@ -727,18 +760,21 @@ function parseReadback(raw: unknown, pack: WorkflowPack, ctx: Ctx): WorkflowRead
   return out;
 }
 
-/* ── 占位符的静态检查 ──────────────────────────────────────────────── */
+/* ── The static check of the placeholders ─────────────────────────────────────── */
 
 /**
- * 占位符必须在**声明过的东西**上：
- * - `{input:x}` → x 必须是声明过的 input；
- * - `{role:r.fact}` → r 必须是声明过的 role，fact 必须在封闭事实表里；
- * - `{output:s}` → s 必须是**前面某一步**产出的槽。
+ * The placeholders have to point at something that was declared:
+ * - `{input:x}` → x has to be a declared input;
+ * - `{role:r.fact}` → r has to be a declared role and the fact has to be in
+ *   the closed table of the facts;
+ * - `{output:s}` → s has to be a slot that an earlier step produced.
  *
- * **为什么现在查**：拼错到运行时才炸 = 流程跑到一半才失败。
+ * Why it is checked here: a typo that only explodes at runtime means
+ * the workflow fails halfway through.
  */
 function checkPlaceholders(pack: WorkflowPack, ctx: Ctx): void {
-  /** 已经被前面的步骤产出的槽 */
+  /** The slots that the earlier steps produced */
+
   const produced = new Set<string>();
   for (const [i, step] of pack.steps.entries()) {
     const texts: string[] = [];

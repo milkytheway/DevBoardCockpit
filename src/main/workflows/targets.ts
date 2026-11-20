@@ -4,53 +4,61 @@ import type { Connection } from '../hal/connection';
 import type { ConnectionProfile } from '../profiles/schema';
 
 /**
- * 目标登记处 —— **role → 连接**。
+ * The target registry — role → connection.
  *
- * ── 它补的是哪个缺口 ──
+ * ── Which gap it fills ──
  *
- * M6 的执行器**只能对运行时那条连接执行**（板子）——
- * 接线给的是 `runtime.runTransaction`（`src/main/index.ts`）。
- * 而「**在客机上跑一条 scp**」（直传，ADR-D31 R7）要的是**另一条连接**。
- * → 计划 5 的 **A17** 写了「执行器要能对指定的连接执行」，**实现里一直缺着** ✗。
- * → 这一层就是补它：**按 profile id 拿到连接**，执行器就能指名目标了 ✓。
+ * The executor of M6 can only execute on the connection of the runtime
+ * (the board) — the wiring gives it `runtime.runTransaction`
+ * (`src/main/index.ts`). And "run one scp on the guest" (a direct
+ * transfer, ADR-D31 R7) needs another connection.
+ * → A17 of plan 5 wrote "the executor has to be able to execute on a
+ *   given connection", and the implementation never had it ✗.
+ * → This layer fills that gap: a connection by profile id, and the
+ *   executor can name its target ✓.
  *
- * ── 三条规矩 ──
+ * ── The three rules ──
  *
- * 1. **一个目标一条线**：每个 profile 一条连接 + **它自己的队列**
- *    （串口是一根线——两个目标各走各的 ✓）。
- * 2. **profile 不存在 → 报错**：绝不悄悄连到别的目标 ✗。
- * 3. **同一个目标复用同一条连接**：重开一条 ssh 要好几秒 ✗。
+ * 1. One line per target: one connection per profile plus its own
+ *    queue (a serial line is one wire — two targets each go their own
+ *    way ✓).
+ * 2. A profile that does not exist → an error: never quietly connect
+ *    to another target ✗.
+ * 3. The same target reuses the same connection: opening another ssh
+ *    takes several seconds ✗.
  */
 export interface TargetRegistryOptions {
-  /** 按 id 找 profile（宿主加载好的那批；找不到就是**没有这个目标**） */
+  /** Find a profile by id (the ones the host loaded; not finding it means there is no such target) */
   profileFor: (profileId: string) => ConnectionProfile | undefined;
-  /** 建连接（宿主给：它知道 adb 路径、假设备那些事） */
+  /** Build the connection (the host provides it: it knows the adb path, the fake device and the like) */
   createConnection: (profile: ConnectionProfile) => Connection;
-  /** 事务的默认 deadline（毫秒）——长步骤要自己传大的 */
+  /** The default deadline of a transaction (milliseconds) — a long step has to pass a bigger one itself */
   deadlineMs?: number;
 }
 
 const DEFAULT_DEADLINE_MS = 3_000;
 
 export class TargetRegistry {
-  /** 已建立的连接（按 profile id） */
+  /** The connections that are open (by profile id) */
   private readonly connections = new Map<string, Connection>();
-  /** 每个目标自己的队列（一条线一个队列） */
+  /** The queue of each target (one queue per line) */
   private readonly queues = new Map<string, RoundTripQueue>();
-  /** 正在开的连接（避免并发开两条同一条线） */
+  /** The connections that are being opened (to avoid opening two of the same line concurrently) */
   private readonly opening = new Map<string, Promise<Connection>>();
 
   constructor(private readonly opts: TargetRegistryOptions) {}
 
-  /** 现在开着几个目标（诊断用） */
+  /** How many targets are open right now (for the diagnostics) */
   get openCount(): number {
     return this.connections.size;
   }
 
   /**
-   * 拿到某个目标的连接（**第一次开，之后复用**）。
+   * Get the connection of a target (opened the first time, reused after
+   * that).
    *
-   * @throws 目标不存在 → `CONN_OPEN_FAILED`（**不静默回落**）
+   * @throws when the target does not exist → `CONN_OPEN_FAILED` (no
+   *   silent fallback)
    */
   async connectionFor(profileId: string): Promise<Connection> {
     const existing = this.connections.get(profileId);
@@ -71,18 +79,23 @@ export class TargetRegistry {
   }
 
   /**
-   * 在某个目标上跑一次**独占事务**。
+   * Run one exclusive transaction on a target.
    *
-   * ── 为什么是「独占」 ──
+   * ── Why "exclusive" ──
    *
-   * 同一个目标上的两次往返**不能并发**（串口是一根线；ssh 也是一条会话一个通道）。
-   * → 走**它自己的队列**（`action-verify` 级：动作与回读不可拆分，SPEC-D22）✓。
+   * Two round trips on the same target must not run concurrently (a
+   * serial line is one wire; an ssh session has one channel too).
+   * → It goes through its own queue (at the `action-verify` level: an
+   *   action and its readback are indivisible, SPEC-D22) ✓.
    *
-   * ── deadline ──
+   * ── The deadline ──
    *
-   * 默认 3 秒（同连接级默认，ADR-D23）；**长步骤要自己传大的**
-   * （编译是分钟级 → 尖兵实测传输波动 20 倍，A14）。
-   * deadline 只管**排队**等了多久，**不管跑多久** ✓。
+   * 3 seconds by default (the same default as at the connection level,
+   * ADR-D23); a long step has to pass a bigger one itself (compiling
+   * takes minutes → the transport was measured to fluctuate by a factor of
+   * 20, A14).
+   * The deadline only covers how long it waited in the queue, not how
+   * long it runs ✓.
    */
   async runOn<T>(
     profileId: string,
@@ -96,7 +109,7 @@ export class TargetRegistry {
     });
   }
 
-  /** 收摊：关掉所有连接（流程跑完时调） */
+  /** Clean up: close every connection (called when a workflow finishes) */
   async closeAll(): Promise<void> {
     const connections = [...this.connections.values()];
     this.connections.clear();
@@ -105,7 +118,7 @@ export class TargetRegistry {
       try {
         await connection.close();
       } catch {
-        // **关不掉不是致命的**：一条目标没关掉，不该让整次运行的账丢掉
+        // A target that does not close is not fatal: one target that stays open must not throw away the account of the whole run
       }
     }
   }
@@ -125,9 +138,11 @@ export class TargetRegistry {
         detail: { profileId },
       });
     }
-    // **角色不许绑到 `local`**（ADR-D31 R2 ✓）：
-    // `local` 是**宿主自己的 shell**（Windows 上是 cmd.exe）——
-    // 一个流程在它上面跑命令 = 在宿主上跑命令，而宿主是 root 权限那台机器 ✓✗。
+    // A role must not be bound to `local` (ADR-D31 R2 ✓):
+    // `local` is the host's own shell (cmd.exe on Windows) — a workflow
+    // running a command on it is running a command on the host, and the
+    // host is the machine that has root ✓✗.
+
     if (profile.transport === 'local') {
       throw makeError('CONN_OPEN_FAILED', `a role must not be bound to the local transport (${profileId}): it is the host's own shell`, {
         detail: { profileId, transport: profile.transport },

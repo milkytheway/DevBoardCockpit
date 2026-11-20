@@ -4,38 +4,42 @@ import { error, isBlank, leadingInts, missing, ok, outOfRange } from './parse-ut
 import type { ReaderKind } from './types';
 
 /**
- * `proc_stat` —— CPU 占用率与核名。
+ * `proc_stat` — CPU utilisation and core names.
  *
- * **需要两次采样**：占用率是两次采样做差（契约 §2.4）。
- * 首读的结果是 `pending`——**不是 0**（规则 5）。
+ * Two samples are needed: the utilisation is the difference between two
+ * samples (contract section 2.4). The first read yields `pending`, not 0
+ * (rule 5).
  *
- * 取两个文件：`/proc/stat` 给计数器，`/proc/cpuinfo` 给核名与簇。
- * 中间用一个**分隔行**隔开——它是这段输出里唯一的一行非计数器内容。
+ * Two files are read: `/proc/stat` for the counters, `/proc/cpuinfo` for the
+ * core names and the clusters. They are separated by a separator line, which
+ * is the only line in this output that is not a counter.
  *
- * ── 公式沿用前身工程（`core/metrics.py` 的 `_parse_proc_stat`）──
+ * ── The formulas are carried over from the predecessor project
+ *    (`_parse_proc_stat` in `core/metrics.py`) ──
  *
- * - **busy = user + nice + system**（前三个字段）；
- * - **total = 全部字段之和**；
- * - 占用率 = Δbusy / Δtotal × 100，夹在 0..100。
+ * - busy = user + nice + system (the first three fields);
+ * - total = the sum of all fields;
+ * - utilisation = Δbusy / Δtotal × 100, clamped into 0..100.
  *
- * 沿用的理由：这两个公式是**真机换来的**，
- * 而且它们的注释写着「idle 必须排除，否则板子看起来永远 100% 忙」。
+ * The reason for carrying them over: both formulas were paid for on real
+ * hardware, and the comment on them says "idle must be excluded, otherwise
+ * the board looks 100% busy forever".
  */
 
-/** 两段之间的分隔行。`/proc/stat` 的行都以 `cpu` 开头，不会撞上它 */
+/** The separator between the two sections. The lines of `/proc/stat` start with `cpu`, so they never collide with it */
 export const CPUINFO_SEPARATOR = '--- cpuinfo ---';
 
-/** ARMv8 架构的 CPU part id → 簇名（与前身工程同一张表） */
+/** ARMv8 CPU part id → cluster name (the same table as in the predecessor project) */
 const CORE_NAMES: Record<number, string> = {
   0xd05: 'A55',
   0xd0b: 'A76',
 };
 
-/** `/proc/stat` 的汇总行与各核行 */
+/** The summary line and the per-core lines of `/proc/stat` */
 interface ProcStat {
-  /** [busy, total] 的 jiffies */
+  /** The jiffies of [busy, total] */
   total?: [number, number];
-  /** 核号 → [busy, total] */
+  /** Core number → [busy, total] */
   cores: Record<number, [number, number]>;
 }
 
@@ -53,8 +57,9 @@ function parseProcStat(text: string): ProcStat {
         total = [nums[0]! + nums[1]! + nums[2]!, nums.reduce((a, b) => a + b, 0)];
       }
     } else {
-      // **先切出第一个词再判断**——`cpu0 41283 0 …` 整行不是 `cpu\d+`
-      // （真机样本的黄金向量在这里逮到过这个 bug）。
+      // The first word has to be cut off before the test: the whole line
+      // `cpu0 41283 0 …` is not `cpu\d+` (the golden vector of a real-device
+      // sample caught this bug here).
       const parts = line.split(/\s+/);
       const tag = parts[0]!;
       if (!/^cpu\d+$/.test(tag)) continue;
@@ -69,10 +74,11 @@ function parseProcStat(text: string): ProcStat {
 }
 
 /**
- * 从 `/proc/cpuinfo` 取「核号 → 簇名」。
+ * Read "core number → cluster name" from `/proc/cpuinfo`.
  *
- * **未知名字按字符串原样上报，不报错**（契约词表：`cpu.core.*.cluster`）——
- * 前身工程的兜底是 `cpu<十六进制>`，这里沿用同一个形状。
+ * An unknown name is reported verbatim as a string and is not an error
+ * (the contract vocabulary: `cpu.core.*.cluster`) — the predecessor
+ * project's fallback is `cpu<hex>`, and the same shape is used here.
  */
 function parseCoreNames(text: string): Record<number, string> {
   const names: Record<number, string> = {};
@@ -92,7 +98,7 @@ function parseCoreNames(text: string): Record<number, string> {
   return names;
 }
 
-/** 上一次的采样（存在 runtime 给的 ctx.state 里，不藏在模块变量里） */
+/** The previous sample (kept in the ctx.state the runtime supplies, not hidden in a module variable) */
 interface ProcStatSnapshot {
   total: [number, number];
   cores: Record<number, [number, number]>;
@@ -112,16 +118,18 @@ export const PROC_STAT: ReaderKind = {
     return `cat -- ${stat}; echo ${quotePath(CPUINFO_SEPARATOR)}; cat -- ${cpuinfo}`;
   },
   /**
-   * 解析 `/proc/stat`（与 `/proc/cpuinfo`）。
+   * Parse `/proc/stat` (and `/proc/cpuinfo`).
    *
-   * ── 已知边界：**采样间隔不固定时，这个百分比没有意义** ──
+   * ── Known boundary: with an irregular sampling interval this percentage
+   *    means nothing ──
    *
-   * 契约 §1.2.1 说过「间隔不固定就没有意义」——
-   * 但**只有运行时知道上一轮是什么时候采的**（reader 拿不到时间戳），
-   * 所以「这一轮的窗口是多久」这个判断**做不了**。
-   * 本 kind 只能保证：**计数器的差值**是对的。
-   * 调度器跳过一轮、板子被 suspend —— 这些 reader 侧看不见。
-   * **这条边界记在 `docs/06` C15，由计划 3 的调度器负责。**
+   * Contract section 1.2.1 says "with an irregular interval it means
+   * nothing" — but only the runtime knows when the previous round was
+   * sampled (the reader gets no timestamp), so the reader cannot decide how
+   * long the window of this round was. All this kind can guarantee is that
+   * the difference of the counters is right. A scheduler that skips a round,
+   * a board that suspends — the reader cannot see those.
+   * The scheduler owns that boundary.
    */
   parse(raw, _args, ctx) {
     if (isBlank(raw)) {
@@ -141,7 +149,7 @@ export const PROC_STAT: ReaderKind = {
 
     const prev = ctx.state['proc_stat'] as ProcStatSnapshot | undefined;
 
-    // 首读：把这次记下来，**返回 pending 而不是 0**（规则 5）
+    // The first read: remember it and return pending rather than 0 (rule 5)
     if (prev === undefined) {
       ctx.state['proc_stat'] = { total, cores } satisfies ProcStatSnapshot;
       return { status: 'pending' };
@@ -152,24 +160,29 @@ export const PROC_STAT: ReaderKind = {
     const dBusy = total[0] - prev.total[0];
 
     if (dTotal < 0 || dBusy < 0) {
-      // 计数器**倒退** = 板子重启过 → 值不可信。
-      // 重置基准，如实报「读不出来」，**不报负数**（RF-3）。
+      // A counter that went backwards means the board rebooted, so the value
+      // is not trustworthy. Reset the baseline, report honestly that it
+      // cannot be read, and never report a negative number (RF-3).
       ctx.state['proc_stat'] = { total, cores } satisfies ProcStatSnapshot;
       return error('parse_error', 'a counter went backwards — did the board reboot?');
     }
     if (dTotal === 0) {
-      // **窗口太短**（两次采样之间一个 tick 都没过）：算不出占用率。
+      // The window is too short (not a single tick passed between the two
+      // samples): the utilisation cannot be computed.
       //
-      // 这是 `pending` 而不是 `error`：**什么都没坏**，只是这一轮
-      // 的窗口不够长——**基准留着**，下一轮就能算出来。
-      // （报 error 会让探针判红；报 0 是假数。）
+      // This is `pending` and not `error`: nothing is broken, the window of
+      // this round is simply too short — the baseline is kept, so the next
+      // round can compute it. (Reporting an error would turn the probe red;
+      // reporting 0 would be a false number.)
       return { status: 'pending' };
     }
 
     const usage = (dBusy / dTotal) * 100;
     if (outOfRange(usage)) {
-      // 契约 §2.1.1：**不许夹到区间当 ok**（那是撒谎），也不许当 0（更糟）。
-      // 计数器只回绕一部分字段时就会算出 >100。
+      // Contract section 2.1.1: it may not be clamped into the range and
+      // passed off as ok (that would be lying), and it may not be treated as
+      // 0 (that would be a worse lie). A value above 100 comes out when only
+      // some of the counters have wrapped around.
       return error(
         'out_of_domain',
         `the computed usage is ${usage} (not within 0..100) — the counters may only have wrapped around for some of the fields`,

@@ -1,107 +1,123 @@
 import type { BoardPack, PollGroupDef, ReaderDef } from '../tags/schema';
 
 /**
- * **实例化** —— 把「通用包」变成「一块板的包」✓。
+ * The instantiation — it turns the "generic pack" into "the pack of one
+ * board" ✓.
  *
- * ── 它解决的是「鸡生蛋」✓ ──
+ * ── What it solves: the chicken-and-egg problem ✓ ──
  *
- * → **旧路**：要有板型包 → 才能连板 → 才能探针 → 才知道这板能干什么 ✗
- * → **新路**：**用通用包连上板** ✓ → **试通用包** ✓ → **试出来的就是这块板的包** ✓
- *   （`docs/探索/02` §一·1.2 第③条 ✓ · §十 ✓）
+ * → The old way: a board pack is needed → then the board can be
+ *   connected → then the probe → only then it is known what the board can
+ *   do ✗
+ * → The new way: connect the board with the generic pack ✓ → try
+ *   the generic pack ✓ → what came out of it is the pack of this
+ *   board ✓ ✓
  *
- * ── 它是**纯函数** ✓ —— 不碰文件 ✓ 不碰连接 ✓
- *   → **好测** ✓（`tests/unit/wizard-instantiate.test.ts` ✓ · **9 条判据** ✓）
- *   → **落盘是另一件事** ✓（`install.ts` ✓ —— 那是 I/O ✓）
+ * ── It is a pure function ✓ — it touches no file ✓ no connection ✓
+ *   → easy to test ✓ (`tests/unit/wizard-instantiate.test.ts` ✓ ·
+ *     9 criteria ✓)
+ *   → Writing it to disk is another thing ✓ (`install.ts` ✓ — that is
+ *     I/O ✓)
  *
- * ── ⚠️ **它必须改写 `custom.` 前缀**（**最容易漏的一步** ✓）──
+ * ── ⚠️ It has to rewrite the `custom.` prefix (the step that is
+ *    easiest to miss ✓) ──
  *
- * → **规则 1** ✓：`tag` 必须落在核心词表**或 `custom.<本包 id>.` 下** ✓
- *   （`isCustomTag(name, packId)` → `custom.${packId}.*` ✓）。
- * → 通用包的 id 是 `generic-linux` ✓ → **它的 tag 必然是 `custom.generic-linux.*`** ✓。
- * → **实例化出来的包 id 是 `atk-01`** ✓ → **那些 tag 原样带过去 → 规则 1 立刻拦** ⚠️
- *   → **落盘的包天生是非法的** ⚠️ → **向导的产物落地即废** ⚠️。
- * → **所以：前缀必须重写** ✓ —— `custom.generic-linux.*` → `custom.atk-01.*` ✓。
+ * → Rule 1 ✓: the `tag` has to fall in the core vocabulary or under
+ *   `custom.<this pack id>.` ✓
+ *   (`isCustomTag(name, packId)` → `custom.${packId}.*` ✓).
+ * → The id of the generic pack is `generic-linux` ✓ → its tags are
+ *   necessarily `custom.generic-linux.*` ✓.
+ * → The id of the instantiated pack is `atk-01` ✓ → those tags
+ *   carried over as they are are stopped by rule 1 right away ⚠️
+ *   → the pack that is written is illegal by nature ⚠️ → what the
+ *   wizard produces is dead on arrival ⚠️.
+ * → So: the prefix has to be rewritten ✓ — `custom.generic-linux.*` →
+ *   `custom.atk-01.*` ✓.
  *
- * ── 它与现有包**同形** ✓ ──
+ * ── It has the same shape as the existing packs ──
  *
- * → `rk3588-atk` 那份包里的 `custom.rk3588-atk.*` ✓ → **同一个形状** ✓
- * → **所以产物白拿校验器** ✓ → **判据就是「它必须过真校验器」** ✓。
+ * → The `custom.rk3588-atk.*` of the `rk3588-atk` pack ✓ → the same
+ *   shape ✓
+ * → So the product gets the validator for free ✓ → the criterion is
+ *   "it has to pass the real validator" ✓.
  */
 
-/** 一条探针结果（**一个 reader 绿不绿** ✓） */
+/** One result of the probe (whether one reader is green ✓) */
 export interface ProbeOutcome {
-  /** reader 的 id ✓ */
+  /** The id of the reader ✓ */
   readerId: string;
-  /** 绿不绿 ✓ */
+  /** Whether it is green ✓ */
   ok: boolean;
-  /** 为什么红 / 什么形状 ✓（**给人看的** ✓） */
+  /** Why it is red / what shape ✓ (for the reader ✓) */
   detail: string;
-  /** 它产出的 tag（**绿的时候才有值** ✓） */
+  /** The tags it produced (only a value when it is green ✓) */
   tags: { tag: string; value: unknown }[];
 }
 
-/** 连接是「怎么连上的」✓（**进 provenance** ✓ —— 「这份包是怎么来的」✓） */
+/** The connection is "how it was connected" ✓ (it goes into the provenance ✓ — "where this pack came from" ✓) */
 export interface ProbeConnection {
   transport: string;
   port?: string;
   baudrate?: number;
 }
 
-/** 一条「这是猜的」✓ */
+/** One "this was guessed" ✓ */
 export interface GuessedNote {
-  /** 猜的是什么（tag 或 reader id ✓） */
+  /** What was guessed (a tag or a reader id ✓) */
   what: string;
-  /** 为什么是猜的 ✓ */
+  /** Why it is a guess ✓ */
   why: string;
-  /** 要人/agent 确认吗 ✓ */
+  /** Does a human or an agent have to confirm it ✓ */
   needsHuman: boolean;
 }
 
-/** `provenance.json` 的形状（**「这份包是猜的」必须留痕** ✓） */
+/** The shape of `provenance.json` ("this pack was guessed" has to leave a trace ✓) */
 export interface Provenance {
-  /** 从哪个通用包实例化而来 ✓ */
+  /** The generic pack it was instantiated from ✓ */
   source: string;
-  /** 实例化出来的包 id ✓ */
+  /** The id of the instantiated pack ✓ */
   targetId: string;
-  /** 什么时候探的 ✓ */
+  /** When it was probed ✓ */
   probedAt: string;
-  /** 怎么连上的 ✓ */
+  /** How it was connected ✓ */
   connection: ProbeConnection | null;
-  /** **猜的**那些 ✓ */
+  /** The guessed ones ✓ */
   guessed: GuessedNote[];
-  /** **这板没有**的那些 ✓（**也是事实** ✓） */
+  /** The ones this board does not have ✓ (those are facts too ✓) */
   missing: { readerId: string; detail: string }[];
 }
 
-/** 实例化的结果 */
+/** The result of the instantiation */
 export interface InstantiateResult {
-  /** 实例化出来的包 ✓ */
+  /** The instantiated pack ✓ */
   pack: BoardPack;
-  /** 它的来路 ✓ */
+  /** Where it came from ✓ */
   provenance: Provenance;
 }
 
-/** 实例化的输入 */
+/** The input of the instantiation */
 export interface InstantiateOptions {
-  /** 通用包（**配方** ✓） */
+  /** The generic pack (the recipe ✓) */
   source: BoardPack;
-  /** 新包的 id ✓（**一块板一个** ✓） */
+  /** The id of the new pack ✓ (one per board ✓) */
   targetId: string;
-  /** 新包的名字 ✓（**给人看的** ✓） */
+  /** The name of the new pack ✓ (for the reader ✓) */
   targetName: string;
-  /** 探针的结果 ✓（**每个 reader 一条** ✓） */
+  /** The result of the probe ✓ (one per reader ✓) */
   outcomes: ProbeOutcome[];
-  /** 怎么连上的 ✓（**可选** ✓） */
+  /** How it was connected ✓ (optional ✓) */
   connection?: ProbeConnection;
-  /** 现在是什么时候（**可注入** ✓ —— 好测 ✓） */
+  /** What time it is now (injectable ✓ — easy to test ✓) */
   now?: () => Date;
 }
 
 /**
- * **`custom.<旧 id>.` → `custom.<新 id>.`** ✓
+ * `custom.<old id>.` → `custom.<new id>.` ✓
  *
- * → **只改 custom 命名空间** ✓ → **核心词表里的 tag 一律不动** ✓
- *   （`cpu.usage` 不是 custom ✓ —— 改它就是**改契约** ✗）。
+ * → Only the custom namespace is changed ✓ → the tags of the core
+ *   vocabulary are never touched ✓
+ *   (`cpu.usage` is not custom ✓ — changing it would be changing the
+ *   contract ✗).
  */
 export function retagCustom(tag: string, fromId: string, toId: string): string {
   const prefix = `custom.${fromId}.`;
@@ -109,7 +125,7 @@ export function retagCustom(tag: string, fromId: string, toId: string): string {
   return `custom.${toId}.${tag.slice(prefix.length)}`;
 }
 
-/** 一个 reader 的 tag 前缀全改了 ✓ */
+/** The tag prefix of one reader is changed everywhere ✓ */
 function retagReader(reader: ReaderDef, fromId: string, toId: string): ReaderDef {
   return {
     ...reader,
@@ -118,10 +134,13 @@ function retagReader(reader: ReaderDef, fromId: string, toId: string): ReaderDef
 }
 
 /**
- * **哪些量是「猜的」** ✓ —— 通用包**给不出**板子特有的名字 ✓。
+ * Which quantities are "guessed" ✓ — the generic pack cannot give
+ * the names that are specific to the board ✓.
  *
- * → **温区的归并** ✓（`type_map` 是猜的 ✓ —— 哪个温区是 SoC **要手册才知道** ✓）。
- * → **其余的**：路径是 Linux 的**约定** ✓ → **不是猜** ✓（有没有 ✓ 几个 ✓ 是事实 ✓）。
+ * → The grouping of the thermal zones ✓ (the `type_map` is a guess ✓ —
+ *   which thermal zone is the SoC is only known from the manual ✓).
+ * → The rest: the paths are the conventions of Linux ✓ → not a
+ *   guess ✓ (whether it exists ✓ and how many are facts ✓).
  */
 function guessedOf(pack: BoardPack): GuessedNote[] {
   const out: GuessedNote[] = [];
@@ -139,25 +158,27 @@ function guessedOf(pack: BoardPack): GuessedNote[] {
 }
 
 /**
- * **实例化**：通用包 + 探针结果 → 这块板的包 ✓。
+ * The instantiation: the generic pack + the result of the probe → the
+ * pack of this board ✓.
  *
- * ── 规则只有一条 ──
+ * ── There is only one rule ──
  *
- * → **「绿的留、红的删」** ✓（`docs/探索/02` §四.1 ✓）
- * → **红的、但板子上确实有别的 → 留给 agent 发现** ✓（**不猜** ✓）。
+ * → Keep what succeeded, drop what failed ✓
+ * → The red ones, but the board really has something else → leave it to
+ *   the agent to discover ✓ (do not guess ✓).
  */
 export function instantiatePack(opts: InstantiateOptions): InstantiateResult {
   const { source, targetId, targetName, outcomes } = opts;
   const okByReader = new Map<string, ProbeOutcome>();
   for (const o of outcomes) okByReader.set(o.readerId, o);
 
-  // ── 1. 绿的留、红的删 ✓ ──
+  // ── 1. Keep the green ones, drop the red ones ✓ ──
   const keep = (reader: ReaderDef): boolean => okByReader.get(reader.id)?.ok === true;
 
   const readers = source.readers.filter(keep).map((r) => retagReader(r, source.id, targetId));
   const custom = source.custom.filter(keep).map((r) => retagReader(r, source.id, targetId));
 
-  // ── 2. 组里只留还在的 reader ✓；组空了 → 整个组去掉 ✓ ──
+  // ── 2. Only the readers that are still there stay in a group ✓; an empty group → the whole group is dropped ✓ ──
   const alive = new Set([...readers, ...custom].map((r) => r.id));
   const pollGroups: PollGroupDef[] = [];
   for (const group of source.poll_groups) {
@@ -166,7 +187,7 @@ export function instantiatePack(opts: InstantiateOptions): InstantiateResult {
     pollGroups.push({ id: group.id, interval_ms: group.interval_ms, readers: kept });
   }
 
-  // ── 3. 动作：留 ✓（**动作不探测** ✓ —— 它们要写侧才试得到 ✓）──
+  // ── 3. The actions: keep them ✓ (the actions are not probed ✓ — they can only be tried on the write side ✓) ──
   const actions = source.actions;
 
   const pack: BoardPack = {
@@ -183,15 +204,16 @@ export function instantiatePack(opts: InstantiateOptions): InstantiateResult {
     ...(source.danger_floor_version !== undefined
       ? { danger_floor_version: source.danger_floor_version }
       : {}),
-    // **故意不写 `match`** ✓ —— **型号要人来定** ✓（通用包猜的 ✓ · 实例化也猜 ✓）
-    // → **不写 → 它不参与自动识别** ✓ → **不会跟别的包抢** ✓
+    // The `match` is deliberately not written ✓ — the model has to be decided by a human ✓ (the generic pack guesses it ✓ · the instantiation guesses it too ✓)
+    // → Not written → it does not take part in the automatic detection ✓ → it does not compete with the other packs ✓
     poll_groups: pollGroups,
     readers,
     custom,
     actions,
   };
 
-  // ── 4. 来路 ✓ ──
+  // ── 4. The provenance ✓ ──
+
   const missing = outcomes
     .filter((o) => !o.ok)
     .map((o) => ({ readerId: o.readerId, detail: o.detail }));

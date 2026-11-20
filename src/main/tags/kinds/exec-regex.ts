@@ -3,14 +3,17 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `exec_regex` —— 跑一条命令，正则取（逃生门 2，契约 §3.2）。
+ * `exec_regex` — run one command and extract with a regular expression
+ * (escape hatch 2, contract section 3.2).
  *
- * **⚠️ 它在板子上执行任意命令。**
- * 校验器对它**报警告**（规则 19），运行时对它执行的动作**记审计**。
+ * ⚠️ It runs an arbitrary command on the board.
+ * The validator raises a warning for it (rule 19) and the runtime writes an
+ * audit record for each execution.
  *
- * 它的 `command` **原样**进取数片段——这是**故意的**：
- * 转义一条命令就等于把它改成了另一条命令。
- * 包要不要装、能执行什么命令，是**人的确认**（ADR-D20）那一条链的事。
+ * Its `command` goes into the fetch fragment verbatim, and that is
+ * deliberate: escaping a command is the same as turning it into a different
+ * command. Whether a pack may be installed and which commands it may run is
+ * a matter of the user's confirmation (the chain of ADR-D20).
  */
 
 export const EXEC_REGEX: ReaderKind = {

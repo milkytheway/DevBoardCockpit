@@ -12,87 +12,98 @@ import { installInstantiatedPack } from './install';
 import type { FirstTruth } from './chain';
 
 /**
- * **向导的主流程** ✓ —— 2026-11-19 加 ✓。
+ * The main flow of the wizard ✓ — added 2026-11-19.
  *
- * ── 人只参与一步 ✓ ──
+ * ── The person takes part in one step ✓ ──
  *
  * ```
- * 人：选 COM 口 + 波特率          ← 【整个向导里，人唯一必须做的事】
+ * The person picks the COM port + the baud rate   ← 【the only thing the person has to do in the whole wizard】
  *         ↓
- * 向导：跑一条命令                ← 「第一个真相」✓
+ * The wizard runs one command                      ← "the first truth" ✓
  *         ↓
- *      板子回了 → 逐个试通用元操作 ✓ → 真相表 ✓
+ *      The board answered → try the generic meta-operations one by one ✓ → the truth table ✓
  *         ↓
- *      实例化 ✓ → 落盘 ✓ → 这块板有自己的包了 ✓
+ *      Instantiate ✓ → write to disk ✓ → this board has a pack of its own ✓
  * ```
  *
- * ── ⚠️ **「第一个真相」怎么算 ✓** ──
+ * ── ⚠️ How "the first truth" is computed ✓ ──
  *
- * → **一条真的能跑命令的连接** ✓ —— 不是「连上了」✓，是「**命令真的返回了东西**」✓
- *   （`docs/探索/02` §二.1 ✓）。
- * → **跑什么** ✓：`cat /proc/device-tree/model` ✓
- *   —— **它是最普适的那一条** ✓（**任何 Linux 都有** ✓）→ **回包即真相** ✓。
- * → **四种结果要分开说** ✓：
- *   **端口打不开** ✓ · **板子没说话** ✓ · **有回包但像乱码** ✓ · **成了** ✓
- *   （**它们是不同的故障** ✓ → **修法完全不同** ✓）。
+ * → A connection that really can run a command ✓ — not "it is
+ *   connected" ✓, but "the command really returned something" ✓ ✓.
+ * → What to run ✓: `cat /proc/device-tree/model` ✓
+ *   — it is the most universal one ✓ (any Linux has it ✓) → the
+ *   reply is the truth ✓.
+ * → The four results have to be said apart ✓:
+ *   the port cannot be opened ✓ · the board said nothing ✓ · there
+ *   is a reply but it looks like garbage ✓ · it worked ✓
+ *   (they are different faults ✓ → the fixes are completely
+ *   different ✓).
  */
 
-/** 人给的东西 ✓（**向导里人唯一必须做的** ✓） */
+/** What the person gives ✓ (the only thing the person has to do in the wizard ✓) */
 export interface WizardInput {
-  /** 串口号 ✓（**不自动枚举** ✓ —— 用户已定 ✓） */
+  /** The serial port ✓ (not enumerated automatically ✓ — the user has decided ✓) */
   port: string;
-  /** 波特率 ✓（**不试** ✓ —— 用户已定 ✓） */
+  /** The baud rate ✓ (not tried ✓ — the user has decided ✓) */
   baudrate: number;
-  /** 这块板叫什么 ✓（**给包起名** ✓） */
+  /** What this board is called ✓ (it names the pack ✓) */
   boardName: string;
-  /** 板的 id ✓（**默认从名字来** ✓） */
+  /** The id of the board ✓ (derived from the name by default ✓) */
   boardId?: string;
   /**
-   * **走哪条通道** ✓（**默认串口** ✓ —— 用户定的是「先从串口开始」✓）。
+   * Which line it goes over ✓ (the serial line by default ✓ — the
+   * user decided that "it starts with the serial line" ✓).
    *
-   * → **adb** ✓ —— **插上 USB 就有** ✓ · **零凭据** ✓（探索档案 §九·Q6 ✓）。
-   * → **serial** ✓ —— **调试口** ✓。
+   * → adb ✓ — it is there as soon as the USB is plugged in ✓ ·
+   *   no credential at all ✓.
+   * → serial ✓ — the debug port ✓.
    */
   transport?: 'serial' | 'adb';
 }
 
-/** 向导跑完的结果 */
+/** The result of a wizard run */
 export interface WizardResult {
-  /** 成了没有 ✓ */
+  /** Did it work ✓ */
   ok: boolean;
-  /** **第一个真相** ✓ */
+  /** The first truth ✓ */
   firstTruth: FirstTruth;
-  /** **传输层给的提示** ✓（**可选** ✓ —— 串口知道「回包被吃了」✓） */
+  /** The hint the transport gave ✓ (optional ✓ — the serial line knows "the reply was swallowed" ✓) */
   hint?: string;
-  /** **真相表** ✓（**试通用元操作的结果** ✓） */
+  /** The truth table ✓ (the result of trying the generic meta-operations ✓) */
   reports?: ProbeReaderReport[];
-  /** **实例化出来的包** ✓ */
+  /** The instantiated pack ✓ */
   pack?: ReturnType<typeof instantiatePack>['pack'];
-  /** **它落在哪** ✓ */
+  /** Where it landed ✓ */
   installedDir?: string;
-  /** **说一句人话** ✓ */
+  /** One sentence in plain language ✓ */
   message: string;
 }
 
-/** 跑第一条命令用的（**最普适的那一条** ✓） */
+/** The command of the first round (the most universal one ✓) */
 const FIRST_COMMAND = 'cat /proc/device-tree/model';
 
 /**
- * 从名字派生一个 id ✓。
+ * Derive an id from a name ✓.
  *
- * ── ⚠️ **中文名要能用** ✓（**这是真问题** ✓ · 2026-11-19 实测踩到 ✓）──
+ * ── ⚠️ A Chinese name has to work ✓ (this is a real problem ✓ · it
+ * was hit on 2026-11-19) ──
  *
- * → 第一版用 `[^a-z0-9._-]+` 全换成横线 ✓ → **中文名整个没了** ✓
- *   → 「我的板子」变成 `board` ✓ → **两块中文名的板会撞** ⚠️
- *   （id 撞了 → **一个盖掉另一个** ⚠️）。
- * → **所以：中文保留** ✓（**契约不限制 tag/id 的字符集** ✓ —— 规则 1 只查命名空间 ✓），
- *   **只去掉路径上真正危险的字符** ✓（`/ \\ : * ? " < > |` ✓）。
- * → **保留大小写** ✓（中文没有大小写 ✓ · 英文保留原样 ✓ —— 名字是给人看的 ✓）。
+ * → The first version replaced everything that matched `[^a-z0-9._-]+` with
+ *   a hyphen ✓ → a Chinese name was gone entirely ✓
+ *   → "my board" became `board` ✓ → two boards with Chinese names would
+ *   collide ⚠️
+ *   (the ids collide → one overwrites the other ⚠️).
+ * → So: the Chinese is kept ✓ (the contract does not restrict the
+ *   character set of a tag or an id ✓ — rule 1 only checks the
+ *   namespace ✓), only the characters that are really dangerous on a path
+ *   are removed ✓ (`/ \ : * ? " < > |` ✓).
+ * → The case is kept ✓ (Chinese has no case ✓ · English stays as it
+ *   is ✓ — the name is for a human to read ✓).
  */
 export function boardIdOf(name: string): string {
   const id = name
     .trim()
-    // **去掉路径上真正危险的字符** ✓（其余全留 ✓ —— **中文要能用** ✓）
+    // The characters that are really dangerous on a path are removed ✓ (the rest stays ✓ — the Chinese has to work ✓)
     .replace(/[\\/:*?"<>|]+/g, '-')
     .replace(/\s+/g, '-')
     .replace(/^-+|-+$/g, '');
@@ -100,22 +111,23 @@ export function boardIdOf(name: string): string {
 }
 
 /**
- * **向导要用的依赖** ✓ —— **可注入** ✓（**好测** ✓ —— 不真开串口也能测 ✓）。
+ * The dependencies the wizard needs ✓ — injectable ✓ (easy to
+ * test ✓ — it can be tested without really opening a serial line).
  */
 export interface WizardDeps {
-  /** 建连接 ✓ */
+  /** Build the connection ✓ */
   createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection;
-  /** 建会话日志 ✓ */
+  /** Build the session log ✓ */
   createLog: (label: string, transport: string) => SessionLog;
-  /** **通用包在哪** ✓ */
+  /** Where the generic pack is ✓ */
   genericPackDir: string;
-  /** **用户板型包目录** ✓ */
+  /** The directory of the user board packs ✓ */
   boardsRoot: string;
-  /** **用户连接 profile 目录** ✓ */
+  /** The directory of the user connection profiles ✓ */
   profilesRoot: string;
 }
 
-/** 造一条**临时的**串口 profile ✓（**指名 `generic-linux`** ✓ —— 零新机制 ✓） */
+/** Build a temporary serial profile ✓ (it names `generic-linux` ✓ — no new mechanism at all ✓) */
 export function serialProfileOf(input: WizardInput, boardId: string): ConnectionProfile {
   const transport = input.transport ?? 'serial';
   if (transport === 'adb') {
@@ -124,7 +136,7 @@ export function serialProfileOf(input: WizardInput, boardId: string): Connection
         id: `wizard-${boardId}`,
         label: `Wizard · ADB`,
         transport: 'adb',
-        // **指名通用包** ✓ → 「连接指名了某个包」那条路**根本不看 match** ✓
+        // It names the generic pack ✓ → the route "the connection names a pack" does not look at match at all ✓
         board_pack: 'generic-linux',
         device_key: boardId,
         options: {},
@@ -137,7 +149,7 @@ export function serialProfileOf(input: WizardInput, boardId: string): Connection
       id: `wizard-${boardId}`,
       label: `Wizard · ${input.port}`,
       transport: 'serial',
-      // **指名通用包** ✓ → 「连接指名了某个包」那条路**根本不看 match** ✓
+      // It names the generic pack ✓ → the route "the connection names a pack" does not look at match at all ✓
       board_pack: 'generic-linux',
       device_key: boardId,
       options: { port: input.port, baudrate: input.baudrate, pty: true },
@@ -147,12 +159,14 @@ export function serialProfileOf(input: WizardInput, boardId: string): Connection
 }
 
 /**
- * **「第一个真相」** ✓ —— **一条真的能跑命令的连接** ✓。
+ * "The first truth" ✓ — a connection that really can run a command
+ * ✓.
  *
- * → **端口打不开** ✓ → `port-unopenable` ✓
- * → **超时了** ✓ → `no-reply` ✓（**板子没说话** ✓ —— **不是「连不上」** ✓）
- * → **回包里有乱码** ✓ → `wrong-baud` ✓
- * → **回了** ✓ → `ok` ✓
+ * → The port cannot be opened ✓ → `port-unopenable` ✓
+ * → It timed out ✓ → `no-reply` ✓ (the board said nothing ✓ —
+ *   not "it cannot be reached" ✓)
+ * → There is garbage in the reply ✓ → `wrong-baud` ✓
+ * → It replied ✓ → `ok` ✓
  */
 export function firstTruthOf(
   connection: Connection,
@@ -169,7 +183,7 @@ export function firstTruthOf(
           ok: false,
           kind: 'no-reply',
           detail: 'it connected, but the command got no reply',
-          // **传输层的话要带出来** ✓（串口知道「回包被别的程序吃了」✓ —— **别丢** ✗）
+          // The words of the transport are carried out ✓ (the serial line knows "the reply was swallowed by another program" ✓ — do not throw it away ✗)
           ...(result.hint !== undefined ? { hint: result.hint } : {}),
         };
       }
@@ -181,17 +195,17 @@ export function firstTruthOf(
     })
     .catch((err: unknown): FirstTruth => {
       const message = err instanceof Error ? err.message : String(err);
-      // **端口打不开**与**别的错**要分开 ✓
+      // The port cannot be opened and the other errors have to be told apart ✓
       //
-      // ⚠️ **判据要认「错误码」** ✓ —— **别只认消息文本** ✓
-      // （**中文差一个字就分错了** ✓ —— 实测 2026-11-20 ⚠️：
-      //   串口抛的是「**打不开**串口 COM99」✓ → **不含「打开」** ✓ →
-      //   只按文本匹配 → **它被归成「板子没说话」** ⚠️ → **说错了故障** ⚠️）
+      // ⚠️ The criterion has to look at the error code ✓ — not only at the message text ✓
+      // (one different character and it is classified wrongly ✓ — measured on 2026-11-20 ⚠️:
+      //   the serial line throws "cannot open serial COM99" ✓ → it does not contain "open" ✓ →
+      //   matching only the text → it is classified as "the board said nothing" ⚠️ → the wrong fault is reported ⚠️)
       const code = (err as { code?: string } | undefined)?.code;
       if (code === 'CONN_OPEN_FAILED' || code === 'PORT_BUSY') {
         return { ok: false, kind: 'port-unopenable', detail: message };
       }
-      // **文本只当兜底** ✓（错误码之外的错 ✓）
+      // The text is only a fallback ✓ (the errors other than the code ✓)
       if (/cannot open|not open|is busy|ENOENT|EBUSY|Access|denied/i.test(message)) {
         return { ok: false, kind: 'port-unopenable', detail: message };
       }
@@ -200,10 +214,11 @@ export function firstTruthOf(
 }
 
 /**
- * **向导主流程** ✓。
+ * The main flow of the wizard ✓.
  *
- * → **人只参与第一步** ✓ → **其余全自动** ✓。
- * → **每一步的结果都要能说清楚** ✓（`chain.ts` ✓）。
+ * → The person takes part in the first step ✓ → everything else is
+ *   automatic ✓.
+ * → The result of every step has to be sayable ✓ (`chain.ts` ✓).
  */
 export async function runWizard(
   input: WizardInput,
@@ -238,14 +253,14 @@ export async function runWizard(
     };
   }
 
-  // ── 第一个真相 ✓ ──
+  // ── The first truth ✓ ──
   const truth = await firstTruthOf(connection);
   if (!truth.ok) {
     await connection.close().catch(() => undefined);
     return {
       ok: false,
       firstTruth: truth,
-      // **传输层的 hint 一起带出去** ✓（界面要能显示它 ✓）
+      // The hint of the transport is carried out too ✓ (the interface has to be able to show it ✓)
       ...(truth.hint !== undefined ? { hint: truth.hint } : {}),
       message:
         truth.kind === 'port-unopenable'
@@ -254,12 +269,12 @@ export async function runWizard(
     };
   }
 
-  // ── 逐个试通用元操作 ✓ ──
+  // ── Try the generic meta-operations one by one ✓ ──
   const generic = loadBoardPack(deps.genericPackDir);
   const report = await probePack(generic, connection);
   await connection.close().catch(() => undefined);
 
-  // ── 实例化 + 落盘 ✓ ──
+  // ── Instantiate + write to disk ✓ ──
   const result = instantiatePack({
     source: generic,
     targetId: boardId,
@@ -271,7 +286,7 @@ export async function runWizard(
         : { transport: 'adb' },
   });
 
-  // **落盘前先落一条 profile** ✓ —— **不然这块板在界面上选不到** ✓
+  // A profile is written first ✓ — otherwise this board cannot be selected in the interface ✓
   writeProfile(deps.profilesRoot, boardId, input);
 
   const { dir } = installInstantiatedPack({
@@ -280,8 +295,8 @@ export async function runWizard(
     boardsRoot: deps.boardsRoot,
   });
 
-  // **旧的同名包不挡事** ✓ —— 「不悄悄覆盖」是**落盘时**的规矩 ✓
-  // → **这里要覆盖** ✓（向导重跑一次 = 重新探一遍 ✓ → 产物应该更新 ✓）
+  // An old pack with the same name does not get in the way ✓ — "do not overwrite silently" is a rule of writing to disk ✓
+  // → Here it has to be overwritten ✓ (running the wizard again = probing again ✓ → the product should be updated ✓)
   return {
     ok: true,
     firstTruth: truth,
@@ -295,9 +310,11 @@ export async function runWizard(
 }
 
 /**
- * **落一条连接 profile** ✓ —— **不然这块板在界面上选不到** ✓。
+ * Write a connection profile ✓ — otherwise this board cannot be
+ * selected in the interface ✓.
  *
- * → **同名就覆盖** ✓（向导重跑 = 重新探一遍 ✓ → profile 也该更新 ✓）。
+ * → The same name is overwritten ✓ (running the wizard again = probing
+ *   again ✓ → the profile should be updated too ✓).
  */
 export function writeProfile(profilesRoot: string, boardId: string, input: WizardInput): void {
   mkdirSync(profilesRoot, { recursive: true });
@@ -320,7 +337,8 @@ export function writeProfile(profilesRoot: string, boardId: string, input: Wizar
   );
 }
 
-/** 这个文件在不在（**判据用** ✓） */
+/** Is this file there (for the criterion ✓) */
+
 export function profileExists(profilesRoot: string, boardId: string): boolean {
   return existsSync(join(profilesRoot, `board-${boardId}.json`));
 }

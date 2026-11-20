@@ -2,30 +2,37 @@ import { quoteShellValue } from '../util/shell-quote';
 import { placeholdersOf } from './format';
 
 /**
- * 占位符的替换 —— 流程层的**注入防线**在哪儿。
+ * The substitution of the placeholders — where the injection line of defence
+ * of the workflow layer is.
  *
- * ── 两种模式，差别在「谁来填」 ──
+ * ── Two modes, the difference is "who fills it in" ──
  *
- * | 模式 | 用在哪 | 输入值 | 角色事实 | 槽里的路径 |
+ * | Mode | Where it is used | The input value | The role facts | The path in a slot |
  * |---|---|---|---|---|
- * | **命令模式** | 步骤的命令、回读的二次验证命令 | **按类型编码过的**（整数不带引号、字符串单引号） | 原样 | **单引号包住** |
- * | **值模式** | 回读的 `expect` / `path` | 原样 | 原样 | 原样 |
+ * | Command mode | the command of a step, the second verification command of a readback | encoded by type (an integer without quotes, a string in single quotes) | as they are | wrapped in single quotes |
+ * | Value mode | the `expect` / `path` of a readback | as they are | as they are | as they are |
  *
- * ── 为什么角色事实**也包引号** ──
+ * ── Why the role facts are quoted as well ──
  *
- * → 它来自**宿主的连接 profile**（半可信 ✓）—— 但「半可信」不等于「可信」：
- * 一个手写的 profile 里塞了 `; reboot` 的 host，那条命令就会带着它跑出去 ✗。
- * → **按类型编码的规矩：字符串包引号** ✓（数字类的 `port` 不包 ✓）。
- * → **代价** ✓：`scp` 会写成 `'root'@'192.168.5.100'` ✓
- * → **shell 剥引号后才拼词** ✓（POSIX 的词拼接 ✓）→ `scp` 收到的是 `root@192.168.5.100` ✓。
+ * → They come from the connection profile of the host (half trusted ✓)
+ *   — but "half trusted" is not "trusted": a hand-written profile with a
+ *   host of `; reboot` would carry that into the command ✗.
+ * → The rule of the encoding by type: a string is quoted ✓ (a numeric
+ *   `port` is not quoted ✓).
+ * → The cost ✓: `scp` comes out as `'root'@'192.168.5.100'` ✓
+ * → the shell strips the quotes before it glues the words together ✓
+ *   (the POSIX word concatenation ✓) → `scp` receives
+ *   `root@192.168.5.100` ✓.
  *
- * ── 为什么输入值**要**包引号 ──
+ * ── Why the input values are quoted ──
  *
- * 输入可能来自 **agent**（不可信）✗ ——`; reboot` 这种必须被当字面量 ✓。
- * → 走**编码器那套类型规则**（`spec/02` §4.6）✓ → 整数不带引号、字符串单引号 ✓。
+ * The input may come from an agent (untrusted) ✗ — something like
+ * `; reboot` has to be treated as a literal ✓.
+ * → It follows the type rules of the encoder (`spec/02` section 4.6) ✓ → an
+ *   integer without quotes, a string in single quotes ✓.
  */
 
-/** 一个角色的连接事实（**封闭**：`format.ts` 的 `ROLE_FACTS`） */
+/** The connection facts of one role (closed: the `ROLE_FACTS` of `format.ts`) */
 export interface RoleFacts {
   host: string;
   port: number;
@@ -35,27 +42,27 @@ export interface RoleFacts {
 }
 
 export interface SubstitutionContext {
-  /** 输入的**原始值**（值模式用；也是回读比较的对象） */
+  /** The raw value of the inputs (used by the value mode; also the object of the readback comparison) */
   inputs: Record<string, unknown>;
-  /** 输入的**编码片段**（命令模式用；按类型编码过） */
+  /** The encoded fragment of the inputs (used by the command mode; encoded by type) */
   encoded: Record<string, string>;
-  /** 角色的事实 */
+  /** The facts of the roles */
   roleFacts: Record<string, RoleFacts>;
-  /** 已产出的槽（路径） */
+  /** The slots that have been produced (paths) */
   outputs: Record<string, string>;
-  /** 这一步自己的端点（只有 `file.transfer` 步有） */
+  /** The endpoints of this step (only a `file.transfer` step has them) */
   endpoints?: { from?: string; to?: string };
 }
 
-/** 命令模式：输入用编码片段、路径加引号、角色事实原样 */
+/** Command mode: the input uses the encoded fragment, the path is quoted, the role facts are as they are */
 export function substituteCommand(text: string, ctx: SubstitutionContext): string {
   let out = text;
-  // ── 先把 `{input:x}` 换成编码片段 ──
+  // ── First replace `{input:x}` with the encoded fragment ──
   out = out.replace(/\{input:([^}]+)\}/g, (_match, name: string) => {
     const encoded = ctx.encoded[name];
     return encoded === undefined ? `{input:${name}}` : encoded;
   });
-  // ── 槽里的路径与端点：单引号包住（路径可能有空格与分号）──
+  // ── The path in a slot and the endpoints: wrapped in single quotes (a path may hold spaces and semicolons) ──
   out = out.replace(/\{output:([^}.]+)(\.name)?\}/g, (_match, slot: string, attr?: string) => {
     const value = ctx.outputs[slot];
     if (value === undefined) return `{output:${slot}}`;
@@ -65,11 +72,13 @@ export function substituteCommand(text: string, ctx: SubstitutionContext): strin
     const value = ctx.endpoints?.[which];
     return value === undefined ? `{${which}.path}` : quoteShellValue(value, 'path');
   });
-  // ── 角色事实：**也要包引号** ──
+  // ── The role facts: they are quoted as well ──
   //
-  // 它来自**宿主的连接 profile**（半可信 ✓）——但「半可信」不等于「可信」：
-  // 一个手写的 profile 里塞了 `; reboot` 的 host，那条命令就会带着它跑出去 ✗。
-  // → **按类型编码的规矩：字符串包引号** ✓（数字类的 `port` 不包 ✓）。
+  // They come from the connection profile of the host (half trusted ✓)
+  // — but "half trusted" is not "trusted": a hand-written profile with a
+  // host of `; reboot` would carry that into the command ✗.
+  // → The rule of the encoding by type: a string is quoted ✓ (a numeric
+  //   `port` is not quoted ✓).
   out = out.replace(/\{role:([^}.]+)\.([^}]+)\}/g, (_match, role: string, fact: string) => {
     const facts = ctx.roleFacts[role];
     if (facts === undefined) return `{role:${role}.${fact}}`;
@@ -80,7 +89,7 @@ export function substituteCommand(text: string, ctx: SubstitutionContext): strin
   return out;
 }
 
-/** 值模式：全部原样（回读的 `expect` / `path` 比的是**值**，不是 shell 片段） */
+/** Value mode: everything as it is (the `expect` / `path` of a readback compare values, not shell fragments) */
 export function substituteValue(text: string, ctx: SubstitutionContext): string {
   let out = text;
   out = out.replace(/\{input:([^}]+)\}/g, (_match, name: string) => {
@@ -105,14 +114,14 @@ export function substituteValue(text: string, ctx: SubstitutionContext): string 
   return out;
 }
 
-/** 文件名去掉扩展名（`hello.ko` → `hello`） */
+/** The file name without the extension (`hello.ko` → `hello`) */
 export function basenameWithoutExt(path: string): string {
   const base = path.slice(path.lastIndexOf('/') + 1);
   const dot = base.lastIndexOf('.');
   return dot <= 0 ? base : base.slice(0, dot);
 }
 
-/** 这段文本里用到了哪些占位符（诊断用） */
+/** Which placeholders this text uses (for the diagnostics) */
 export function usedPlaceholders(text: string): ReturnType<typeof placeholdersOf> {
   return placeholdersOf(text);
 }

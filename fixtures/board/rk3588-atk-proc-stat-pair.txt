@@ -11,6 +11,7 @@
 #
 # Samples are append-only: this file is the addition, the old one stays as a
 # regression input.
+###FIRST
 cpu  48866 0 34391 77632117 4047 0 237 0 0 0
 cpu0 41281 0 14215 9662070 17 0 51 0 0 0
 cpu1 2564 0 7105 9688505 3898 0 78 0 0 0

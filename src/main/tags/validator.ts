@@ -11,20 +11,26 @@ import { DANGER_FLOOR_VERSION, matchDangerFloor, tokenizeCommand } from './floor
 import { collectPlaceholders } from '../util/shell-quote';
 
 /**
- * **shell 元字符**（**会让一段文本变成两条命令** ✓）。
+ * The shell metacharacters (they turn one piece of text into two
+ * commands).
  *
- * → **reader 的参数值会被拼进 shell** ✓ → **值里有这些就是第二条命令** ✓。
- * → **注意不含正则的元字符** ✓（`^` `(` `)` `[` `]` `.` `+` `*` ✓）——
- *   **正则不是 shell** ✓（`exec_regex` 的 `pattern` 是给输出用的 ✓ → 豁免 ✓）。
+ * → The argument values of a reader are spliced into the shell → a
+ *   value that carries one of them is a second command.
+ * → The metacharacters of a regular expression are not among them
+ *   (`^` `(` `)` `[` `]` `.` `+` `*`) — a regular expression is not a
+ *   shell (the `pattern` of `exec_regex` applies to the output, so it is
+ *   exempt).
  */
 const SHELL_METACHARACTERS: readonly string[] = [';', '|', '&', '`', '$', '>', '<', '\n', '\r'];
 
 /**
- * **不进 shell 的参数**（**按 kind + 参数名** ✓ —— **封闭清单** ✓）。
+ * The arguments that do not go into the shell (per kind plus argument
+ * name — a closed list).
  *
- * → `exec_regex.command` 是**一条命令** ✓（**规则 30 管它** ✓）；
- * → `exec_regex.pattern` 是**正则** ✓（**只作用于输出** ✓）；
- * → `script.*` 是**宿主路径** ✓（**而且 script 被规则 31 禁了** ✓）。
+ * → `exec_regex.command` is a command (rule 30 governs it);
+ * → `exec_regex.pattern` is a regular expression (it only applies to
+ *   the output);
+ * → `script.*` are paths on the host (and rule 31 forbids `script`).
  */
 const NOT_IN_SHELL: Record<string, readonly string[]> = {
   exec_regex: ['command', 'pattern'],
@@ -32,10 +38,13 @@ const NOT_IN_SHELL: Record<string, readonly string[]> = {
 };
 
 /**
- * **解释器 / 下载器 / 提权器**（**包装起来就绕过了危险地板** ✓）。
+ * The interpreters / downloaders / privilege escalators (wrapping a
+ * command in one of them bypasses the danger floor).
  *
- * → 地板表匹配的是**词** ✓ —— `bash -c 'rm -rf /'` **一个词都不匹配** ✓
- * → **所以这些词不许出现在 reader 的命令里** ✓（**任何位置** ✓）。
+ * → The floor table matches words — `bash -c 'rm -rf /'` does not
+ *   match a single word
+ * → So these words may not appear in the command of a reader (in any
+ *   position).
  */
 const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
   'sh', 'bash', 'zsh', 'dash', 'ksh', 'csh', 'tcsh', 'ash',
@@ -47,53 +56,59 @@ const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 板型包的校验器——契约 `docs/spec/02-board-pack.md` §七 的 **31 条规则**。
+ * The validator of a board pack — the 31 rules of section 7 of the
+ * contract `docs/spec/02-board-pack.md`.
  *
- * **「这 27 条就是契约本身」**（契约原话）：实现层必须逐条实现，
- * 缺一条都不算实现了板型包格式。
+ * "These 27 rules are the contract itself" (the words of the contract):
+ * the implementation has to implement them one by one, and it does not count
+ * as implementing the board pack format while one of them is missing.
  *
- * ── 两条设计约定 ──
+ * ── Two design conventions ──
  *
- * **1. 每条规则只报「它自己该报的」。**
- * 同一个坏包可能违反好几条规则——**每条都要报**（用户要一次看到全部问题，
- * 而不是修一个跑一次）。但**同一件事**只由一条规则报：
- * 规则 3（占空比不许叫 usage）与规则 4（没声明 measure）是两件事；
- * 规则 15（destructive 的回读形式不对）与规则 27（动作压根没写回读）也是两件事。
+ * 1. Every rule reports only what it is supposed to report.
+ * One broken pack may break several rules — all of them have to be
+ * reported (the user wants to see all the problems at once, and not to
+ * fix one and run again). But one thing is reported by one rule only:
+ * rule 3 (a duty cycle may not be called usage) and rule 4 (measure not
+ * declared) are two things; rule 15 (the wrong readback form for a
+ * destructive action) and rule 27 (the action has no readback at all) are
+ * two things as well.
  *
- * **2. 报告里带规则号。**
- * 「包不合法」没有用；「**规则 16** 破了：这条命令命中危险地板
- * （reboot），但动作声明成 reversible」才有用。
+ * 2. The report carries the rule number.
+ * "The pack is invalid" is useless; "rule 16 is broken: this command
+ * hits the danger floor (reboot) but the action is declared as reversible"
+ * is useful.
  */
 
-/** 一条校验结果 */
+/** One result of the validation */
 export interface ValidationIssue {
   severity: 'error' | 'warning';
-  /** 契约里的规则号（1..27）。**报告里必须带它** */
+  /** The rule number of the contract (1..27). The report has to carry it */
   rule: number;
-  /** 包内的位置，如 `readers[2].provides[0].tag` */
+  /** The place inside the pack, such as `readers[2].provides[0].tag` */
   path: string;
-  /** 给人看的一句话 */
+  /** One sentence for the reader */
   message: string;
 }
 
-/** `readback.kind` 的封闭枚举（规则 23） */
+/** The closed enumeration of `readback.kind` (rule 23) */
 const READBACK_KINDS = new Set(['file_equals', 'command_ok', 'verify', 'none']);
 
-/** 动作参数的封闭类型（规则 20） */
+/** The closed types of an action parameter (rule 20) */
 const PARAM_TYPES = new Set(['integer', 'number', 'string', 'boolean', 'enum']);
 
-/** 取出文本里所有的 `{param}` 占位名（去重）。**占位正则只有一份**（`util/shell-quote.ts`） */
+/** All the `{param}` placeholder names of a text (deduplicated). The placeholder pattern exists only once (`util/shell-quote.ts`) */
 function placeholders(text: string | undefined): string[] {
   if (typeof text !== 'string') return [];
   return collectPlaceholders(text);
 }
 
-/** tag 是不是 `*.usage` 这一类 */
+/** Whether the tag is of the `*.usage` kind */
 function isUsageTag(tag: string): boolean {
   return tag.endsWith('.usage');
 }
 
-/** 两个 tag 模式会不会撞车（规则 2） */
+/** Whether two tag patterns collide (rule 2) */
 function patternsOverlap(a: string, b: string): boolean {
   const as = a.split('.');
   const bs = b.split('.');
@@ -105,7 +120,7 @@ function patternsOverlap(a: string, b: string): boolean {
   return true;
 }
 
-/** 包里所有 reader（readers + custom），带路径前缀 */
+/** Every reader of the pack (readers + custom), with the path prefix */
 function allReaders(pack: BoardPack): { reader: ReaderDef; path: string }[] {
   return [
     ...pack.readers.map((reader, i) => ({ reader, path: `readers[${i}]` })),
@@ -114,9 +129,9 @@ function allReaders(pack: BoardPack): { reader: ReaderDef; path: string }[] {
 }
 
 /**
- * 校验一个板型包。
+ * Validate a board pack.
  *
- * @returns 全部问题。**空数组 = 这个包合法。**
+ * @returns every problem. An empty array means the pack is valid.
  */
 export function validatePack(pack: BoardPack): ValidationIssue[] {
   const out: ValidationIssue[] = [];
@@ -129,7 +144,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
 
   const readers = allReaders(pack);
 
-  // ── 规则 1 · tag 必须落在核心词表或 custom.<本包 id>. 下 ──
+  // ── Rule 1 · the tag has to fall in the core vocabulary or under custom.<this pack id>. ──
   for (const { reader, path } of readers) {
     reader.provides.forEach((p, i) => {
       if (!isCoreTag(p.tag) && !isCustomTag(p.tag, pack.id)) {
@@ -142,7 +157,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     });
   }
 
-  // ── 规则 2 · 两个 reader 的 tag 模式不得重叠 ──
+  // ── Rule 2 · the tag patterns of two readers must not overlap ──
   const tagEntries: { tag: string; path: string }[] = [];
   for (const { reader, path } of readers) {
     reader.provides.forEach((p, i) => {
@@ -159,7 +174,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 7 · tag 与 sample 的 * 数量必须一致 ──
+  // ── Rule 7 · the tag and the sample must have the same number of * ──
   for (const { reader, path } of readers) {
     reader.provides.forEach((p, i) => {
       const tagStars = (p.tag.match(/\*/g) ?? []).length;
@@ -174,8 +189,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     });
   }
 
-  // ── 规则 3 · devfreq_load 的 duty_cycle 不得绑到任何 *.usage ──
-  // ── 规则 4 · 绑到 *.usage 却没有声明 measure ──
+  // ── Rule 3 · the duty_cycle of devfreq_load must not be bound to any *.usage ──
+  // ── Rule 4 · bound to *.usage without a declared measure ──
   for (const { reader, path } of readers) {
     if (reader.kind !== 'devfreq_load') continue;
     const measure = reader.args?.['measure'];
@@ -189,12 +204,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         );
       }
       if (measure !== 'utilization') {
-        // 契约规则 4 的判据是「**必须声明 measure: utilization**」——
-        // **等于** utilization，不是「非空」。
+        // The criterion of contract rule 4 is "measure: utilization has to be
+        // declared" — equal to utilization, not "not empty".
         //
-        // 「非空」会让 `measure: utilzation`（拼错）一路放行——
-        // 而 devfreq 的 load 文件读出的是**占空比**（空闲时 100），
-        // 于是占空符被原样发布成利用率。**那是这个工程最在意的那类假数。**
+        // "Not empty" would let `measure: utilzation` (a typo) pass all the
+        // way — and the load file of devfreq reads a duty cycle (100
+        // when idle), so the duty cycle would be published as a utilisation.
+        // That is the kind of false number this project cares most
+        // about.
         err(
           4,
           `${path}.provides[${i}].tag`,
@@ -206,7 +223,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 5 · proc_stat 必须把 usage 绑到 cpu.usage ──
+  // ── Rule 5 · proc_stat has to bind usage to cpu.usage ──
   for (const { reader, path } of readers) {
     if (reader.kind !== 'proc_stat') continue;
     const ok = reader.provides.some((p) => p.tag === 'cpu.usage' && p.sample === 'usage');
@@ -215,9 +232,9 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 6 · provides[].sample 必须是该 kind 能产出的 sample ──
-  // ── 规则 8 · reader 声明的参数必须在 kind 的 schema 里存在 ──
-  // ── 规则 9 · 必填参数不能缺 ──
+  // ── Rule 6 · provides[].sample must be a sample that the kind can produce ──
+  // ── Rule 8 · the arguments a reader declares have to exist in the schema of the kind ──
+  // ── Rule 9 · a required argument must not be missing ──
   for (const { reader, path } of readers) {
     const kind = getKind(reader.kind);
     if (kind === undefined) {
@@ -243,8 +260,10 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
         err(8, `${path}.args.${key}`, `kind "${kind.id}" has no such parameter (it has: ${Object.keys(kind.params).join(' / ')})`);
         continue;
       }
-      // **取值**也要合 schema：`measure: utilzation` 这种拼错，
-      // 参数名是对的、值不在 enum 清单里——**一路放行就是假数**。
+      // The value has to match the schema too: a typo such as
+      // `measure: utilzation` has a correct argument name and a value that
+      // is not in the enum list — letting it pass all the way is a false
+      // number.
       const spec = kind.params[key]!;
       if (spec.values !== undefined) {
         const value = args[key];
@@ -271,7 +290,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 11 · match.models 非空字符串列表；match.mode 只能是 exact/substring ──
+  // ── Rule 11 · match.models is a non-empty list of strings; match.mode can only be exact/substring ──
   if (pack.match !== undefined) {
     if (pack.match.models.length === 0) {
       err(11, 'match.models', 'models must not be an empty list (automatic detection relies on it)');
@@ -284,15 +303,15 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 12 · action 的 readback.tag 必须是本包提供的 tag ──
+  // ── Rule 12 · the readback.tag of an action must be a tag this pack provides ──
   const providedTags = tagEntries.map((t) => t.tag);
 
-  // ── 规则 13 / 14 / 15 / 20 / 21 / 22 / 23 / 27 逐个动作查 ──
+  // ── Rules 13 / 14 / 15 / 20 / 21 / 22 / 23 / 27 are checked per action ──
   pack.actions.forEach((action, i) => {
     const path = `actions[${i}]`;
     const declared = Object.keys(action.params ?? {});
 
-    // 规则 13 · 占位必须声明
+    // Rule 13 · a placeholder has to be declared
     const used = new Set([
       ...placeholders(action.command),
       ...placeholders(action.readback?.path),
@@ -304,14 +323,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       }
     }
 
-    // 规则 14 · 声明了但没用的参数是死参数
+    // Rule 14 · a declared but unused parameter is a dead parameter
     for (const name of declared) {
       if (!used.has(name)) {
         err(14, `${path}.params.${name}`, `parameter "${name}" is declared but never used in the command or the readback`);
       }
     }
 
-    // 规则 20 · 参数的类型封闭
+    // Rule 20 · the type of a parameter is closed
     for (const [name, spec] of Object.entries(action.params ?? {})) {
       const at = `${path}.params.${name}`;
       if (!PARAM_TYPES.has(spec.type)) {
@@ -328,12 +347,12 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       }
     }
 
-    // 规则 21 · 占位不得自带引号
+    // Rule 21 · a placeholder must not carry its own quotes
     for (const m of action.command.matchAll(/['"]\{([A-Za-z_][A-Za-z0-9_]*)\}['"]/g)) {
       err(21, `${path}.command`, `placeholder {${m[1]}} carries its own quotes — the runtime encodes quotes uniformly, so stacking them breaks`);
     }
 
-    // 规则 22 · guard 必须是 params 声明域的子集
+    // Rule 22 · a guard must be a subset of the declared domain of the params
     for (const [name, guard] of Object.entries(action.guard ?? {})) {
       const at = `${path}.guard.${name}`;
       const param = action.params?.[name];
@@ -349,13 +368,13 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       }
     }
 
-    // 规则 23 · readback.kind 属于封闭枚举
+    // Rule 23 · readback.kind belongs to the closed enumeration
     const kind = action.readback?.kind;
     if (kind !== undefined && !READBACK_KINDS.has(kind)) {
       err(23, `${path}.readback.kind`, `kind "${kind}" is not a value of the readback forms (${[...READBACK_KINDS].join(' / ')})`);
     }
 
-    // 规则 27 · 每个 action 必须有 readback；none 必须带非空 consequence
+    // Rule 27 · every action must have a readback; none must carry a non-empty consequence
     if (action.readback === undefined) {
       err(27, `${path}.readback`, 'every action must declare a readback (if there is no readable state, write kind: none explicitly)');
     } else if (kind === 'none') {
@@ -363,8 +382,10 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       if (typeof consequence !== 'string' || consequence.trim().length === 0) {
         err(27, `${path}.readback.consequence`, 'kind: none must carry a non-empty consequence (what the user approves is "I know it will do this")');
       } else {
-        // **逐动作 warning**（ADR-D25 决策 6、契约 §4.4.1 第四条规矩）：
-        // 「想偷懒跳过回读的包作者会立刻看到一串警告——**这个可见性就是主要防线**」。
+        // A warning per action (decision 6 of ADR-D25, the fourth rule of
+        // contract section 4.4.1): "a pack author who wants to skip the
+        // readback sees a row of warnings at once — that visibility is
+        // the main line of defence".
         warn(
           27,
           `${path}.readback`,
@@ -373,14 +394,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       }
     }
 
-    // 规则 15 · destructive 的回读形式：不得用 command_ok，也不得用 none
+    // Rule 15 · the readback form of a destructive action: neither command_ok nor none
     if (action.danger === 'destructive' && action.readback !== undefined) {
       if (kind === 'command_ok' || kind === 'none') {
         err(15, `${path}.readback.kind`, `a destructive action must not use ${kind} (an irreversible action must not be fired blindly)`);
       }
     }
 
-    // 规则 12 · readback.tag 必须是本包提供的 tag
+    // Rule 12 · the readback.tag must be a tag this pack provides
     const readbackTag = action.readback?.tag;
     if (readbackTag !== undefined) {
       const ok = providedTags.some((t) => matchTagPattern(t, readbackTag));
@@ -389,14 +410,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
       }
     }
 
-    // 规则 16 · 命中危险地板的命令必须声明为 destructive
+    // Rule 16 · a command that hits the danger floor must be declared as destructive
     const floor = matchDangerFloor(action.command);
     if (floor.matched && action.danger !== 'destructive') {
       err(16, `${path}.command`, `the command hits the danger floor (${floor.pattern}, ${floor.why}), so it must be declared as destructive`);
     }
   });
 
-  // ── 规则 17 · 每个 reader 必须属于恰好一个 poll group ──
+  // ── Rule 17 · every reader must belong to exactly one poll group ──
   for (const { reader, path } of readers) {
     const groups = pack.poll_groups.filter((g) => g.readers.includes(reader.id));
     if (groups.length === 0) {
@@ -414,26 +435,30 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 18 · poll group 的 interval_ms 不低于 200 ──
+  // ── Rule 18 · the interval_ms of a poll group is not below 200 ──
   pack.poll_groups.forEach((group, gi) => {
     if (group.interval_ms < 200) {
       err(18, `poll_groups[${gi}].interval_ms`, `the sampling interval ${group.interval_ms}ms is too tight (below 200ms it overwhelms the board)`);
     }
   });
 
-  // ── 规则 19 · exec_regex / script 存在时打印警告 ──
+  // ── Rule 19 · a warning is printed when exec_regex / script are present ──
   for (const { reader, path } of readers) {
     if (reader.kind === 'exec_regex' || reader.kind === 'script') {
       warn(19, path, `kind "${reader.kind}" runs arbitrary code on the board (its execution events go into the audit log)`);
     }
   }
 
-  // ── 规则 28 · reader 的取数命令不许命中危险地板 ──
+  // ── Rule 28 · the fetch command of a reader must not hit the danger floor ──
   //
-  // → **板型包直接生效**（用户 2026-11-16：「**板子描述文件说了算**」✓ · ADR-D46 ✓）
-  //   → **「启用前要人确认」那道门没了** ✓ → **这条规则就是替代它的那道** ✓
-  // → **`exec_regex` 的命令原样上板** ✓ → **它必须自己过地板** ✓
-  //   （**reader 不是动作** ✓ —— 它不过执行器 ✓ —— **所以这里判** ✓）
+  // → A board pack takes effect directly (the user on 2026-11-16: "the
+  //   board description file decides" ✓ · ADR-D46 ✓)
+  //   → The gate of "a human confirms before it is enabled" is gone ✓ →
+  //   this rule is the one that replaced it ✓
+  // → The command of `exec_regex` goes onto the board verbatim ✓ → it
+  //   has to pass the floor itself ✓
+  //   (a reader is not an action ✓ — it does not go through the
+  //   executor ✓ — so it is judged here ✓)
   for (const { reader, path } of readers) {
     const kind = getKind(reader.kind);
     if (kind === undefined) continue;
@@ -441,7 +466,8 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     try {
       fragment = kind.fetch(reader.args ?? {});
     } catch {
-      // **参数不对** ✓ → **规则 8 / 9 已经报过了** ✓ → **这里不重复报** ✓
+      // The arguments are wrong ✓ → rules 8 / 9 have already reported
+      // it ✓ → it is not reported again here ✓
       continue;
     }
     const floor = matchDangerFloor(fragment);
@@ -455,11 +481,14 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 29 · reader 的参数值不许含 shell 元字符 ──
+  // ── Rule 29 · the argument values of a reader must not carry shell metacharacters ──
   //
-  // → **reader 的取数片段会被拼进一条 shell 命令** ✓（`fetch.ts` ✓）
-  //   → **包里的值带元字符 = 拼出第二条命令** ✓（**这是绕过地板的路** ✓）
-  // → 例外：**不进 shell 的参数** ✓（`exec_regex` 的 `command`/`pattern` ✓ · `script` 的路径 ✓）
+  // → The fetch fragment of a reader is spliced into a shell command ✓
+  //   (`fetch.ts` ✓)
+  //   → A value in the pack that carries a metacharacter splices out a
+  //   second command ✓ (that is the way around the floor ✓)
+  // → The exception: the arguments that do not go into the shell ✓ (the
+  //   `command`/`pattern` of `exec_regex` ✓ · the paths of `script` ✓)
   for (const { reader, path } of readers) {
     const exempt = NOT_IN_SHELL[reader.kind] ?? [];
     const args = reader.args ?? {};
@@ -478,12 +507,15 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 30 · `exec_regex` 的命令不许是「解释器包装」 ──
+  // ── Rule 30 · the command of `exec_regex` must not be an "interpreter wrapper" ──
   //
-  // → **它的命令原样上板** ✓ → **地板表只有那几条词** ✓
-  //   → `bash -c 'rm -rf /'` **匹配不上地板** ✓ → **规则 28 放行** ✓ → **危险** ✓
-  // → 所以：**命令里不许出现解释器 / 下载器 / 提权器** ✓（**任何位置** ✓ ——
-  //   **包装器就是绕过地板的那条路** ✓）。
+  // → Its command goes onto the board verbatim ✓ → the floor table has
+  //   only those few words ✓
+  //   → `bash -c 'rm -rf /'` does not match the floor ✓ → rule 28 lets
+  //   it through ✓ → dangerous ✓
+  // → So: the command must not contain an interpreter / downloader /
+  //   privilege escalator ✓ (in any position — a wrapper is the way
+  //   around the floor ✓).
   for (const { reader, path } of readers) {
     if (reader.kind !== 'exec_regex') continue;
     const command = reader.args?.['command'];
@@ -501,17 +533,20 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     }
   }
 
-  // ── 规则 31 · 板型包里不许用 `script` kind ──
+  // ── Rule 31 · the kind `script` must not be used in a board pack ──
   //
-  // → **它执行的是脚本正文** ✓（**正文一个字都没查** ✓ → **地板看不见它** ✓）
-  // → 而且运行时**还不给它推脚本** ✓（`sampler.ts` ✓ → 它报 unavailable ✓）
-  //   → **那是一个还没开的洞** ✓ → **不许用** ✓（**别留一个「将来会开」的洞** ✓）。
+  // → What it executes is the body of the script ✓ (not one character
+  //   of the body is checked ✓ → the floor cannot see it ✓)
+  // → And the runtime does not even push the script for it ✓
+  //   (`sampler.ts` ✓ → it reports unavailable ✓)
+  //   → That is a hole that is not open yet ✓ → it must not be
+  //   used ✓ (do not leave a hole that "will be opened later" ✓).
   for (const { reader, path } of readers) {
     if (reader.kind !== 'script') continue;
     err(31, `${path}.kind`, 'kind "script" runs the script body (the floor cannot see it) — it is not allowed in a board pack');
   }
 
-  // ── 规则 24 · danger_floor_version 必须是已知版本 ──
+  // ── Rule 24 · danger_floor_version has to be a known version ──
   if (pack.danger_floor_version !== undefined && pack.danger_floor_version !== DANGER_FLOOR_VERSION) {
     err(
       24,
@@ -520,7 +555,7 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
     );
   }
 
-  // ── 规则 25 / 26 · requires.capabilities 的封闭词表与已实现能力集 ──
+  // ── Rules 25 / 26 · the closed vocabulary of requires.capabilities and the set of implemented capabilities ──
   pack.requires.capabilities.forEach((cap, i) => {
     if (!isBoardCapability(cap)) {
       err(25, `requires.capabilities[${i}]`, `capability "${cap}" is not in the board-level vocabulary (shell / exec / stream / files)`);
@@ -538,12 +573,13 @@ export function validatePack(pack: BoardPack): ValidationIssue[] {
   return out;
 }
 
-/** 只要 error（warning 不影响包的有效性） */
+/** Only the errors (a warning does not affect the validity of the pack) */
 export function errorsOf(issues: ValidationIssue[]): ValidationIssue[] {
   return issues.filter((i) => i.severity === 'error');
 }
 
-/** 只要 warning */
+/** Only the warnings */
+
 export function warningsOf(issues: ValidationIssue[]): ValidationIssue[] {
   return issues.filter((i) => i.severity === 'warning');
 }

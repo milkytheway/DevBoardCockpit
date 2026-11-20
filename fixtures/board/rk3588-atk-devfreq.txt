@@ -10,6 +10,7 @@
 # Contract `spec/01` section 7 warns about exactly this: the devfreq `load`
 # value is a clock duty cycle, not a utilisation figure. This sample turns
 # the warning from an inference into a measurement.
+###GPU_DEVFRQ
 0@300000000Hz
 ###NPU_DEVFRQ
 100@1000000000Hz

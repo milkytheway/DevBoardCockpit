@@ -18,42 +18,49 @@ import { substituteCommand, substituteValue, type RoleFacts, type SubstitutionCo
 import type { WorkflowPack, WorkflowStep, WorkflowStepKind } from './format';
 
 /**
- * 流程的执行器 —— **把「一件事怎么做」跑出来**。
+ * The executor of a workflow — it carries out "how this task is done".
  *
- * ── 它不新造第二条执行路径 ──
+ * ── It does not build a second execution path ──
  *
- * 每一个写步骤**都走 M6 的执行器**（`actions/executor.ts`）：
- * 编码 → 地板复查 → 授权 → **执行 + 回读（一个独占事务）** → 审计 ✓
- * （**不再有「确认」那一步** ✓ —— 2026-11-16 砍掉 ✓ · ADR-D48 ✓）。
- * → 流程层**只补两样东西**：
- * ① **指名目标**（`runTransaction` 接到哪个目标上 —— 计划 5 的 A17 缺口）；
- * ② **判据可以在别的角色上读**（跨目标的验证 —— ADR-D32 D32-2）。
+ * Every writing step goes through the executor of M6
+ * (`actions/executor.ts`): encode → check the floor again → authorise →
+ * execute + read back (one exclusive transaction) → audit ✓
+ * (there is no "confirm" step any more — cut on 2026-11-16 · ADR-D48).
+ * → The workflow layer only adds two things:
+ * ① naming the target (which target `runTransaction` is hooked onto —
+ *   the A17 gap of plan 5);
+ * ② the criterion may be read on another role (the verification across
+ *   targets — ADR-D32 D32-2).
  *
- * ── 自由命令（`exec`）怎么过授权 ──
+ * ── How a free command (`exec`) gets authorised ──
  *
- * 契约 `spec/02` §5.6 的信任模型：**自由命令要有人的许可**。
- * → **那道许可今天在设置里的统一权限区** ✓（ADR-D47 ✓）——
- *   **流程那一行开关开着 = 这个人知道它会跑哪些命令** ✓（`05` §7.4 ✓）。
- * → **命中危险地板的步 → 包加载不了** ✓（**规则 16** ✓ —— 校验器判 ✓）。
- * → **运行期不再问人** ✓（**2026-11-16** ✓ · ADR-D48 ✓）。
+ * The trust model of contract `spec/02` section 5.6: a free command needs
+ * the permission of a human.
+ * → That permission is the unified permission area in the settings today
+ *   (ADR-D47) — the row of switches for the workflows being on means this
+ *   person knows which commands it will run ✓ (`05` section 7.4).
+ * → A step that hits the danger floor → the pack does not load ✓
+ *   (rule 16 — the validator judges it).
+ * → Nobody is asked at runtime any more (2026-11-16 · ADR-D48).
  *
- * ── 判据的读法 ──
+ * ── How a criterion is read ──
  *
- * 判据**可以指名 role** → 「在板子上问板子」✓
- * （板型包的回读**只验「目标自己」**——跨目标的验证只有流程层能做 ✓）。
+ * A criterion may name a role → "ask the board on the board" ✓
+ * (the readback of a board pack only verifies "the target itself" — a
+ * verification across targets is something only the workflow layer can do).
  */
 export interface WorkflowStage {
   stepId: string;
   kind: WorkflowStepKind;
-  /** 在哪个角色上跑的（回读步 = 在哪个角色上读的） */
+  /** The role it ran on (for a readback step, the role it was read on) */
   role?: string;
   ok: boolean;
   verified: boolean;
   reason?: string;
   detail?: string;
-  /** 这一步的审计行 id（**追责单位**；时间线靠它指回审计） */
+  /** The id of the audit line of this step (the unit of responsibility; the timeline points back to the audit through it) */
   audit_id?: string;
-  /** 跨目标判据那一行的 id（**两个事实，两行账** ✓） */
+  /** The id of the line of the cross-target criterion (two facts, two rows ✓) */
   readback_audit_id?: string;
   at: number;
   durationMs: number;
@@ -65,62 +72,67 @@ export interface WorkflowRunResult {
   packId: string;
   ok: boolean;
   stages: WorkflowStage[];
-  /** 产出的槽 */
+  /** The produced slots */
   outputs: Record<string, string>;
 }
 
 /**
- * **时间线的实时钩子** ✓（契约 `05` §八·B ✓）。
+ * The live hooks of the timeline (contract `05` section 8·B).
  *
- * → 「跑到一半」这件事**得能被看见** ✓：
- * 编译是分钟级 ✓（实测 58.9s / 98.5s ✓）→ 界面不能一片死寂 ✓。
+ * → "It is halfway through" has to be visible:
+ * compiling takes minutes (measured 58.9 s / 98.5 s) → the interface may
+ * not be a dead silence.
  */
 export interface WorkflowTimelineHooks {
-  /** **这一步开始了** ✓（宿主据此说得出「现在在第几步」✓） */
+  /** This step has started (the host can say "which step is it at now" from it) */
   onStepStart?: (info: { stepId: string; kind: string; at: number }) => void;
-  /** **这一步有结果了** ✓（时间线**边跑边填** ✓ —— 不是跑完才给 ✓） */
+  /** This step has a result (the timeline fills while it runs — not only when it is done) */
   onStage?: (stage: WorkflowStage) => void;
 }
 
 export interface WorkflowRunDeps {
-  /** 目标登记处（按 profile id 拿连接） */
+  /** The target registry (a connection by profile id) */
   targets: TargetRegistry;
-  /** 宿主里的连接 profile（角色事实从这里来） */
+  /** The connection profiles of the host (the role facts come from here) */
   profileFor: (profileId: string) => ConnectionProfile | undefined;
-  /** 审计（每步一行）——**返回那一行的 id** */
+  /** The audit (one line per step) — it returns the id of that line */
   audit: (row: AuditRow) => string;
-  /** 板型包里的动作（`action` 步用） */
+  /** The actions of the board pack (used by the `action` step) */
   actionDef?: (actionId: string) => ActionDef | undefined;
-  /** 读一个 tag（回读形式 1 用） */
+  /** Read one tag (used by the readback form 1) */
   readTag?: (tag: string) => Promise<TagReading | undefined>;
-  /** **实时时间线**（宿主用 ✓ —— 让 `status` 说得出「现在在第几步」✓） */
+  /** The live timeline (the host uses it — it lets `status` say "which step is it at now") */
   timeline?: WorkflowTimelineHooks;
-  /** 现在（毫秒） */
+  /** Now (milliseconds) */
   now?: () => number;
 }
 
 export interface WorkflowRunOptions {
   /**
-   * **从第几步开始跑**（续跑时用 ✓）。
+   * Which step to start at (used when it continues).
    *
-   * → 为什么要它：destructive 步要人点头 → 流程**停在那一步** ✓ →
-   * 人点了之后**从那一步继续** ✓ → **前面的步不能重跑** ✓
-   * （重跑 = 编译两遍、传两遍 ✗）。
+   * → Why it exists: a destructive step has to be nodded at → the workflow
+   *   stops at that step →
+   * after the nod it continues from that step → the earlier steps may
+   *   not run again
+   *   (running them again means compiling twice and transferring twice ✗).
    */
   startAt?: number;
-  /** 续跑时**带上之前的产出**（槽 ✓） */
+  /** The produced slots to carry over when it continues */
   outputs?: Record<string, string>;
   /**
-   * **中途叫停**（`AbortSignal` ✓）—— 「人不要了」✓。
+   * Calling it off halfway (an `AbortSignal`) — "the human does not want
+   * it any more".
    *
-   * → 尖兵实测：没有这条路时，一个 75 秒的传输步**收到取消后照跑完** ✗。
+   * → Measured: without this path a transfer step of 75 seconds ran to the
+   *   end even after the cancellation ✗.
    */
   signal?: AbortSignal;
-  /** **这次运行的 id**（续跑时沿用它 ✓ —— 续跑是**同一次运行** ✓） */
+  /** The id of this run (it keeps it when it continues — continuing is the same run) */
   runId?: string;
 }
 
-/** 跑的输入（按流程包声明的类型校验） */
+/** The inputs of the run (validated against the types the workflow pack declares) */
 export async function runWorkflow(
   pack: WorkflowPack,
   inputs: Record<string, unknown>,
@@ -129,24 +141,24 @@ export async function runWorkflow(
 ): Promise<WorkflowRunResult> {
   const now = deps.now ?? (() => Date.now());
   const at = now();
-  // **续跑是同一次运行** → runId 由调用方给 ✓（不给就现生成一个 ✓）
+  // Continuing is the same run → the runId comes from the caller ✓ (if it gives none, one is generated ✓)
   const runId = opts.runId ?? `wf-${at.toString(36)}`;
   const outputs: Record<string, string> = {};
   const stages: WorkflowStage[] = [];
 
-  // ── 输入：**默认值先填上**（调用方给的值优先 ✓）──
-  // → 契约 §二：`default` = 「调用方没给时用它」✓
-  // → ⚠️ **两种替换模式都要拿到它** ✓（独立评审 40 的 I-3 ✓）：
-  //   命令模式（`{input:x}` → 编码后的片段 ✓）与**值模式**（回读的 `expect` ✓、
-  //   `action` 步的 `params` ✓、`discover` 的 `dir` ✓）**读的是两份不同的东西** ✓
-  //   → 只填一份 ✓ → **值模式拿到的是字面量 `{input:x}`** ✗
+  // ── The inputs: the defaults are filled in first (the value the caller gave wins ✓) ──
+  // → Contract section 2: `default` = "use it when the caller gave none"
+  // → ⚠️ Both substitution modes have to get it ✓ (I-3 of the independent review 40):
+  //   the command mode (`{input:x}` → the encoded fragment) and the value mode (the `expect` of a readback, the `params` of an `action` step, the `dir` of a `discover`) read two different things
+  //   → Filling only one → the value mode gets the literal `{input:x}` ✗
+  //   → Filling only one → the value mode gets the literal `{input:x}` ✗
   const defaults: Record<string, unknown> = {};
   for (const [name, def] of Object.entries(pack.inputs)) {
     if (def.default !== undefined) defaults[name] = def.default;
   }
   const mergedInputs: Record<string, unknown> = { ...defaults, ...inputs };
 
-  // ── 输入：按包声明的类型校验（缺必填 / 类型不对 → **执行前**就拒）──
+  // ── The inputs: validated against the types the pack declares (a missing required one / a wrong type → it is refused before it runs) ──
   let encodedInputs: Record<string, string>;
   try {
     encodedInputs = encodeParams(inputSchema(pack), mergedInputs);
@@ -174,7 +186,7 @@ export async function runWorkflow(
 
   const roleFacts = factsOf(pack, deps);
 
-  // **续跑**：从第几步开始 ✓ + 带上之前的产出 ✓
+  // Continuing: start at the given step ✓ + carry over the produced slots ✓
   const startAt = Math.max(0, opts.startAt ?? 0);
   if (opts.outputs !== undefined) {
     for (const [slot, value] of Object.entries(opts.outputs)) outputs[slot] = value;
@@ -182,8 +194,8 @@ export async function runWorkflow(
 
   for (const [index, step] of pack.steps.entries()) {
     if (index < startAt) continue;
-    // **被叫停了 → 这一步就不跑了** ✓（独立评审 40 的 I-6 ✓）
-    // → 「人不要了，就别再往下做」✓（还往下做 = 不听话 ✗）
+    // It was called off → this step does not run ✓ (I-6 of the independent review 40)
+    // → "The human does not want it, so do not go on" ✓ (going on would be disobedience ✗)
     if (opts.signal?.aborted === true) break;
     const stage = await runStep(step, {
       pack,
@@ -197,14 +209,14 @@ export async function runWorkflow(
       now,
     });
     stages.push(stage);
-    // **时间线边跑边填** ✓（不是跑完才给 ✓ —— 契约 §八·B ✓）
+    // The timeline fills while it runs ✓ (not only when it is done — contract section 8·B)
     deps.timeline?.onStage?.(stage);
 
-    // **这一步跑着的时候被叫停了 → 不跑下一步** ✓（独立评审 40 的 I-6 ✓）
-    // → 靠**下一轮开头那道**拦住 ✓（那道在跑之前就问一次「还要跑吗」✓）
+    // It was called off while this step was running → the next step does not run ✓ (I-6 of the independent review 40)
+    // → It is caught by the check at the start of the next round ✓ (that check asks "shall we go on" once before it runs ✓)
 
     if (!stage.ok) {
-      // `assert` 不符时可以不中断（`on_mismatch: continue`）
+      // `assert` may continue when it does not match (`on_mismatch: continue`)
       if (step.kind === 'assert' && step.on_mismatch === 'continue') continue;
       break;
     }
@@ -219,7 +231,7 @@ export async function runWorkflow(
   };
 }
 
-/* ── 内部 ──────────────────────────────────────────────────────────── */
+/* ── Internals ──────────────────────────────────────────────────────────── */
 
 interface StepContext {
   pack: WorkflowPack;
@@ -234,23 +246,29 @@ interface StepContext {
 }
 
 /**
- * **把流程里的字符串参数转成动作声明的那个类型** ✓。
+ * Turn the string parameters of the workflow into the type the action
+ * declares.
  *
- * ── 为什么需要这一步 ──
+ * ── Why this step is needed ──
  *
- * 流程包的 `params` 值**只能是字符串** ✓（流程包形状封闭 ✓ —— `spec/05` §4.2 ✓），
- * 而板型包的动作参数**带类型** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
- * `spec/02` §4.3 ✓）。**两边对不上** ✗ →
- * 带类型的动作**在流程里调不动** ✗（实测：`invalid_params：参数「value」要 integer` ✓）。
+ * The values of `params` of a workflow pack can only be strings (the
+ * shape of a workflow pack is closed — `spec/05` section 4.2), while the
+ * parameters of an action of a board pack carry a type (`integer` /
+ * `number` / `boolean` / `enum` — `spec/02` section 4.3). The two do not
+ * match ✗ →
+ * a typed action cannot be called from a workflow ✗ (measured:
+ * `invalid_params: the parameter "value" has to be an integer`).
  *
- * → 在这里转 ✓ —— **转完照样过授权层的 schema 校验** ✓（转不改变语义 ✓）。
+ * → The conversion happens here — and it still passes the schema check of
+ *   the authorisation layer ✓ (the conversion does not change the
+ *   meaning ✓).
  *
- * | 声明类型 | 转法 |
+ * | Declared type | How it is converted |
  * |---|---|
- * | `integer` | `Number.parseInt` ✓ —— **转不成整数就原样留着** ✓（让授权层报错 ✓ —— **不要在这儿编** ✓） |
- * | `number` | `Number` ✓ —— 同上 ✓ |
- * | `boolean` | `'true'` → `true` · `'false'` → `false` · **别的原样留着** ✓ |
- * | `string` / `enum` | **不转** ✓（本来就是字符串 ✓） |
+ * | `integer` | `Number.parseInt` — what does not parse stays as it is (the authorisation layer reports it — do not invent a value here) |
+ * | `number` | `Number` — the same ✓ |
+ * | `boolean` | `'true'` → `true` · `'false'` → `false` · anything else stays as it is ✓ |
+ * | `string` / `enum` | not converted (they are strings already) ✓ |
  */
 function coerceParam(value: string, type: PackParam['type']): unknown {
   switch (type) {
@@ -277,15 +295,15 @@ async function runStep(step: WorkflowStep, ctx: StepContext): Promise<WorkflowSt
   const started = at;
   const role = step.role;
 
-  // **「这一步开始了」** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
+  // "This step has started" ✓ (the host can say "which step is it at now" — contract section 8·B ✓)
   ctx.deps.timeline?.onStepStart?.({ stepId: step.id, kind: step.kind, at: started });
 
   try {
-    // ── 端点（`file.transfer` 的源与目的地）──
-    // ⚠️ **在 try 里面** ✓（独立评审 40 的 I-2 ✓）：
-    // → 目标连不上 / 端点算不出来 ✓ → **这一步要变成时间线上的一行** ✓
-    // → 放在 try 外面 ✗ → 异常穿透 runStep ✓ → 穿透 runWorkflow ✓ →
-    //   **整次运行的时间线上一行都没有** ✗（用户只看到一个 failed + 一句 raw error ✗）
+    // ── The endpoints (the source and the destination of `file.transfer`) ──
+    // ⚠️ Inside the try ✓ (I-2 of the independent review 40):
+    // → the target cannot be reached / the endpoint cannot be computed → this step has to become a line of the timeline ✓
+    // → Outside the try ✗ → the exception goes through runStep ✗ → goes through runWorkflow ✗ →
+    //   the timeline of the whole run does not even get a line ✗ (the user only sees a failed + a raw error ✗)
     const endpoints = await resolveEndpoints(step, ctx);
 
     const substitution: SubstitutionContext = {
@@ -335,7 +353,7 @@ async function runStep(step: WorkflowStep, ctx: StepContext): Promise<WorkflowSt
   }
 }
 
-/** 一个 `exec` 步：自由命令 → **过 M6 的执行器** */
+/** One `exec` step: a free command → through the executor of M6 */
 async function runExec(
   step: WorkflowStep,
   ctx: StepContext,
@@ -350,20 +368,20 @@ async function runExec(
   const profileId = ctx.pack.roles[role]?.profile;
   if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
 
-  // **合成一个动作定义** → 走 M6 的七步链（不新造第二条执行路径 ✓）
+  // Compose an action definition → it goes through the seven-step chain of M6 (no second execution path ✓)
   const action: ActionDef = {
     id: `exec:${step.id}`,
     label: step.id,
-    // **步可以声明自己是 destructive**（凭据准备那一步 ✓ A10）
+    // A step may declare itself destructive (the step that prepares the credentials ✓ A10)
     danger: step.danger ?? 'reversible',
     params: {},
     command,
-    // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
+    // A criterion that names another role → the executor does not verify it (a verification across targets is another transaction ✓)
     readback:
       step.readback?.role !== undefined && step.readback.role !== role
-        ? // **跨目标的判据不能塞 `none`**：`spec/02` §4.4.1 禁止 destructive 配 none ✓
-          // → 执行器那边用 `command_ok`（这条命令自己的退出码 ✓），
-          //   跨目标的那部分**由流程层另外验**（两个事实、两行账 ✓）
+? // A cross-target criterion may not be `none`: `spec/02` section 4.4.1 forbids destructive with none ✓
+          // → The executor uses `command_ok` (the exit code of that command itself ✓),
+          //   and the cross-target part is verified by the workflow layer separately (two facts, two rows ✓)
           { kind: 'command_ok' }
         : toReadbackDef(step.readback, substitution),
   };
@@ -373,11 +391,11 @@ async function runExec(
     executorDeps(ctx, profileId, action.id, step.timeout_ms),
   );
   const cross = await crossRoleReadback(step, ctx, substitution, role, started);
-  // **`out` 槽 = 这条命令的输出**（凭据准备那一步靠它把公钥交给下一步 ✓）
+  // The `out` slot = the output of this command (the step that prepares the credentials uses it to hand the public key to the next step ✓)
   if (step.out !== undefined && outcome.output !== undefined) {
     ctx.outputs[step.out] = outcome.output.trim();
   }
-  // **成败两边都要算** ✓（命令没成，跨目标判据过了**也不能算成功** ✗）
+  // Both the success and the failure are counted ✓ (the command failed, the cross-target criterion passed and it is still not a success ✗)
   const failed = !outcome.ok ? outcome : cross !== undefined && !cross.ok ? cross : undefined;
   return {
     stepId: step.id,
@@ -402,16 +420,21 @@ async function runExec(
 }
 
 /**
- * 判据指名了**别的角色** → 由流程层在那个角色上跑。
+ * The criterion names another role → the workflow layer runs it on that
+ * role.
  *
- * ── 为什么不能交给执行器 ──
+ * ── Why it cannot be left to the executor ──
  *
- * M6 的执行器**在执行的那条连接上回读**（SPEC-D22：执行与回读不可拆分 ✓）。
- * 跨目标的判据**在另一台机器上** → 那是**另一个事务** ✓
- * （本来就该分开：板子上没有产物，是板子的事实，不是客机那条命令的事实 ✓）。
+ * The executor of M6 reads back on the connection it executed on
+ * (SPEC-D22: the execution and the readback are indivisible ✓). A
+ * criterion across targets is on another machine → that is another
+ * transaction ✓
+ * (it has to be separate anyway: the artefact is not on the board, that is
+ * a fact of the board, not a fact of the command on the guest ✓).
  *
- * → 执行器那边给 `kind: none`（它不验）✓，流程层自己验 ✓，
- * **并且单独记一行审计**（两个事实，两行账 ✓）。
+ * → The executor gets `kind: none` (it does not verify) ✓, the workflow
+ *   layer verifies it itself ✓, and it writes a separate audit line (two
+ *   facts, two rows ✓).
  */
 async function crossRoleReadback(
   step: WorkflowStep,
@@ -425,8 +448,8 @@ async function crossRoleReadback(
 > {
   const readRole = step.readback?.role;
   if (readRole === undefined || readRole === stepRole) return undefined;
-  // **被叫停了 → 不跑跨目标的判据** ✓（独立评审 40 的 I-6 ✓）
-  // → 「东西都没传完，验它有什么意思」✗；而且取消后**别再让人多等一条命令** ✓
+  // It was called off → the cross-target criterion does not run ✓ (I-6 of the independent review 40)
+  // → "Nothing was transferred, what would verifying it mean" ✗; and after a cancellation nobody should wait for another command ✓
   if (ctx.opts.signal?.aborted === true) return undefined;
   const result = await runReadbackOnRole(ctx, readRole, step.readback, substitution);
   const auditId = ctx.deps.audit({
@@ -450,7 +473,7 @@ async function crossRoleReadback(
   };
 }
 
-/** 一个 `action` 步：引用板型包里**已声明的动作** → 走 M6 的执行器 */
+/** One `action` step: it refers to an already declared action of the board pack → through the executor of M6 */
 async function runAction(
   step: WorkflowStep,
   ctx: StepContext,
@@ -468,14 +491,15 @@ async function runAction(
   const profileId = ctx.pack.roles[role]?.profile;
   if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
 
-  // 参数：按动作自己的 schema 校验（**不信任包的自述** ✓）
+  // The parameters: validated against the schema of the action itself (the self-description of the pack is not trusted ✓)
   //
-  // ⚠️ **流程里的参数值都是字符串** ✓（流程包的形状是封闭的 ✓ —— `spec/05` §4.2 ✓），
-  // 而**动作的参数是有类型的** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
-  // `spec/02` §4.3 ✓）。**两边对不上** ✗ →
-  // 带类型的动作**在流程里调不动** ✗（实测 2026-11-16：
-  // `invalid_params：参数「value」要 integer` ✓）。
-  // → **按动作自己声明的类型转一遍** ✓（转完仍然由授权层按 schema 校验 ✓ —— 转不改变语义 ✓）。
+  // ⚠️ The parameter values in a workflow are all strings ✓ (the shape of a workflow pack is closed — `spec/05` section 4.2),
+  // while the parameters of an action carry a type ✓ (`integer` / `number` / `boolean` / `enum` — `spec/02` section 4.3). The two do not match ✗ →
+  // a typed action cannot be called from a workflow ✗ (measured on 2026-11-16:
+  // `invalid_params: the parameter "value" has to be an integer` ✓).
+  // → They are converted once, by the type the action declares ✓ (after the conversion the authorisation layer still validates against the schema ✓ — the conversion does not change the meaning ✓).
+  // → They are converted once, by the type the action declares ✓ (after the conversion the authorisation layer still validates against the schema ✓ — the conversion does not change the meaning ✓).
+
   const values: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(step.params ?? {})) {
     const value = substituteValue(raw, substitution);
@@ -502,7 +526,7 @@ async function runAction(
   };
 }
 
-/** 一个 `discover` 步：按规则找产物 → 落进槽 */
+/** One `discover` step: look for the artefacts by the rules → put them into the slot */
 async function runDiscover(
   step: WorkflowStep,
   ctx: StepContext,
@@ -515,9 +539,9 @@ async function runDiscover(
   }
   const profileId = ctx.pack.roles[role]?.profile;
   if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${role} has no profile bound to it`);
-  // **目录用值模式**（路径不该被引号包住——`list()` 拿的是路径，不是 shell 片段 ✓）
+  // The directory uses the value mode (the path must not be wrapped in quotes — `list()` wants a path, not a shell fragment ✓)
   const dir = substituteValue(step.dir ?? '.', substitution);
-  // **规则也是值模式**（文件名与排除表都是名字，不是 shell 片段 ✓）
+  // The rules use the value mode too (the file name and the exclude list are names, not shell fragments ✓)
   const pattern = substituteValue(step.pattern as string, substitution);
   const exclude = (step.exclude ?? []).map((rule) => substituteValue(rule, substitution));
   const found = await ctx.deps.targets.runOn(profileId, async (conn) =>
@@ -577,9 +601,11 @@ async function runDiscover(
 }
 
 /**
- * 目的地在不在（**传输前问一次** ✓ —— 契约 `05` §八·C·R1/R2 ✓）。
+ * Is the destination there (asked once before the transfer — contract `05`
+ * section 8·C·R1/R2).
  *
- * → `unknown` = **不知道** ✓（查不到 ✓）→ **拿不准就不删** ✓（契约 R2 ✓）。
+ * → `unknown` = it is not known (it could not be looked up) → when in
+ *   doubt it is not deleted ✓ (contract R2).
  */
 async function destinationState(
   ctx: StepContext,
@@ -595,26 +621,35 @@ async function destinationState(
     const entries = await ctx.deps.targets.runOn(profileId, (conn) => conn.list(dir));
     return entries.some((e) => e.name === base) ? 'there' : 'not-there';
   } catch {
-    // **查不到 → 不知道** ✓（不是「没有」✓ —— 那会把用户的文件当成残留 ✗）
+    // It could not be looked up → it is not known ✓ (not "there is none" ✓ — that would take the file of the user for a leftover ✗)
     return 'unknown';
   }
 }
 
 /**
- * 清掉传输留下的半截文件（契约 `05` §八·C ✓）。
+ * Clean up the half-written file that a transfer left behind (contract `05`
+ * section 8·C).
  *
- * ── 判据（**只有一条能确定「是这一步的东西」** ✓）──
+ * ── The criterion (only one thing can establish "it is from this step")
+ * ──
  *
- * → **目的地在传输前不存在** ✓ → 它**一定是**这次传出来的 ✓ → 归宿主管 ✓；
- * → **原本就存在** → **默认不动** ✓（别删用户的东西 ✓）；
- * → **查不到** → **不动** ✓（拿不准 → 不删 ✓）。
+ * → The destination did not exist before the transfer ✓ → it is
+ *   this transfer ✓ → the clean-up takes it ✓;
+ * → It existed already → it is left alone by default ✓ (do not
+ *   delete the things of the user ✓);
+ * → It could not be looked up → it is left alone ✓ (when in doubt
+ *   → do not delete ✓).
  *
- * ── 护栏 ──
+ * ── The guard rails ──
  *
- * → 路径**按 shell 规则包引号** ✓（换行/空字符**拒掉** ✓ —— 那是第二条命令 ✗）；
- * → **不递归** ✓（`rm -f` 对目录会失败 ✓ → 只可能删掉一个普通文件 ✓）；
- * → 路径**只取自这一步解析出来的目的地** ✓（包给不了别的路径 ✓）；
- * → **单独记一行审计** ✓、**不弹确认** ✓（它是这次运行自己的收尾 ✓）。
+ * → The path is quoted by the rules of the shell ✓ (a newline or a null
+ *   character is refused ✓ — that would be a second command ✗);
+ * → It is not recursive ✓ (`rm -f` fails on a directory ✓ → it can
+ *   only delete one regular file ✓);
+ * → The path comes only from the destination this step resolved ✓ (the
+ *   pack cannot give another path ✓);
+ * → A separate audit line is written ✓, no confirmation is asked ✓
+ *   (it is the clean-up of this very run ✓).
  */
 async function cleanupPartialTransfer(
   ctx: StepContext,
@@ -647,7 +682,7 @@ async function cleanupPartialTransfer(
   } catch {
     ok = false;
   }
-  // **清理也记一行审计** ✓（谁删的、删的哪个路径 ✓ —— 契约 R4 ✓）
+  // The clean-up writes an audit line too ✓ (who deleted it, which path — contract R4 ✓)
   ctx.deps.audit({
     at: ctx.now(),
     actor: `workflow:${ctx.pack.id}`,
@@ -661,7 +696,7 @@ async function cleanupPartialTransfer(
   return { cleaned: ok, note: ok ? 'the half-written file left by the transfer was removed' : 'the half-written file could not be removed' };
 }
 
-/** 一个 `file.transfer` 步：搬运（命令在**源**目标上跑） */
+/** One `file.transfer` step: the transfer (the command runs on the source target) */
 async function runTransfer(
   step: WorkflowStep,
   ctx: StepContext,
@@ -683,14 +718,14 @@ async function runTransfer(
     danger: step.danger ?? 'reversible',
     params: {},
     command,
-    // **判据指名别的角色 → 执行器那边不验**（跨目标是另一个事务 ✓）
+    // A criterion that names another role → the executor does not verify it (a verification across targets is another transaction ✓)
     readback: step.readback?.role !== undefined && step.readback.role !== fromRole
-      ? // 同上：**不用 `none`**（destructive 步禁止 none ✓）
+? // The same: not `none` (a destructive step may not use none ✓)
         { kind: 'command_ok' }
       : toReadbackDef(step.readback, substitution),
   };
-  // **传输前问一次「目的地在不在」** ✓（契约 §八·C·R1/R2 ✓）
-  // → 「传输前不存在」才是**唯一能确定「这是这一步的东西」**的判据 ✓
+  // Ask once before the transfer whether the destination is there ✓ (contract section 8·C·R1/R2 ✓)
+  // → "It did not exist before the transfer" is the only criterion that can establish "this is from this step" ✓
   const toRole = step.to?.role as string;
   const before = await destinationState(ctx, toRole, endpoints.to);
 
@@ -700,8 +735,8 @@ async function runTransfer(
     executorDeps(ctx, profileId, action.id, step.timeout_ms),
   );
 
-  // **传输命令自己没成 → 按判据处理那个半截文件** ✓（契约 §八·C ✓）
-  // → **回读失败 ≠ 传输失败** ✓（「传了，未验成」**不清** ✓ —— 评审 40 的 Q3 ✓）
+  // The transfer command itself failed → the half-written file is handled like a criterion ✓ (contract section 8·C ✓)
+  // → A failed readback is not a failed transfer ✓ ("it was transferred, it was not verified" does not clean up ✓ — Q3 of review 40 ✓)
   const commandFailed = !outcome.ok;
   let residueNote: string | undefined;
   if (commandFailed) {
@@ -710,12 +745,12 @@ async function runTransfer(
   }
 
   const cross = await crossRoleReadback(step, ctx, substitution, fromRole, started);
-  // 目的地路径进槽（后续步骤要用）
+  // The destination path goes into the slot (the later steps need it)
   if (outcome.ok && cross?.ok !== false && step.out !== undefined) ctx.outputs[step.out] = endpoints.to;
-  // **成败两边都要算** ✓（传输命令没成，判据过了**也不能算成功** ✗）
+  // Both the success and the failure are counted ✓ (the transfer command failed, the criterion passed and it is still not a success ✗)
   const failed = !outcome.ok ? outcome : cross !== undefined && !cross.ok ? cross : undefined;
-  // **「传了，未验成」**（传输命令成功了 ✓，但判据没过 ✓）→ **说清楚** ✓
-  // （尖兵 Q3 的原型 ✓ —— 板子上「文件在、没生效」这件事**要看得见** ✓）
+  // "It was transferred, it was not verified" (the transfer command succeeded ✓, but the criterion did not pass ✓) → it has to be said clearly ✓
+  // (the prototype of the Q3 of review 40 — "the file is there on the board, it did not take effect" has to be visible ✓)
   const transferredButUnverified = outcome.ok && cross !== undefined && !cross.ok;
   const detail = transferredButUnverified
     ? `transferred but not verified: ${cross.detail ?? 'the criterion did not pass'} (the destination holds an unconfirmed file)`
@@ -743,14 +778,18 @@ async function runTransfer(
 }
 
 /**
- * 在**指名的角色**上跑一次判据。
+ * Run one criterion on the named role.
  *
- * ── 为什么要有这个「跨目标」的入口 ──
+ * ── Why there is this "across targets" entry point ──
  *
- * M6 的执行器**在执行的那条连接上回读**（SPEC-D22：执行与回读不可拆分 ✓）。
- * → 「客机跑完 scp 之后，**板子上**真的有那个文件了吗」**它验不了** ✗
- * （那是**另一台机器**的事——本来就不该在同一个事务里 ✓）。
- * → 跨目标的判据**由流程层跑** ✓（ADR-D32 D32-2）。
+ * The executor of M6 reads back on the connection it executed on
+ * (SPEC-D22: the execution and the readback are indivisible ✓).
+ * → "after the guest ran the scp, is the file really there on the
+ *   board" it cannot verify ✗
+ * (that is another machine — it was never supposed to be in the same
+ * transaction ✓).
+ * → The criterion across targets is run by the workflow layer ✓
+ *   (ADR-D32 D32-2).
  */
 async function runReadbackOnRole(
   ctx: StepContext,
@@ -777,8 +816,8 @@ async function runReadbackOnRole(
         );
         return cat.timedOut || cat.exitCode !== 0 ? null : cat.stdout;
       },
-      // **跨目标的判据命令也要过危险地板**（它跑在**另一台机器**上 ✓ ——
-      // 两条评审都点了这一条 ✓）→ 命中就**不执行**，判据失败 ✓。
+      // The command of a cross-target criterion also has to pass the danger floor (it runs on another machine ✓ —
+      // two reviews both pointed at this ✓) → a hit means it is not executed and the criterion fails ✓.
       exec: (command: string) => {
         const floor = checkFloor(command);
         if (floor.verdict === 'destructive') {
@@ -797,7 +836,7 @@ async function runReadbackOnRole(
   );
 }
 
-/** 一个 `await` / `assert` 步：只跑判据（**可以指名在哪个角色上读**） */
+/** One `await` / `assert` step: it only runs the criterion (it may name the role it is read on) */
 async function runAssert(
   step: WorkflowStep,
   ctx: StepContext,
@@ -836,9 +875,9 @@ async function runAssert(
   };
 }
 
-/* ── 工具 ──────────────────────────────────────────────────────────── */
+/* ── Helpers ──────────────────────────────────────────────────────────── */
 
-/** 流程包的 inputs → 编码器的 schema（`path` 当 `string` ✓——编码规则一样） */
+/** The inputs of the workflow pack → the schema of the encoder (`path` counts as `string` — the encoding rules are the same) */
 function inputSchema(pack: WorkflowPack): Record<string, PackParam> {
   const schema: Record<string, PackParam> = {};
   for (const [name, def] of Object.entries(pack.inputs)) {
@@ -848,8 +887,8 @@ function inputSchema(pack: WorkflowPack): Record<string, PackParam> {
       ...(def.min === undefined ? {} : { min: def.min }),
       ...(def.max === undefined ? {} : { max: def.max }),
       ...(def.values === undefined ? {} : { values: def.values }),
-      // **default / pattern 也要传给编码器** ✓
-      // （`default` → 调用方没给时的取值 ✓；`pattern` → 形状检查 ✓）
+      // The default and the pattern are handed to the encoder too ✓
+      // (`default` → the value when the caller gave none ✓; `pattern` → the shape check ✓)
       ...(def.default === undefined ? {} : { default: def.default }),
       ...(def.pattern === undefined ? {} : { pattern: def.pattern }),
     } as PackParam;
@@ -857,21 +896,21 @@ function inputSchema(pack: WorkflowPack): Record<string, PackParam> {
   return schema;
 }
 
-/** 角色的连接事实（**封闭**：host / port / user / key / profile_id） */
+/** The connection facts of a role (closed: host / port / user / key / profile_id) */
 function factsOf(pack: WorkflowPack, deps: WorkflowRunDeps): Record<string, RoleFacts> {
   const facts: Record<string, RoleFacts> = {};
   for (const [name, role] of Object.entries(pack.roles)) {
     const profile = deps.profileFor(role.profile);
     if (profile === undefined) continue;
     const options = profile.options as Record<string, unknown>;
-    // ── **SSH 端点有两个来源** ✓（契约 `spec/05` §六 ✓）──
+    // ── An SSH endpoint has two sources ✓ (contract `spec/05` section 6) ──
     //
-    // → **`options.ssh`** ✓ —— **这条连接背后那台机器**的端点 ✓
-    //   （**adb / 串口连的板子也能被 ssh 连** ✓ —— 同一块板 ✓）
-    // → **`options.host`** ✓ —— **这条连接自己就是 ssh** ✓（**它自己就是那个端点** ✓）
+    // → `options.ssh` ✓ — the endpoint of the machine behind this connection ✓
+    //   (a board that is connected by adb or serial can be reached by ssh too ✓ — the same board ✓)
+    // → `options.host` ✓ — this connection is an ssh itself ✓ (it is that endpoint itself ✓)
     //
-    // → **两者不会同时出现** ✓（`ssh` 传输的 profile **不许**带 `options.ssh` ✓ —— 报错 ✓）
-    // → **先读 `options.ssh`** ✓ —— 它更具体 ✓。
+    // → The two never appear together ✓ (a profile of the `ssh` transport may not carry `options.ssh` ✓ — it is an error ✓)
+    // → `options.ssh` is read first ✓ — it is the more specific one ✓.
     const sshFact =
       typeof options['ssh'] === 'object' && options['ssh'] !== null
         ? (options['ssh'] as Record<string, unknown>)
@@ -881,8 +920,8 @@ function factsOf(pack: WorkflowPack, deps: WorkflowRunDeps): Record<string, Role
       host: str(sshFact['host']) ?? str(options['host']) ?? '',
       port: num(sshFact['port']) ?? num(options['port']) ?? 22,
       user: str(sshFact['username']) ?? str(options['username']) ?? 'root',
-      // **私钥不进 `options.ssh`** ✓ —— 那把钥匙**在客机上** ✓（尖兵装的 ✓）
-      // → **只有这条连接自己的 `key_filename`** ✓
+      // The private key does not go into `options.ssh` ✓ — that key is on the guest ✓ (the one that was installed ✓)
+      // → Only the `key_filename` of this connection itself ✓
       ...(typeof options['key_filename'] === 'string'
         ? { key: options['key_filename'] as string }
         : {}),
@@ -892,17 +931,17 @@ function factsOf(pack: WorkflowPack, deps: WorkflowRunDeps): Record<string, Role
   return facts;
 }
 
-/** 取一个字符串事实（**空串不算** ✓） */
+/** Take a string fact (an empty string does not count) */
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
-/** 取一个数字事实 */
+/** Take a number fact */
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
-/** 端点（源路径与目的地路径）——`placement` 要问目标机器的内核版本 */
+/** The endpoints (the source path and the destination path) — `placement` has to ask the target machine for the kernel version */
 async function resolveEndpoints(
   step: WorkflowStep,
   ctx: StepContext,
@@ -924,13 +963,13 @@ async function resolveEndpoints(
     const roleName = step.to.role;
     const profileId = ctx.pack.roles[roleName]?.profile;
     if (profileId === undefined) throw makeError('IPC_INVALID_PAYLOAD', `role ${roleName} has no profile bound to it`);
-    // **落位目录要问目标机器**（内核模块的路径里有版本号 ✓）
+    // The placement directory has to be asked of the target machine (the path of a kernel module carries a version number ✓)
     //
-    // → **但只有 `kernel-module` 需要问** ✓（`user-program` 的落位是固定路径 ✓
-    //   —— `/usr/local/bin/` ✓ —— **问 `uname -r` 是白问** ✓）。
-    // → **白问的代价不止一次往返** ✓：**宿主必须能连上目标机器** ✓
-    //   —— 而「宿主只有 ADB、板子的私钥在客机上」时 ✓ —— **那条路走不通** ✗
-    //   → **本来不需要的依赖变成了硬依赖** ✗。
+    // → But only `kernel-module` has to ask ✓ (the placement of `user-program` is a fixed path ✓
+    //   — `/usr/local/bin/` ✓ — asking `uname -r` would be asking for nothing ✓).
+    // → Asking for nothing costs more than one round trip ✓: the host has to be able to reach the target machine ✓
+    //   — and when "the host only has ADB and the private key of the board is on the guest" ✓ — that way does not work ✗
+    //   → a dependency that was not needed becomes a hard dependency ✗.
     const release =
       step.to.placement === 'kernel-module'
         ? await ctx.deps.targets.runOn(profileId, async (conn) => {
@@ -945,12 +984,12 @@ async function resolveEndpoints(
   return { from, to };
 }
 
-/** 路径的文件名 */
+/** The file name of a path */
 function basenameOf(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
 }
 
-/** 流程包的判据 → M6 的判据（**五种形式一模一样** ✓） */
+/** The criterion of a workflow pack → the criterion of M6 (the five forms are exactly the same ✓) */
 function toReadbackDef(
   readback: WorkflowStep['readback'],
   substitution: SubstitutionContext,
@@ -977,36 +1016,37 @@ function toReadbackDef(
 }
 
 /**
-/** 执行器需要的依赖（**接到指名目标上** ✓ —— 计划 5 的 A17） */
+/ The dependencies the executor needs (hooked onto the named target ✓ — the A17 of plan 5) */
 function executorDeps(ctx: StepContext, profileId: string, actionId: string, timeoutMs?: number) {
   const profile = ctx.deps.profileFor(profileId);
   return {
     packId: ctx.pack.id,
     contractVersion: 'devboard/v1',
-    // **这一步动的是哪块板** ✓（**凭据要绑它** ✓ —— 契约 `spec/04` §2.4.1 第六项 ✓）
-    // → **是这一步落到的那个 profile 的设备** ✓（**不是流程包自己声明的** ✓ —— 那个是机器专属的值 ✓）
+    // Which board this step touches ✓ (the credentials are bound to it ✓ — contract `spec/04` section 2.4.1, the sixth item ✓)
+    // → It is the device of the profile this step landed on ✓ (not the one the workflow pack declares ✓ — that would be a machine-specific value ✓)
     deviceKey: () => (profile === undefined ? '' : deviceKeyOf(profile)),
     hasExitCode: profile === undefined ? true : capabilitiesFor(profile).exitCode,
-    // **执行与回读在同一条目标上、同一个独占事务里**（SPEC-D22 ✓）
+    // The execution and the readback are on the same target, in the same exclusive transaction (SPEC-D22 ✓)
     runTransaction: <T>(fn: (connection: Connection) => Promise<T>): Promise<T> =>
       ctx.deps.targets.runOn(profileId, (connection) => fn(connection)),
     readTag: ctx.deps.readTag ?? (async () => undefined),
     granted: () => ({
       actions: {
-        // **这次运行被人启用了 → 这个动作算已授权**（ADR-D31 R2 的信任模型 ✓）
-        // —— **不再有「命中地板要单次确认」** ✓（ADR-D48 ✓ —— **地板是校验与显示用的** ✓）
+        // This run was enabled by a human → this action counts as authorised (the trust model of ADR-D31 R2 ✓)
+        // — there is no "a hit on the floor needs a single confirmation" any more ✓ (ADR-D48 ✓ — the floor is for the check and the display ✓)
         [actionId]: undefined,
       },
     }),
     audit: (row: AuditRow) =>
       ctx.deps.audit({ ...row, actor: row.actor === 'unknown' ? `workflow:${ctx.pack.id}` : row.actor }),
     actor: `workflow:${ctx.pack.id}`,
-    // **这一步的输入进审计行**（流程的参数在**流程包**里，不在板型包里 ✓）
+    // The inputs of this step go into the audit line (the parameters of a workflow are in the workflow pack, not in the board pack ✓)
     auditInputs: { ...ctx.inputs },
     now: ctx.now,
-    // **长步骤要有超时**（编译是分钟级；尖兵实测传输波动 20 倍，A14 ✓）
+    // A long step needs a timeout (compiling takes minutes; the transport was measured to fluctuate by a factor of 20, A14 ✓)
     ...(timeoutMs === undefined ? {} : { execTimeoutMs: timeoutMs }),
-    // **中途叫停**（「人不要了」✓ —— 与超时分开 ✓）
+    // Calling it off halfway ("the human does not want it any more" ✓ — kept apart from the timeout ✓)
+
     ...(ctx.opts.signal === undefined ? {} : { execSignal: ctx.opts.signal }),
   };
 }

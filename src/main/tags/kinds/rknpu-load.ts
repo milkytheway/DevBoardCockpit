@@ -4,15 +4,18 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `rknpu_load` —— RK 专有的 NPU 利用率。
+ * `rknpu_load` — the RK-specific NPU utilisation.
  *
- * 输出形如 `NPU load:  Core0: 12%, Core1: 9%, Core2: 5%,`
- * ——**末尾带逗号**（实测，见 `docs/06` §5.2），解析器要认这个尾巴。
+ * The output looks like `NPU load:  Core0: 12%, Core1: 9%, Core2: 5%,`
+ * — the line ends with a comma ✓ (measured), so the parser has to accept that
+ * tail.
  *
- * 依赖 debugfs 挂载；没挂时读不到 → 报 `unavailable`，
- * **不许退回去读 devfreq 的占空比**（那会显示 100% 但板子是闲的）。
+ * It depends on debugfs being mounted; without it the file cannot be read →
+ * report `unavailable`, and never fall back to the devfreq duty cycle (that
+ * would show 100% while the board is idle).
  *
- * `usage` 是**各核的最大值**（契约 §一 的词表：npu.usage = 三个计算核的最大值）。
+ * `usage` is the maximum across the cores (the vocabulary in contract
+ * section 1: npu.usage = the maximum of the three compute cores).
  */
 
 export const RKNPU_LOAD: ReaderKind = {

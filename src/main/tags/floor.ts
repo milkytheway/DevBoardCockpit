@@ -1,34 +1,42 @@
 /**
- * 危险地板（契约 `docs/spec/02-board-pack.md` §5.2 与 §5.2.1）。
+ * The danger floor (contract `docs/spec/02-board-pack.md` sections 5.2 and
+ * 5.2.1).
  *
- * ── 它是什么 ──
+ * ── What it is ──
  *
- * 包自己声明 `danger`。但 agent 可以写包——如果没有任何别的约束，
- * 一个把 `reboot` 写成 `reversible` 的包就能跳过人的确认，**分档就成了摆设**。
+ * A pack declares `danger` itself. But an agent can write packs — and
+ * without any other constraint a pack that declares `reboot` as `reversible`
+ * would skip the user's confirmation, which makes the grading pointless.
  *
- * 所以有一条**地板**：
+ * So there is a floor:
  *
- * > **某些操作永远是 `destructive`，不管包怎么声明。**
+ * > Some operations are always `destructive`, no matter what the pack
+ * > declares.
  *
- * ── 匹配规范（§5.2.1）──
+ * ── The matching rules (section 5.2.1) ──
  *
- * 1. 匹配单位是 argv 的**单个词元**（不是子串）；
- * 2. 词元相等才命中——`upgrade_status.sh` **不**命中 `upgrade`；
- * 3. 仅当模式以 `*` 结尾才允许前缀匹配（`flash*` 命中 `flash_uboot`）；
- * 4. 路径类模式先做路径规范化；
- * 5. `dd` 类要匹配 `dd` 词元 + **目标参数**命中块设备路径；
- * 6. `rm -rf /` 类要匹配 `rm` + `-rf`/`-fr` + 规范化后等于 `/`；
- * 7. **匹配不上不等于安全**——表外命令按包的声明走，但**记一条 warning**。
+ * 1. The unit of matching is a single token of argv (not a substring);
+ * 2. A hit needs the tokens to be equal — `upgrade_status.sh` does not hit
+ *    `upgrade`;
+ * 3. A prefix match is only allowed when the pattern ends with `*`
+ *    (`flash*` hits `flash_uboot`);
+ * 4. Path-like patterns are normalised first;
+ * 5. The `dd` family needs the `dd` token plus a target argument that hits
+ *    a block device path;
+ * 6. The `rm -rf /` family needs `rm` plus `-rf`/`-fr` plus a normalised
+ *    value equal to `/`;
+ * 7. Not matching does not mean safe — a command outside the table follows
+ *    the declaration of the pack, but a warning is recorded.
  */
 
-/** 当前的地板表版本。包里的 `danger_floor_version` 必须是它 */
+/** The version of the current floor table. The `danger_floor_version` of a pack has to be it */
 export const DANGER_FLOOR_VERSION = 1;
 
-/** v1 的地板表（§5.2 的六条） */
+/** The floor table of v1 (the six entries of section 5.2) */
 interface FloorEntry {
-  /** 模式。带 `*` 的是前缀匹配 */
+  /** The pattern. One with a `*` is a prefix match */
   pattern: string;
-  /** 这一条拦的是什么（给人看） */
+  /** What this entry blocks (for the reader) */
   why: string;
 }
 
@@ -38,38 +46,41 @@ const FLOOR_ENTRIES: readonly FloorEntry[] = [
   { pattern: 'poweroff', why: 'shut down' },
   { pattern: 'halt', why: 'halt' },
   { pattern: 'flash*', why: 'flash storage' },
-  // `erase` / `burn` 是**精确匹配**：契约没有给它们前缀例句，
-  // 而 `erase_cache` / `burn_count` 是**无害**的常见名——
-  // 前缀匹配在这里制造的是**假阳性**，不是堵洞。
+  // `erase` / `burn` are exact matches: the contract gives no prefix example
+  // for them, and `erase_cache` / `burn_count` are common harmless names —
+  // a prefix match here produces false positives, it does not close a hole.
   { pattern: 'erase', why: 'erase storage' },
   { pattern: 'burn', why: 'burn storage' },
   { pattern: 'upgrade', why: 'upgrade' },
-  // `mkfs*` 而不是 `mkfs`：`mkfs.ext4` 与 `mkfs` 是**同一个操作**。
-  // 契约 §5.2 的表写的是 `mkfs`，但 §5.2.1 的前缀规则（`flash*` 命中
-  // `flash_uboot`）说明带后缀的同义命令也算——**地板是下限，不许有洞**。
-  // 这条差异记在 `docs/06` C10，由用户拍板。
+  // `mkfs*` and not `mkfs`: `mkfs.ext4` and `mkfs` are the same operation.
+  // The table in contract section 5.2 writes `mkfs`, but the prefix rule of
+  // section 5.2.1 (`flash*` hits `flash_uboot`) shows that a synonym with a
+  // suffix counts as well — the floor is a lower bound, it may not have
+  // holes. The contract table disagrees here; the user ruled that the
+  // suffixed synonym counts.
   { pattern: 'mkfs*', why: 'format' },
 ];
 
-/** 裸写块设备的目标路径（前缀匹配） */
+/** The target paths of raw block devices (prefix match) */
 const BLOCK_DEVICE_PATTERNS = ['/dev/mmcblk*', '/dev/sd*', '/dev/nvme*'];
 
-/** 一次匹配的结果 */
+/** The result of one match */
 export interface FloorMatch {
   matched: boolean;
-  /** 命中的地板条目（给人看）。没命中是 null */
+  /** The floor entry that was hit (for the reader). null when nothing hit */
   pattern: string | null;
-  /** 为什么要拦它（给人看） */
+  /** Why it is blocked (for the reader) */
   why: string | null;
 }
 
 const NO_MATCH: FloorMatch = { matched: false, pattern: null, why: null };
 
 /**
- * 按 shell 词法把命令切成 argv 序列。
+ * Split a command into an argv sequence, following the shell lexics.
  *
- * **不执行 shell、不做变量展开、不做 glob 展开**（§5.2.1 的顺序：
- * 先编码参数 → 再切 argv → 再匹配地板）。
+ * No shell is executed, no variable is expanded and no glob is expanded (the
+ * order of section 5.2.1: encode the arguments first → then split the argv
+ * → then match the floor).
  */
 export function tokenizeCommand(command: string): string[] {
   const tokens: string[] = [];
@@ -107,9 +118,11 @@ export function tokenizeCommand(command: string): string[] {
 }
 
 /**
- * 路径规范化：展开 `..`、合并重复 `/`、去掉尾部 `/`。
+ * Path normalisation: expand `..`, collapse repeated `/`, drop a trailing
+ * `/`.
  *
- * 地板按**路径**比较（`/dev/mmcblk0` 与 `/dev/mmcblk0/` 是同一个东西）。
+ * The floor compares paths (`/dev/mmcblk0` and `/dev/mmcblk0/` are the same
+ * thing).
  */
 export function normalizePath(path: string): string {
   const absolute = path.startsWith('/');
@@ -127,25 +140,26 @@ export function normalizePath(path: string): string {
 }
 
 /**
- * 词元的**basename**（`/sbin/reboot` → `reboot`）。
+ * The basename of a token (`/sbin/reboot` → `reboot`).
  *
- * 契约 §5.2.1 写的是「词元相等」——但真实的调用几乎都带绝对路径
- * （`/sbin/reboot`、`/usr/sbin/shutdown`），
- * **只按字面实现，地板在真实写法上是空的**。
- * 这条差异记在 `docs/06` C13，由用户拍板。
+ * Contract section 5.2.1 writes "the tokens are equal" — but nearly every
+ * real call carries an absolute path (`/sbin/reboot`, `/usr/sbin/shutdown`),
+ * and a literal implementation would leave the floor empty for the way
+ * commands are really written. The contract table says "equal token"; the
+ * user ruled that the base name is compared.
  */
 function baseName(token: string): string {
   const parts = token.split('/');
   return parts[parts.length - 1] ?? token;
 }
 
-/** 词元与模式的匹配：相等，或模式带 `*` 的前缀匹配 */
+/** The match of a token against a pattern: equal, or a prefix match when the pattern has a `*` */
 function matchesPattern(token: string, pattern: string): boolean {
   if (pattern.endsWith('*')) {
     return token.startsWith(pattern.slice(0, -1));
   }
   if (token === pattern) return true;
-  // **basename 也算**（`/sbin/reboot` → `reboot`）
+  // The basename counts too (`/sbin/reboot` → `reboot`)
   return baseName(token) === pattern;
 }
 
@@ -155,9 +169,10 @@ function isBlockDevice(path: string): boolean {
 }
 
 /**
- * `dd` 写到块设备。
+ * `dd` writing to a block device.
  *
- * 目标参数是 `of=` 的值，或**紧随其后**的非选项参数（§5.2.1）。
+ * The target argument is the value of `of=`, or the non-option argument
+ * that follows it (section 5.2.1).
  */
 function matchDd(tokens: string[]): FloorMatch | null {
   if (baseName(tokens[0] ?? '') !== 'dd') return null;
@@ -180,10 +195,10 @@ function matchDd(tokens: string[]): FloorMatch | null {
 }
 
 /**
- * `rm -rf /` 及其等价形式。
+ * `rm -rf /` and its equivalents.
  *
- * 标志字母散着写也算（`-rf` / `-fr` / `-r -f`）——
- * 它们表达的是同一件事。
+ * Flags written with separate letters count as well (`-rf` / `-fr` /
+ * `-r -f`) — they say the same thing.
  */
 function matchRmRoot(tokens: string[]): FloorMatch | null {
   if (baseName(tokens[0] ?? '') !== 'rm') return null;
@@ -195,7 +210,7 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
   for (const t of tokens.slice(1)) {
     if (t.startsWith('-')) continue;
     const p = normalizePath(t);
-    // `/*` 展开后就是根目录下的全部条目——**等价于 `/`**
+    // `/*` expands to every entry of the root directory — it is equivalent to `/`
     if (p === '/' || p === '/*') {
       return { matched: true, pattern: 'rm -rf /', why: 'delete the root' };
     }
@@ -203,7 +218,7 @@ function matchRmRoot(tokens: string[]): FloorMatch | null {
   return null;
 }
 
-/** `iptables -F` / `nft flush ruleset` —— 清空防火墙规则 */
+/** `iptables -F` / `nft flush ruleset` — flush the firewall rules */
 function matchFirewall(tokens: string[]): FloorMatch | null {
   if (baseName(tokens[0] ?? '') === 'iptables' && tokens.slice(1).includes('-F')) {
     return { matched: true, pattern: 'iptables -F', why: 'flush the firewall rules' };
@@ -215,23 +230,26 @@ function matchFirewall(tokens: string[]): FloorMatch | null {
 }
 
 /**
- * 拿一条命令去撞地板。
+ * Run one command against the floor.
  *
- * @param command 最终命令或命令模板
+ * @param command the final command or the command template
  */
 export function matchDangerFloor(command: string): FloorMatch {
   return matchDangerFloorArgv(tokenizeCommand(command));
 }
 
 /**
- * 拿 **argv** 撞地板。
+ * Run the floor against an argv.
  *
- * **为什么要有 argv 这一层**：运行时要查的是**编码后的最终命令**——
- * 而那一条命令的词已经被切好了（`actions/encoder` 用的就是同一个
- * `tokenizeCommand`）。再切一遍会丢掉引号信息。
+ * Why there is an argv layer: at runtime it is the encoded final command
+ * that is checked — and the tokens of that command have already been split
+ * (`actions/encoder` uses the same `tokenizeCommand`). Splitting it again
+ * would lose the quoting.
  *
- * → 校验器查模板（`matchDangerFloor`），运行时查 argv（这个）。
- * **匹配器只有一份**（`FLOOR_ENTRIES` + 三条特判）。
+ * → The validator checks the template (`matchDangerFloor`), the runtime
+ *   checks the argv (this one).
+ *   There is only one matcher (`FLOOR_ENTRIES` plus the three special
+ *   cases).
  */
 export function matchDangerFloorArgv(tokens: string[]): FloorMatch {
   if (tokens.length === 0) return NO_MATCH;
@@ -247,7 +265,8 @@ export function matchDangerFloorArgv(tokens: string[]): FloorMatch {
   return matchDd(tokens) ?? matchRmRoot(tokens) ?? matchFirewall(tokens) ?? NO_MATCH;
 }
 
-/** 地板表本身（给「看看这张表」的命令用） */
+/** The floor table itself (for the command that shows the table) */
+
 export function dangerFloorEntries(): readonly { pattern: string; why: string }[] {
   return FLOOR_ENTRIES;
 }

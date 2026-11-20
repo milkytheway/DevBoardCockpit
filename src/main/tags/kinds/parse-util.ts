@@ -1,28 +1,33 @@
 import type { ReasonCode } from '../../../shared/tag-reading';
 
 /**
- * kind 们共用的解析辅助。
+ * Parsing helpers shared by the kinds.
  *
- * **为什么这些辅助存在**：8 个 kind 的解析器要处理同一批边界情况
- * （空输入、格式不对、计数器倒退）——
- * **每个 kind 各写一遍，8 份就一定有 7 份写得不一样**。
+ * Why these helpers exist: the parsers of the 8 kinds all have to deal with
+ * the same boundary cases (empty input, wrong format, a counter that went
+ * backwards) — written once per kind, 8 copies would certainly end up with
+ * 7 different answers.
  */
 
 /**
- * **资源此刻不在**（路径不存在、设备被拔、挂载丢失）——契约 §2.1.1。
+ * The resource is not there right now (the path does not exist, the device
+ * was unplugged, the mount is gone) — contract section 2.1.1.
  *
- * 与 `error()` 的分界：「资源**不在**」vs「资源**在但读不出来**」。
- * 这条分界直接影响卡片：`unavailable` 应当引导用户去挂载 debugfs，
- * 而不是报「NPU 读取失败」。
+ * The boundary against `error()`: "the resource is not there" versus "the
+ * resource is there but cannot be read". The boundary reaches the card
+ * directly: `unavailable` should send the user to mount debugfs, not report
+ * "reading the NPU failed".
  */
 export function unavailable(reason: ReasonCode, detail: string): ParseResult {
   return { status: 'unavailable', reason, detail };
 }
 
 /**
- * **读到了，但读出来的东西坏了**（解析失败、越界、类型不符）——契约 §2.1.1。
+ * It was read, but what came back is broken (parse failure, out of domain,
+ * wrong type) — contract section 2.1.1.
  *
- * 契约点名：**取值越界算 `error`，不许夹到合法区间当 `ok`**（那是撒谎）。
+ * The contract names it: an out-of-domain value is an `error` and may not be
+ * clamped into the legal range and passed off as `ok` (that would be lying).
  */
 export function error(
   reason: Extract<ReasonCode, 'parse_error' | 'out_of_domain'>,
@@ -32,32 +37,32 @@ export function error(
 }
 
 /**
- * 输出是空的 → 资源不在。
+ * The output is empty → the resource is not there.
  *
- * 取数片段是 `cat -- <path>`：文件不存在时 stdout **一个字都没有**
- * （错误在 stderr，被 `2>/dev/null` 吞掉）。
- * 所以「空」在实践中就是「路径不存在」。
+ * The fetch fragment is `cat -- <path>`: when the file does not exist stdout
+ * has not a single character (the error goes to stderr, which `2>/dev/null`
+ * swallows). In practice "empty" means "the path does not exist".
  */
 export function missing(detail: string): ParseResult {
   return { status: 'unavailable', reason: 'device_absent', detail };
 }
 
-/** 输出是不是空的 */
+/** Whether the output is empty */
 export function isBlank(text: string): boolean {
   return text.trim().length === 0;
 }
 
-/** 解析成功 */
+/** The parse succeeded */
 export function ok(samples: Record<string, number | string | boolean>): ParseResult {
   return { status: 'ok', samples };
 }
 
 /**
- * 取开头的连续整数，遇到非数字就停。
+ * Take the leading run of integers and stop at the first non-digit.
  *
- * 前身工程的做法（`core/metrics.py` 的 `leading_ints`）：
- * `/proc/stat` 在有些内核上混着计数与具名字段，
- * 对整个尾巴盲 `int()` 会炸。
+ * The approach of the predecessor project (`leading_ints` in
+ * `core/metrics.py`): on some kernels `/proc/stat` mixes counters and named
+ * fields, and a blind `int()` over the whole tail blows up.
  */
 export function leadingInts(tokens: string[]): number[] {
   const out: number[] = [];
@@ -69,17 +74,18 @@ export function leadingInts(tokens: string[]): number[] {
 }
 
 /**
- * 百分比**越不越界**（不是夹到区间里）。
+ * Whether a percentage is out of domain (not clamped into the range).
  *
- * 契约 §2.1.1 原话：「实现层遇到越界值必须报 `error`，
- * **不得**把它夹到合法区间当作 `ok`（那是在撒谎），
- * 也**不得**当 `0`（那是更糟的撒谎）。」
+ * The contract, section 2.1.1: "an implementation that meets an
+ * out-of-domain value must report `error`; it must not clamp it into the
+ * legal range and pass it off as `ok` (that would be lying), and it must not
+ * treat it as `0` (that would be an even worse lie)."
  */
 export function outOfRange(value: number): boolean {
   return !Number.isFinite(value) || value < 0 || value > 100;
 }
 
-/** 解析结果的类型（放这里是因为 kind 与辅助互相引用） */
+/** The shape of a parse result (it lives here because the kinds and the helpers refer to each other) */
 export type ParseResult =
   | { status: 'ok'; samples: Record<string, number | string | boolean> }
   | { status: 'pending' }

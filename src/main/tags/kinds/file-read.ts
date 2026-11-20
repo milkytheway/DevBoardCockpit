@@ -4,11 +4,13 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `file_read` —— 读一个文件（逃生门 1，契约 §3.1）。
+ * `file_read` — read one file (escape hatch 1, contract section 3.1).
  *
- * 最常用。适合「某个值就是一个文件里的一个数」。
+ * The most common kind. It suits "the value is a number that sits in a
+ * file".
  *
- * `path` 与 `glob` **二选一**（契约 §2.4 写的是 `path`/`glob`）。
+ * `path` and `glob` are mutually exclusive (contract section 2.4 names
+ * `path`/`glob`).
  */
 
 export const FILE_READ: ReaderKind = {
@@ -21,14 +23,14 @@ export const FILE_READ: ReaderKind = {
       required: false,
       values: ['string', 'integer', 'number', 'float'],
     },
-    /** 文件尾的 NUL 要不要剥（设备树模型那种） */
+/** Whether to strip the trailing NUL of the file (device tree models and the like) */
     strip_trailing_null: { type: 'boolean', required: false },
   },
   samples: ['value'],
   fetch(args) {
     const path = argStr(args, 'path');
     if (path.length > 0) return `cat -- ${quotePath(path)}`;
-    // glob **不转义**——它就是要被 shell 展开的
+    // The glob is not escaped — it is meant to be expanded by the shell
     return `cat -- ${argStr(args, 'glob')}`;
   },
   parse(raw, args, _ctx) {

@@ -1,19 +1,20 @@
 /**
- * kind 们共用的小工具。
+ * Small helpers shared by the kinds.
  *
- * **为什么参数取值要「温和」地拿**：包的参数是**数据**，不是代码。
- * 缺了就当成空串——**真正的「缺必填参数」由校验器报**（规则 9），
- * 取数片段不该在这里抛异常（那会把「包写错了」变成「取数崩了」，
- * 两者的定位完全不同）。
+ * Why argument access has to stay gentle: a pack's arguments are data, not
+ * code. A missing one is treated as an empty string — a genuinely missing
+ * required argument is reported by the validator (rule 9), and the fetching
+ * fragment must not throw, because that would turn "the pack is wrong" into
+ * "the fetch crashed". The two have to stay apart.
  */
 
-/** 取一个字符串参数 */
+/** Read a string argument */
 export function argStr(args: Record<string, unknown>, key: string): string {
   const v = args[key];
   return typeof v === 'string' ? v : '';
 }
 
-/** 取一个映射参数（`type_map`） */
+/** Read a map argument (`type_map`) */
 export function argMap(args: Record<string, unknown>, key: string): Record<string, string> {
   const v = args[key];
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};

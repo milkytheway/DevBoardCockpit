@@ -1,67 +1,76 @@
 import type { BoardPack, PollGroupDef, ReaderDef } from './schema';
 
 /**
- * **板型包的脱敏只读投影**（契约 `spec/04` §2.1 / §2.4 ✓ · ADR-D40 ✓）。
+ * The redacted read-only projection of a board pack (contract `spec/04`
+ * sections 2.1 / 2.4 ✓ · ADR-D40 ✓).
  *
- * ── 它解决什么 ──
+ * ── What it solves ──
  *
- * `TagRuntime.pack` 是**私有的** ✓ —— 而 MCP 的读侧工具要看到它 ✓
- * （`list_data_sources` ✓ / `describe_tag` ✓ / `list_tags` ✓）。
+ * `TagRuntime.pack` is private ✓ — and the read-side tools of MCP have to
+ * see it ✓ (`list_data_sources` ✓ / `describe_tag` ✓ / `list_tags` ✓).
  *
- * → **但不能把原始 args 直接给 agent** ✓：
- * `exec_regex` 的 args 里有 **`command`** ✓（一条要跑在板子上的裸命令 ✓），
- * `script` 的 args 里有 **`path`（宿主文件系统上的路径）**与 **`interpreter`** ✓
- * → 那两个拼起来就是「宿主上有什么、在哪」+「一条命令」✗
- * → **正是契约 §1.3「不准有裸 send_command」要防的那件事** ✓。
+ * → But the raw arguments must not be handed to an agent ✓:
+ * the arguments of `exec_regex` carry a `command` ✓ (a bare command that
+ * runs on the board ✓), the arguments of `script` carry a `path` (a path on
+ * the host filesystem) and an `interpreter` ✓
+ * → those two together are "what is on the host and where" plus "a
+ *   command" ✗
+ * → which is exactly what contract section 1.3 ("no bare send_command") is
+ *   there to prevent ✓.
  *
- * ── 放行表按 `(kind, 参数名)` 判定 ──
+ * ── The allow list is decided per `(kind, argument name)` ──
  *
- * **不是**按参数名单独判定 ✓ —— 因为 `path` 在 `file_read` 里是**板上路径**（可给 ✓），
- * 在 `script` 里是**宿主路径**（不可给 ✓）。
+ * Not decided by the argument name alone ✓ — because `path` is a path on
+ * the board in `file_read` (it may be handed out ✓) and a path on the host
+ * in `script` (it may not ✓).
  *
- * → **逐 kind 写死** ✓（契约 v5 §2.4 的那张 ✓）
- * → **不在表里的参数一律不给** ✓（封闭表 ✓，不是「先给再筛」✓）。
+ * → Written out per kind ✓ (the table in contract v5 section 2.4 ✓)
+ * → An argument that is not in the table is never handed out ✓ (a closed
+ *   table ✓, not "hand it out and filter later" ✓).
  */
 
-/** reader 的脱敏视图 */
+/** The redacted view of a reader */
 export interface ReaderView {
-  /** reader 的 id */
+  /** The id of the reader */
   id: string;
-  /** reader 的 kind（`proc_stat` / `file_read` / …） */
+  /** The kind of the reader (`proc_stat` / `file_read` / …) */
   kind: string;
   /**
-   * **脱敏后**的参数 ✓ —— **只含放行表里的那些** ✓。
+   * The redacted arguments — only the ones in the allow list.
    *
-   * → **值是字符串或纯 JSON** ✓ —— `type_map` 是对象 ✓（那是**纯数据** ✓ · 不敏感 ✓）
-   *   → **保留原形** ✓（agent 读得懂 ✓）；数组与其它对象 **JSON 化** ✓。
+   * → The value is a string or plain JSON — `type_map` is an object (that
+   *   is plain data, not sensitive) → it keeps its shape (an agent can read
+   *   it); arrays and other objects are JSON-ified.
    */
   args: Record<string, string | Record<string, string>>;
-  /** 它提供的 tag 模式（**不是**具体名 ✓ —— 具体名由读数决定 ✓） */
+  /** The tag patterns it provides (not the concrete names — the concrete names come from the readings) */
   provides: string[];
-  /** 它属于哪个轮询组（`null` = 没有组 —— 那种包过不了校验 ✓） */
+  /** The poll group it belongs to (`null` = no group — such a pack does not pass the validator) */
   poll_group: string | null;
-  /** 它所在轮询组的周期（`null` = 没有组 ✓） */
+  /** The period of the poll group it is in (`null` = no group) */
   interval_ms: number | null;
 }
 
-/** 板型包的脱敏视图 */
+/** The redacted view of a board pack */
 export interface PackView {
   id: string;
   name: string;
   version: string;
-  /** 轮询组（**组 = 一次往返** ✓） */
+  /** The poll groups (a group = one round trip) */
   poll_groups: PollGroupDef[];
-  /** 全部 reader（`readers` + `custom` ✓） */
+  /** Every reader (`readers` plus `custom`) */
   readers: ReaderView[];
-  /** 动作 id 清单（**只给 id** ✓ —— 参数与命令属于「动作定义」✓） */
+  /** The list of the action ids (only the ids — the arguments and the command belong to the action definition) */
   actions: string[];
 }
 
 /**
- * **放行表** —— 按 `(kind, 参数名)` 判定 ✓。
+ * The allow list — decided per `(kind, argument name)`.
  *
- * → **封闭表** ✓ —— **不在表里的参数一律不给** ✓。
- * → **加一个 kind 或改一张表 = 契约变更** ✓（契约 v5 §2.4 ✓）。
+ * → A closed table — an argument that is not in the table is never handed
+ *   out.
+ * → Adding a kind or changing a table is a contract change (contract v5
+ *   section 2.4).
  */
 const ALLOWED_ARGS: Readonly<Record<string, readonly string[]>> = {
   proc_stat: ['stat_path', 'cpuinfo_path'],
@@ -71,16 +80,17 @@ const ALLOWED_ARGS: Readonly<Record<string, readonly string[]>> = {
   thermal_zone: ['glob', 'type_map'],
   file_read: ['path', 'glob', 'format', 'strip_trailing_null'],
   exec_regex: ['pattern', 'format'],
-  // **`script` 恒为空** ✓ —— 它的 `path` 是宿主路径 ✓ · `interpreter` 与它是一套 ✓
+  // `script` is always empty — its `path` is a path on the host, and `interpreter` belongs with it
   script: [],
 };
 
 /**
- * **一个参数值怎么变成人能读懂的形态** ✓。
+ * How one argument value becomes something a reader can make sense of.
  *
- * → **`type_map` 那种「字符串 → 字符串」的映射保留原形** ✓（纯数据 ✓ · 不敏感 ✓ · agent 读得懂 ✓）
- * → **其它对象与数组 JSON 化** ✓
- * → **标量转字符串** ✓
+ * → A map of strings to strings like `type_map` keeps its shape (plain
+ *   data, not sensitive, an agent can read it)
+ * → Other objects and arrays are JSON-ified
+ * → Scalars become strings
  */
 function argValue(value: unknown): string | Record<string, string> {
   if (typeof value === 'string') return value;
@@ -93,16 +103,16 @@ function argValue(value: unknown): string | Record<string, string> {
   return JSON.stringify(value);
 }
 
-/** 这是不是「字符串 → 字符串」的映射（`type_map` 那种 ✓） */
+/** Whether this is a map of strings to strings (like `type_map`) */
 function isStringMap(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   return Object.values(value).every((v) => typeof v === 'string');
 }
 
-/** 一个 reader 的脱敏 args（**只含放行表里的** ✓） */
+/** The redacted arguments of one reader (only the ones in the allow list) */
 function sanitizeArgs(reader: ReaderDef): Record<string, string | Record<string, string>> {
   const allowed = ALLOWED_ARGS[reader.kind];
-  // **表里没有这个 kind → 一个参数都不给** ✓（不猜 ✓）
+  // This kind is not in the table → not one argument is handed out (do not guess)
   if (allowed === undefined) return {};
   const out: Record<string, string | Record<string, string>> = {};
   for (const name of allowed) {
@@ -113,16 +123,17 @@ function sanitizeArgs(reader: ReaderDef): Record<string, string | Record<string,
   return out;
 }
 
-/** reader 属于哪个组（**规则 17**：每个 reader 恰好属于一个组 ✓） */
+/** The group a reader belongs to (rule 17: every reader belongs to exactly one group) */
 function groupOf(pack: BoardPack, readerId: string): PollGroupDef | undefined {
   return pack.poll_groups.find((g) => g.readers.includes(readerId));
 }
 
 /**
- * **把板型包投影成脱敏视图** ✓。
+ * Project a board pack into its redacted view.
  *
- * @param pack 当前绑定的板型包（**没有就是 `null`** ✓ —— 不猜 ✓）
- * @returns 脱敏视图；**没有包就是 `null`** ✓
+ * @param pack the board pack that is bound right now (`null` when there is
+ *   none — do not guess)
+ * @returns the redacted view; `null` when there is no pack
  */
 export function packView(pack: BoardPack | undefined): PackView | null {
   if (pack === undefined) return null;

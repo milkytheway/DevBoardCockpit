@@ -5,27 +5,32 @@ import type { WorkflowRegistry } from './registry';
 import type { WorkflowPack } from './format';
 
 /**
- * 流程的**宿主服务** —— 卡片与 agent 触发流程时走的那一层。
+ * The host service of a workflow — the layer that a card or an agent
+ * goes through when it triggers a workflow.
  *
- * ── 三件事（两份独立评审的 C1/C2/C3 逼出来的）──
+ * ── The three things (forced by the C1/C2/C3 of two independent reviews)
+ * ──
  *
- * | # | 事 | 为什么 |
+ * | # | Thing | Why |
  * |---|---|---|
- * | 1 | **只认 id，不认路径** | 「放一个文件进目录」不等于「批准它」✓；卡片/agent **给不了路径** ✓ → 否则 agent 能自写一个包就跑 ✗（评审 32-C1 ✓） |
- * | 2 | **跑之前查注册表** | `require(id)` ✓ → 没有这个包**跑不了** ✓（**不再有「批准」那一层** ✓） |
- * | 3 | **长任务 = run_id + 轮询** | 编译实测 58.9s / 98.5s（评审 31-C3 ✓）→ **同步返回时间线是不成立的** ✗ → `start()` 立刻给 `runId`，`status()` 取进度 ✓ |
+ * | 1 | Only ids, never paths | "dropping a file into a directory" is not "approving it"; a card or an agent cannot give a path → otherwise an agent could write a pack of its own and run it ✗ (32-C1 of review 32) |
+ * | 2 | Look in the registry before running | `require(id)` → without that pack it cannot run (the "approved" layer is gone) |
+ * | 3 | A long task = run_id + polling | compiling was measured at 58.9 s / 98.5 s (31-C3 of review 31) → returning the timeline synchronously does not hold ✗ → `start()` returns a `runId` at once, `status()` fetches the progress |
  *
- * ── 「谁能跑」由谁点头 ──
+ * ── Who says yes to "who may run" ──
  *
- * → **设置里的统一权限区** ✓（ADR-D47 ✓）：**流程那一行开关** ✓
- * → **卡片触发流程默认允许** ✓ · **agent 默认允许** ✓（**危险的那类默认关** ✓）
- * → **流程包的存在本身就是说明** ✓（**批准账 2026-11-16 砍掉** ✓ · ADR-D48 ✓）。
+ * → The unified permission area in the settings (ADR-D47): the row of
+ *   switches for the workflows
+ * → A card triggering a workflow is allowed by default · an agent is
+ *   allowed by default (the dangerous kind is off by default)
+ * → The existence of a workflow pack is the explanation itself (the
+ *   approval account was cut on 2026-11-16 · ADR-D48).
  */
 export interface WorkflowSummary {
   id: string;
   name: string;
   version: string;
-  /** 输入声明（卡片要按它渲染表单 ✓ —— **`default` 也要给** ✓，卡片才能自己预填 ✓） */
+  /** The declaration of the inputs (the card renders a form from it — the `default` has to be given too, so that the card can prefill it) */
   inputs: Record<string, {
     type: string;
     required?: boolean;
@@ -35,16 +40,18 @@ export interface WorkflowSummary {
 }
 
 /**
- * **当前这一步**（契约 `05` §八·B ✓）。
+ * The current step (contract `05` section 8·B).
  *
- * → **正在跑** ✓ **或** **停下等人点头** ✓（那一步**也是**「当前」✓）→
- * 运行结束 → `null` ✓。
- * → **不给角色** ✓（不给拓扑 ✓ —— 卡片与 agent 不该知道「哪台机器」✓）。
+ * → It is running or it has stopped and waits for a nod (that step
+ *   is also "the current one") →
+ * the run has ended → `null`.
+ * → No role (no topology — a card and an agent should not learn "which
+ *   machine" ✓).
  */
 export interface WorkflowCurrent {
   stepId: string;
   kind: string;
-  /** **这一步开始的时刻** ✓ → 界面据此算「已经用了多久」✓ */
+  /** The moment this step started → the interface computes "how long has it been" from it */
   at: number;
 }
 
@@ -52,28 +59,31 @@ export interface WorkflowRunStatus {
   runId: string;
   workflowId: string;
   /**
-   * 运行状态。
+   * The state of the run.
    *
-   * → **四档**（`running` / `done` / `failed` / `cancelled` ✓）——
-   * **「等人点头」那档 2026-11-16 没了** ✓（**确认链整体砍掉** ✓ · ADR-D48 ✓）。
-   * → 停在某一步**只会是 `running`** ✓ · **取消是 `cancelled`** ✓ —— **不是 `failed`** ✓。
+   * → Four states (`running` / `done` / `failed` / `cancelled`) —
+   * the "waits for a nod" state is gone (the whole confirmation chain
+   * was cut · ADR-D48).
+   * → Being stopped at a step can only be `running` · A cancellation is
+   *   `cancelled` — not `failed`.
    */
   state: 'running' | 'done' | 'failed' | 'cancelled';
-  /** 时间线（**跑到哪一步了** ✓） */
+  /** The timeline (how far it got) */
   stages: WorkflowStage[];
-  /** **当前这一步**（`null` = 没有在飞的 ✓ —— 运行已结束 ✓） */
+  /** The current step (`null` = nothing is in flight — the run has ended) */
   current: WorkflowCurrent | null;
-  /** 产出的槽 */
+  /** The produced slots */
   outputs: Record<string, string>;
   ok?: boolean;
   reason?: string;
-  /** 要人确认（危险命令 ✓） */
+  /** A human has to confirm (a dangerous command) */
   /**
-   * **停在第几步**（索引 ✓）——续跑时**从这一步继续** ✓，
-   * **前面的步不重跑** ✓（重跑 = 编译两遍 ✗）。
+   * The step it stopped at (the index) — when it continues it starts
+   * at this step, the earlier steps do not run again (running them
+   * again means compiling twice ✗).
    */
   pausedAtStep?: number;
-  /** 续跑时要带上的**输入**（**同一个运行** ✓ —— 换了输入就不是同一件事了 ✓） */
+  /** The inputs to carry over when it continues (the same run — with other inputs it is not the same thing) */
   inputs?: Record<string, unknown>;
   startedAt: number;
   finishedAt?: number;
@@ -81,24 +91,28 @@ export interface WorkflowRunStatus {
 
 export interface WorkflowServiceOptions {
   registry: WorkflowRegistry;
-  /** 跑一条流程要什么（连接、审计……） */
+  /** What a workflow needs to run (the connections, the audit, …) */
   runDeps: WorkflowRunDeps;
   /**
-   * 确认凭据的库（**流程层与 M6 共用一份** ✓ ——
-   * 凭据的语义只有一处 ✓：`spec/04` §2.4.1 的那套 ✓）。
+   * The store of the confirmed credentials (the workflow layer and M6 share
+   * one — the semantics of a credential exist in one place only: the set of
+   * contract `spec/04` section 2.4.1).
    */
-  /** 现在（毫秒） */
+  /** Now (milliseconds) */
   now?: () => number;
-  /** 一次留多少条运行记录（**别无限长** ✓） */
+  /** How many run records are kept (not endlessly) */
   maxRuns?: number;
 }
 
 const DEFAULT_MAX_RUNS = 50;
 
 /**
- * 把最后拿到的阶段并进时间线（**按 `stepId` 去重** ✓）。
+ * Merge the stages that came in last into the timeline (deduplicated by
+ * `stepId`).
  *
- * → 实时上报的那批与最后返回的那批**是同一批** ✓ → 不去重会**每一步出现两次** ✗。
+ * → The batch that was reported live and the batch that is returned at the
+ *   end are the same batch → without the deduplication every step
+ *   appears twice ✗.
  */
 function mergeStages(live: WorkflowStage[], final: WorkflowStage[]): WorkflowStage[] {
   const byId = new Map(live.map((s) => [s.stepId, s]));
@@ -111,7 +125,7 @@ function mergeStages(live: WorkflowStage[], final: WorkflowStage[]): WorkflowSta
 export class WorkflowService {
   private readonly runs = new Map<string, WorkflowRunStatus>();
   private readonly order: string[] = [];
-  /** 每次运行一个**叫停器**（取消用它 ✓） */
+  /** One abort controller per run (the cancellation uses it) */
   private readonly aborts = new Map<string, AbortController>();
   private readonly now: () => number;
   private readonly maxRuns: number;
@@ -122,11 +136,13 @@ export class WorkflowService {
   }
 
   /**
-   * **按 id 取一个流程包**（**给 dry_run 用** ✓）。
+   * Get a workflow pack by id (for the dry_run).
    *
-   * → **注册表里没有就抛** ✓（带机器可读的 reason ✓ —— MCP 那层要回给 agent ✓）。
-   * → **预览会泄出「这个包会干什么」** ✓ —— **能不能看由权限区说了算** ✓
-   *   （**今天不给它单独加一道** ✓ —— ADR-D48 ✓）。
+   * → It throws when the registry does not have it (with a
+   *   machine-readable reason — the MCP layer hands it back to the agent).
+   * → The preview leaks "what this pack will do" → whether it may be
+   *   seen is decided by the permission area
+   *   (no separate gate is added for it today · ADR-D48).
    */
   pack(id: string): WorkflowPack {
     const found = this.opts.registry.require(id);
@@ -134,7 +150,9 @@ export class WorkflowService {
   }
 
   /**
-   * 列**用户批过的**流程（**没批过的不列** ✓ —— 卡片/agent 看不见没授权的东西 ✓）。
+   * List the workflows the user approved (the ones that were not
+   * approved are not listed — a card or an agent must not see what is
+   * not authorised).
    */
   list(): WorkflowSummary[] {
     return this.opts.registry
@@ -150,7 +168,7 @@ export class WorkflowService {
               type: def.type,
               ...(def.required === undefined ? {} : { required: def.required }),
               ...(def.description === undefined ? {} : { description: def.description }),
-              // **默认值也给卡片** ✓（契约 §二：`default` = 宿主预填常用输入 ✓ —— 卡片点一下就能跑 ✓）
+              // The default value is given to the card too (contract section 2: `default` = the host prefills the common inputs — a card can be run with one click)
               ...(def.default === undefined ? {} : { default: def.default }),
             },
           ]),
@@ -159,22 +177,27 @@ export class WorkflowService {
   }
 
   /**
-   * **开始**跑一条流程（**立刻返回 `runId`** ✓ —— 编译要一分钟，不能同步等 ✓）。
+   * Start running a workflow (it returns a `runId` at once — a
+   * compile takes a minute, it cannot be waited for synchronously).
    *
-   * @throws 没有这个包 → `IPC_INVALID_PAYLOAD`（**说清楚** ✓）
+   * @throws when there is no such pack → `IPC_INVALID_PAYLOAD` (it says
+   *   so)
    */
   start(
     id: string,
     inputs: Record<string, unknown>,
     _opts: Record<string, never> = {},
   ): { runId: string } {
-    // ── **流程包的存在本身就是说明** ✓（ADR-D48 ✓）──
-    // → 它能跑**任意命令** ✓（`exec` / `file.transfer` ✓）→ **板型包管不到** ✓
-    // → **闸在设置里的统一权限区** ✓（**那一行开关** ✓ —— ADR-D47 ✓）
+    // ── The existence of a workflow pack is the explanation itself (ADR-D48) ──
+    // → It may run any command (`exec` / `file.transfer`) → the board
+    //   pack cannot govern it
+    // → The gate is the unified permission area in the settings (the row
+    //   of switches — ADR-D47)
     const registered = this.opts.registry.require(id);
 
-    // ── 并发：同一个流程包同时只允许一次运行 ✓ ──
-    // → 两个流程同时抢一条串口会**串台** ✓（事实 S1 ✓）
+    // ── Concurrency: only one run of the same workflow pack at a time ──
+    // → Two workflows competing for the same serial line would interleave
+    //   (fact S1)
     for (const existing of this.runs.values()) {
       if (existing.workflowId === id && existing.state === 'running') {
         throw makeError('IPC_INVALID_PAYLOAD', `workflow "${id}" is running (only one run of the same workflow at a time)`, {
@@ -183,8 +206,9 @@ export class WorkflowService {
       }
     }
 
-    // **run_id 不可预测**（评审 35 的 V2-M10 ✓）：
-    // 时间戳派生的 id **能被猜到** ✗ → 而它是 `confirm` 的入参之一 ✓。
+    // The run_id is unpredictable (V2-M10 of review 35):
+    // an id derived from a timestamp can be guessed ✗ → and it is one of
+    // the arguments of `confirm`.
     const runId = `wf-${randomUUID().slice(0, 8)}`;
     const status: WorkflowRunStatus = {
       runId,
@@ -200,7 +224,7 @@ export class WorkflowService {
     this.order.push(runId);
     this.trim();
 
-    // **每次运行一个叫停器** ✓（取消要能真的停掉在飞的那一步 ✓）
+    // One abort controller per run (a cancellation has to really stop the step that is in flight)
     const abort = new AbortController();
     this.aborts.set(runId, abort);
 
@@ -209,21 +233,23 @@ export class WorkflowService {
   }
 
   /**
-   * **取消**一次运行（「人不要了」✓）。
+   * Cancel a run ("the human does not want it any more").
    *
-   * → **真的停掉在飞的那一步** ✓（尖兵实测：没有这条路时，
-   * 一个 75 秒的传输步**收到取消后照跑完** ✗ —— 宿主还在等 marker ✓）。
-   * → 状态变成 `cancelled` ✓（**不是 failed** ✓ —— 取消不是失败 ✓）。
+   * → It really stops the step that is in flight (measured: without
+   *   this path a transfer step of 75 seconds ran to the end even after
+   *   the cancellation ✗ — the host was still waiting for the marker).
+   * → The state becomes `cancelled` (not failed — a cancellation is not
+   *   a failure).
    *
-   * @throws 没有这次运行 → `IPC_INVALID_PAYLOAD` ✓
+   * @throws when there is no such run → `IPC_INVALID_PAYLOAD` ✓
    */
   cancel(runId: string): { runId: string } {
     const status = this.runs.get(runId);
     if (status === undefined) {
       throw makeError('IPC_INVALID_PAYLOAD', `no such run: ${runId}`, { detail: { runId } });
     }
-    // **已经结束的运行 → 状态一个字都不改** ✓
-    // （幂等 ✓ —— 取消不能把 `done` 改成 `cancelled` ✗）
+    // A run that has ended → not a single character of the state changes
+    // (idempotent — a cancellation may not turn a `done` into a `cancelled`)
     if (status.state === 'done' || status.state === 'failed' || status.state === 'cancelled') {
       return { runId };
     }
@@ -232,7 +258,7 @@ export class WorkflowService {
     status.reason = 'cancelled';
     status.finishedAt = this.now();
 
-    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）
+    // One audit line is written ("who called it off" has to be traceable — I-8 of the independent review 40)
     this.opts.runDeps.audit({
       at: this.now(),
       actor: 'host',
@@ -245,10 +271,10 @@ export class WorkflowService {
     return { runId };
   }
 
-      /**
-   * 跑（**后台** ✓ —— 调用方立刻拿到 runId ✓）。
+  /**
+   * Run it (in the background — the caller gets the runId at once).
    *
-   * @param startAt 从第几步开始（**续跑** ✓）
+   * @param startAt which step to start at (continuing)
    */
   private async execute(
     status: WorkflowRunStatus,
@@ -264,7 +290,7 @@ export class WorkflowService {
         {
           ...this.opts.runDeps,
           now: this.now,
-          // **实时时间线** ✓（宿主据此说得出「现在在第几步」✓ —— 契约 §八·B ✓）
+          // The timeline in real time (the host can say "which step is it at now" — contract section 8·B)
           timeline: {
             onStepStart: (info) => {
               status.current = { stepId: info.stepId, kind: info.kind, at: info.at };
@@ -281,12 +307,14 @@ export class WorkflowService {
           ...(signal === undefined ? {} : { signal }),
         },
       );
-      // **按 stepId 去重** ✓（实时上报的与最后返回的是同一批 ✓）
+      // Deduplicated by stepId (the live reports and the final return are the same batch)
       status.stages = mergeStages(status.stages, result.stages);
       status.outputs = result.outputs;
       status.ok = result.ok;
-      // **取消过的运行 → 状态不许被这次收尾翻回去** ✓（独立评审 40 的 C-1 ✓）
-      // → 「取消」这个状态**必须活到最后** ✓（否则界面会把「人叫停」说成「出错了」✗）
+      // A cancelled run → the state may not be turned back by this
+      // finalisation (C-1 of the independent review 40)
+      // → The state "cancelled" has to survive to the end (otherwise the
+      //   interface calls "the human called it off" a failure ✗)
       if (status.state !== 'cancelled') {
         status.state = result.ok ? 'done' : 'failed';
         if (!result.ok) {
@@ -295,11 +323,13 @@ export class WorkflowService {
         }
         status.finishedAt = this.now();
       }
-      // **运行结束了 → 没有「当前」了** ✓
+      // The run has ended → there is no "current" any more
       status.current = null;
     } catch (err) {
-      // **取消过的运行 → 状态不许被这条异常路径翻回去** ✓（独立评审 40 的 I-1 ✓）
-      // → 「人叫停」必须活到最后 ✓（契约 §八·A·A2 ✓ —— 取消不是失败 ✓）
+      // A cancelled run → the state may not be turned back by this
+      // exception path (I-1 of the independent review 40)
+      // → "The human called it off" has to survive to the end (contract
+      //   section 8·A·A2 — a cancellation is not a failure)
       if (status.state !== 'cancelled') {
         status.state = 'failed';
         status.reason = err instanceof Error ? err.message : String(err);
@@ -308,7 +338,7 @@ export class WorkflowService {
     }
   }
 
-  /** 取一次运行的状态（**轮询** ✓ —— ADR-D31 R9：首版 poll ✓） */
+  /** The status of one run (polling — ADR-D31 R9: poll in the first version) */
   status(runId: string): WorkflowRunStatus {
     const found = this.runs.get(runId);
     if (found === undefined) {
@@ -317,12 +347,13 @@ export class WorkflowService {
     return found;
   }
 
-  /** 列最近的运行（**诊断用** ✓） */
+  /** List the recent runs (for the diagnostics) */
   recent(): WorkflowRunStatus[] {
     return [...this.order].reverse().map((id) => this.runs.get(id) as WorkflowRunStatus);
   }
 
-  /** 旧的运行记录**扔掉**（别让内存无限长 ✓） */
+  /** Throw away the old run records (the memory must not grow endlessly) */
+
   private trim(): void {
     while (this.order.length > this.maxRuns) {
       const oldest = this.order.shift();

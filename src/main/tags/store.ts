@@ -1,31 +1,37 @@
 import type { ReasonCode, TagReading, TagStatus } from '../../shared/tag-reading';
 
 /**
- * TagStore —— 读数的**唯一汇点**（ADR-D22）。
+ * TagStore — the single place where the readings meet (ADR-D22).
  *
- * 「驾驶舱」的产品底线是「UI 显示板子的真实状态」。
- * **一份状态有多个副本，就等于没有真相**——
- * 所以不管数据来自轮询还是将来的推送，**进 TagStore 之后再分发**。
+ * The product floor of the "cockpit" is that the UI shows the real state of
+ * the board. A state with several copies is no truth at all — so whatever
+ * the data comes from, polling today or a push later, it is distributed
+ * only after it has entered the TagStore.
  *
- * ── 它做三件事 ──
+ * ── The three things it does ──
  *
- * 1. **按契约 §2.1 的表迁移状态**（那张表是**有状态的**，不许各写各的）；
- * 2. **给每个读数发 seq**（同一 tag 内单调递增），并**丢掉乱序的旧值**；
- * 3. **把值冻住**——读出去的就是它，不会被人改了。
+ * 1. It moves the state according to the table of contract section 2.1
+ *    (that table is stateful, it must not be written one way here and
+ *    another way there);
+ * 2. It gives every reading a seq (monotonic inside one tag) and drops the
+ *    old values that arrive out of order;
+ * 3. It freezes the value — what is read out is what it is, nobody can
+ *    change it.
  *
- * ── 值什么时候保留 ──
+ * ── When the value is kept ──
  *
- * 契约 §2.1.1：
+ * Contract section 2.1.1:
  *
- * > **`stale` 保留旧值**，`unavailable` 不保留（值为 `null`）。
- * > `error` 的行为分两种……从 `ok`/`stale` 进入 `error` → **保留旧值**；
- * > 从 `pending` 进入 `error`（**从没成功过**）→ 没有旧值，值为 `null`。
+ * > `stale` keeps the old value, `unavailable` does not (the value is
+ * > `null`). The behaviour of `error` has two cases…… from `ok`/`stale` into
+ * > `error` → the old value is kept; from `pending` into `error` (it
+ * > never succeeded) → there is no old value, the value is `null`.
  *
- * 所以判据是「**这个 tag 有没有成功过一次**」：
- * 成功过 → `stale` 与 `error` 都保留那个值；没成功过 → 两者都是 null。
+ * So the criterion is "has this tag ever succeeded": if it has, both
+ * `stale` and `error` keep that value; if it has not, both are null.
  */
 
-/** 写进 store 的东西。**seq 由 store 分配** */
+/** What is written into the store. The seq is assigned by the store */
 export interface TagReadingInput {
   tag: string;
   value: number | string | boolean | null;
@@ -33,94 +39,106 @@ export interface TagReadingInput {
   status: TagStatus;
   reason?: ReasonCode;
   detail?: string;
-  /** 本次采样的完成时刻（毫秒 UTC） */
+  /** The moment this sampling finished (milliseconds UTC) */
   at: number;
-  /** 只在「乱序写入」时用来判断新旧；正常流程不传 */
+  /** Only used to tell old from new on an out-of-order write; the normal flow does not pass it */
   seq?: number;
 }
 
-/** 读数变化时的回调 */
+/** The callback of a change of a reading */
 export type ReadingListener = (reading: TagReading) => void;
 
 /**
- * **一个样本**（契约 `spec/04` §2.1 ✓）。
+ * One sample (contract `spec/04` section 2.1 ✓).
  *
- * → 形状与 `sample_tag` / `describe_tag.history` **完全一致** ✓。
+ * → The shape is exactly the same as that of `sample_tag` /
+ *   `describe_tag.history` ✓.
  */
 export interface TagSample {
   value: number | string | boolean | null;
   unit: string;
   status: TagStatus;
-  /** 本次采样的完成时刻（毫秒 UTC） */
+  /** The moment this sampling finished (milliseconds UTC) */
   at: number;
 }
 
 /**
- * **样本缓冲的默认容量**（**每个 tag** 各一份 ✓）。
+ * The default capacity of the sample buffer (one per tag).
  *
- * → **这是实现细节** ✓ —— 契约只说「最多 n 个，不足不补」✓ → **不锁死** ✓。
- * → **为什么 64**：够跨越很多个快组周期（1s ✓）与慢组周期（30s ✓）✓ ——
- *   agent 判断「抖动」要看**几个点** ✓，判断「刷新周期实际是多少」要看**跨越两个周期**的样本 ✓。
+ * → This is an implementation detail — the contract only says "at most n,
+ *   no padding" → it is not fixed.
+ * → Why 64: it spans many periods of the fast groups (1 s) and of the slow
+ *   groups (30 s) — an agent that judges "the jitter" needs several
+ *   points, and one that judges "what the refresh period really is" needs
+ *   the samples across two periods.
  */
 export const DEFAULT_HISTORY_LIMIT = 64;
 
 export class TagStore {
   private readonly readings = new Map<string, TagReading>();
-  /** 每个 tag 最后一次「好值」——`stale` / `error` 靠它保留旧值 */
+  /** The last "good value" of each tag — `stale` / `error` keep the old value through it */
   private readonly lastGood = new Map<string, number | string | boolean>();
   private readonly listeners: ReadingListener[] = [];
   /**
-   * **样本环形缓冲**（每个 tag 一份 ✓）。
+   * The ring buffer of the samples (one per tag).
    *
-   * → **为什么要有** ✓：`TagStore` 每个 tag 只留**最新一条** ✓ ——
-   *   而 MCP 的 `sample_tag(name, n)` 与 `describe_tag.history` 要**最近 n 个样本** ✓。
-   * → **环形** ✓：满了丢最旧的 ✓（内存有界 ✓）。
+   * → Why it is there: the TagStore keeps only the latest reading per
+   *   tag — and the MCP tools `sample_tag(name, n)` and
+   *   `describe_tag.history` want the most recent n samples.
+   * → It is a ring: when it is full the oldest one is dropped (the
+   *   memory stays bounded).
    *
-   * → **字段名不叫 `history`** ✓ —— 那会与 `history()` 方法同名 ✓（JS 里类字段与方法同名会互相盖掉 ✓）。
+   * → The field is not called `history` — that would have the same name as
+   *   the `history()` method (in JS a class field and a method with the
+   *   same name overwrite each other).
    */
   private readonly samples = new Map<string, TagSample[]>();
-  /** 每个 tag 保留多少个样本 */
+  /** How many samples are kept per tag */
   private readonly historyLimit: number;
 
   constructor(opts: { historyLimit?: number } = {}) {
     this.historyLimit = opts.historyLimit ?? DEFAULT_HISTORY_LIMIT;
   }
 
-  /** 当前的读数条数 */
+  /** The number of readings right now */
   get size(): number {
     return this.readings.size;
   }
 
   /**
-   * 写进一个读数。
+   * Write one reading.
    *
-   * @returns 存下来的那个读数（**冻结的**）。
-   *   乱序写入时返回的是**原来那个**——旧值被丢掉了。
+   * @returns the reading that was stored (frozen). On an out-of-order write
+   *   it returns the previous one — the old value was dropped.
    */
   put(input: TagReadingInput): TagReading {
     const prev = this.readings.get(input.tag);
 
-    // 乱序的旧值：**直接丢掉**（ADR-D22：「渲染层按 seq 丢弃乱序的旧值」——
-    // 丢弃发生在 store，渲染层只拿得到最新的那个）
+    // An old value that arrives out of order: it is dropped outright
+    // (ADR-D22: "the renderer drops the old values that arrive out of
+    // order by seq" — the drop happens in the store, the renderer only ever
+    // gets the latest one)
     if (input.seq !== undefined && prev !== undefined && input.seq <= prev.seq) {
       return prev;
     }
 
     const seq = prev === undefined ? 1 : prev.seq + 1;
 
-    // 值怎么来（契约 §2.1）
+    // How the value is obtained (contract section 2.1)
     let value: number | string | boolean | null = input.value;
     if (input.status === 'stale' || input.status === 'error') {
       const good = this.lastGood.get(input.tag);
       value = good === undefined ? null : good;
     } else if (input.status === 'unavailable' || input.status === 'pending') {
-      // `unavailable` 不保留（契约明写）；`pending` 是「还没算出来」，也没有值
+      // `unavailable` does not keep a value (the contract says so); `pending` means "not computed yet", so it has no value either
       value = null;
     }
 
     if (input.status === 'ok' && input.value !== null) {
-      // 契约：`ok` 时**必带** value。万一有人写了个 null 的 ok，
-      // 旧的好值**不能**被它顶掉——「保留上一个能用的值」比「记成没有」有用。
+      // The contract: an `ok` carries a value. Should somebody write an
+      // `ok` with a null value, the old good value may not be replaced
+      // by it — "keep the last value that works" is more useful than
+      // "record that there is none".
       this.lastGood.set(input.tag, input.value);
     }
 
@@ -142,10 +160,11 @@ export class TagStore {
   }
 
   /**
-   * **把这个读数记进样本缓冲** ✓。
+   * Record this reading in the sample buffer.
    *
-   * → **只记真正存下来的那个** ✓（乱序的旧值在上面就被丢了 ✓ → 不进历史 ✓）。
-   * → **环形** ✓：满了丢最旧的 ✓。
+   * → Only the one that was really stored (an out-of-order old value was
+   *   already dropped above → it does not enter the history).
+   * → It is a ring: when it is full the oldest one is dropped.
    */
   private appendHistory(reading: TagReading): void {
     const samples = this.samples.get(reading.tag) ?? [];
@@ -160,10 +179,11 @@ export class TagStore {
   }
 
   /**
-   * **最近 n 个样本**（**最旧 → 最新** ✓）。
+   * The most recent n samples (oldest → newest).
    *
-   * → **不足 n 个就有多少给多少** ✓（不补 ✓ —— 造不出没采过的样本 ✓）。
-   * → **没读过的 tag → 空数组** ✓（不是 `null` ✓）。
+   * → Fewer than n gives as many as there are (no padding — a sample that
+   *   was never sampled cannot be made up).
+   * → A tag that was never read → an empty array (not `null`).
    */
   history(tag: string, n: number): TagSample[] {
     const samples = this.samples.get(tag);
@@ -171,38 +191,44 @@ export class TagStore {
     return samples.slice(-n);
   }
 
-  /** 取一个 tag 的最新读数 */
+  /** The latest reading of one tag */
   get(tag: string): TagReading | undefined {
     return this.readings.get(tag);
   }
 
   /**
-   * 一次**刷新失败**时该用什么状态（契约 §2.1 的迁移表）。
+   * Which status to use when a refresh fails (the transition table of
+   * contract section 2.1).
    *
-   * - 「ok → stale = 本次刷新失败，但保留上一次的值」
-   * - 「error → stale = 继续失败，且**之前有过一个可用的值**——保留它，标为已过时」
-   * - 「pending → error = 采样过程本身失败（命令非零、超时、传输断了）」
+   * - "ok → stale = this refresh failed, but the last value is kept"
+   * - "error → stale = it keeps failing and there was a usable value
+   *   before — keep it and mark it as out of date"
+   * - "pending → error = the sampling itself failed (the command returned
+   *   non-zero, it timed out, the transport broke)"
    *
-   * 所以判据是「**这个 tag 有没有成功过一次**」——
-   * 有过 → stale（保留旧值，标为已过时）；没有 → error（没有旧值）。
+   * So the criterion is "has this tag ever succeeded": if it has,
+   * stale (the old value is kept, marked as out of date); if it has not,
+   * error (there is no old value).
    */
   failureStatusFor(tag: string): 'stale' | 'error' {
     return this.lastGood.has(tag) ? 'stale' : 'error';
   }
 
-  /** 全部读数 */
+  /** Every reading */
   all(): TagReading[] {
     return [...this.readings.values()];
   }
 
   /**
-   * 订阅读数变化。
+   * Subscribe to the changes of the readings.
    *
-   * **分发在这里发生**（ADR-D22：进 TagStore 之后再分发）——
-   * 卡片 / UI / MCP 都从这儿拿，不各自建一份状态。
+   * The distribution happens here (ADR-D22: distribute only after
+   * entering the TagStore) — the cards, the UI and the MCP all get it from
+   * here, none of them builds a state of its own.
    *
-   * @returns 退订函数。
+   * @returns the unsubscribe function.
    */
+
   subscribe(listener: ReadingListener): () => void {
     this.listeners.push(listener);
     return () => {

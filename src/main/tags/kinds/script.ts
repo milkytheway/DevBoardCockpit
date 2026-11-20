@@ -4,37 +4,40 @@ import { error, isBlank, missing, ok } from './parse-util';
 import type { ReaderKind } from './types';
 
 /**
- * `script` —— 逃生舱（契约 §3.3）。
+ * `script` — the escape hatch (contract section 3.3).
  *
- * 脚本必须**输出 JSON**，键就是它提供的 sample 名。
- * 所以它是**唯一一个 sample 名段数不限的 kind**。
+ * The script must print JSON; the keys are the sample names it provides.
+ * It is therefore the only kind whose sample names are not a fixed list.
  *
- * **脚本在板子上跑**。它住在包目录里（宿主上），但要读板子的状态，
- * 所以运行时必须先把它**推到板子上**（落在 `/tmp` 下的一次会话目录里），
- * 之后每次 poll 只是带上路径执行它。
+ * The script runs on the board. It lives in the pack directory on the host,
+ * but it has to read board state, so the runtime has to push it onto the
+ * board first (into a session directory under `/tmp`); every later poll only
+ * runs it by path.
  *
- * → 所以取数用的是**远端路径**（运行时给的 `remote_path`），
- * 不是包里写的宿主路径。
+ * → The fetch therefore uses the remote path (the `remote_path` the runtime
+ *   supplies), not the host path written in the pack.
  *
- * **⚠️ 它在板子上执行任意代码。** 校验器对它**报警告**（规则 19），
- * 它的执行事件进审计日志（§3.3 末段）。
+ * ⚠️ It runs arbitrary code on the board. The validator raises a warning for
+ * it (rule 19) and its execution is written to the audit log (last paragraph
+ * of section 3.3).
  */
 
 export const SCRIPT: ReaderKind = {
   id: 'script',
   params: {
-    /** **宿主**上的路径（包声明的） */
+    /** The path on the host (as declared by the pack) */
     path: { type: 'string', required: true },
     interpreter: { type: 'string', required: true },
     format: { type: 'string', required: false, values: ['json'] },
   },
   samples: ['value'],
   unboundedSamples: true,
-  // 取数要用**运行时推到板子上的**远端路径（契约 §3.3）
+  // The fetch uses the remote path the runtime pushed onto the board (contract section 3.3)
   needsRemotePath: true,
   fetch(args) {
-    // 远端路径（推上去之后）优先；没有就退回宿主路径——
-    // 退回总比什么都不做要好（真机验收时它至少能看出「脚本没推上去」）。
+    // The remote path (after the push) wins; without it, fall back to the host
+    // path — falling back is still better than doing nothing, because during
+    // real-device acceptance it at least shows that the script was not pushed.
     const remote = argStr(args, 'remote_path');
     const target = remote.length > 0 ? remote : argStr(args, 'path');
     return `${quotePath(argStr(args, 'interpreter'))} ${quotePath(target)}`;
@@ -55,7 +58,7 @@ export const SCRIPT: ReaderKind = {
 
     const samples: Record<string, number | string | boolean> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      // 只认标量值——嵌套的对象/数组**不是** sample
+      // Only scalar values count — a nested object or array is not a sample
       if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
         samples[key] = value;
       }

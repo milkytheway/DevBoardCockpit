@@ -1,88 +1,94 @@
 import { randomBytes } from 'node:crypto';
 
 /**
- * poll group 的合成与分段。
+ * The composition and the splitting of a poll group.
  *
- * 契约 `docs/spec/02-board-pack.md` §1.2：
- * **一个 poll group = 一次往返**。同组的所有 reader 合成一条 shell 命令，
- * 一次取回，每个 reader 的输出用 **marker** 隔开。
+ * Contract `docs/spec/02-board-pack.md` section 1.2:
+ * one poll group = one round trip. All the readers of the group are composed
+ * into one shell command, fetched in one go, and the output of each reader is
+ * separated by a marker.
  *
- * ── 为什么要有 marker ──
+ * ── Why there are markers ──
  *
- * 因为「一次往返」意味着**一份输出里混着好几个 reader 的数据**。
- * 不隔开的话，A 的数据会被算成 B 的——
- * **监控面板上两个数悄悄互换，比没有监控更难查。**
+ * "One round trip" means that one output carries the data of several readers.
+ * Without a separator the data of A would be counted as the data of B — two
+ * numbers silently swapping places on a dashboard is harder to find than no
+ * dashboard at all.
  *
- * ── 协议 ──
+ * ── The protocol ──
  *
- * 每个 reader 有**一对** marker（开始 / 结束）：
+ * Every reader has a pair of markers (start / end):
  *
  * ```
  * echo '<S1>'; <frag1>; echo '<E1>'; echo '<S2>'; <frag2>; echo '<E2>'
  * ```
  *
- * 输出：
+ * The output:
  *
  * ```
  * S1
- * <frag1 的输出>
+ * <the output of frag1>
  * E1
  * S2
- * <frag2 的输出>
+ * <the output of frag2>
  * E2
  * ```
  *
- * **用一对而不是一个**：只用一个 marker 的话，
- * 下一个 reader 的 marker 出现在上一个 reader 的输出里就会切错（RF-4）。
- * 用一对之后，**扫描从上一段的结束处往后找**——
- * 落在上一段输出里的「下一个开始标记」自然被跳过。
+ * A pair and not a single marker: with a single marker, the marker of the
+ * next reader appearing inside the output of the previous one would cut in
+ * the wrong place (RF-4). With a pair the scan starts after the end of the
+ * previous section — a "next start marker" that falls inside the output of
+ * the previous section is skipped by construction.
  *
- * **marker 是随机的 128 位**：读者输出里出现它的概率约等于零。
- * 随机性还有一个好处：**两次往返的 marker 必然不同**——
- * 串口上「一次只有一条命令在飞」，marker 撞车会让两段输出互相认领。
+ * The marker is a random 128 bits: the probability that it appears in the
+ * output of a reader is about zero. Randomness has a second benefit: the
+ * markers of two round trips are necessarily different — on a serial line
+ * only one command is in flight, and colliding markers would let two
+ * sections claim each other.
  */
 
-/** 要合成进一条命令的一个 reader */
+/** One reader to be composed into one command */
 export interface GroupReaderPlan {
-  /** reader 的 id（用来对回 split 的结果） */
+  /** The id of the reader (used to match the result of the split) */
   id: string;
-  /** 取数片段（kind 的 `fetch()` 产物） */
+  /** The fetch fragment (the product of the kind's `fetch()`) */
   fragment: string;
 }
 
-/** 一个 reader 的一对 marker */
+/** The pair of markers of one reader */
 export interface ReaderMarkers {
   readerId: string;
-  /** 段开始标记 */
+  /** The start marker of the section */
   start: string;
-  /** 段结束标记 */
+  /** The end marker of the section */
   end: string;
 }
 
-/** 合成出来的一条命令与它的 marker 表 */
+/** The composed command and its marker table */
 export interface GroupCommand {
-  /** 合成出来的命令（**一行**） */
+  /** The composed command (one line) */
   command: string;
-  /** 与输入顺序一一对应的 marker 表 */
+  /** The marker table, one entry per input in the same order */
   markers: ReaderMarkers[];
 }
 
 /**
- * 造一个随机 marker。
+ * Build one random marker.
  *
- * **为什么不用计划 1 的 `buildMarker`**：那个是
- * `__DBC<pid>_<毫秒>__`——**同一个进程、同一个毫秒里造两次就撞了**。
- * 取数要给同一条命令里的每个 reader 各造一个，
- * 所以这里另造一套：带随机数 + 序号。
+ * Why not the `buildMarker` of plan 1: that one is `__DBC<pid>_<ms>__` —
+ * two markers built in the same process and the same millisecond collide.
+ * The fetch needs one marker per reader inside the same command, so this one
+ * builds its own: a random number plus a serial number.
  */
 function makeMarker(tag: 'S' | 'E'): string {
   return `__DBCG${tag}_${randomBytes(16).toString('hex')}__`;
 }
 
 /**
- * 把一个组的 reader 合成成**一条**命令。
+ * Compose the readers of a group into one command.
  *
- * **必须是一行**——串口一次往返只能是一行命令（事实 S6）。
+ * It has to be a single line — one round trip on a serial line carries one
+ * command (fact S6).
  */
 export function buildGroupCommand(readers: GroupReaderPlan[]): GroupCommand {
   const markers: ReaderMarkers[] = readers.map((r) => ({
@@ -102,26 +108,30 @@ export function buildGroupCommand(readers: GroupReaderPlan[]): GroupCommand {
   return { command: parts.join('; '), markers };
 }
 
-/** 切出来的一段 */
+/** One split-out section */
 export interface SplitSection {
-  /** 收到的原文 */
+  /** The text as it was received */
   text: string;
   /**
-   * 这一段**完整吗**（开始与结束标记都到了）。
+   * Whether this section is complete (both the start and the end marker
+   * arrived).
    *
-   * **不完整 = 板子只回了一半**——这段数据**不能当成完整数据发布**
-   * （契约 §2.1.1：「读出来了但值坏了」是 `error`）。
+   * Incomplete = the board only answered half — this data must not be
+   * published as complete data (contract section 2.1.1: "it was read but the
+   * value is broken" is an `error`).
    */
   complete: boolean;
 }
 
 /**
- * 把一次往返的输出按 marker 切成每个 reader 的一段。
+ * Split the output of one round trip into one section per reader, by marker.
  *
- * @returns readerId → 那一段。
- *   **`null` = marker 没出现**（这一段没跑起来）；
- *   **`complete: false` = 有开始没结束**（板子只回了一半）。
- *   这两件事**必须分得开**——前者是「没读到」，后者是「读到了一半」。
+ * @returns readerId → that section.
+ *   `null` = the marker never appeared (this section did not run);
+ *   `complete: false` = there was a start but no end (the board only
+ *   answered half).
+ *   These two have to stay apart — the first is "not read", the second is
+ *   "read half".
  */
 export function splitSections(
   output: string,
@@ -133,7 +143,7 @@ export function splitSections(
   for (const [i, m] of markers.entries()) {
     const start = output.indexOf(m.start, pos);
     if (start < 0) {
-      // 这一段没跑起来。**pos 不动**——后面那几段照样切得出来。
+      // This section did not run. The position does not move — the later sections can still be split out.
       out.set(m.readerId, null);
       continue;
     }
@@ -146,14 +156,17 @@ export function splitSections(
       continue;
     }
 
-    // **有开始、没有结束**：这一段被截断了（板子只回了一半）。
+    // A start but no end: this section was truncated (the board only
+    // answered half).
     //
-    // 切到**下一个 reader 的开始标记**为止——
-    // **不切的话，这一段会把后面 reader 的数据全吞进来**，
-    // 而后面那几段反而报「没读到」：**数据被算到了别的 reader 名下**。
+    // Cut it at the start marker of the next reader — without that cut this
+    // section would swallow the data of every later reader, while those
+    // sections would report "not read": the data would be counted under
+    // another reader's name.
     //
-    // 但它**标记为不完整**——调用方不许把半截数据当成完整数据发布
-    // （契约 §2.1.1：截断的值是「坏了」，报 `error`，不是 `ok`）。
+    // But it is marked as incomplete — the caller may not publish half a
+    // section as complete data (contract section 2.1.1: a truncated value
+    // is "broken", report `error`, not `ok`).
     const next = markers[i + 1];
     const boundary = next === undefined ? -1 : output.indexOf(next.start, bodyStart);
     const text = boundary >= 0 ? output.slice(bodyStart, boundary) : output.slice(bodyStart);

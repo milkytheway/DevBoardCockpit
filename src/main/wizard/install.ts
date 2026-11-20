@@ -5,38 +5,41 @@ import type { BoardPack, PollGroupDef, ProvidesDef, ReaderDef } from '../tags/sc
 import type { Provenance } from './instantiate';
 
 /**
- * **把实例化出来的包落盘** ✓。
+ * Write the instantiated pack to disk ✓.
  *
- * ── 它落在哪 ──
+ * ── Where it lands ──
  *
- * → **用户数据目录** ✓（`%LOCALAPPDATA%\DevBoardCockpit\boards\<id>\` ✓）
- *   → **用户加的板不该进版本库** ✓（`docs/探索/02` §九·Q3 ✓）
- *   → **与 `rk3588-atk` 那份内置的分开** ✓ → **同名用户优先** ✓（§一 合并 ✓）。
+ * → The user data directory ✓ (`%LOCALAPPDATA%\DevBoardCockpit\boards\<id>\` ✓)
+ *   → A board the user added does not belong in version control ✓
+ *   → It is kept apart from the built-in `rk3588-atk` ✓ → the user's
+ *     wins on the same id ✓ (the merge of section 1 ✓).
  *
- * ── 落两样东西 ──
+ * ── Two things are written ──
  *
- * | 文件 | 是什么 |
+ * | File | What it is |
  * |---|---|
- * | `board.yaml` | **包本体** ✓ → 与内置包**同形** ✓ → **白拿校验器** ✓ |
- * | `provenance.json` | **「它是怎么来的」** ✓ → **「猜的」必须留痕** ✓ |
+ * | `board.yaml` | the pack itself ✓ → the same shape as the built-in packs ✓ → it gets the validator for free ✓ |
+ * | `provenance.json` | "where it came from" ✓ → "it was guessed" has to leave a trace ✓ |
  *
- * ── ⚠️ **落盘前必须过校验器** ✓ ──
+ * ── ⚠️ It has to pass the validator before it is written ──
  *
- * → **落一个过不了校验的包 = 落地即废** ⚠️（运行时读它 → 报「包坏了」⚠️）
- * → **所以：先验，再落** ✓ —— **不落坏的** ✓。
+ * → Writing a pack that does not pass the validator = dead on arrival
+ *   ⚠️ (the runtime reads it → it reports "the pack is broken" ⚠️)
+ * → So: verify first, then write ✓ — a broken one is never
+ *   written ✓.
  */
 export interface InstallPackOptions {
-  /** 包本体 ✓ */
+  /** The pack itself ✓ */
   pack: BoardPack;
-  /** 它的来路 ✓ */
+  /** Where it came from ✓ */
   provenance: Provenance;
-  /** **用户板型包目录的父目录** ✓（`userBoardsDir()` ✓） */
+  /** The parent directory of the user board packs ✓ (`userBoardsDir()` ✓) */
   boardsRoot: string;
-  /** 存在就覆盖吗（**默认不** ✓ —— **不悄悄覆盖用户的东西** ✓） */
+  /** Overwrite it when it is already there (not by default ✓ — the things of the user are never overwritten silently ✓) */
   overwrite?: boolean;
 }
 
-/** 一个 reader 落成什么样（**只留 yaml 里有的字段** ✓ —— 封闭 schema ✓） */
+/** What one reader becomes in the yaml (only the fields that the yaml has ✓ — a closed schema ✓) */
 function readerYaml(reader: ReaderDef): Record<string, unknown> {
   const out: Record<string, unknown> = { id: reader.id, kind: reader.kind };
   if (reader.args !== undefined && Object.keys(reader.args).length > 0) out['args'] = reader.args;
@@ -44,16 +47,18 @@ function readerYaml(reader: ReaderDef): Record<string, unknown> {
   return out;
 }
 
-/** 一个组落成什么样 */
+/** What one group becomes in the yaml */
 function groupYaml(group: PollGroupDef): Record<string, unknown> {
   return { id: group.id, interval_ms: group.interval_ms, readers: group.readers };
 }
 
 /**
- * **包本体 → yaml 的形状** ✓。
+ * The pack itself → the shape of the yaml ✓.
  *
- * → **只写契约认的字段** ✓（`spec/02` §一 的封闭 schema ✓）
- * → **多写的字段会被加载器拒** ✓（规则 10 ✓ · 24 ✓）→ **所以这里必须不多写** ✓。
+ * → Only the fields the contract knows ✓ (the closed schema of
+ *   `spec/02` section 1 ✓)
+ * → A field that is written extra is rejected by the loader ✓ (rule 10
+ *   ✓ · 24 ✓) → so nothing extra may be written here ✓.
  */
 export function packToYamlShape(pack: BoardPack): Record<string, unknown> {
   const out: Record<string, unknown> = {
@@ -70,7 +75,7 @@ export function packToYamlShape(pack: BoardPack): Record<string, unknown> {
     ...(pack.requires.min_contract !== undefined ? { min_contract: pack.requires.min_contract } : {}),
   };
   if (pack.danger_floor_version !== undefined) out['danger_floor_version'] = pack.danger_floor_version;
-  // **故意不写 `match`** ✓ —— 见 `instantiate.ts` 的注释 ✓
+  // The `match` is deliberately not written ✓ — see the comment in `instantiate.ts` ✓
   out['poll_groups'] = pack.poll_groups.map(groupYaml);
   out['readers'] = pack.readers.map(readerYaml);
   out['custom'] = pack.custom.map(readerYaml);
@@ -79,12 +84,14 @@ export function packToYamlShape(pack: BoardPack): Record<string, unknown> {
 }
 
 /**
- * **落盘** ✓。
+ * Write it to disk ✓.
  *
- * → **先验再落** ✓（**不落坏的** ✓）
- * → **存在就默认不覆盖** ✓（**不悄悄覆盖用户的东西** ✓）。
+ * → Verify first, then write ✓ (a broken one is never written ✓)
+ * → When it is already there it is not overwritten by default ✓
+ *   (the things of the user are never overwritten silently ✓).
  *
- * @returns 落盘的位置 ✓（**给界面说「它在哪」✓**）
+ * @returns where it was written ✓ (so that the interface can say "where
+ *   it is" ✓)
  */
 export function installInstantiatedPack(opts: InstallPackOptions): { dir: string; yamlPath: string } {
   const dir = join(opts.boardsRoot, opts.pack.id);
