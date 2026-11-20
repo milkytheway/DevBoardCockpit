@@ -50,7 +50,7 @@ The core vocabulary is expressed with matching patterns; the `*` in a pattern ma
 
 > The authority is `data/tag-vocabulary.yaml`. The table below is its rendered result, not a second definition.
 > To add or change a core tag, change the YAML; the implementation layer's machine-readable form is generated from it too.
-> The three of them (the YAML / this table / the implementation layer) are kept consistent entry by entry by a cross-check test (the implementation-layer architecture record, section 4.3, calls this the only hard criterion against semantic drift).
+> The three of them (the YAML / this table / the implementation layer) are kept consistent entry by entry by a cross-check test — the implementation layer calls this the only hard criterion against semantic drift ✓.
 >
 > The table carries one extra column, v1: `required` means a v1 board pack should provide it; `reserved` means the vocabulary reserves the semantics but v1 requires no pack to provide it.
 > That column closes the gap between "the vocabulary has a definition" and "no pack implements it" (`board.kernel`, `net.*` and `disk.*` are `reserved` today).
@@ -230,10 +230,10 @@ The initial code table:
 
 | Code | Semantics | Typical source |
 |---|---|---|
-| `not_found` | The thing you asked for does not exist (the current board pack does not provide this tag, the action id does not exist, …) | Statically decidable, it can be computed while the card is being installed. It has the same name and the same meaning as the `not_found` on the action side in `04` section 2.4 — the AI does not get two dialects that have to be translated into each other (ADR-D27) |
+| `not_found` | The thing you asked for does not exist (the current board pack does not provide this tag, the action id does not exist, …) | Statically decidable, it can be computed while the card is being installed. It has the same name and the same meaning as the `not_found` on the action side in `04` section 2.4 — the AI does not get two dialects that have to be translated into each other |
 | `device_absent` | The resource is not there right now: the path does not exist, the device was unplugged, the mount is gone | The reader section is missing, the file cannot be read |
 | `service_down` | The service or process it depends on is not running | The command of `exec_regex` failed |
-| `link_busy_terminal` | The link is occupied by the terminal, sampling is paused | ADR-D23 |
+| `link_busy_terminal` | The link is occupied by the terminal, sampling is paused | The terminal holds the link and the managed sampling is suspended; the affected tag goes stale, because a round trip is exclusive on the link ✓ |
 | `parse_error` | It was read but it cannot be parsed | The format does not match |
 | `out_of_domain` | It was read but the value is out of domain | The range check failed |
 | `timeout` | This read did not finish within the deadline | The round trip timed out |

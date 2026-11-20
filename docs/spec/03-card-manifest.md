@@ -96,7 +96,7 @@ So `permissions.write: ["backlight.*"]` is illegal, and the validator reports an
 
 The effective write permission is `permissions.write` ✓ — exactly what the manifest says ✓.
 
-> Changed on 2026-11-16 (ADR-D46 in the implementation-layer decision record ✓ · the user's own words: "the board description file
+> Changed on 2026-11-16 (the user's own words: "the board description file
 > has the final say", "click a card and it runs" ✓):
 > → There is no longer a second record of "who authorised what" ✓ (writing the same thing down twice ✗ — that eventually disagrees with itself ✗).
 > → What the board accepts is decided by the board pack ✓ (the board pack has the final say ✓);
@@ -109,16 +109,16 @@ The same holds for workflows (`05` section 7.7 ✓):
 effective workflow permission = permissions.workflows
 ```
 
-→ A workflow has no second gate ✓ (removed on 2026-11-16 ✓ · ADR-D48 ✓):
+→ A workflow has no second gate ✓ (removed on 2026-11-16 ✓):
 the existence of a workflow pack is the statement in itself ✓ (the user's own words: "the existence of a workflow is itself the explanation" ✓)
-→ the gate is the unified permission area in the settings ✓ (`05` section 7.2 ✓ · ADR-D47 ✓): the switch on the workflow row ✓
+→ the gate is the unified permission area in the settings ✓ (`05` section 7.2 ✓): the switch on the workflow row ✓
 → that row prints every command of every step ✓ (`05` section 7.4 ✓ — the switch is not "opening one file name" ✓).
 
-Installing a card no longer asks for "consent" ✓ (`04` section 2.3 ✓ · ADR-D46 ✓):
+Installing a card no longer asks for "consent" ✓ (`04` section 2.3 ✓):
 → an action to write that the board pack does not have → do not install it ✓ (the board pack has the final say ✓);
 → all of them are there → install it directly ✓ (one click is the consent ✓).
 
-But "who may write to a board" is decided by the one table in the settings ✓ (the unified permission area ✓ · ADR-D47 ✓):
+But "who may write to a board" is decided by the one table in the settings ✓ (the unified permission area ✓):
 → a card writing the board: forbidden by default ✓ (the host cannot verify "a human clicked the button on the card" ✗ → do not grant it by default ✓)
 → a card triggering a workflow: allowed by default ✓ (the gate is the switch on that row in the settings ✓ — the existence of a workflow pack is the statement in itself ✓)
 → an agent: allowed by default ✓ (it has the confirmation of a human on its side ✓)
@@ -180,7 +180,7 @@ the card only declares "I want to use this action":
 > There are only two grades. An early version wrote three (`read` / `reversible` / `destructive`),
 > which conflicted with section 4.2 of `spec/02`; it has been unified to the wording of the contract: a read goes through a tag, it is not an action.
 
-There is no authorisation process on the card side ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓):
+There is no authorisation process on the card side ✓ (changed on 2026-11-16 ✓):
 
 1. The effective write permission is `permissions.write` ✓ — exactly what the manifest says ✓.
 2. Any action outside the declaration is denied ✓ (the session layer keeps it ✓ — a card that says one thing and does another is not allowed ✓).
@@ -358,7 +358,7 @@ The sandbox of a card and the process model of the host are two different things
 (Electron's `<webview>` / `BrowserView`, or the system WebView2, will do); this does not change the contract itself,
 but it does affect the choice of how the host implements it. This round does not settle that point.
 
-This sandbox choice brings two things that have to be written down (2026-11-14, ADR-D28):
+This sandbox choice brings two things that have to be written down (2026-11-14):
 
 1. Cards cannot see each other. Every iframe is an independent opaque origin — they are of different origins,
    and none of them can read the DOM, the storage or the cookies of another.
@@ -536,7 +536,7 @@ So `log` has to exist, and the card has to be able to write to it.
 | `cockpit.notify(title, body)` | — | shows a lightweight notification in the host (it does not ask the user for an answer) |
 
 A notification cannot replace the confirmation of an action. The click on the button of the card is the "a human clicks in the GUI" moment ✓
-(section 2.4 of the contract ✓ · ADR-D46 ✓) — but the card cannot pop up an "are you sure" for itself and let itself through ✓
+(section 2.4 of the contract ✓) — but the card cannot pop up an "are you sure" for itself and let itself through ✓
 (that is the agent path ✓ — the agent can only ask ✓, and only the human counts ✓).
 
 ---
@@ -567,15 +567,14 @@ and "stop somebody else's run" is on no permission item ✓ → to have it, a ne
 and a new permission should not be added in passing by the workflow round ✓.
 
 The naming prefix is uniformly `cockpit.*`, and the method names are in lower camel case.
-(ADR-D6 in the implementation-layer decision record once listed a different set of names — `getTag / subscribeTag / setAction / log / notify / listTags` —
-now deprecated; that table pointed at this document.)
+(The names `getTag / subscribeTag / setAction / log / notify / listTags` are an early spelling that was deprecated; the table above is the only one ✓)
 
 No method throws: on failure it returns `{ ok: false, reason }`
 (the common convention of section 4 of `04`). `tags.get` is the exception — it returns a stateful value,
 and when it cannot read, that is `{ value: null, status: "unavailable" }`, not an exception.
 
 A method that this host does not implement returns `{ ok: false, reason: 'unknown_method' }` when it is called
-(2026-11-14, ADR-D28). `unknown_method` does not go into the tag reason table of section 2.1.1 of `01` —
+(2026-11-14). `unknown_method` does not go into the tag reason table of section 2.1.1 of `01` —
 that table is about the reasons of a reading; here it is about a method that does not exist.
 A card that wants to know what the host supports asks `capabilities()` first:
 
@@ -613,7 +612,7 @@ Why: one card can have an instance on each of several connections, sharing the s
 There is no `connectionId` in the card code — the host is the one that translates "which board this instance looks at" into
 a `(connectionId, tag)` lookup in the TagStore.
 
-The multi-board prefix problem (the open item O11 of the implementation-layer decision record) is therefore isolated in the resolution layer of the host:
+The multi-board prefix problem is therefore isolated in the resolution layer of the host:
 when multiple boards are supported in the future, the prefix only appears inside the host and never enters the card API or the manifest.
 
 ---
@@ -658,7 +657,7 @@ One card per directory. `entry` points at the entry file, the other files are lo
 | 14 | every id in `permissions.workflows` has to be free of wildcards (the same as section 2.3 ✓), and it has to be a workflow that is already declared in the host (rule 6 of section 9 of `05` ✓) |
 | 15 | `id` has to be equal to the name of the card directory ✓ |
 
-> Why rule 15 exists ✓ (added on 2026-11-15 ✓, following ADR-D40 ✓):
+> Why rule 15 exists ✓ (added on 2026-11-15 ✓, following ):
 > on the host side everything is indexed by the directory name ✓ (the registry ✓ · `uninstall_card` ✓ · `get_card_runtime_log` ✓ · the layout ✓).
 > And the `id` of the manifest could originally differ from the directory name ✓ →
 > the id that the agent gets from `list_cards` would then find nothing when it is handed to `uninstall_card` ✗.

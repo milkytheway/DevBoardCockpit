@@ -100,7 +100,7 @@ Once this direction is broken, "supporting a new board = submitting a pack" and 
 | `02-board-pack.md` | the board pack format: readers, tag bindings, actions, verification states | drafted |
 | `03-card-manifest.md` | the card manifest format: read-side bindings, write-side bindings, grading, permissions | drafted |
 | `04-mcp-tools.md` | the MCP tool set: the AI's eyes and hands | drafted |
-| `05-workflow-pack.md` | the workflow pack format: how one job is done (multiple targets, multiple steps, with criteria) | drafted (2026-11-15, ADR-D34) |
+| `05-workflow-pack.md` | the workflow pack format: how one job is done (multiple targets, multiple steps, with criteria) | drafted (2026-11-15) |
 | `data/tag-vocabulary.yaml` | the machine-readable authority for the core vocabulary (the table in `01` is generated from it) | drafted |
 
 Plus one artefact:
@@ -112,15 +112,15 @@ Changing one place means two places (the contract document / the implementation 
 > Why the vocabulary lives in a YAML file of its own: a Markdown table is not a reliable machine-readable carrier
 > (a cell can contain `|`, the column order has to be maintained by hand, and a single changed space shifts a column silently).
 > `data/tag-vocabulary.yaml` is the single authority; the table in `01-tag-contract.md` is its rendered result,
-> and the implementation layer is generated from it too. The three are kept consistent by a cross-check test (the implementation-layer architecture record, section 4.3, calls this the only hard criterion against semantic drift).
+> and the implementation layer is generated from it too. The three are kept consistent by a cross-check test — the implementation layer calls this the only hard criterion against semantic drift ✓.
 
 ---
 
 ## 4. Decisions already made
 
 > On numbering: the numbers in this table are `SPEC-D*` (contract-layer decisions).
-> The implementation-layer decision record uses `ADR-D*` numbers; that is a separate system from this layer's `SPEC-D*`, and the same number means different things in each of them.
-> Historically both systems wrote "D7", which made "see D7" ambiguous — this round fixed that (see the implementation-layer decision record, section 0).
+> The numbers in this table are this layer's own decision numbers (`SPEC-D*`); there is no second numbering system here.
+> Historically two systems wrote "D7", which made "see D7" ambiguous — this round fixed that ✓.
 
 | # | Decision | Reason |
 |---|---|---|
@@ -135,14 +135,14 @@ Changing one place means two places (the contract document / the implementation 
 | SPEC-D9 | There is only one core vocabulary, namely `data/tag-vocabulary.yaml`; the Markdown table and the implementation layer's machine-readable form are both generated from it | Two copies of the vocabulary inevitably drift — you change the document and not the code, and both sides claim to be right. The implementation layer's copy is a generated artefact, not a source. |
 | SPEC-D10 | Every layer of the card schema is closed; an unknown field is an error | A field that is silently ignored is a field that was mistyped. The promise "v1 has no network permission" needs somebody to enforce it. |
 | SPEC-D11 | `permissions.write` supports exact ids only, not patterns | Read permission is low risk and patterns are convenient; write permission has side effects and patterns are dangerous. The risk is asymmetric. |
-| SPEC-D12 | ⛔ Superseded (2026-11-16 · ADR-D46) — the original decision: board packs take effect unconditionally (the agent is trusted), but "taking effect" presupposed that a human had confirmed that pack | Now: board packs take effect unconditionally ✓ (the board description file has the final say ✓ — the user's own words ✓) → the "a human has to nod before a pack is installed" layer is gone ✓. Why it was superseded: that "card" is the agent's creative surface ✓ (installing cards is not approved ✓); the reader bypass is blocked by the contract layer today ✓ (`02` section 7, rules 28–31 ✓ — shell metacharacters / interpreter wrapping / the `script` kind are all forbidden ✓), so it no longer relies on "ask once per install" ✓. |
-| SPEC-D13 | ⛔ Superseded (2026-11-16 · ADR-D48) — the original decision: destructive actions must be confirmed by a human, and the agent cannot mint its own credentials | Now: destructive actions are executed as declared ✓ (no more asking a human every time ✓ — the danger grade is only information ✓) → the gate is the unified permission area in settings ✓ (ADR-D47 ✓): that class of action is off by default ✓ → turning it on is the informed consent for that one step ✓. |
+| SPEC-D12 | ⛔ Superseded (2026-11-16) — the original decision: board packs take effect unconditionally (the agent is trusted), but "taking effect" presupposed that a human had confirmed that pack | Now: board packs take effect unconditionally ✓ (the board description file has the final say ✓ — the user's own words ✓) → the "a human has to nod before a pack is installed" layer is gone ✓. Why it was superseded: that "card" is the agent's creative surface ✓ (installing cards is not approved ✓); the reader bypass is blocked by the contract layer today ✓ (`02` section 7, rules 28–31 ✓ — shell metacharacters / interpreter wrapping / the `script` kind are all forbidden ✓), so it no longer relies on "ask once per install" ✓. |
+| SPEC-D13 | ⛔ Superseded (2026-11-16) — the original decision: destructive actions must be confirmed by a human, and the agent cannot mint its own credentials | Now: destructive actions are executed as declared ✓ (no more asking a human every time ✓ — the danger grade is only information ✓) → the gate is the unified permission area in settings ✓: that class of action is off by default ✓ → turning it on is the informed consent for that one step ✓. |
 | SPEC-D14 | The danger grade has a floor: the command pattern table belongs to the contract, and reboot / flash / format always count as destructive | SPEC-D12 and SPEC-D13 pull against each other: without a floor an agent could write a pack with `reboot: reversible` and slip past the grading. The floor lets both of them hold at the same time. |
 | SPEC-D15 | The danger floor matches the parsed command, not the literal template | If the floor matched the template (`pipeline start --model {model}`), an injected `reboot` would not be inside the template and the floor would be useless. |
 | SPEC-D16 | Action parameters must be encoded by type before they are injected; they must never be concatenated verbatim | Declarative parameters plus free-text substitution equals command injection. The board-side session runs as root, so this rule decides outright whether "the agent cannot exceed its permissions" holds. |
 | SPEC-D17 | Card network access is switched off by a host-injected CSP; card storage goes through the host-managed `cockpit.storage.*` | The `sandbox` attribute of an iframe does not restrict network access. Writing only "no same-origin" is not enough to honour "v1 cannot reach the network". |
 | SPEC-D18 | MCP runs over an HTTP loopback plus a discovery file plus a bearer token | The agent connects to a GUI that is already running instead of being asked to start it. stdio requires the agent to launch the process, which conflicts with "the GUI is a long-lived desktop application". |
-| SPEC-D19 | ⛔ Superseded (2026-11-16 · ADR-D46) — the original decision: authorisation granularity = action id plus an optional parameter domain | Now: authorisation granularity = action id ✓ (the domain is the `guard` the action declares itself ✓) — there is no "narrower domain granted by a human" ✓ (that layer was removed on 2026-11-16 ✓ · `04` section 2.4.2 ✓). |
+| SPEC-D19 | ⛔ Superseded (2026-11-16) — the original decision: authorisation granularity = action id plus an optional parameter domain | Now: authorisation granularity = action id ✓ (the domain is the `guard` the action declares itself ✓) — there is no "narrower domain granted by a human" ✓ (that layer was removed on 2026-11-16 ✓ · `04` section 2.4.2 ✓). |
 | SPEC-D20 | The data-acquisition interface is a Source (poll / push); v1 implements poll only | A Stream (HDMI, camera into the NPU) is inherently push-based. Welding "acquire then distribute" to pure poll means that adding a Stream later means reworking every card API. Interface polymorphism is a one-line signature decision; deferring it to M3 costs too much. |
 | SPEC-D21 | TagStore is the single convergence point for readings; readings carry a monotonic `seq` | The UI, the cards and the AI must all see a projection of the same state. Once a layer starts keeping its own "I remember it as…", two cards display different numbers and the user cannot tell which one is real. `seq` lets the render layer discard out-of-order old values. |
 | SPEC-D22 | A round trip is exclusive on the link; an action and its readback cannot be split apart | On a half-duplex line (serial) sampling and actions have to be serialised transactionally. If a readback is cut in on by a sample it may read the output of a different command, and "the readback did not match" becomes a false negative — the cockpit would display a wrong real state. |
@@ -151,19 +151,19 @@ Changing one place means two places (the contract document / the implementation 
 | SPEC-D25 | Only "the destination did not exist before" makes it meaningful to leave no half-written file after a failed or cancelled transfer | `to.path` comes from the pack and value-mode substitution is not encoded — cleanup that is not encoded is an injection surface. The criterion is "the destination did not exist before the transfer" (so it must have been produced by this transfer), not "the size and the mtime changed" (the same size within the same second cannot be detected, and it cannot be told whether this step or somebody else changed it). When in doubt, do not delete: it is better to leave half a file than to delete the user's data. |
 | SPEC-D26 | The device (the physical board) and the connection (the profile) are two layers: `device_key` identifies the board, `options.ssh` is the SSH endpoint of the machine behind that connection | One board has ADB / serial / SSH connections, and all of them point at the same board. A board pack says "what model this board is", a connection says "how to reach it" — two boards of the same model share one pack, yet they are not one board. `device_key` supplies the "physical board" layer: the interface has to group by board and credentials have to be bound to a specific board (a credential signed for board A must not be used on board B), and both need it. `options.ssh` in turn solves actions that cross machines: the command runs on the client machine but what is wanted is the board's address, while that board's private key sits on the client — so the board's SSH address has to travel with the connection (with the profile, not into the pack: machine-specific values do not go into a pack). |
 
-> This paragraph is the original text of 2026-11-12 — it was overturned on 2026-11-16 by ADR-D46 / ADR-D48 ✓
+> This paragraph is the original text of 2026-11-12 — it was overturned on 2026-11-16 ✓
 > (see the ⛔ marks on those two rows of the table above ✓).
 
 Original wording: the combination of SPEC-D12 and SPEC-D14 was the point that most needed spelling out in that round —
 what is trusted is "the agent may write things by itself", not "the agent may bypass the human's confirmation";
 SPEC-D12 was therefore narrowed to "a pack takes effect only after a human confirms it".
 
-How it stands today (following the ADRs, not the original wording) ✓:
+How it stands today (not the original wording) ✓:
 
 > What is trusted is "the agent may write things by itself" ✓.
-> → Board packs take effect unconditionally ✓ (the board description file has the final say ✓ — ADR-D46 ✓)
-> → Destructive actions are executed as declared ✓ (no more asking a human every time ✓ — ADR-D48 ✓)
-> → The gate is the unified permission area in settings ✓ (ADR-D47 ✓ — dangerous actions are off by default ✓)
+> → Board packs take effect unconditionally ✓ (the board description file has the final say ✓)
+> → Destructive actions are executed as declared ✓ (no more asking a human every time ✓)
+> → The gate is the unified permission area in settings ✓ (dangerous actions are off by default ✓)
 > → The reader bypass is blocked by the contract layer ✓ (`02` section 7, rules 28–31 ✓)
 >
 > The cost is written down here ✓: there is no longer an "a human has to nod before a pack is installed" step ✓ →

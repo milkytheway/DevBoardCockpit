@@ -4,7 +4,7 @@
 >
 > The revision of 2026-11-13 (the decisions taken before plan 2): the capability vocabulary and the word-sense correspondence table (section 10.3),
 > readback form 5 `kind: none` (sections 4.4 / 4.5), validation rules 25/26/27 (section 7).
-> It follows ADR-D24 / D25 / D26 of the implementation-layer decision record and takes the "correction before v1 is finalised" line:
+> It follows the decisions of 2026-11-13 and takes the "correction before v1 is finalised" line:
 > `apiVersion` is not bumped (`devboard/v1` has not shipped with any implementation yet),
 > but it is written up once and reviewed once, not piecemeal.
 > This round changed the semantics of no existing tag — the semantics in the core vocabulary never change (section 6).
@@ -464,7 +464,6 @@ A read is not an action — a read goes through a tag. An action is always a wri
 
 > There are only two grades. An early version had three (`read` / `reversible` / `destructive`),
 > which conflicted with this contract and was unified along the contract's own line: a read goes through a tag and is not a kind of action.
-> ADR-D7 in the implementation-layer decision record was rewritten to match.
 
 > "Reversible" does not mean "harmless". It only promises that it can be undone — setting the backlight to 0 or setting the governor to `powersave`,
 > can both be undone, but the user will think the board is broken.
@@ -670,7 +669,7 @@ The floor is a fixed table of operation patterns. It belongs to the contract and
 | `rm -rf /` and its equivalent forms | deleting the root |
 | `iptables -F` / `nft flush ruleset` | clearing the firewall rules |
 
-Where the floor takes effect ✓ (changed on 2026-11-16 ✓ · ADR-D48 ✓):
+Where the floor takes effect ✓ (changed on 2026-11-16 ✓):
 
 | Place | What it does |
 |---|---|
@@ -791,12 +790,12 @@ Semantics:
 | Situation | Behaviour |
 |---|---|
 | The parameter value falls inside the `guard` | It is executed directly (the audit is still written) |
-| The parameter value falls outside the `guard` | It is refused ✓ (`denied` ✓ — the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓ — since 2026-11-16 there is no "ask once" any more ✓ · ADR-D48 ✓) |
+| The parameter value falls outside the `guard` | It is refused ✓ (`denied` ✓ — the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓ — since 2026-11-16 there is no "ask once" any more ✓) |
 | No `guard` is declared | It is equivalent to a `guard` = the full declared domain of the parameters, that is, the range is not narrowed |
 
 > The reason codes of an action execution follow the table of section 2.4 of `04` — this table does not introduce one of its own.
-> (History: `needs_approval` → `needs_confirmation` (2026-11-14, ADR-D28) →
-> from 2026-11-16 that tier is gone ✓ — going outside the domain is a direct `denied` ✓ · ADR-D48 ✓.)
+> (History: `needs_approval` → `needs_confirmation` (2026-11-14) →
+> from 2026-11-16 that tier is gone ✓ — going outside the domain is a direct `denied` ✓.)
 
 A `guard` may only narrow the range, never widen it. The validator checks:
 the interval of the `guard` has to be a subset of the declared domain of the `params`, otherwise it is an error.
@@ -813,7 +812,7 @@ A workflow is not an action (it is not in a board pack ✓), but it can execute 
 
 | Item | Rule |
 |---|---|
-| Two layers of authorisation | The manifest declares it (`03` section 2.4 ✓) → the workflow pack / the board pack itself has been approved by the user ✓ → both layers have to pass ✓ (the card level layer was removed on 2026-11-16 ✓ — ADR-D46 ✓) |
+| Two layers of authorisation | The manifest declares it (`03` section 2.4 ✓) → the workflow pack / the board pack itself has been approved by the user ✓ → both layers have to pass ✓ (the card level layer was removed on 2026-11-16 ✓) |
 | Only ids are accepted | Cards and agents cannot supply a path ✓ (a pack can only be taken from the registry by its id ✓) |
 | The approval is bound to a digest | If the content changes it has to be approved again ✓ (the same reason as "an upgrade does not silently widen the permissions" in section 5.6 ✓) |
 | Every write step goes through the floor | A free command is a second command channel ✗ → it has to share the same line of defence as an action ✓ |
@@ -836,12 +835,12 @@ The disposition: a board pack is a device permission, not a card.
 
 | Rule | Content |
 |---|---|
-| Who may write a board pack | A human. The user can edit `profiles/boards/` locally and can also have an agent draft a pack; a pack takes effect as soon as it is written ✓ (the board description file has the final say ✓ · ADR-D46 ✓ — the user on 2026-11-16: "add a board and whatever is in it executes" ✓) |
+| Who may write a board pack | A human. The user can edit `profiles/boards/` locally and can also have an agent draft a pack; a pack takes effect as soon as it is written ✓ (the board description file has the final say ✓ — the user on 2026-11-16: "add a board and whatever is in it executes" ✓) |
 | The precondition of taking effect | There is no extra gate ✓ — but the contents of the pack still have to follow the rules ✓: the actions go through the danger floor and the `danger` grade ✓ (section 5.2 ✓) · the fetching command of a reader goes through the danger floor ✓ (rule 28 ✓) · the tag / sample / capability vocabularies go through the validation ✓ (section 7 ✓) |
 | Drafted by the agent | The agent may write files (that is its day job) ✓ — but what it writes goes through the validation all the same ✓ (rule 28 is part of that validation ✓) |
 | A pack that fails to load does not take the other capabilities down with it | When a pack fails to load, the tags of that connection report `unavailable`; the terminal and the file transfer keep working as usual (the same applies to section 10.1) |
 
-> Why there is no "a human must confirm before it is enabled" gate (changed on 2026-11-16 ✓ · ADR-D46 ✓):
+> Why there is no "a human must confirm before it is enabled" gate (changed on 2026-11-16 ✓):
 > → it is what the user wanted ✓: "the board description file has the final say" ✓ "add a board and whatever is in it executes" ✓ "having to agree to this and to that as well, is that not tiring" ✓.
 > → the gate that replaces it is rule 28 ✓ — the command of a reader goes through the floor by itself ✓ (that is the only place where a reader can overstep ✓).
 > → the path of the action has always been there ✓: the danger floor ✓ + the `danger` grade ✓ + the agent side still needs a human's nod ✓ (`04` section 2.4.1 ✓).
@@ -850,7 +849,7 @@ Why the cut is made this way: section 1.3 of `spec/04` says "no bare send_comman
 but a reader that can run an arbitrary command IS a bare command channel —
 it only has a different entrance. The contract cannot forbid bare commands on one side and hand the agent the same road on the other.
 
-The disposition today (changed on 2026-11-16 ✓ · ADR-D46 ✓):
+The disposition today (changed on 2026-11-16 ✓):
 
 | Option | The conclusion today |
 |---|---|
@@ -916,7 +915,7 @@ but the rules themselves are the ones of this table and they do not change with 
 | 25 | Every value of `requires.capabilities` has to belong to the closed vocabulary `{shell, exec, stream, files}` (section 10.3) | A mistyped capability name has to be an error and not silently ignored (the same closedness principle as rule 24) |
 | 26 | Every value of `requires.capabilities` has to belong to the set of capabilities the runtime has implemented (v1 = `{shell, exec, files}`). Declaring a capability that cannot be delivered is an error and not a warning | Declaring something that can never be delivered promises a delivery that does not exist. `stream` is not in the set because the Stream contract is missing (section 7 of `00-overview.md`) |
 | 27 | Every action must have a `readback` block whose `kind` belongs to `{file_equals, command_ok, verify, none}` (without a `kind` it reads a tag as in form 1); when its `kind` is `none` it must carry a non-empty `consequence` | Only rule 15 covers `destructive` → a `reversible` action without a `readback` passes the validation → the loop is silently broken. `none` is the only legal way of saying "I have no readable state" — the same thing must not be expressed by "not writing it" |
-| 28 | The fetching command of a reader must not hit the danger floor (the `command` of `exec_regex` goes onto the board verbatim ✓ → so it has to go through the floor itself ✓) | A board pack takes effect directly ✓ (ADR-D46 ✓ — "the board description file has the final say" ✓) → the "a human must confirm before it is enabled" gate is gone ✓ → this rule is the gate that replaces it ✓. A reader is not an action ✓ — it does not go through the executor ✓ — so it is judged here ✓ |
+| 28 | The fetching command of a reader must not hit the danger floor (the `command` of `exec_regex` goes onto the board verbatim ✓ → so it has to go through the floor itself ✓) | A board pack takes effect directly ✓ ("the board description file has the final say" ✓) → the "a human must confirm before it is enabled" gate is gone ✓ → this rule is the gate that replaces it ✓. A reader is not an action ✓ — it does not go through the executor ✓ — so it is judged here ✓ |
 | 29 | The parameter values of a reader must not contain shell metacharacters (`;` `|` `&` `` ` `` `$` `>` `<` and a newline ✓). Exceptions: the `command` and the `pattern` of `exec_regex` ✓ · the path and the interpreter of `script` ✓ | The fetching fragment of a reader is spliced into one shell command ✓ → a value with a metacharacter means a second command is spliced in ✓ (that is the road around the floor ✓). The metacharacters of a regular expression do not count ✓ (a regular expression is not a shell ✓) |
 | 30 | The `command` of an `exec_regex` must not contain an interpreter / a downloader / a privilege escalator (`sh` `bash` `env` `xargs` `python*` `perl` `node` `curl` `wget` `nc` `busybox` `sudo` `su` … in any position ✓) | The floor table matches words ✓ — `bash -c 'rm -rf /'` does not match a single word ✓ → the wrapper is the road around the floor ✓ → so these words must not appear ✓ |
 | 31 | The `script` kind is not allowed in a board pack | It executes the body of a script ✓ — not one character of that body is inspected ✓ → the floor cannot see it ✓ → do not leave a hole that "will be opened some day" ✓ (the runtime still does not push a script onto the board ✓ → it is dormant ✓) |
@@ -924,7 +923,7 @@ but the rules themselves are the ones of this table and they do not change with 
 > Rules 20–24 were added by the review of 2026-11-12. The first 19 rules were already part of the contract in the `0244852` revision,
 > and the last 5 close the holes the review found: a closed type set, the parameter encoding, the `guard` subset and the closed set of readback forms.
 >
-> Rules 25–27 were added by the decisions taken before plan 2 on 2026-11-13 (following ADR-D24/D25/D26 in the implementation-layer decision record):
+> Rules 25–27 were added by the decisions taken before plan 2 on 2026-11-13 ✓:
 > the first two close the hole of a `requires.capabilities` that nobody validates and nobody consumes —
 > not one of the 24 rules checked it; the last one closes the hole in the loop of "a `reversible` action may omit the readback".
 >
@@ -1003,8 +1002,8 @@ Three ways to bind, ordered by how reliable they are:
 }
 ```
 
-> The name of the binding key is `board_pack`. That is the contract's line, ADR-D5 in the implementation-layer decision record
-> and `docs/spec/04` both use it. The key `board` also occurred historically,
+> The name of the binding key is `board_pack`. That is the contract's line,
+> and `docs/spec/04-mcp-tools.md` both use it. The key `board` also occurred historically,
 > and it is now unified to `board_pack` — the runtime only recognises `board_pack`
 > and reports "unknown top-level field" for `board` (the same closed rule as rule 24 of section 7).
 
@@ -1065,13 +1064,13 @@ An unknown top-level field is an error ✓ (the same closed rule as rule 24 of s
 
 > Why it is needed ✓: an action that crosses machines is started on the other machine ✓ (`05` section 8.C ✓) →
 > that command needs the SSH address of the board ✓ → the workflow pack should not know the address of the board ✓ →
-> it travels with the profile ✓ (machine-specific values do not go into a pack ✓ — D35-2 of ADR-D35 ✓).
+> it travels with the profile ✓ (machine-specific values do not go into a pack ✓ — see SPEC-D26 in `00-overview.md` ✓).
 
 ### 10.4 The interface lists boards only: the host picks the connection
 
 > The user was explicit on 2026-11-16: "the devices go at the very top of the interface, only the board selection is supported,
 > right now there is the fake one and the real 3588 one, do not put the connections and that in there" ✓
-> Decision: ADR-D44 in the implementation-layer decision record ✓
+> Decision: the interface lists boards only, and the host picks the connection ✓
 
 | Item | Rule |
 |---|---|

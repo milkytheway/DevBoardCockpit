@@ -370,7 +370,7 @@ If an action this card wants to write is not in the board pack, `install_card` d
     detail: "The board pack does not declare these actions: system.reboot" }
 ```
 
-> Changed on 2026-11-16 (ADR-D46 ✓ · the user's own words: "the board description file has the final say" ✓):
+> Changed on 2026-11-16 (the user's own words: "the board description file has the final say" ✓):
 > Installing a card no longer requires "approval" ✓ — the effective permission is the declaration of the card's manifest ✓ (`03` section 2.4 ✓).
 > → The gate "new authorisation needed → not installed" is gone ✓ (the same thing is not recorded twice ✓).
 > → What it wants to write is written down in the manifest ✓ — that is a verifiable fact ✓.
@@ -389,7 +389,7 @@ This does not deadlock the loop of the agent. The flow is:
 1. The agent calls `install_card` → it is installed (or the board pack does not declare that action → an error ✓)
 2. The installed card has the permissions of its manifest declaration ✓ (`03` section 2.4 ✓ — there is no second gate ✓)
 
-> Changed on 2026-11-16 (ADR-D46 ✓): the whole "the GUI pops up a confirmation → approve one by one → retry" sequence is gone ✓
+> Changed on 2026-11-16: the whole "the GUI pops up a confirmation → approve one by one → retry" sequence is gone ✓
 > — the user's own words: "having to agree to this and having to agree to that, is that not tiring" ✓.
 
 How this divides the work with the file watcher: both paths work, but they do different things.
@@ -460,13 +460,13 @@ or, on failure:
   }
 ```
 
-What `cancelled` means (added on 2026-11-15, following ADR-D36 ✓):
+What `cancelled` means (added on 2026-11-15, following ):
 this execution was stopped ✓ — it did not fail ✓.
 → Its exit code is `null` ✓ (neither 0 nor 124 ✓);
 → It does not report `readback_mismatch` ✓ (that would say "the board did not obey" ✗ — a human stopping it is not the same as the board not obeying ✓);
 → A timeout and a cancellation are two different things ✓ (`timeout` versus `cancelled` ✓ — fact G1 ✓).
 
-The `verified` field (added on 2026-11-13, following ADR-D25 of the implementation-layer decision record):
+The `verified` field (added on 2026-11-13 ✓):
 
 | Value | Meaning |
 |---|---|
@@ -481,7 +481,7 @@ Reporting `ok: false` would be a different kind of lie; reporting `ok: true` and
 > The two tables are different things: the `reason` of `01` is the reason code of a tag reading (`not_found` /
 > `device_absent` / …), the `reason` of this section is the reason code of an action execution.
 > But "the thing you asked for does not exist" has the same name and the same meaning on both sides (both are `not_found`) —
-> the AI is not given two dialects that have to be translated into each other (ADR-D27).
+> the AI is not given two dialects that have to be translated into each other.
 > `unverified` is not a tag state — adding it would pollute every consumer of tags.
 
 The wording for the UI (fixed): `verified: false` → the card must show "executed, not verified",
@@ -510,7 +510,7 @@ Behaviour:
 4. With `dry_run: true` it returns the command that would be executed together with the parameters (no execution, no readback, no audit entry)
    — it comes before steps 5 and 6 ✓: otherwise the agent would never get a preview of a `destructive` action ✗
 5. Parameters outside the `guard` domain of that action → `denied` ✓ (the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓)
-6. `danger: destructive` → do it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓ · ADR-D48 ✓)
+6. `danger: destructive` → do it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓)
 7. Execute → on failure `failed` (the command exited with a non-zero code); an action that depends on the exit code is not supported on a serial connection, then `unsupported_transport`
 8. Readback → on a mismatch `readback_mismatch`.
    If the action declares `readback: {kind: none}` (`02` section 4.4.1, form 5) → the readback is skipped
@@ -548,9 +548,9 @@ Rules:
 |---|---|
 | `reversible`, the parameters are inside the `guard` domain | The agent may execute it directly, and an audit entry is written |
 | `reversible`, the parameters are outside the `guard` domain | `denied` ✓ (the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓) |
-| `destructive` | It does it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓ · ADR-D48 ✓) |
+| `destructive` | It does it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓) |
 
-> Changed on 2026-11-16 (ADR-D48 ✓ · the user's own words: "do not ask any more whether a command is dangerous,
+> Changed on 2026-11-16 (the user's own words: "do not ask any more whether a command is dangerous,
 > use permissions for everything, turning a permission on already means knowing the danger" ✓) — a destructive action used to require a human nod ✓
 > → it is not asked any more ✓ → dangerous actions are off by default in the settings ✓ (turning one on is the informed consent for that one step ✓).
 
@@ -558,7 +558,7 @@ Three details:
 
 | # | Detail |
 |---|---|
-| 1 | The authorisation set of the agent = all the actions declared by the current board pack ✓ (section 2.4.2 ✓ · `02` section 5.6 ✓). A pack takes effect as soon as it is written ✓ (there is no layer of "a human confirmed this pack" ✓ — changed on 2026-11-16 ✓ · ADR-D46 ✓) — but it has to pass its own validator ✓ (the 31 rules of section 7 of `02` ✓) |
+| 1 | The authorisation set of the agent = all the actions declared by the current board pack ✓ (section 2.4.2 ✓ · `02` section 5.6 ✓). A pack takes effect as soon as it is written ✓ (there is no layer of "a human confirmed this pack" ✓ — changed on 2026-11-16 ✓) — but it has to pass its own validator ✓ (the 31 rules of section 7 of `02` ✓) |
 | 2 | The parameter domain is the `guard` declared by the action itself ✓ — there is no "narrower domain granted by a human" ✓ (that layer was removed on 2026-11-16 ✓) |
 | 3 | Existence is checked before authorisation ✓ (see the behaviour table above) — the `command` of the action is only returned once the authorisation has passed ✓ |
 
@@ -566,7 +566,7 @@ Three details:
 > it is the guard rail at this place ✓ — if a narrower authorisation per connection or per user is added later ✓, the reason code is already there ✓.
 > To be explicit: do not assume that it is in effect all the time ✗.
 
-There is no confirmation chain any more ✓ (removed on 2026-11-16 ✓ — ADR-D48 ✓).
+There is no confirmation chain any more ✓ (removed on 2026-11-16 ✓).
 
 → The agent calls `execute_action` → it is executed directly ✓ (a destructive action too ✓).
 → Parameters outside the `guard` → `denied` ✓.
@@ -574,7 +574,7 @@ There is no confirmation chain any more ✓ (removed on 2026-11-16 ✓ — ADR-D
   the whole confirmation credential machinery is gone with them ✓ (`ConfirmationStore` ✓ · `requestConfirmation` ✓ ·
   `approveAndResume` ✓ · `confirm_id` ✓ · `workflow:confirm` ✓).
 
-How the agent is held in check then ✓: by the unified permission area in the settings ✓ (`03` section 2.4 ✓ · ADR-D47 ✓) —
+How the agent is held in check then ✓: by the unified permission area in the settings ✓ (`03` section 2.4 ✓) —
 → one row per operation ✓ · two switches, one for each executor ✓ (card / agent ✓)
 → dangerous actions are off by default ✓ (turning one on is the informed consent for that one step ✓)
 → it is the ledger ✓ (one place ✓ — there is no second copy of "who granted what" any more ✓).
@@ -591,15 +591,15 @@ Every pack takes effect — as soon as it is written ✓ (the board description 
 | The user wrote it, or it is built in | Yes |
 | An agent drafted it | Yes as well ✓ (but what it wrote still passes the validation ✓ — the 31 rules of section 7 of `02` ✓) |
 
-> Changed on 2026-11-16 (ADR-D46 ✓ · the user's own words: "the board description file has the final say",
+> Changed on 2026-11-16 (the user's own words: "the board description file has the final say",
 > "add a board and whatever is in it executes" ✓) — there used to be a gate here that required a human to approve the pack ✓.
 
 The gate that replaced it sits on the pack itself ✓:
 - The fetching command of a reader passes the danger floor ✓ (rule 28 of section 7 of `02` ✓) —
   this is the only place where a reader can go out of bounds ✓ (it is not an action ✓ — it does not go through the executor ✓);
 - Actions pass the danger floor and the `danger` level ✓ (`02` section 5.2 ✓) —
-  `danger` is only information ✓ (changed on 2026-11-16 ✓ · ADR-D48 ✓) →
-  a destructive action is executed as it is ✓ → the gate is the unified permission area in the settings ✓ (section 2.4.1 ✓ · ADR-D47 ✓);
+  `danger` is only information ✓ (changed on 2026-11-16 ✓) →
+  a destructive action is executed as it is ✓ → the gate is the unified permission area in the settings ✓ (section 2.4.1 ✓);
 - The permissions of a card are the declaration of its manifest ✓ (`03` section 2.4 ✓) —
   everything outside the declaration is denied ✓ — a card cannot say one thing and do another ✓.
 
@@ -607,7 +607,7 @@ So: the authoring side of the cards belongs to the agent, and the permission sid
 but both sides pass the same set of rules that a machine can check ✓ (the validation rules ✓ + the danger floor ✓) —
 there is no more "a human has to nod for every installation" ✓.
 
-> ⚠️ The path through a card has no "a human pressed it" confirmation ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓):
+> ⚠️ The path through a card has no "a human pressed it" confirmation ✓ (changed on 2026-11-16 ✓):
 > → A click on a card button is that one human action ✓ (`03` section 2.4 ✓) → a destructive action runs directly on the card path ✓.
 > → The host cannot tell "a human pressed the button on the card" from "the JavaScript of the card called the same API" ✗
 > → So a writable card that an agent installed can trigger those actions itself ✗
@@ -615,13 +615,13 @@ there is no more "a human has to nod for every installation" ✓.
 
 Why it was chosen this way: the core value of this product is "an AI manufactures instruments and switches in bulk from a manual".
 If every card and every pack that an agent writes had to be approved by a human, the collaboration loop would break —
-so cards are not approved (`03` section 3.3), and packs are not approved either ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓).
+so cards are not approved (`03` section 3.3), and packs are not approved either ✓ (changed on 2026-11-16 ✓).
 The difference remains: a card can only read tags and call declared actions (under the constraints of the grading);
 a pack can define new sources of readings — but its fetching commands pass a stricter machine check today ✓
 (the rules 28–31 of section 7 of `02` ✓ — shell metacharacters, interpreter wrapping and the `script` kind are all forbidden ✓).
 
 What about the danger level then: the floor (`02-board-pack.md` section 5.2) ✓ — but today it is only judged in the validator ✓
-(changed on 2026-11-16 ✓ · ADR-D48 ✓: it is not checked again at runtime ✓ → a pack that hits the floor cannot be loaded ✓).
+(changed on 2026-11-16 ✓: it is not checked again at runtime ✓ → a pack that hits the floor cannot be loaded ✓).
 
 A pack declares `danger` itself, but there is a fixed table of operation patterns that belongs to the contract:
 `reboot`, `mkfs`, `dd` to a block device, `flash`… these commands are always treated as `destructive`,
@@ -640,7 +640,7 @@ and the grading would lose its meaning. The floor + the permission area is the s
 → [{ id, name, inputs: { … } }]
 ```
 
-Lists the workflows that are in the registry ✓ (there is no longer a layer of "approved by the user" ✓ — ADR-D48 ✓).
+Lists the workflows that are in the registry ✓ (there is no longer a layer of "approved by the user" ✓).
 
 > Only the id, the name and the input declarations ✓ — never the topology ✓
 > (which role connects to which machine and which command it runs → that is not for an unauthorised party to see ✗).
@@ -805,7 +805,7 @@ It is closed ✓ — the failure of every MCP tool is taken from here ✓:
 | Code | When | Who uses it |
 |---|---|---|
 | `invalid_params` | The parameters do not fit (type, range, enumeration, illegal value) | All of them ✓ |
-| `not_found` | The thing does not exist (action, workflow, card and reading share the same name and the same meaning ✓ ADR-D27 ✓) | All of them ✓ |
+| `not_found` | The thing does not exist (action, workflow, card and reading share the same name and the same meaning) | All of them ✓ |
 | `denied` | Not permitted (the user refused, or there is no authorisation) | The write side ✓ |
 | `busy` | The same thing is already running, it cannot run concurrently | The workflow side ✓ |
 | `invalid` | The content is not valid (the manifest itself is not valid) | The card side ✓ |
@@ -826,7 +826,7 @@ It is closed ✓ — the failure of every MCP tool is taken from here ✓:
 
 | Case | Bumped or not |
 |---|---|
-| `devboard/v1` has not shipped with any implementation yet | Not bumped ✓ — this is a correction before v1 is finalised ✓ (precedent: ADR-D24 / D25 / D26 of the implementation-layer decision record ✓) |
+| `devboard/v1` has not shipped with any implementation yet | Not bumped ✓ — this is a correction before v1 is finalised ✓ (precedent: the corrections of 2026-11-13 ✓) |
 | After v1 has shipped | Always bumped ✓ |
 
 > The reason must not be written as "adding a field is not a breaking change" ✓ — this project has no such general rule ✓:
@@ -880,12 +880,12 @@ There are two standard MCP transports: stdio and HTTP (Streamable HTTP, which re
 
 | | How it is used | Why it is not used |
 |---|---|---|
-| stdio | The agent starts the MCP server as a subprocess and talks to it through a pipe | What the agent would have to start is "a desktop application that is in use by the user" — awkward; and the GUI has to stay operable by the agent and by the user at the same time. A separate process also violates the hard constraint "the MCP server and the GUI live in the same process" (ADR-D2 of the implementation-layer decision record) |
+| stdio | The agent starts the MCP server as a subprocess and talks to it through a pipe | What the agent would have to start is "a desktop application that is in use by the user" — awkward; and the GUI has to stay operable by the agent and by the user at the same time. A separate process also violates the hard constraint of this contract layer: the MCP server and the GUI live in the same process ✓ |
 | HTTP (127.0.0.1) | The GUI opens a local port and the agent connects to it | Adopted. The price is the port and the local security baseline (see below) |
 
 The reason: the GUI is something a user opens and keeps open anyway,
 and the agent connects to the GUI that is already running instead of starting it.
-The HTTP loopback keeps the MCP server inside the Electron main process (ADR-D2 holds)
+The HTTP loopback keeps the MCP server inside the Electron main process ✓ (the same process ✓)
 and at the same time gives the agent a way to connect to it.
 
 The local security baseline (part of the contract, not an implementation suggestion):

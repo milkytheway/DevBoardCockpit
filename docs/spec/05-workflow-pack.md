@@ -1,7 +1,7 @@
 # The Workflow Pack Format
 
 > **Contract version**: `devboard/v1`
-> **Drafting status**: drafted (2026-11-15, ADR-D34 ✓)
+> **Drafting status**: drafted (2026-11-15 ✓)
 > **See also**: `00-overview.md` (the two buses) · `02-board-pack.md` (actions and readback) · `03-card-manifest.md` (cards and permissions) · `04-mcp-tools.md` (the hands of the agent)
 
 ---
@@ -284,9 +284,9 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 | **Registry** | which packs the directory holds (id → pack + **content digest**) | putting a file into the directory |
 | **Audit** | what every step of every run did (`02` section 5.4 ✓) | the host |
 
-> **There is no approval ledger any more** ✓ (**removed on 2026-11-16** ✓ · ADR-D48 ✓) —
+> **There is no approval ledger any more** ✓ (**removed on 2026-11-16** ✓) —
 > **the existence of a workflow pack is the explanation by itself** ✓ (the user: "**the existence of the workflow explains itself**" ✓).
-> → **the gate is the unified permission area in settings** ✓ (`03` section 2.4 ✓ · ADR-D47 ✓): **the row for the workflow** ✓.
+> → **the gate is the unified permission area in settings** ✓ (`03` section 2.4 ✓): **the row for the workflow** ✓.
 
 ### 7.3 Five rules
 
@@ -311,7 +311,7 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 > Otherwise the switch is only "enabling a file name" ✓ → **it amounts to not having looked** ✗.
 > → **`planOf()` produces this summary** ✓ (on the registry side ✓).
 
-### 7.5 Dangerous commands: **there is no runtime confirmation any more** ✓ (**changed on 2026-11-16** ✓ · ADR-D48 ✓)
+### 7.5 Dangerous commands: **there is no runtime confirmation any more** ✓ (**changed on 2026-11-16** ✓)
 
 | # | Rule |
 |---|---|
@@ -331,7 +331,7 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 
 > A workflow is **not an action** (it is not in a board pack ✓), but it can **also run commands on the user's machine** ✗
 > → it **must** have an authorisation layer of its own ✓ (the same model as `03` section 3.3 ✓) —
-> **that layer is now the switch on the settings page** ✓ (**one place** ✓ · ADR-D47 ✓).
+> **that layer is now the switch on the settings page** ✓ (**one place** ✓).
 
 ---
 
@@ -341,7 +341,7 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 |---|---|
 | 1 | **the trigger returns a `run_id` immediately** (a compilation takes minutes ✓ → a synchronous return does not hold ✓) |
 | 2 | **`status(run_id)` is polled for the timeline** ✓ (polling in the first version ✓) |
-| 3 | **state machine**: `running` / `done` / `failed` / **`cancelled`** ✓ (**`awaiting_confirmation` removed on 2026-11-16** ✓ — **there is no more stopping to wait for a nod** ✓ · ADR-D48 ✓) |
+| 3 | **state machine**: `running` / `done` / `failed` / **`cancelled`** ✓ (**`awaiting_confirmation` removed on 2026-11-16** ✓ — **there is no more stopping to wait for a nod** ✓) |
 | 4 | **idempotent**: polling the same `run_id` again → **the same timeline** ✓ |
 | 5 | **triggering again** = **running from the beginning again** ✓ (**the write steps that already completed run again** ✓ → a `destructive` step **must not be placed after a write step with a side effect** ✓) |
 | 6 | **resuming** (after a nod) = **continuing from the step where it stopped** ✓ (section 7.6 ✓) |
@@ -432,5 +432,6 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 
 ---
 
-*Basis: the implementation-layer decision record — **ADR-D31 / ADR-D32 / ADR-D34 / ADR-D36**;
-the successive incremental proposals and independent reviews of this document, and the measurements made on real hardware.*
+*Basis: the trust model of this document (three ledgers and five rules), the run semantics for long tasks
+(a `run_id` plus polling; cancellation; the step in flight; no half-written files),
+and the measurements made on real hardware ✓; it went through four rounds of independent review ✓.*
