@@ -103,7 +103,7 @@ The effective write permission is `permissions.write` ✓ — exactly what the m
 >   what the card can do is decided by its manifest ✓.
 > → The session layer keeps "anything outside the declaration is denied" ✓ — a card that says one thing and does another is not allowed ✓.
 
-The same holds for workflows (`05` section 7.7 ✓):
+The same holds for workflows (`05` section 7.6 ✓):
 
 ```
 effective workflow permission = permissions.workflows
@@ -121,7 +121,7 @@ Installing a card no longer asks for "consent" ✓ (`04` section 2.3 ✓):
 But "who may write to a board" is decided by the one table in the settings ✓ (the unified permission area ✓):
 → a card writing the board: forbidden by default ✓ (the host cannot verify "a human clicked the button on the card" ✗ → do not grant it by default ✓)
 → a card triggering a workflow: allowed by default ✓ (the gate is the switch on that row in the settings ✓ — the existence of a workflow pack is the statement in itself ✓)
-→ an agent: allowed by default ✓ (it has the confirmation of a human on its side ✓)
+→ an agent: allowed by default ✓ for the operations that are **not** dangerous ✓ — **dangerous actions are off by default for both executors** ✓ (the settings page has a switch for each of them ✓)
 → to change it, change that switch in the settings ✓ (once ✓ · no more dialog ✓).
 
 ### 2.5 The schema of the manifest is closed
@@ -192,8 +192,9 @@ There is no authorisation process on the card side ✓ (changed on 2026-11-16 �
 `guard` is still the boundary ✓ (section 5.5 of `02-board-pack.md` ✓): a value the card passes that is outside the `guard` →
 refused ✓ (not let through ✓) — the `guard` gives "how far this action may change things" a definite meaning ✓.
 
-> Why the agent path still asks ✓ (section 2.4.1 of `04` ✓): an agent is not a human ✓ —
-> it cannot click a button ✓ → a destructive action it calls must have a human say yes ✓.
+> The agent path does not ask either ✓ (section 2.4.1 of `04` ✓): **there is no confirmation chain any more** ✓ —
+> an agent cannot click a button ✓ → **the row for that action in the unified permission area is the gate** ✓
+> (dangerous actions are **off by default** ✓ → turning one on is the informed consent ✓).
 
 A read is not an action. A read goes through a tag, `permissions.read` needs no authorisation process — reading a
 `cpu.usage` has no side effect, there is no reason to ask the user. The board pack has no action with `danger: readonly` either:
@@ -292,8 +293,8 @@ the user clicks
 the card calls cockpit.actions.invoke("toggle-npu", {enabled: true})
    ↓
 the runtime checks: ① is the action in permissions.write?
-           ② does the danger grade of the action need a second confirmation?
-           ③ do the parameters fall inside the guard domain of the action? (outside it, a confirmation is required as well)
+           ② is the row for that action in the unified permission area open for this executor?
+           ③ do the parameters fall inside the guard domain of the action? (outside it, the action is refused)
            ④ does this action exist in the board pack?
    ↓
 the command runs → the readback is taken
@@ -526,7 +527,7 @@ See section 6.2. Five methods: `get` / `set` / `remove` / `keys` / `clear`.
 | `cockpit.log(level, message)` | `level ∈ {error, warn, info}` | writes one entry to the card runtime log |
 
 The card runtime log is the "eyes for the agent's own testing" (section 1.2 of `04`),
-`get_card_runtime_log(cardId)` reads the entries the card has written.
+`get_card_runtime_log(card_id)` reads the entries the card has written.
 So `log` has to exist, and the card has to be able to write to it.
 
 ### 7.6 Notifications
@@ -535,9 +536,11 @@ So `log` has to exist, and the card has to be able to write to it.
 |---|---|---|
 | `cockpit.notify(title, body)` | — | shows a lightweight notification in the host (it does not ask the user for an answer) |
 
-A notification cannot replace the confirmation of an action. The click on the button of the card is the "a human clicks in the GUI" moment ✓
-(section 2.4 of the contract ✓) — but the card cannot pop up an "are you sure" for itself and let itself through ✓
-(that is the agent path ✓ — the agent can only ask ✓, and only the human counts ✓).
+A notification is not an authorisation ✓ — it shows something, it grants nothing ✓.
+The click on the button of the card is the "a human clicks in the GUI" moment ✓ (section 2.4 of the contract ✓) —
+but the card cannot pop up an "are you sure" for itself and let itself through ✓
+(the host cannot tell "the human pressed the button" from "the card's own script called the same API" ✓ —
+**that is why the write side of a card is off by default** ✓ · section 2.4 ✓).
 
 ---
 
@@ -655,14 +658,16 @@ One card per directory. `entry` points at the entry file, the other files are lo
 | 12 | an entry in `actions[]` that has no `target` is a view-local action, and it must not appear in `permissions.write` |
 | 13 | the `type` of `actions[].params` has to be one of the closed values (section 4.3 of `02`); a `string` has to have `maxLength` |
 | 14 | every id in `permissions.workflows` has to be free of wildcards (the same as section 2.3 ✓), and it has to be a workflow that is already declared in the host (rule 6 of section 9 of `05` ✓) |
-| 15 | `id` has to be equal to the name of the card directory ✓ |
 
-> Why rule 15 exists ✓ (added on 2026-11-15 ✓, following ):
-> on the host side everything is indexed by the directory name ✓ (the registry ✓ · `uninstall_card` ✓ · `get_card_runtime_log` ✓ · the layout ✓).
-> And the `id` of the manifest could originally differ from the directory name ✓ →
-> the id that the agent gets from `list_cards` would then find nothing when it is handed to `uninstall_card` ✗.
-> → One rule merges the two id spaces into one ✓.
-> → `list_cards` therefore gives two fields ✓: `id` (the directory name ✓) and `manifest_id` (the one the manifest declares ✓) —
-> the two can still differ ✓ (the id of the manifest is the intention of the author ✓, the directory name is where it landed ✓) →
-> the agent has to see this difference ✓ (section 2.2 of `04` ✓).
+> **The fourteen rules are what `validate_card` checks** ✓ — **nothing else** ✓.
+>
+> **The id of the card is not among them** ✓ — and it does not have to be ✓:
+> on the host side everything is indexed by the **directory name** ✓ (the registry ✓ · `uninstall_card` ✓ ·
+> `get_card_runtime_log` ✓ · the layout ✓) →
+> and the host **installs a card under the id its manifest declares** ✓ →
+> **so after an install the two are the same string** ✓.
+> → A card that is **dropped into the cards directory by hand** keeps its directory name ✓ →
+> **then the two can differ** ✓ → `list_cards` gives both fields ✓
+> (`id` = the directory name ✓ · `manifest_id` = the one the manifest declares ✓) →
+> the agent has to see the difference ✓ (section 2.2 of `04` ✓).
 

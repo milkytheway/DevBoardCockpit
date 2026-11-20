@@ -221,7 +221,7 @@ readback:
 | **A `role` that points at a role that was never declared → an error** | a criterion must not read **an unauthorised machine** ✗ |
 | **`await`/`assert` must say on which role it reads** | otherwise "which one does it read by default" is a guess ✗ |
 | **The command of a criterion also goes through the danger floor** | it is **a command given by the pack** ✓ → without the floor it could run a dangerous command in the name of "verification" ✗ |
-| **The command of a criterion does not enter the confirmation channel** (first version) | a criterion is **a read-only verification** ✓; the defences are "a human read it when the pack was installed" ✓ + the floor ✓ |
+| **The command of a criterion does not reach the executor** (first version) | a criterion is **a read-only verification** ✓; the defences are **the unified permission area** ✓ (the row for that workflow ✓) + the floor ✓ |
 
 > **A criterion across targets is run by the workflow layer** ✓ (the executor of `02` section 5.2 reads back **on the connection it executes on** ✓) →
 > **two facts, two ledger lines** ✓ (the line of the criterion is recorded on its own ✓).
@@ -344,7 +344,7 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 | 3 | **state machine**: `running` / `done` / `failed` / **`cancelled`** ✓ (**`awaiting_confirmation` removed on 2026-11-16** ✓ — **there is no more stopping to wait for a nod** ✓) |
 | 4 | **idempotent**: polling the same `run_id` again → **the same timeline** ✓ |
 | 5 | **triggering again** = **running from the beginning again** ✓ (**the write steps that already completed run again** ✓ → a `destructive` step **must not be placed after a write step with a side effect** ✓) |
-| 6 | **resuming** (after a nod) = **continuing from the step where it stopped** ✓ (section 7.6 ✓) |
+| 6 | **resuming** = **not a thing any more** ✓ — the confirmation chain is gone ✓ (section 7.5 ✓) → **a run either runs or is cancelled** ✓ |
 | 7 | **concurrency**: **only one run of the same workflow pack at a time** ✓ (two workflows competing for one serial line would talk over each other ✓) |
 | 8 | **cancellation**: section 8.A ✓ |
 | 9 | **the step in flight**: section 8.B ✓ |
@@ -356,12 +356,12 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 |---|---|---|
 | **A1** | **cancellation = the host *requests* the abortion of the step in flight** ✓<br>**whether it can actually stop depends on the transport and the remote side** ✓ — the contract **does not promise** that "the process certainly dies" ✓<br>(on serial that is impossible ✓ — it is not a shell connection ✓; on ssh/adb it depends on the remote side ✓)<br>what the contract promises is two things: **the host stops waiting** ✓ + **the timeline says it truthfully** ✓ | "the process is certainly gone" is an **implementation layer mechanism** ✓, and the semantics of the four transports **differ from each other** ✓ (locally the process is killed ✓ / over ssh the channel is closed ✓ / over adb what dies is the local client ✓ / over serial nothing can be killed ✓) → writing it into the contract = **lying to three of the transports** ✗ |
 | **A2** | the state of the run = **`cancelled`** ✓ (**not `failed`** ✓ — a cancellation is not a failure ✓) | mixed together → the interface reports "a human stopped it" as "something broke" ✗; the retry logic misjudges it as well ✗ |
-| **A3** | **a step that has already run is not rolled back** ✓ | the contract **has no notion of a rollback** ✓ (section 10 ✓) — the inverse operation of a rollback **is a write command of its own** ✓ → it also goes through the floor, also needs a human confirmation, and may fail as well ✓ → **the cost is greater than the benefit** ✓ |
+| **A3** | **a step that has already run is not rolled back** ✓ | the contract **has no notion of a rollback** ✓ (section 10 ✓) — the inverse operation of a rollback **is a write command of its own** ✓ → it also goes through the floor, **it also needs the permission of that workflow** ✓, and it may fail as well ✓ → **the cost is greater than the benefit** ✓ |
 | **A4** | **only the host may cancel** ✓ (the GUI ✓ / the host command line ✓)<br>→ **cards and agents have no cancellation interface** ✓ | "may it" and "may it stop" are **the same family of judgement** ✓ (the confirmation chain of section 7.6 ✓) — "may it" is not given to the agent ✓ (`04` section 2.4.1 ✓), and "may it stop" is not given to it either ✓<br>otherwise the agent would have a channel for **deciding on its own not to do the work** ✓ → the "a human nods" chain would have a bypass ✗<br>cards do not get it either ✓: the card permissions are granted **per method** ✓ (`03` section 7.7 ✓) → "stopping somebody else's run" is **not in any permission item** ✓ |
 | **A5** | cancelling a `run_id` that **does not exist** → **an error** ✓<br>cancelling a run that **has already ended** → **idempotent** ✓ (not one character of the state changes ✓)<br>**after a cancellation the workflow may be triggered again at once** ✓ (section 8.5 ✓) | a mistyped id has to be said clearly ✓; pressing "stop" twice must not crash ✓; after a stop there may still be work to do ✓ |
 | **A6** | a cancellation **affects that one run only** ✓ | another run must not stop with it ✓ |
 | **A7** | for the cancelled step the timeline **gives `cancelled` as the reason** ✓ (**not `failed`** ✓, **not `readback_mismatch`** ✓) | in an audit it has to be visible that "a human stopped it" ✗ ≠ "the machine broke" ✓ |
-| **A8** | a cancellation **revokes the pending confirmation requests of this run** ✓ | otherwise a zombie request hangs in the queue ✓ → a human would click a run that has already been cancelled ✗ |
+| **A8** | a cancellation **stops the run** ✓ | otherwise the steps after it would keep running on a run the user has already stopped ✓ |
 | **A9** | a cancellation **writes an audit line** ✓ (who stopped it ✓) | if "who stopped it" cannot be looked up ✓ → there is no accountability afterwards ✓ |
 | **A10** | **resuming and cancelling are mutually exclusive** ✓ | after a cancellation, pressing "continue" = running a run that has already been stopped ✗ |
 
@@ -374,7 +374,7 @@ and it is **mostly useless** — the command runs on the **source target**, and 
 
 | # | Provision | Why |
 |---|---|---|
-| **B1** | `status(run_id)` gives, besides the timeline, **`current`** = **the current step** (**running** ✓ **or** **stopped to wait for a nod** ✓): `{ stepId, kind, at }` ✓<br>the run **has ended** (`done` / `failed` / `cancelled`) → `current` = `null` ✓ | a measured compilation takes 58.9s / 98.5s ✓ → the interface must not be a dead silence ✓; "which step is it on now" is the one thing the interface needs most ✓ |
+| **B1** | `status(run_id)` gives, besides the timeline, **`current`** = **the current step** (**running** ✓): `{ stepId, kind, at }` ✓<br>the run **has ended** (`done` / `failed` / `cancelled`) → `current` = `null` ✓ | a measured compilation takes 58.9s / 98.5s ✓ → the interface must not be a dead silence ✓; "which step is it on now" is the one thing the interface needs most ✓ |
 | **B2** | `current.at` = **the moment that step started** ✓ → the interface can compute "**how long it has been running**" by itself ✓ | **no percentage** ✓ — the percentage of a transfer is a guess ✗; "42 seconds already" is a fact ✓ |
 | **B3** | **`current` is a live snapshot** (it changes ✓); **`stages` only grows** ✓ (section 8.4 ✓)<br>→ **the two have a different idempotency** ✓ | two queries of the same `run_id`: `stages` is the same ✓, `current` may differ ✓ — conflating them produces half-sentences like "the timeline is idempotent as well" ✗ |
 | **B4** | `current` **does not give the role** ✓ (**it gives no topology** ✓ — the same principle as `04` ✓) | "which role connects to which machine" is **something an unauthorised party must not see** ✓ (the rule of `04` section 2.4.1 ✓) |

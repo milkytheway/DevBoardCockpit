@@ -2,7 +2,7 @@
 > The contract layer is the authoritative documentation. It was revised by `0244852` after the migration, and the review of 2026-11-12 revised it once more
 > — see `00-overview.md` section 1.2 for the per-section provenance. For the implementation see `README.md` at the repository root.
 >
-> The revision of 2026-11-13 (the decisions taken before plan 2): the capability vocabulary and the word-sense correspondence table (section 10.3),
+> The revision of 2026-11-13 (the decisions taken before plan 2): the capability vocabulary and the word-sense correspondence table (section 10.7),
 > readback form 5 `kind: none` (sections 4.4 / 4.5), validation rules 25/26/27 (section 7).
 > It follows the decisions of 2026-11-13 and takes the "correction before v1 is finalised" line:
 > `apiVersion` is not bumped (`devboard/v1` has not shipped with any implementation yet),
@@ -29,7 +29,7 @@ description: RK3588, Buildroot 6.1.141, 8 cores (A55 x4 + A76 x4)
 
 requires:
   transports: [adb, serial, ssh]     # all three are supported
-  # Board-level capabilities (closed vocabulary, section 10.3). Do not write `stream`:
+  # Board-level capabilities (closed vocabulary, section 10.7). Do not write `stream`:
   # the business contract for Stream is not settled yet (section 7 of `00-overview.md`), so declaring it would not be honoured —
   # validation rule 26 rejects it as an error.
   capabilities: [shell, exec, files]
@@ -129,7 +129,7 @@ actions:
         type: integer
         min: 0
         max: 255
-    # The parameter domain (section 5.5): inside this range it counts as "mild", outside it a separate confirmation is required
+    # The parameter domain (section 5.5): inside this range it counts as "mild", outside it is refused (denied)
     guard:
       value: {min: 16, max: 255}
     command: "echo {value} > /sys/class/backlight/backlight/brightness"
@@ -364,9 +364,10 @@ It suits "this value has to be computed":
 Note: `exec_regex` has security implications — it runs an arbitrary command on the board.
 The validator warns about it (section 7, rule 19), and the runtime audits the actions that execute it (the last paragraph of section 3.3).
 
-But `exec_regex` is not an action, so it does not go through the danger floor and needs no authorisation from the user.
-That means: a board pack written by an agent can smuggle an arbitrary command into a reader and bypass the "a destructive action needs a human's confirmation" chain.
-The contract has an explicit disposition for that (section 5.6).
+But `exec_regex` is not an action, so it does not go through the executor and it carries no authorisation of its own.
+That means: a board pack written by an agent could smuggle an arbitrary command into a reader.
+The contract has an explicit disposition for that (section 5.6): **the fetching command of a reader goes through the danger floor too** ✓
+(rule 28 ✓) — **and it may not carry shell metacharacters ✓ · may not be an interpreter wrapper ✓ · may not be the `script` kind ✓** (rules 29–31 ✓).
 
 ### 3.3 In-pack scripts — ⛔ sealed (the third escape hatch that used to exist)
 
@@ -458,7 +459,7 @@ but it must be written explicitly, and it is limited to `reversible`.
 | Grade | Meaning | Example | Behaviour |
 |---|---|---|---|
 | `reversible` | it can be undone, a mistake can be recovered from | toggling a switch, changing the sampling rate, starting and stopping a service | it is executed directly, but the audit log is written |
-| `destructive` | it cannot be undone or it has a global effect | rebooting the board, flashing firmware, formatting | a second confirmation is required |
+| `destructive` | it cannot be undone or it has a global effect | rebooting the board, flashing firmware, formatting | it is executed as it is ✓ (the danger grade is information only ✓) → **the row for that action is off by default** ✓ |
 
 A read is not an action — a read goes through a tag. An action is always a write.
 
@@ -641,8 +642,8 @@ The actions in a board pack are not automatically allowed to run. The permission
 | Tier | Where | Meaning | Authorisation |
 |---|---|---|---|
 | read | the card's `permissions.read` | read a tag | not needed (a tag is read-only to begin with) |
-| `reversible` | `danger: reversible` in the board pack | a reversible write | asked once when the card is installed |
-| `destructive` | `danger: destructive` in the board pack | a destructive write | asked once when the card is installed plus a second confirmation on every execution |
+| `reversible` | `danger: reversible` in the board pack | a reversible write | it is executed directly ✓ → **the row for that action in the unified permission area decides whether it may run at all** ✓ |
+| `destructive` | `danger: destructive` in the board pack | a destructive write | it is executed as it is ✓ (the danger grade is information only ✓) → **that row is off by default** ✓ → turning it on is the informed consent ✓ |
 
 A read is not an action. A read goes through a tag and `permissions.read` needs no authorisation flow.
 There is no `danger: readonly` action in a board pack either — an action is always a write.
@@ -739,11 +740,12 @@ With `dry_run: true` it returns "what would be executed" and executes nothing:
 }
 ```
 
-> The default behaviour of `destructive` is "a second confirmation", not "dry-run by default".
-> An early version wrote "dry-run by default", which is mutually exclusive with the second confirmation —
-> the return value of a dry-run is not an execution result, so after the user confirms it has to be run again, which costs one more round trip and is easy to miss.
-> The flow today is: request → the user confirms it in the GUI → only then it is executed.
-> `dry_run` is still available, but it is a preview that the agent asks for on purpose, not the default behaviour of destructive.
+> The default behaviour of `destructive` is **"it runs"** ✓ — the danger grade is information only ✓ —
+> **the gate is the unified permission area in the settings** ✓ → **that row is off by default** ✓
+> → **turning it on is the informed consent for that one step** ✓.
+>
+> `dry_run` is a preview that the agent asks for on purpose ✓ — it is **not** the default behaviour of a `destructive` action ✓.
+> The return value of a dry-run is not an execution result ✓ → **so a dry-run never runs anything** ✓.
 
 ### 5.4 The audit log
 
@@ -763,7 +765,7 @@ It follows the shape of the old project's `core/session_log.py` (append, flush p
 ### 5.5 Authorisation granularity: the action id plus an optional parameter domain
 
 The authorisation is per action (`03-card-manifest.md` section 3.2), but the action id alone is not fine-grained enough:
-the user approves "this card may change the backlight brightness", and what is actually granted is the whole `0..255` range,
+the card declares "this card may change the backlight brightness", and what is actually granted is the whole `0..255` range,
 including turning the screen completely black.
 
 So an action can declare a parameter domain (a `guard`), which declares "within which range of parameters this action counts as mild":
@@ -776,7 +778,7 @@ actions:
     params:
       value: {type: integer, min: 0, max: 255}
     guard:
-      value: {min: 16, max: 255}     # inside [16,255] = mild; outside = needs a separate approval
+      value: {min: 16, max: 255}     # inside [16,255] = mild; outside = refused (denied)
     command: "echo {value} > /sys/class/backlight/backlight/brightness"
     readback:
       kind: file_equals
@@ -800,23 +802,22 @@ Semantics:
 A `guard` may only narrow the range, never widen it. The validator checks:
 the interval of the `guard` has to be a subset of the declared domain of the `params`, otherwise it is an error.
 
-> Why the pack declares the `guard` instead of the user filling it in when the card is installed: what the user approves is "let this card set the backlight to 30",
+> Why the pack declares the `guard` instead of the card declaring one: what the card asks for is "let this card set the backlight to 30",
 > not "let this card set the backlight to 0". The parameter domain is declared by the author of the pack (possibly an agent),
 > but it may only narrow and never widen the declared domain of the action itself — so an agent cannot widen its permissions by writing a wide `guard`.
-> The approval screen of the user has to show that domain (`03` section 3.2).
+> The row for that action in the settings page has to show that domain ✓ (`03` section 2.4 ✓).
 
-### 5.5 supplement · Authorisation and credentials in the workflow layer (`05-workflow-pack.md` section 7)
+### 5.5 supplement · Authorisation in the workflow layer (`05-workflow-pack.md` section 7)
 
 A workflow is not an action (it is not in a board pack ✓), but it can execute commands on the user's machine just the same ✗
 → its entry point has to be stricter than an action's ✓:
 
 | Item | Rule |
 |---|---|
-| Two layers of authorisation | The manifest declares it (`03` section 2.4 ✓) → the workflow pack / the board pack itself has been approved by the user ✓ → both layers have to pass ✓ (the card level layer was removed on 2026-11-16 ✓) |
+| Two layers of authorisation | The card declares the workflow in `permissions.workflows` ✓ (`03` section 2.4 ✓) → the row for that workflow in the unified permission area is enabled ✓ → both layers have to pass ✓ (the card level layer was removed on 2026-11-16 ✓) |
 | Only ids are accepted | Cards and agents cannot supply a path ✓ (a pack can only be taken from the registry by its id ✓) |
-| The approval is bound to a digest | If the content changes it has to be approved again ✓ (the same reason as "an upgrade does not silently widen the permissions" in section 5.6 ✓) |
+| The content digest of the pack is recorded | Changed content → a different digest ✓ → the change stays visible in the audit trail ✓ (`05` section 7.2, rule T2 ✓) |
 | Every write step goes through the floor | A free command is a second command channel ✗ → it has to share the same line of defence as an action ✓ |
-| The binding of the credentials | For an action: `(the action id, the digest of the parameters, the pack id, the version)`; for a workflow: plus the digest of the inputs of this step and the digest of the final command of this step ✓ (`05` section 7.5 ✓) |
 
 ### 5.6 Who may write a board pack (the fact that a reader can also run arbitrary commands)
 
@@ -827,9 +828,9 @@ And section 2.4.2 of `spec/04` says "a pack takes effect unconditionally … an 
 use it straight away, no approval by the user is needed". Put together, the two rules mean:
 
 > The agent writes a board pack, and in a reader it uses `exec_regex` to run a command —
-> that command does not go through the danger floor, needs no confirmation by a human, and runs straight away on the board.
+> that command used to go onto the board without the danger floor ever seeing it.
 
-That conflicts with the product floor "a destructive action must be confirmed by a human".
+That was a way around the floor. The disposition below closes it.
 
 The disposition: a board pack is a device permission, not a card.
 
@@ -843,7 +844,7 @@ The disposition: a board pack is a device permission, not a card.
 > Why there is no "a human must confirm before it is enabled" gate (changed on 2026-11-16 ✓):
 > → it is what the user wanted ✓: "the board description file has the final say" ✓ "add a board and whatever is in it executes" ✓ "having to agree to this and to that as well, is that not tiring" ✓.
 > → the gate that replaces it is rule 28 ✓ — the command of a reader goes through the floor by itself ✓ (that is the only place where a reader can overstep ✓).
-> → the path of the action has always been there ✓: the danger floor ✓ + the `danger` grade ✓ + the agent side still needs a human's nod ✓ (`04` section 2.4.1 ✓).
+> → the path of the action has always been there ✓: the danger floor ✓ + the `danger` grade ✓ + **the row for that action in the unified permission area** ✓ (`04` section 2.4.1 ✓).
 
 Why the cut is made this way: section 1.3 of `spec/04` says "no bare send_command",
 but a reader that can run an arbitrary command IS a bare command channel —
@@ -883,7 +884,7 @@ The semantics in the core vocabulary never change. To change the semantics, bump
 Before a pack is accepted it has to pass at least these checks. These 31 rules are the contract itself —
 the implementation layer has to implement them one by one; missing one means the board pack format is not implemented.
 
-The command-line entry point of the validator is up to the implementation layer (for example `npm run validate:profiles` — that belongs to plan 2 and does not exist yet),
+The command-line entry point of the validator is up to the implementation layer (for example `npm run validate:profiles` ✓),
 but the rules themselves are the ones of this table and they do not change with the implementation.
 
 | # | Rule | Why |
@@ -912,7 +913,7 @@ but the rules themselves are the ones of this table and they do not change with 
 | 22 | A `guard` has to be a subset of the declared domain of the `params` | A `guard` may only narrow the authorised range, never widen it |
 | 23 | The `kind` of a `readback` has to be one of `file_equals` / `command_ok` / `verify` / `none` (without a `kind` it reads a tag as in form 1) | The set of readback forms is closed |
 | 24 | A declared `danger_floor_version` has to be a known version (there is only 1 at the moment); an unknown top-level field is an error | A field that is silently ignored is a field that was mistyped |
-| 25 | Every value of `requires.capabilities` has to belong to the closed vocabulary `{shell, exec, stream, files}` (section 10.3) | A mistyped capability name has to be an error and not silently ignored (the same closedness principle as rule 24) |
+| 25 | Every value of `requires.capabilities` has to belong to the closed vocabulary `{shell, exec, stream, files}` (section 10.7) | A mistyped capability name has to be an error and not silently ignored (the same closedness principle as rule 24) |
 | 26 | Every value of `requires.capabilities` has to belong to the set of capabilities the runtime has implemented (v1 = `{shell, exec, files}`). Declaring a capability that cannot be delivered is an error and not a warning | Declaring something that can never be delivered promises a delivery that does not exist. `stream` is not in the set because the Stream contract is missing (section 7 of `00-overview.md`) |
 | 27 | Every action must have a `readback` block whose `kind` belongs to `{file_equals, command_ok, verify, none}` (without a `kind` it reads a tag as in form 1); when its `kind` is `none` it must carry a non-empty `consequence` | Only rule 15 covers `destructive` → a `reversible` action without a `readback` passes the validation → the loop is silently broken. `none` is the only legal way of saying "I have no readable state" — the same thing must not be expressed by "not writing it" |
 | 28 | The fetching command of a reader must not hit the danger floor (the `command` of `exec_regex` goes onto the board verbatim ✓ → so it has to go through the floor itself ✓) | A board pack takes effect directly ✓ ("the board description file has the final say" ✓) → the "a human must confirm before it is enabled" gate is gone ✓ → this rule is the gate that replaces it ✓. A reader is not an action ✓ — it does not go through the executor ✓ — so it is judged here ✓ |
@@ -1110,7 +1111,7 @@ and the monitoring and the control clearly show "unavailable".
 The promise of "never guess" is very concrete: bind a `gpu.usage` to a board without a GPU
 and the card shows a gauge that is pinned at zero — a gauge that does not look wrong is more dangerous than no gauge at all.
 
-### 10.1 What happens when a connection has no pack
+### 10.5 What happens when a connection has no pack
 
 The connection is up, but there is no matching board pack:
 
@@ -1121,7 +1122,7 @@ The connection is up, but there is no matching board pack:
 This matters: a board pack is an enhancement, not a precondition. The user brings a new board, first connects it and can type commands,
 and adds a pack afterwards.
 
-### 10.2 What `requires.transports` means
+### 10.6 What `requires.transports` means
 
 A pack may declare which connection methods it needs (`[adb, serial, ssh]`).
 That is information, not a restriction — it tells the runtime "this pack also works over serial", so that the runtime knows
@@ -1137,13 +1138,13 @@ and its comment reads "a UART has no room for a multi-line script").
 The pack is not aware of the transport. That is deliberate: the pack describes the board, the HAL describes the channel, and the runtime connects the two.
 When one pack goes with ADB and with serial, each channel uses its own way of fetching and produces the same tags.
 
-### 10.3 The capability vocabulary: the board level and the connection level
+### 10.7 The capability vocabulary: the board level and the connection level
 
 The contract and the implementation each have a set of capability words. They are not the same axis,
 but part of the word forms overlap — so there has to be a correspondence table that fixes their relation,
 otherwise changing a word in one place only leaves the two vocabularies talking past each other.
 
-#### 10.3.1 The two axes
+#### 10.7.1 The two axes
 
 | | The contract layer (board-level capabilities) | The implementation layer (connection-level capabilities) |
 |---|---|---|
@@ -1155,7 +1156,7 @@ otherwise changing a word in one place only leaves the two vocabularies talking 
 Why there are two axes and not one set: section 10.2 says "the pack describes the board, the HAL describes the channel".
 Forcing them into one set means making the pack aware of the transport, which directly violates section 10.2.
 
-#### 10.3.2 The word-sense correspondence table
+#### 10.7.2 The word-sense correspondence table
 
 This table is part of the contract. It is a translation between two sets of words and not a function —
 a board-level capability does not imply a connection-level capability: the same board over adb and over serial has completely different connection capabilities.
@@ -1177,14 +1178,14 @@ Two points that have to be understood:
    (serial cannot get an exit code, fact S5). It belongs on the connection level in the first place —
    it is not "one extra thing in the implementation".
 
-#### 10.3.3 `requires.capabilities` is information, not a gate
+#### 10.7.3 `requires.capabilities` is information, not a gate
 
-The same line as `requires.transports` in section 10.2: it tells the runtime "what this pack can go with",
+The same line as `requires.transports` in section 10.6: it tells the runtime "what this pack can go with",
 and it does not restrict "this pack may only go with".
 
 Why it cannot be used as a gate on the connection: serial has `files=false`.
 Using the board-level `files` as a gate would make the pack useless over serial —
-which directly violates section 10.2, "when one pack goes with ADB and with serial, each channel uses its own way of fetching".
+which directly violates section 10.6, "when one pack goes with ADB and with serial, each channel uses its own way of fetching".
 
 So in v1 it does two things:
 
@@ -1195,7 +1196,7 @@ So in v1 it does two things:
 > It must not be pretended to be meaningful. If one day v1 does not open the pack description query,
 > then a note "this field has no consumer for now, pending v2" has to be recorded in the contract reconciliation checklist.
 
-#### 10.3.4 The disposition of `stream`
+#### 10.7.4 The disposition of `stream`
 
 The `stream` stays in the vocabulary, but a v1 pack must not declare it.
 

@@ -31,7 +31,7 @@ When an agent has written a card and cannot immediately see whether that card be
 MCP therefore has to provide:
 
 - `validate_card(path)` — static validation, available the moment the card is written
-- `get_card_runtime_log(cardId)` — the runtime log, so that the errors of a running card can be seen
+- `get_card_runtime_log(card_id)` — the runtime log, so that the errors of a running card can be seen
 
 Together those two are the eyes of the agent. Without them "making a card takes half a day" cannot become "one round of conversation".
 
@@ -155,7 +155,7 @@ When an agent writes a CPU card the first call is `list_tags()`, because it tell
 | `unit` | The unit — without a vocabulary entry it is `'-'` (dimensionless), not `null` |
 | `range` | The range in the core vocabulary: a two-element array `[min,max]` or a string (such as `"open enumeration"` / `"≥0"`); without a vocabulary entry it is `null` |
 | `status` / `value` | The current reading (the five states, verbatim) |
-| `board` | The id of the current board pack |
+| `board` | The id of the current board pack. A board that is not the current one yields an empty list ✓ (it never reads another board) |
 | `source_reader` | The reader that provides this tag |
 
 How `source_reader` is computed: the tag name is matched against the `provides` patterns of every reader
@@ -231,12 +231,6 @@ The n most recent samples. It lets an agent judge whether a quantity is stable o
 #### `list_cards()`
 
 ```
-→ [{ id, name, version, path, installed_at, status, degraded, missing_tags }]
-```
-
-#### `list_cards()`
-
-```
 → [{ id, manifest_id, name, version, path, installed_at, status,
      degraded, missing_tags, unreadable_tags }]
 ```
@@ -246,7 +240,7 @@ The n most recent samples. It lets an agent judge whether a quantity is stable o
 | Field | Meaning |
 |---|---|
 | `id` | The card id = the name of the card directory — everything on the host indexes by it (`uninstall_card` / `get_card_runtime_log` / the layout all use it) |
-| `manifest_id` | The id declared in the manifest (it may differ from the directory name, which is why there are two fields) |
+| `manifest_id` | The id the manifest declares. The host installs a card under that id ✓, so for an installed card the two fields are the same string ✓; a card that is dropped into the cards directory by hand keeps its directory name ✓, and then they can differ ✓ |
 | `name` / `version` | From the manifest |
 | `path` | The absolute path of the card directory |
 | `installed_at` | The last modification time of the card directory (milliseconds, UTC) — not the moment a human pressed install |
@@ -334,7 +328,7 @@ Static validation, without installing. The validation rules are in section 9 of 
 > not the declared values. What the agent needs to know is what this card can really bind to,
 > not what it claims to want.
 
-#### `get_card_runtime_log(cardId, since?)`
+#### `get_card_runtime_log(card_id, since?)`
 
 ```
 → [{ level, at, message, source }]
@@ -410,12 +404,12 @@ The standard loop of the agent:
 
 ```
 validate_card(path) → edit → validate_card(path) → install_card(path)
-    → get_card_runtime_log(cardId) → read the errors → edit → install_card(path) → …
+    → get_card_runtime_log(card_id) → read the errors → edit → install_card(path) → …
 ```
 
 `install_card` is idempotent: installing the same id again replaces the card, it does not add a second one.
 
-#### `uninstall_card(cardId)`
+#### `uninstall_card(card_id)`
 
 ```
 → { ok }
@@ -429,15 +423,15 @@ It deletes the directory under the user card root. A built-in card cannot be del
 | It is a built-in card | `denied` |
 | It was deleted | none (`ok: true`) |
 
-Side effect: the directory is deleted and the grant ledger of that card is cleared as well —
-otherwise reinstalling it would bring the old grants back (that is not a fresh install, that is putting it back).
+Side effect: the directory is deleted ✓ — and nothing else ✓.
+There is no authorisation ledger to clear ✓ (the manifest **is** the authorisation ✓).
 The card storage is kept (`03` section 6.2).
 
 ---
 
 ### 2.4 Executing actions
 
-#### `execute_action(actionId, params, dry_run, device_key?)`
+#### `execute_action(action_id, params, dry_run, device_key?)`
 
 ```
 → {
@@ -493,9 +487,15 @@ Parameters:
 
 | Parameter | Meaning |
 |---|---|
-| `actionId` | The id of an action declared in the board pack (not a card id) |
+| `action_id` | The id of an action declared in the board pack (not a card id) |
 | `params` | The parameters according to the declaration of the action |
 | `dry_run` | It only returns what would be executed and executes nothing |
+| `device_key` | Which board the action runs on; it has to be one of the boards the user has connected ✓ |
+
+> **The parameter names are snake_case** ✓ — the same word the returned data uses ✓
+> (`card_id` ✓ · `connection_id` ✓ · `installed_at` ✓ · `manifest_id` ✓).
+> → **An agent that copies a name out of this document sends a name the host accepts** ✓
+> → **it is not two dialects to translate between** ✓.
 
 Why the action id and not the card id: an action is a capability of the board, a card is only a referrer. The same card can call several actions and the same action can be called by several cards. Authorising by action id is more precise (what is authorised is "changing the backlight", not "this card").
 
@@ -539,8 +539,9 @@ The return shape of `dry_run` (the shape of section 5.3 of `02` plus the `ok` of
 
 An agent is not a card, it has an authorisation of its own.
 
-The authorisation of a card is "ask once per action when the card is installed"; the authorisation of an agent is a different thing: an agent can call any action directly,
-it does not have to install a card first.
+The authorisation of a card is **its manifest** ✓ (the effective permission is exactly what it declares ✓);
+the authorisation of an agent is a different thing: an agent can call any action directly,
+it does not have to install a card first — **and the row for that action in the unified permission area is the gate** ✓ (section 2.4.1 ✓).
 
 Rules:
 
@@ -690,7 +691,7 @@ The agent has no tool to cancel a workflow ✓ — whether to stop is a judgemen
 
 ### 2.5 Layout
 
-#### `promote_card(cardId, connectionId?)`
+#### `promote_card(card_id, connection_id?)`
 
 ```
 → { ok, mode: "fullscreen" }
@@ -705,7 +706,7 @@ What it changes is the layout ✓ — fullscreen is one state of the layout ✓ 
 | What is recorded | Only which cell has to be fullscreen ✓ (`{card_id, connection_id, x, y, w, h}` ✓ — its original position and connection ✓) |
 | How many rows it spans | The number of rows that fill the visible height of the current main area — computed by the renderer from the viewport ✓ |
 | The other cells | The host does not touch them ✓ — making room is a matter of the renderer as well ✓ |
-| Connection | `connectionId` omitted = the only instance of that card; more than one is an error (never a guess) |
+| Connection | `connection_id` omitted = the only instance of that card; more than one is an error (never a guess) |
 
 > Why the number of rows is computed by the renderer ✓:
 > only the renderer knows the row height and the height of the viewport ✓ (`ROW_HEIGHT` is a constant of the renderer ✓) →
@@ -771,7 +772,7 @@ validate_card(path)          ← MCP: check
     ↓
 install_card(path)           ← MCP: install (or put them in the right directory and the watcher installs them)
     ↓
-get_card_runtime_log(id)     ← MCP: read the result of the run
+get_card_runtime_log(card_id) ← MCP: read the result of the run
 ```
 
 MCP is the eyes and the hands of the AI, not its hard disk.
@@ -954,14 +955,14 @@ The agent is a trusted party, but it is bound by the grading of the actions.
 
 - The agent may read all the state (`list_*`, `describe_*`, `sample_*`).
 - The agent may write cards (`install_card`) — that is the purpose of the product design.
-- The agent may not execute a `destructive` action without a human confirmation (section 2.4.1).
+- A `destructive` action is executed as it is ✓ — **the danger grade is information only** ✓ (no question to a human any more ✓) — **the gate is the unified permission area in the settings** ✓ (section 2.4.1 ✓).
 
 "The agent can install arbitrary cards" has to be taken seriously: installing a card means running a piece of HTML/JS inside the workbench.
 The sandbox of a card is therefore a serious one (`03` section 6 — it includes the CSP and `cockpit.storage.*`),
-and a `destructive` action requires a human confirmation.
+and that class of action is **off by default** ✓ → **turning it on is the informed consent for that one step** ✓ (section 2.4.1 ✓).
 
 The trust of the agent is "trust within what has been authorised": the board state the agent may read = the boards the user has already connected;
-the actions the agent may execute = the authorised actions; parameters outside the `guard` domain need a separate confirmation (`02` section 5.5).
+the actions the agent may execute = the actions the unified permission area lets this executor run ✓; parameters outside the `guard` domain are **refused** ✓ (`denied` ✓ · `02` section 5.5 ✓).
 The agent may not read the file system of the user, may not change the authorisation and may not connect to another board.
 
 ### 7.4 One run
@@ -974,7 +975,7 @@ agent: list_cards()                   → checks whether one already exists
 agent: writes the card files
 agent: validate_card(path)            → the static check passes
 agent: install_card(path)             → the hot plug takes effect
-agent: get_card_runtime_log(cardId)   → no errors
+agent: get_card_runtime_log(card_id)  → no errors
 user: (the card appears on the screen)
 ```
 

@@ -360,7 +360,7 @@ The board pack declares which tags it implements (see `02-board-pack.md`). That 
 
 `describe_tag(name)` returns the type, the unit, the range, the current value, the state and the source of the history. This is the item the AI has to check before it writes a card.
 
-> Why static documentation cannot be relied on: capabilities appear dynamically — a camera is plugged in, the NPU driver is installed later, a profile is loaded at runtime. Documentation always lags behind the reality on site. The exact wording of the `list_data_sources` row in the MCP tool table is "capabilities appear dynamically, static documentation cannot be relied on".
+> Why static documentation cannot be relied on: capabilities appear dynamically — a camera is plugged in, the NPU driver is installed later, a profile is loaded at runtime. Documentation always lags behind the reality on site. The `list_data_sources` row of the MCP tool table says the same thing: "Static documentation cannot work."
 
 ---
 
