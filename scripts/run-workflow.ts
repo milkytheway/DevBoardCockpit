@@ -1,24 +1,30 @@
 /**
- * 宿主侧跑一条流程 —— **流程包首版的唯一入口**。
+ * Runs one workflow on the host side — **the only entry point of the first
+ * version of the workflow packs**.
  *
- * > **为什么只有命令行**（ADR-D31 R1）：流程包首版是**宿主层格式**，
- * > 卡片 API 与 MCP 工具**首版不动契约** → 首版的触发方式就是**人在宿主上跑它** ✓
- * > （「卡片让用户选本机还是客机」那一条，是**后续的契约增量**——待裁决 D7。）
+ * > **Why only the command line** (ADR-D31 R1): the first version of the
+ * > workflow packs is a **host level format**, the card API and the MCP tools
+ * > **do not touch the contract in the first version** → the way it is
+ * > triggered is **a human running it on the host**
+ * > ("the card lets the user pick the host machine or the guest" is a
+ * > **later increment of the contract** — the decision D7 that is still open).
  *
- * ── 两条路，**取包的方式不同** ──
+ * ── Two ways, **and they take the pack differently** ──
  *
- * | 写法 | 从哪儿取包 | 谁在用 |
+ * | Form | Where the pack comes from | Who uses it |
  * |---|---|---|
- * | `--id <id>` | **注册表**（只认注册表里的 id ✓） | 人与将来的卡片/agent ✓ |
- * | `--package <路径>` | **一个文件**（路径就是那一次许可 ✓） | **开发/一次性** ✓ |
+ * | `--id <id>` | **the registry** (only the ids of the registry) | humans and the cards/agents of the future |
+ * | `--package <path>` | **one file** (the path is the permission of that one run) | **development / one-off** |
  *
- * → **卡片与 agent 只能走 `--id` 那条**（`WorkflowService` 只认 id ✓）。
- * → **两边都不再要「批准」** ✓（**2026-11-16 砍掉** ✓ · ADR-D48 ✓）——
- *   **能不能跑看设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）。
+ * → **The cards and the agents can only take the `--id` way** (`WorkflowService`
+ *   only knows ids).
+ * → **Neither of them asks for an "approval" any more** (**cut on
+ *   2026-11-16** · ADR-D48) — **whether it can run is decided by the unified
+ *   permission area in the settings** (ADR-D47).
  *
- * 用法：
+ * Usage:
  * ```powershell
- * npm run workflow:list                                   # 看有哪些
+ * npm run workflow:list                                   # what is there
  * npm run workflow:run -- --id hello-kernel.build-run --input project=01-hello
  * npm run workflow:run -- --package profiles/workflows/hello-kernel.build-run.yaml --input project=01-hello
  * ```
@@ -43,8 +49,8 @@ interface Args {
   id?: string;
   input: Record<string, string>;
   dryRun: boolean;
-  /** 确认凭据（**人点头之后**带它重跑那一步 ✓） */
-  /** 从第几步继续（续跑 ✓ —— 前面的步不重跑） */
+  /** The confirmation credential (it is carried into the rerun of that step **after a person said yes**) */
+  /** Continue from the nth step (a resume — the earlier steps do not run again) */
   from?: number;
 }
 
@@ -77,17 +83,17 @@ function parseArgs(argv: string[]): Args {
     if (arg === '--help' || arg === '-h') {
       console.log(
         [
-          '用法：npm run workflow:run -- (--id <流程 id> | --package <流程包.yaml>) [--input 名字=值]...',
+          'Usage: npm run workflow:run -- (--id <workflow id> | --package <workflow pack.yaml>) [--input name=value]...',
           '',
-          '  --id        走**注册表**（只认注册表里的 id ✓）—— 人与将来的卡片/agent 走这条',
-          '  --package   直接跑一个文件（**开发/一次性**：人自己敲的路径 = 那一次许可 ✓）',
+          '  --id        through the **registry** (only the ids of the registry) — humans and the cards/agents of the future take this one',
+          '  --package   runs one file directly (**development / one-off**: a path that the human typed is the permission of that one run)',
           '',
-          '例子：',
+          'Examples:',
           '  npm run workflow:run -- --id hello-kernel.build-run --input project=01-hello',
           '  npm run workflow:run -- --package profiles/workflows/hello-kernel.build-run.yaml --input project=01-hello',
           '',
-          '配套：',
-          '  npm run workflow:list                              看有哪些',
+          'Companion:',
+          '  npm run workflow:list                              what is there',
         ].join('\n'),
       );
       process.exit(0);
@@ -99,11 +105,11 @@ function parseArgs(argv: string[]): Args {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.package === undefined && args.id === undefined) {
-    console.error('缺 --id 或 --package（要跑哪个流程包）');
+    console.error('--id or --package is missing (which workflow pack has to run)');
     process.exit(2);
   }
 
-  // ── 宿主里的连接 profile ──
+  // ── The connection profiles of the host ──
   const dataDir = userDataDir();
   const profiles = loadProfiles({
     builtinDir: join(process.cwd(), 'profiles', 'targets'),
@@ -111,42 +117,48 @@ async function main(): Promise<void> {
   });
   const profileById = new Map(profiles.map((p) => [p.id, p]));
 
-  // ── 流程包：两条路，权限不同 ──
+  // ── The workflow pack: two ways, different permissions ──
   const pack = resolvePack(args);
 
-  // ── 角色绑定的 profile 必须存在（**不许悄悄连到别的**）──
+  // ── The profile a role is bound to has to exist (**it may not quietly
+  //    connect to another one**) ──
   for (const [name, role] of Object.entries(pack.roles)) {
     if (!profileById.has(role.profile)) {
-      console.error(`角色「${name}」绑的 profile「${role.profile}」不存在`);
+      console.error(`the profile "${role.profile}" that the role "${name}" is bound to does not exist`);
       process.exit(2);
     }
   }
 
-  console.log(`流程：${pack.name}（${pack.id}）`);
+  console.log(`workflow: ${pack.name} (${pack.id})`);
   console.log(
-    `角色：${Object.entries(pack.roles)
+    `roles: ${Object.entries(pack.roles)
       .map(([n, r]) => `${n}→${r.profile}`)
-      .join('，')}`,
+      .join(', ')}`,
   );
 
   if (args.dryRun) {
-    console.log('\n--dry-run：不执行，只把步骤列出来：');
+    console.log('\n--dry-run: nothing is executed, the steps are only listed:');
     for (const step of pack.steps) {
-      console.log(`  ${step.id}（${step.kind}）${step.cmd ?? step.action ?? step.pattern ?? ''}`);
+      console.log(`  ${step.id} (${step.kind}) ${step.cmd ?? step.action ?? step.pattern ?? ''}`);
     }
     return;
   }
 
-  // ── 板型包里的动作（`action` 步要用 ✓）──
+  // ── The actions of the board packs (the `action` step needs them) ──
   //
-  // 之前 CLI **不给** `actionDef` ✗ → `action` 步在 CLI 里直接报
-  // 「板型包里没有这个动作」✗ → **CLI 跑不了应用能跑的包** ✗（两份真相 ✓）。
+  // The CLI used to **not hand over** the `actionDef` ✗ → an `action` step
+  // reported "the board pack does not have this action" right away in the
+  // CLI ✗ → **the CLI could not run the packs that the application runs** ✗
+  // (two sources of truth).
   //
-  // → 现在按角色绑的 profile 的 `board_pack` **静态加载那份包** ✓
-  // （**应用里走运行时那条路** ✓ —— 那边按连接解析 ✓）。
+  // → Now the `board_pack` of the profile that a role is bound to is
+  //   **loaded statically** (**the application takes the runtime way** — that
+  //   one resolves per connection).
   //
-  // ⚠️ **回读形式 1（读 tag）在 CLI 里查不了** ✗ —— 流程层没有板型包的运行时 ✓
-  // → `readTag` 返回 undefined ✓ → 那种动作在 CLI 里**回读不过** ✓（诚实 ✓）。
+  // ⚠️ **The readback form 1 (reading a tag) cannot be looked up in the CLI**
+  // — the workflow layer has no runtime of a board pack → `readTag` returns
+  // undefined → that kind of action **does not pass the readback** in the CLI
+  // (honest).
   const actionDefs = new Map<string, ActionDef>();
   for (const [roleName, role] of Object.entries(pack.roles)) {
     const profile = profileById.get(role.profile);
@@ -157,16 +169,16 @@ async function main(): Promise<void> {
     try {
       const loaded = loadBoardPack(dir);
       for (const def of loaded.actions) {
-        // **同名不许有两个定义** ✗ → 先到先得 ✓（跨板时另说 ✓）
+        // **Two definitions of the same name are not allowed** ✗ → the first one wins (across boards it is another story)
         if (!actionDefs.has(def.id)) actionDefs.set(def.id, def);
       }
     } catch (err) {
-      console.error(`⚠ 角色「${roleName}」的板型包 ${packId} 读不了：${String(err)}`);
+      console.error(`⚠ the board pack ${packId} of the role "${roleName}" cannot be read: ${String(err)}`);
     }
   }
 
   const audit = new ActionAudit(join(dataDir, 'logs', 'actions.log'));
-  // **确认凭据的库**（流程层与 M6 共用一份 ✓ —— 语义只有一处 ✓）
+  // **The registry of the confirmation credentials** (the workflow layer and M6 share one — the semantics live in one place)
   const registry = new TargetRegistry({
     profileFor: (id) => profileById.get(id),
     createConnection: (profile) => {
@@ -184,25 +196,25 @@ async function main(): Promise<void> {
       targets: registry,
       profileFor: (id: string) => profileById.get(id),
       audit: (row) => audit.append(row),
-      // **`action` 步要的动作定义** ✓（见上面那段注释 ✓）
+      // **The action definition that an `action` step needs** (see the comment above)
       actionDef: (actionId: string) => actionDefs.get(actionId),
     };
-    // **人跑它 = 这一次点头** ✓（ADR-D31 R2 的信任模型 ✓ —— **不再有要确认的步** ✓ · ADR-D48 ✓）
+    // **A human runs it = the nod of this one run** (the trust model of ADR-D31 R2 — **there is no step that asks for a confirmation any more** · ADR-D48)
     const result = await runWorkflow(pack, args.input, deps, {
       ...(args.from === undefined ? {} : { startAt: args.from }),
     });
 
-    console.log(`\n运行 ${result.runId}：${result.ok ? '成功' : '未成功'}`);
+    console.log(`\nrun ${result.runId}: ${result.ok ? 'it succeeded' : 'it did not succeed'}`);
     for (const stage of result.stages) {
       const mark = stage.ok ? (stage.verified ? '✓' : '○') : '✗';
       console.log(
-        `  ${mark} ${stage.stepId}（${stage.kind}）${stage.role ? `@${stage.role}` : ''}` +
-          `${stage.reason ? ` — ${stage.reason}` : ''}${stage.detail ? `：${stage.detail}` : ''}` +
+        `  ${mark} ${stage.stepId} (${stage.kind}) ${stage.role ? `@${stage.role}` : ''}` +
+          `${stage.reason ? ` — ${stage.reason}` : ''}${stage.detail ? `: ${stage.detail}` : ''}` +
           `${stage.audit_id ? ` [${stage.audit_id}]` : ''}`,
       );
     }
     if (Object.keys(result.outputs).length > 0) {
-      console.log(`\n产出：${JSON.stringify(result.outputs)}`);
+      console.log(`\noutputs: ${JSON.stringify(result.outputs)}`);
     }
     process.exit(result.ok ? 0 : 1);
   } finally {
@@ -211,10 +223,12 @@ async function main(): Promise<void> {
 }
 
 /**
- * 流程包：两条路，**权限不同** ✓。
+ * The workflow pack: two ways, **with different permissions**.
  *
- * - `--id` → **注册表** → **必须已批准** ✓（卡片/agent 走的就是这条 ✓）；
- * - `--package` → 直接读那个文件（**人自己敲的路径 = 那一次点头** ✓ —— 开发/一次性用 ✓）。
+ * - `--id` → **the registry** → it **has to be approved** (this is the way
+ *   the cards/agents take);
+ * - `--package` → it reads that file directly (**a path that the human
+ *   typed = the permission of that one run** — for development / one-off).
  */
 function resolvePack(args: Args): WorkflowPack {
   if (args.id !== undefined) {
@@ -224,17 +238,17 @@ function resolvePack(args: Args): WorkflowPack {
     registry.scan();
     const found = registry.get(args.id);
     if (found === undefined) {
-      console.error(`没有这个流程包：${args.id}`);
+      console.error(`there is no such workflow pack: ${args.id}`);
       process.exit(2);
     }
-    // **不再查批准** ✓（ADR-D48 ✓ —— **存在即说明** ✓）
+    // **The approval is not looked up any more** (ADR-D48 — **its existence is the explanation**)
     return found.pack;
   }
   const path = resolve(process.cwd(), args.package as string);
   return parseWorkflow(yaml.load(readFileSync(path, 'utf8')), path);
 }
 
-/** 流程包目录：内置的 + 用户的（**同 id 时用户优先** ✓） */
+/** The directories of the workflow packs: the built-in ones + the user ones (**the user wins on the same id**) */
 function workflowDirs(): string[] {
   const dirs = [builtinWorkflowsDir(process.cwd()), userWorkflowsDir()];
   return dirs.filter((d) => existsSync(d));

@@ -155,7 +155,7 @@ function scanComments(
   };
   visitTokens(sf);
 
-  const jsxTextRanges: ts.CommentRange[] = [];
+  const jsxTextRanges: { pos: number; end: number }[] = [];
   const collectJsxText = (node: ts.Node): void => {
     if (ts.isJsxText(node)) {
       jsxTextRanges.push({ pos: node.getStart(sf), end: node.getEnd() });

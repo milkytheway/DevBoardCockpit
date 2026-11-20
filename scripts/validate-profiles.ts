@@ -1,20 +1,23 @@
 /**
- * 板型包校验命令（`npm run validate:profiles`）。
+ * The validation command of the board packs (`npm run validate:profiles`).
  *
- * **这个命令此前在文档里被引用了 30 处，而它一直不存在。**
- * 照抄文档的人会得到 `npm ERR! Missing script`——
- * 「契约说它该在，实现却没写」是最容易被忽略的一类欠账。
+ * **This command was referred to 30 times in the documentation, and it did
+ * not exist.** Everybody who copied the documentation got
+ * `npm ERR! Missing script` — "the contract says it has to be there, the
+ * implementation never wrote it" is the easiest kind of debt to overlook.
  *
- * 它做两件事：
- * 1. **加载**每个包（结构核对：未知字段报错）；
- * 2. **校验**每个包（契约 §七 的 27 条规则）。
+ * It does two things:
+ * 1. **Load** every pack (the structure is checked: an unknown field is an
+ *    error);
+ * 2. **Validate** every pack (the rules of contract §7).
  *
- * **有 error → 退出码 1。** warning 照打，但不影响退出码——
- * warning 是「你最好知道」的事，error 是「这个包不能用」的事。
+ * **An error → exit code 1.** The warnings are printed as well, but they do
+ * not change the exit code — a warning is a "you better know this" and an
+ * error is a "this pack cannot be used".
  *
- * 用法：
+ * Usage:
  *   npm run validate:profiles
- *   npm run validate:profiles -- profiles/boards/rk3588-atk   # 只查一个包
+ *   npm run validate:profiles -- profiles/boards/rk3588-atk   # check one pack only
  */
 
 import { existsSync, readdirSync } from 'node:fs';
@@ -23,13 +26,14 @@ import { loadBoardPack } from '../src/main/tags/pack';
 import { validatePack, errorsOf, warningsOf } from '../src/main/tags/validator';
 import type { ValidationIssue } from '../src/main/tags/validator';
 
-// **用 `process.cwd()` 而不是 `__dirname`**：本工程是 `"type": "module"`，
-// ESM 里没有 `__dirname`。仓库里的另两个脚本（gen-vocabulary / check-build）
-// 也是这么做的——npm 跑脚本时 cwd 就是包根。
+// **`process.cwd()` and not `__dirname`**: this project is `"type": "module"`,
+// and there is no `__dirname` in ESM. The other two scripts of the repository
+// (gen-vocabulary / check-build) do the same — when npm runs a script the cwd
+// is the root of the package.
 const REPO = process.cwd();
 const BOARDS_DIR = join(REPO, 'profiles/boards');
 
-/** 找到要校验的包目录 */
+/** Finds the directories of the packs that have to be validated */
 function packDirs(explicit: string[]): string[] {
   if (explicit.length > 0) {
     return explicit.map((p) => (p.startsWith('/') || /^[A-Za-z]:/.test(p) ? p : join(REPO, p)));
@@ -42,9 +46,9 @@ function packDirs(explicit: string[]): string[] {
     .sort();
 }
 
-/** 一条问题怎么打印给人看 */
+/** How one issue is printed for a human */
 function format(issue: ValidationIssue): string {
-  return `  规则 ${issue.rule} · ${issue.path}\n    ${issue.message}`;
+  return `  rule ${issue.rule} · ${issue.path}\n    ${issue.message}`;
 }
 
 function main(): number {
@@ -52,7 +56,7 @@ function main(): number {
   const dirs = packDirs(explicit);
 
   if (dirs.length === 0) {
-    console.error(`没有找到任何板型包（扫的是 ${BOARDS_DIR}）`);
+    console.error(`no board pack was found (the scan covered ${BOARDS_DIR})`);
     return 1;
   }
 
@@ -67,9 +71,9 @@ function main(): number {
     try {
       pack = loadBoardPack(dir);
     } catch (err) {
-      // 加载失败 = 结构不对（规则 10 / 24 的未知字段那一半）
+      // A failure to load = the structure is wrong (the unknown field half of the rules 10 / 24)
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`  ✗ 加载失败：${message}`);
+      console.error(`  ✗ it does not load: ${message}`);
       errorCount += 1;
       continue;
     }
@@ -90,18 +94,18 @@ function main(): number {
 
     if (errs.length === 0) {
       console.log(
-        `  ✓ ${pack.readers.length} 个 reader、${pack.custom.length} 个私有 reader、` +
-          `${pack.actions.length} 个动作、${pack.poll_groups.length} 个轮询组`,
+        `  ✓ ${pack.readers.length} readers, ${pack.custom.length} private readers, ` +
+          `${pack.actions.length} actions, ${pack.poll_groups.length} poll groups`,
       );
     }
     console.log('');
   }
 
   if (errorCount > 0) {
-    console.error(`✗ ${dirs.length} 个包，${errorCount} 个错误，${warningCount} 个警告`);
+    console.error(`✗ ${dirs.length} packs, ${errorCount} errors, ${warningCount} warnings`);
     return 1;
   }
-  console.log(`✅ ${dirs.length} 个包，0 个错误，${warningCount} 个警告`);
+  console.log(`✅ ${dirs.length} packs, 0 errors, ${warningCount} warnings`);
   return 0;
 }
 

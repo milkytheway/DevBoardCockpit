@@ -1,24 +1,28 @@
 /**
- * 板型包真机探针（`npm run probe:board`）。
+ * The probe of a board pack on a real board (`npm run probe:board`).
  *
- * **M4 的验收判据**：「`probe:board` 对 `rk3588-atk` 全绿」。
+ * **The acceptance criterion of M4**: "`probe:board` is all green for
+ * `rk3588-atk`".
  *
- * ── 它做什么 ──
+ * ── What it does ──
  *
- * 1. **先校验，再探**——一个过不了自己校验器的包，探它没有意义；
- * 2. 连上板子，按 `poll_groups` 逐组取数、解析、绑 tag；
- * 3. 逐 reader 判定：**声明的 tag 全部拿到、多出来的没有、状态都是 ok**；
- * 4. 全绿 → 退出码 0；否则 1。
+ * 1. **Validate first, probe second** — probing a pack that does not pass its
+ *    own validator means nothing;
+ * 2. Connect to the board, take the data group by group over `poll_groups`,
+ *    parse it and bind the tags;
+ * 3. Judge reader by reader: **every declared tag was read, there is no extra
+ *    one, every state is ok**;
+ * 4. All green → exit code 0; otherwise 1.
  *
- * ── 为什么每个组采**两次** ──
+ * ── Why every group is sampled **twice** ──
  *
- * `proc_stat` 的占用率是**两次采样做差**（契约 §2.4）——
- * 首读是 `pending`，不是 0。探针要的是**真值**，
- * 所以每组都采两轮。
+ * The usage of `proc_stat` is **the difference of two samples** (contract
+ * §2.4) — the first reading is `pending`, not 0. The probe wants the **real
+ * value**, so it samples every group twice.
  *
- * 用法：
- *   npm run probe:board                                  # 用默认包与自动挑的连接
- *   npm run probe:board -- --profile board-adb           # 指定连接 profile
+ * Usage:
+ *   npm run probe:board                                  # the default pack and the connection it picks
+ *   npm run probe:board -- --profile board-adb           # a given connection profile
  *   npm run probe:board -- --pack profiles/boards/rk3588-atk
  */
 
@@ -54,14 +58,14 @@ function parseArgs(argv: string[]): Args {
   return out;
 }
 
-/** 会话日志放哪儿 */
+/** Where the session log goes */
 function logDir(): string {
   const local = process.env['LOCALAPPDATA'];
   if (local) return join(local, 'DevBoardCockpit');
   return join(tmpdir(), 'devboard-cockpit-probe');
 }
 
-/** 打印一个 reader 的报告 */
+/** Prints the report of one reader */
 function printReader(report: ProbeReaderReport): void {
   const tags = report.tags
     .map((t) => `${t.tag}=${t.value === null ? '—' : String(t.value)}${t.unit === '-' ? '' : t.unit}`)
@@ -76,24 +80,24 @@ function printReader(report: ProbeReaderReport): void {
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
 
-  // ── 1. 先校验 ──
-  // `--pack` **包 id 也认**（文档里写的就是 id）
+  // ── 1. Validate ──
+  // `--pack` **takes a pack id as well** (that is what the documentation says)
   const packDir = resolvePackDir(args.pack, join(REPO, 'profiles/boards'));
   const pack = loadBoardPack(packDir);
   const issues = validatePack(pack);
   for (const w of warningsOf(issues)) {
-    console.log(`  警告 · 规则 ${w.rule} · ${w.path}：${w.message}`);
+    console.log(`  warning · rule ${w.rule} · ${w.path}: ${w.message}`);
   }
   const errs = errorsOf(issues);
   if (errs.length > 0) {
-    console.error('✗ 包没通过校验，不探：');
+    console.error('✗ the pack does not pass the validation, it is not probed:');
     for (const e of errs) {
-      console.error(`  规则 ${e.rule} · ${e.path}：${e.message}`);
+      console.error(`  rule ${e.rule} · ${e.path}: ${e.message}`);
     }
     return 1;
   }
 
-  // ── 2. 找连接 profile ──
+  // ── 2. Find the connection profile ──
   const profiles = loadProfiles({ builtinDir: join(REPO, 'profiles/targets') });
   const profile = args.profile
     ? profiles.find((p) => p.id === args.profile)
@@ -101,17 +105,18 @@ async function main(): Promise<number> {
   if (profile === undefined) {
     console.error(
       args.profile
-        ? `✗ 没有 id 为「${args.profile}」的连接 profile`
-        : `✗ 没有指向板型包「${pack.id}」的连接 profile（用 --profile 指定）`,
+        ? `✗ there is no connection profile with the id "${args.profile}"`
+        : `✗ there is no connection profile that points at the board pack "${pack.id}" (name one with --profile)`,
     );
     return 1;
   }
 
-  console.log(`=== ${pack.id} （连接：${profile.id} · ${profile.transport}）===`);
-  // `requires.capabilities` 在 v1 唯一的消费者（docs/06 C9 承诺的「包描述查询」）
+  console.log(`=== ${pack.id} (connection: ${profile.id} · ${profile.transport}) ===`);
+  // The only consumer of `requires.capabilities` in v1 (the "pack description
+  // query" that C9 promised)
   console.log(describeRequires(pack));
 
-  // ── 3. 连上 ──
+  // ── 3. Connect ──
   const settings = loadSettings(join(REPO, 'profiles/settings.json'));
   const adbPath = resolveAdbPath(settings);
   const log = new SessionLog({
@@ -124,12 +129,12 @@ async function main(): Promise<number> {
   try {
     await connection.open();
   } catch (err) {
-    console.error(`✗ 连不上：${err instanceof Error ? err.message : String(err)}`);
+    console.error(`✗ cannot connect: ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
 
   try {
-    // ── 4. 逐组采两轮（proc_stat 要两次采样才有值） ──
+    // ── 4. Two rounds per group (proc_stat only has a value after two samples) ──
     const report = await probePack(pack, connection);
     for (const reader of report.readers) printReader(reader);
     const reports: ProbeReaderReport[] = report.readers;
@@ -142,10 +147,10 @@ async function main(): Promise<number> {
 
     const green = reports.filter((r) => r.ok).length;
     if (green === reports.length) {
-      console.log(`\n✅ ${pack.id}：${reports.length} 个 reader 全绿`);
+      console.log(`\n✅ ${pack.id}: all ${reports.length} readers are green`);
       return 0;
     }
-    console.error(`\n✗ ${pack.id}：${green}/${reports.length} 个 reader 绿`);
+    console.error(`\n✗ ${pack.id}: ${green}/${reports.length} readers are green`);
     return 1;
   } finally {
     await connection.close().catch(() => undefined);
@@ -155,6 +160,6 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((err: unknown) => {
-    console.error(`✗ 探针崩了：${err instanceof Error ? err.stack : String(err)}`);
+    console.error(`✗ the probe crashed: ${err instanceof Error ? err.stack : String(err)}`);
     process.exit(1);
   });

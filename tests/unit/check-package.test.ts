@@ -67,7 +67,7 @@ describe('the self-check of the package · **is the code inside the package the 
   it('**the bytes differ → it fails** (**the package is stale** — that is exactly the one the installed build of 2026-11-19 ran into)', () => {
     const r = compareBundle(Buffer.from('old code'), Buffer.from('new code'));
     expect(r.ok).toBe(false);
-    expect(r.detail).toContain('陈旧');
+    expect(r.detail).toContain('stale');
   });
 
   it('**it is not on the disk → it fails** (**not "it is skipped when it is missing"** — that would make the criterion void)', () => {

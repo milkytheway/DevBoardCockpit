@@ -1,26 +1,32 @@
 /**
- * 词表生成器。
+ * The generator of the vocabulary.
  *
- * `docs/spec/data/tag-vocabulary.yaml` 是核心词表的**唯一权威**
- * （`docs/spec/01-tag-contract.md` §一）。本脚本从它生成两样东西：
+ * `docs/spec/data/tag-vocabulary.yaml` is the **only authority** of the core
+ * vocabulary (`docs/spec/01-tag-contract.md` §1). This script generates two
+ * things from it:
  *
- *   1. `docs/spec/01-tag-contract.md` 里那张 Markdown 表格（人类可读渲染）
- *   2. `src/shared/generated/tag-vocabulary.generated.ts`（实现层用的机器可读形态）
+ *   1. the Markdown table in `docs/spec/01-tag-contract.md` (the rendering
+ *      for a human)
+ *   2. `src/shared/generated/tag-vocabulary.generated.ts` (the machine
+ *      readable shape that the implementation layer uses)
  *
- * **为什么要有它**：`docs/04-架构设计.md` §4.3 把它叫「语义不漂移的唯一硬判据」，
- * `AGENTS.md` 叫「对拍是硬判据」。判据必须能自动跑，否则只是口号。
- * 有了这个脚本，`--check` 就能回答一个具体问题：
- * 「YAML、文档表格、代码词表这三份，现在还一致吗？」
+ * **Why it exists**: the architecture of the project calls it "the only hard
+ * criterion that keeps the semantics from drifting", and `AGENTS.md` calls it
+ * "comparing the two is a hard criterion". A criterion has to be able to run
+ * on its own, otherwise it is only a slogan.
+ * With this script `--check` can answer one concrete question:
+ * "are the YAML, the table of the document and the vocabulary of the code still
+ * the same?"
  *
- * 用法：
- *   npx tsx scripts/gen-vocabulary.ts          # 生成
- *   npx tsx scripts/gen-vocabulary.ts --check  # 只检查，不一致就退出码 1
+ * Usage:
+ *   npx tsx scripts/gen-vocabulary.ts          # generate
+ *   npx tsx scripts/gen-vocabulary.ts --check  # only check, exit code 1 when it differs
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-// ── 类型 ──────────────────────────────────────────────────────────────
+// ── The types ────────────────────────────────────────────────────────
 
 export type TagType = 'number' | 'string' | 'boolean' | 'enum';
 export type V1Status = 'required' | 'reserved';
@@ -29,13 +35,13 @@ export interface VocabularyEntry {
   pattern: string;
   type: TagType;
   unit: string;
-  /** 数组表示区间 [min, max]；字符串表示其他取值域（开放枚举等） */
+  /** An array is the range [min, max]; a string is any other domain (an open enumeration and the like) */
   range: [number, number] | string;
   semantics: string;
   v1: V1Status;
 }
 
-/** YAML 里 range 的原始形态 */
+/** The raw shape of the range in the YAML */
 type RawRange = string | [number, number];
 
 interface RawEntry {
@@ -47,11 +53,14 @@ interface RawEntry {
   v1?: unknown;
 }
 
-// ── 极简 YAML 读取 ────────────────────────────────────────────────────
+// ── A minimal YAML reader ────────────────────────────────────────────
 //
-// 词表 YAML 的形状是固定的（`entries:` 下每项 5 个键，值都是标量或两元素数组），
-// 所以不引 YAML 库——引了就要多一个依赖，而这里的语法面小到可以手写解析。
-// **只认这一种形状**；形状不对就报错，不猜。
+// The shape of the vocabulary YAML is fixed (under `entries:` every item has
+// 5 keys, the values are scalars or arrays of two), so no YAML library is
+// pulled in — that would be one dependency more, while the syntax that is
+// needed here is small enough to be parsed by hand.
+// **Only this one shape is accepted**; a different shape is an error, nothing
+// is guessed.
 
 function parseScalar(text: string): unknown {
   const t = text.trim();
@@ -70,7 +79,7 @@ function parseScalar(text: string): unknown {
   return t;
 }
 
-/** 往条目里塞一个字段。范围字段的值可能是数组，其余是标量。 */
+/** Puts one field into an entry. The value of the range field may be an array, the other ones are scalars. */
 function setField(entry: Partial<RawEntry>, key: string, raw: string): void {
   const value: unknown = raw.trim() === '' ? '' : parseScalar(raw);
   if (key === 'range') {
@@ -121,12 +130,12 @@ function parseVocabularyYaml(text: string): VocabularyEntry[] {
   flush();
 
   return entries.map((e, i) => {
-    if (typeof e.pattern !== 'string') throw new Error(`第 ${i + 1} 条缺 pattern`);
+    if (typeof e.pattern !== 'string') throw new Error(`entry ${i + 1} has no pattern`);
     if (!['number', 'string', 'boolean', 'enum'].includes(String(e.type))) {
-      throw new Error(`第 ${i + 1} 条（${e.pattern}）的 type 非法：${String(e.type)}`);
+      throw new Error(`the type of entry ${i + 1} (${e.pattern}) is not valid: ${String(e.type)}`);
     }
     if (!['required', 'reserved'].includes(String(e.v1))) {
-      throw new Error(`第 ${i + 1} 条（${e.pattern}）的 v1 非法：${String(e.v1)}`);
+      throw new Error(`the v1 of entry ${i + 1} (${e.pattern}) is not valid: ${String(e.v1)}`);
     }
     return {
       pattern: e.pattern,
@@ -139,20 +148,20 @@ function parseVocabularyYaml(text: string): VocabularyEntry[] {
   });
 }
 
-/** 读词表 YAML */
+/** Reads the vocabulary YAML */
 export function loadVocabulary(path: string): VocabularyEntry[] {
   return parseVocabularyYaml(readFileSync(path, 'utf8'));
 }
 
-// ── 渲染 ──────────────────────────────────────────────────────────────
+// ── The rendering ─────────────────────────────────────────────────────
 
 function rangeText(range: [number, number] | string): string {
-  // 数组渲染成 `[0,100]`（紧凑，与文档表格一致）
+  // An array is rendered as `[0,100]` (compact, like the table of the document)
   if (Array.isArray(range)) return `[${range.join(',')}]`;
   return range;
 }
 
-/** 渲染成 `docs/spec/01` 里那张 Markdown 表格 */
+/** Renders the Markdown table of `docs/spec/01` */
 export function renderMarkdownTable(entries: VocabularyEntry[]): string {
   const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
   const sep = '|---|---|---|---|---|---|';
@@ -163,7 +172,7 @@ export function renderMarkdownTable(entries: VocabularyEntry[]): string {
   return [header, sep, ...rows].join('\n');
 }
 
-/** 解析文档里已有的那张表格（用来跟 YAML 对拍） */
+/** Parses the table that the document already has (to compare it with the YAML) */
 export function parseMarkdownTable(doc: string): Array<{
   pattern: string;
   type: string;
@@ -197,7 +206,7 @@ export function parseMarkdownTable(doc: string): Array<{
   return out;
 }
 
-/** 渲染成实现层用的 TypeScript */
+/** Renders the TypeScript that the implementation layer uses */
 export function renderTypeScript(entries: VocabularyEntry[]): string {
   const names = entries.map((e) => `  '${e.pattern}'`).join(' |\n');
   const rows = entries
@@ -243,7 +252,7 @@ ${names};
 `;
 }
 
-// ── 命令行 ────────────────────────────────────────────────────────────
+// ── The command line ─────────────────────────────────────────────────
 
 interface Paths {
   yaml: string;
@@ -259,15 +268,15 @@ function defaultPaths(root: string): Paths {
   };
 }
 
-/** 把渲染出来的表格替换进文档里的那一段 */
+/** Replaces the section of the document with the rendered table */
 export function replaceTableInDoc(doc: string, table: string): string {
   const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
   const start = doc.indexOf(header);
-  if (start < 0) throw new Error('文档里找不到词表表格');
+  if (start < 0) throw new Error('the vocabulary table was not found in the document');
   const lines = doc.split(/\r?\n/);
   const idx = lines.findIndex((l) => l.startsWith(header));
-  if (idx < 0) throw new Error('文档里找不到词表表格');
-  // 表格 = 表头 + 分隔行 + N 行数据
+  if (idx < 0) throw new Error('the vocabulary table was not found in the document');
+  // the table = the header + the separator + N rows of data
   let end = idx;
   while (end < lines.length && lines[end].trim().startsWith('|')) end += 1;
   const newLines = [...lines.slice(0, idx), ...table.split('\n'), ...lines.slice(end)];
@@ -296,33 +305,33 @@ function main(): void {
 
   const problems: string[] = [];
   if (JSON.stringify(docTable) !== JSON.stringify(yamlTable)) {
-    problems.push('docs/spec/01 的表格与 YAML 不一致');
+    problems.push('the table of docs/spec/01 and the YAML differ');
   }
 
   let existingTs = '';
   if (existsSync(paths.ts)) existingTs = readFileSync(paths.ts, 'utf8');
   if (existingTs !== ts) {
-    problems.push(`${paths.ts} 与 YAML 不一致`);
+    problems.push(`${paths.ts} and the YAML differ`);
   }
 
   if (check) {
     if (problems.length > 0) {
-      console.error('✗ 词表三份不一致：');
+      console.error('✗ the three copies of the vocabulary differ:');
       for (const p of problems) console.error(`  - ${p}`);
-      console.error('  跑 npm run gen:vocabulary 重新生成。');
+      console.error('  Run npm run gen:vocabulary to generate them again.');
       process.exit(1);
     }
-    console.log(`✓ 词表三份一致：YAML（${entries.length} 条）= 文档表格 = 代码词表`);
+    console.log(`✓ the three copies of the vocabulary are the same: the YAML (${entries.length} entries) = the table of the document = the vocabulary of the code`);
     return;
   }
 
   writeFileSync(paths.doc, replaceTableInDoc(doc, table), 'utf8');
   mkdirSync(dirname(paths.ts), { recursive: true });
   writeFileSync(paths.ts, ts, 'utf8');
-  console.log(`已生成：${paths.doc}（表格）与 ${paths.ts}（${entries.length} 条）`);
+  console.log(`generated: ${paths.doc} (the table) and ${paths.ts} (${entries.length} entries)`);
 }
 
-// 直接运行时才执行 CLI；被 import 时只导出函数
+// The CLI only runs when it is run directly; when it is imported it only exports the functions
 if (process.argv[1] && process.argv[1].endsWith('gen-vocabulary.ts')) {
   main();
 }

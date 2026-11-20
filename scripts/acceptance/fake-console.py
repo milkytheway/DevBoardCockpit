@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""一块「假板子」：在 pty 的另一端扮演串口控制台。
+"""A "fake board": it plays the serial console at the other end of a pty.
 
-行为照真板子（事实 S2/S4/S6）：
-- **回显**收到的每一行（getty 自己回显）
-- 收到 `cmd; echo MARKER` 时，先回显整行（marker 第一次出现），
-  再打印命令的输出，最后打印 MARKER（第二次出现）
-这样 `serial.ts` 的 marker 认领逻辑就能在**真的串口设备**上跑一遍。
+It behaves like the real board (the facts S2/S4/S6):
+- it **echoes** every line it receives (getty echoes on its own)
+- on `cmd; echo MARKER` it first echoes the whole line (the marker appears
+  for the first time), then it prints the output of the command, and at last
+  it prints the MARKER (it appears for the second time)
+That way the marker claiming logic of `serial.ts` can run once on a **real
+serial device**.
 
-用法：fake-console.py <slave-path-file>
+Usage: fake-console.py <slave-path-file>
 """
 import os, pty, re, select, sys, threading
 
@@ -29,10 +31,10 @@ def console(master):
         if not data:
             return
         buf += data
-        # **行尾是 CR 还是 LF 都要认**：
-        # node-serialport 把串口设成**原始模式**（ICRNL 关掉），
-        # 所以回车键发来的 `\r` **不会**被转成 `\n`——
-        # 只认 `\n` 的话，假板子永远等不到一行完整的命令。
+        # **A line ending is recognised whether it is CR or LF**:
+        # node-serialport puts the serial port into **raw mode** (ICRNL off),
+        # so the `\r` that the return key sends is **not** turned into `\n` —
+        # if only `\n` is recognised, the fake board never gets a whole command.
         while b'\n' in buf or b'\r' in buf:
             idx_n = buf.find(b'\n')
             idx_r = buf.find(b'\r')
@@ -44,23 +46,23 @@ def console(master):
             m = MARKER.search(line.decode('utf-8', 'replace'))
             cmd = line.decode('utf-8', 'replace')
             if not m:
-                # 不是命令：只回显（真板子也是这样）
+                # not a command: only the echo (the real board does the same)
                 os.write(master, line + b'\r\n')
                 continue
             marker = m.group(1)
             cmd_text = cmd[:m.start()]
-            # 回显整行（marker 第一次出现）
+            # echo the whole line (the marker appears for the first time)
             os.write(master, line + b'\r\n')
-            # 命令的输出
+            # the output of the command
             os.write(master, b'fake-board-ok\r\n')
-            # echo 的输出（marker 第二次出现）
+            # the output of the echo (the marker appears for the second time)
             os.write(master, marker.encode() + b'\r\n')
 
 master, slave = pty.openpty()
 slave_name = os.ttyname(slave)
 with open(sys.argv[1], 'w') as f:
     f.write(slave_name)
-print('虚拟串口:', slave_name, flush=True)
+print('the virtual serial port:', slave_name, flush=True)
 t = threading.Thread(target=console, args=(master,), daemon=True)
 t.start()
 try:

@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
- * 构建前清空 `out/`。
+ * Clear `out/` before a build.
  *
- * **为什么必须清**：electron-vite **不清空** `out/preload/`。
- * 于是上一次构建留下的 `out/preload/index.cjs` 会活下来，
- * 而构建产物自检读的**正是这个陈旧文件**——
- * 哪怕本次构建真的产出了 ESM 的 `index.mjs`，自检也会打印「✓ 通过」。
+ * **Why it has to be cleared**: electron-vite **does not clear** `out/preload/`.
+ * So `out/preload/index.cjs` from the previous build survives, and the build
+ * artefact self-check reads **exactly that stale file** — even when this build
+ * really produced the ESM `index.mjs`, the self-check still prints "passed".
  *
- * 那道自检守的正是上一轮的 P0（preload 路径错）——
- * **守卫被陈旧产物骗过，就等于没有守卫**。
- * （`docs/13-计划1复评报告.md` S-01）
+ * That self-check guards the P0 of the previous round (the wrong preload path)
+ * — **a guard that a stale artefact can fool is not a guard**.
  */
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const out = join(process.cwd(), 'out');
 rmSync(out, { recursive: true, force: true });
-console.log('已清空 out/（避免陈旧产物骗过构建自检）');
+console.log('cleared out/ (a stale artefact must not fool the build self-check)');

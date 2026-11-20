@@ -1,46 +1,57 @@
-# 验收工具（无头驱动真实应用）
+# The acceptance tools (they drive the real application headless)
 
-> **为什么有这三个脚本**：验收清单里大部分判据是「点按钮、看屏幕」。
-> 人肉点只能验一次、且不可复跑。
-> **CDP（Chrome DevTools Protocol）能从外面驱动真实渲染进程**——
-> 读 DOM、点按钮、敲键盘，于是判据变成**可复跑的脚本**。
+> **Why these scripts exist**: most of the criteria of the acceptance list are
+> "click the button, look at the screen". A human clicking them can only
+> verify once, and it cannot be repeated.
+> **CDP (Chrome DevTools Protocol) can drive the real renderer from the
+> outside** — read the DOM, click the buttons, type the keys, and the criteria
+> become **a script that can be run again**.
 >
-> 这些脚本是 2026-11-13 的真机验收用的（`docs/superpowers/plans/2026-11-12-plan1-真机验收清单.md`）。
+> These scripts were used for the real acceptance on 2026-11-13.
 
-## 五个脚本
+## The five scripts
 
-| 文件 | 干什么 |
+| File | What it does |
 |---|---|
-| `cdp.mjs` | 极简 CDP 驱动：连上本地 Electron 的渲染进程，评估 JS 表达式（读 DOM、点按钮） |
-| `run-app.sh` | 在无显示器的 Linux 沙箱里用 **Xvfb** 起真实 Electron，带 `--remote-debugging-port` |
-| `fake-console.py` | 一块「假板子」：在 pty 另一端扮演串口控制台（**回显**每一行 + 回 marker），用来验串口的 marker 协议 |
-| `adb-forward.py` | 把本机 `127.0.0.1:5037` 转发到**宿主**的 adb server——让沙箱里的应用能连到 USB 上的真板子，**应用代码一行不用改** |
-| `linux-natives.sh` | 共享 `node_modules` 里的原生模块恢复成 Linux 能用的样子（**两边共享一个 node_modules，原生模块按平台编译，会打架**） |
+| `cdp.mjs` | a minimal CDP driver: it connects to the renderer of the local Electron and evaluates a JS expression (read the DOM, click the buttons) |
+| `run-app.sh` | it starts the real Electron with **Xvfb** in a Linux sandbox that has no display, with `--remote-debugging-port` |
+| `fake-console.py` | a "fake board": it plays the serial console at the other end of a pty (**echoes** every line + answers the marker), to verify the marker protocol of the serial port |
+| `adb-forward.py` | it forwards the local `127.0.0.1:5037` to the **adb server of the host** — that lets the application in the sandbox reach the real board on the USB bus, **without changing one line of the application code** |
+| `linux-natives.sh` | it puts the native modules of the shared `node_modules` back into the shape that works on Linux (**the two sides share one node_modules, the native modules are compiled per platform and they fight each other**) |
 
-## 怎么用
+## How to use it
 
 ```bash
-# 依赖：Linux 版 Electron 二进制、Xvfb、GTK 运行库（LD_LIBRARY_PATH）
-bash scripts/acceptance/run-app.sh 你的脚本.mjs
+# the dependencies: the Linux binary of Electron, Xvfb, the GTK runtime (LD_LIBRARY_PATH)
+bash scripts/acceptance/run-app.sh your-script.mjs
 ```
 
-`run-app.sh` 会起 Xvfb + Electron，然后跑你的脚本；脚本结束后收摊。
+`run-app.sh` starts Xvfb + Electron and then runs your script; when the script
+ends it cleans up.
 
-## 前提与限制（**别把它当成万能的**）
+## The prerequisites and the limits (**do not take it for a universal tool**)
 
-- **只适用于 Linux 沙箱**。Windows 上 `npm run dev` 直接开窗口，不需要这套。
-- Electron 的 **Linux 二进制不在 npm 包里**（`postinstall` 才下载）。
-  没下载过就 `node node_modules/electron/install.js`（或用 `npmmirror.com/mirrors/electron/` 镜像，慢很多）。
-- `fake-console.py` 认 **CR 与 LF 两种行尾**——node-serialport 会把串口设成原始模式
-  （`ICRNL` 关掉），所以回车键发来的 `\r` **不会**被转成 `\n`。
-- `adb-forward.py` 的两个方向**各自半关**（`shutdown`），不能有一边结束就把整个 socket 关掉——
-  否则**长驻的 `adb shell` 会话会在第二条命令进来时被连带杀掉**
-  （看起来像应用的 bug，其实是转发器的锅）。
+- **It only works on a Linux sandbox**. On Windows `npm run dev` opens a window
+  on its own, none of this is needed.
+- The **Linux binary of Electron is not in the npm package** (the `postinstall`
+  downloads it). If it was never downloaded, run
+  `node node_modules/electron/install.js` (or use the
+  `npmmirror.com/mirrors/electron/` mirror, which is much slower).
+- `fake-console.py` accepts **both CR and LF as a line ending** — node-serialport
+  puts the serial port into raw mode (`ICRNL` off), so the `\r` that the return
+  key sends is **not** turned into `\n`.
+- The two directions of `adb-forward.py` are **half closed on their own**
+  (`shutdown`), one side may not close the whole socket when it ends —
+  otherwise **the long-lived `adb shell` session is killed as well when the
+  second command comes in** (that looks like a bug of the application, while it
+  is the fault of the forwarder).
 
-## 判定「验收真的过了」的标准
+## The criterion for "the acceptance really passed"
 
-**驱动脚本必须读到真实状态**，不是「没报错就算过」。
-2026-11-13 那次就是这么抓到一个评审没看出来的 bug：
-板子的 shell 是 bash，而会话环境脚本里多带了一个 CR →
-`/bin/bash: line 3: $'\r': command not found`。
-—— 评审读代码读不出来，只有真机跑才看得见。
+**The driver script has to read a real state**, not "it did not throw, so it
+passed".
+That is how the bug of 2026-11-13 was caught, a bug that the review did not
+see: the shell of the board is bash, and the session environment script
+carried one CR too many →
+`/bin/bash: line 3: $'\r': command not found`.
+— Reading the code does not show it, only running it on the real machine does.

@@ -1,20 +1,26 @@
 #!/usr/bin/env node
 /**
- * **测试缺口清单**（静态的 ✓ —— 不用覆盖率工具 ✓）。
+ * **The list of the test gaps** (static — no coverage tool).
  *
- * ── 为什么不用覆盖率工具 ──
+ * ── Why no coverage tool ──
  *
- * 装 `@vitest/coverage-*` 会动**宿主与沙箱共用的 `node_modules`** ✓ →
- * 而那个共享目录是本工程已知的痛点 ✓（一次宿主 `npm install` 就让沙箱的 vitest 起不来 ✓）。
- * → **不装** ✓，改用**静态启发式** ✓（够用 ✓）。
+ * Installing `@vitest/coverage-*` touches the **`node_modules` that the host
+ * and the sandbox share** → and that shared directory is a known pain of this
+ * project (one `npm install` on the host was enough to keep the vitest of
+ * the sandbox from starting).
+ * → **Nothing is installed**, a **static heuristic** is used instead (it is
+ * enough).
  *
- * ── 它算什么，不算什么 ──
+ * ── What it counts and what it does not ──
  *
- * → **算** ✓：某个源文件**在测试里一个字都没被提到** ✓（很可能没人测它 ✓）。
- * → **不算** ✓：覆盖率百分比 ✓（启发式会漏 ✓ —— 比如一个文件被间接测到但没被 import ✓）。
- * → 所以它**只用来找「完全没人碰过」的文件** ✓ ✓。
+ * → **It counts**: a source file that **is not mentioned in a single test**
+ *   (most likely nobody tests it).
+ * → **It does not count**: the coverage percentage (the heuristic misses
+ *   things — for example a file that is tested indirectly but never
+ *   imported).
+ * → So it is **only used to find the files that nobody touched at all**.
  *
- * 用法：`node scripts/test-gaps.mjs`（在仓库根跑 ✓）
+ * Usage: `node scripts/test-gaps.mjs` (run it in the root of the repository)
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -34,19 +40,19 @@ function walk(dir, out = []) {
 const srcFiles = walk(join(ROOT, 'src')).filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith('.d.ts'));
 const testFiles = walk(join(ROOT, 'tests')).filter((f) => /\.test\.tsx?$/.test(f));
 
-/** 所有测试文件的内容拼起来（用来搜「有没有提到过」） */
+/** The content of every test file put together (to search for "was it ever mentioned") */
 const testBlob = testFiles.map((f) => readFileSync(f, 'utf8')).join('\n');
 
 const gaps = [];
 for (const file of srcFiles) {
   const rel = relative(ROOT, file).replace(/\\/g, '/');
-  // **文件名（去扩展名）** 与 **目录名** 都要被测试提到过，才算「有测试」✓
+  // The **file name (without the extension)** and the **directory name** both have to be mentioned by a test for it to count as "tested"
   const base = rel.split('/').pop().replace(/\.(ts|tsx)$/, '');
   const dir = rel.split('/').slice(0, -1).join('/');
   const mentioned = testBlob.includes(base) || (dir !== '' && testBlob.includes(dir));
   if (!mentioned) gaps.push(rel);
 }
 
-console.log(`源文件 ${srcFiles.length} 个 · 测试文件 ${testFiles.length} 个`);
-console.log(`**完全没被测试提到过**的源文件：${gaps.length} 个\n`);
+console.log(`${srcFiles.length} source files · ${testFiles.length} test files`);
+console.log(`**${gaps.length} source files that no test mentions at all**\n`);
 for (const g of gaps) console.log('  ', g);

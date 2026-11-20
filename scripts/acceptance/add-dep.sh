@@ -1,49 +1,56 @@
 #!/bin/bash
-# 在**沙箱（Linux）**里加依赖，**不破坏共享的 node_modules**。
+# Adds a dependency in the **sandbox (Linux)** without **breaking the shared
+# node_modules**.
 #
-# ── 为什么要有这个脚本 ──
+# ── Why this script exists ──
 #
-# 沙箱（Linux）与 Windows 宿主**共享同一个 `node_modules`**（同一个目录！）。
-# 而 npm 的 `optionalDependencies` 是**按平台安装**的：
+# The sandbox (Linux) and the Windows host **share one `node_modules`** (the
+# very same directory!). And the `optionalDependencies` of npm are
+# **installed per platform**:
 #
-# | | 宿主要 | 沙箱要 |
+# | | the host needs it | the sandbox needs it |
 # |---|---|---|
 # | `@esbuild/win32-x64` | ✓ | ✗ |
 # | `@esbuild/linux-x64` | ✗ | ✓ |
 # | `@rollup/rollup-win32-x64-gnu` | ✓ | ✗ |
 # | `@rollup/rollup-linux-x64-gnu` | ✗ | ✓ |
 #
-# → 在 Linux 上跑一次 `npm install`，npm 会把**宿主那一半当成多余的剪掉**，
-# 宿主上 `vitest` / `tsx` 就起不来（反过来一样）。
-# 于是每次装依赖都得**手工来回**：`backup` → install → `restore`。
+# → One `npm install` on Linux makes npm **prune the half that the host
+# needs**, and then `vitest` / `tsx` do not start on the host (and the other
+# way round).
+# So every install has to **go back and forth by hand**: `backup` → install →
+# `restore`.
 #
-# ── 这个脚本干什么 ──
+# ── What this script does ──
 #
-# **沙箱侧永远不直接 `npm install`**：
+# **The sandbox side never runs `npm install` directly**:
 #
-# ① 在**隔离前缀**里装（`/tmp` 下的独立目录）→ **共享树一个字节都不碰**
-# ② 只把**缺的**包拷进共享树（已存在的、版本够用的不动）
-# ③ `npm pkg set` 把依赖写进 `package.json`
-# ④ `npm install --package-lock-only` 更新 `package-lock.json`
-#    （**只改 lock 文件，不动 node_modules**；lock 里两边的平台包都记着 ✓）
+# ① it installs into an **isolated prefix** (a separate directory under
+#   `/tmp`) → **not a single byte of the shared tree is touched**
+# ② it copies only the **missing** packages into the shared tree (the ones
+#   that are there with a good enough version stay)
+# ③ `npm pkg set` writes the dependency into `package.json`
+# ④ `npm install --package-lock-only` updates `package-lock.json`
+#    (**only the lock file changes, node_modules is left alone**; the lock
+#    records the platform packages of both sides)
 #
-# ── 宿主侧 ──
+# ── The host side ──
 #
-# 宿主自己装（`npm install`）之后，跑：
+# After the host installed on its own (`npm install`), run:
 #
 # ```powershell
-# bash scripts/acceptance/linux-natives.sh restore   # 把 Linux 的平台包补回来
+# bash scripts/acceptance/linux-natives.sh restore   # put the Linux platform packages back
 # ```
 #
-# （Windows 上跑不了这个脚本的 `backup`/`restore` 分支——它会删 `node-pty/build/`，
-# 那会毁掉宿主的产物。**在 Windows 上要用 PowerShell 版的**，
-# 见 `docs/17-现状总账.md` §「共享 node_modules 的平台冲突」。）
+# (The `backup`/`restore` branches of that script cannot run on Windows —
+# they delete `node-pty/build/`, and that would destroy the artefact of the
+# host. **On Windows the PowerShell version has to be used**.)
 #
-# ── 用法 ──
+# ── Usage ──
 #
 # ```bash
 # bash scripts/acceptance/add-dep.sh react-grid-layout@1.4.4
-# bash scripts/acceptance/add-dep.sh --dry-run react-grid-layout@1.4.4   # 只看会做什么
+# bash scripts/acceptance/add-dep.sh --dry-run react-grid-layout@1.4.4   # only show what it would do
 # ```
 
 set -euo pipefail
@@ -52,7 +59,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 if [ "$(uname -s)" != "Linux" ]; then
-  echo "这个脚本只在 Linux 沙箱侧用（宿主直接 npm install 即可）。"
+  echo "this script is only for the Linux sandbox side (the host just runs npm install)."
   exit 1
 fi
 
@@ -63,26 +70,26 @@ if [ "${1:-}" = "--dry-run" ]; then
 fi
 
 if [ $# -lt 1 ]; then
-  echo "用法：bash scripts/acceptance/add-dep.sh [--dry-run] <pkg>[@version] [...]"
+  echo "Usage: bash scripts/acceptance/add-dep.sh [--dry-run] <pkg>[@version] [...]"
   exit 1
 fi
 
 PREFIX="$(mktemp -d /tmp/add-dep-XXXXXX)"
-echo "== 1/4 隔离前缀安装（不碰共享树）：$PREFIX"
+echo "== 1/4 the install into the isolated prefix (the shared tree is not touched): $PREFIX"
 npm install --prefix "$PREFIX" --no-audit --no-fund --ignore-scripts "$@"
 
-echo "== 2/4 拷进共享树（只拷缺的）"
+echo "== 2/4 copy into the shared tree (only what is missing)"
 copied=0
 for dir in "$PREFIX"/node_modules/*; do
   name="$(basename "$dir")"
   [ -d "$dir" ] || continue
-  # 作用域包（@types/…）：逐个处理
+  # a scoped package (@types/…): every sub package on its own
   if [ "${name#@}" != "$name" ]; then
     mkdir -p "node_modules/$name"
     for sub in "$dir"/*; do
       subname="$(basename "$sub")"
       if [ ! -d "node_modules/$name/$subname" ]; then
-        echo "   拷入 $name/$subname"
+        echo "   copying in $name/$subname"
         cp -r "$sub" "node_modules/$name/"
         copied=$((copied + 1))
       fi
@@ -90,22 +97,22 @@ for dir in "$PREFIX"/node_modules/*; do
     continue
   fi
   if [ -d "node_modules/$name" ]; then
-    echo "   已有，跳过 $name"
+    echo "   it is there, skipping $name"
     continue
   fi
-  echo "   拷入 $name"
+  echo "   copying in $name"
   cp -r "$dir" node_modules/
   copied=$((copied + 1))
 done
-echo "   共拷入 $copied 个包"
+echo "   $copied packages were copied in"
 
 if [ "$DRY_RUN" = "1" ]; then
-  echo "== dry-run：不改 package.json，也不改 lock"
+  echo "== dry-run: neither package.json nor the lock is changed"
   rm -rf "$PREFIX"
   exit 0
 fi
 
-echo "== 3/4 写进 package.json"
+echo "== 3/4 write it into package.json"
 for spec in "$@"; do
   name="${spec%@*}"
   version="${spec#*@}"
@@ -116,10 +123,10 @@ for spec in "$@"; do
   echo "   dependencies.$name = $version"
 done
 
-echo "== 4/4 更新 package-lock.json（只改 lock，不动 node_modules）"
+echo "== 4/4 update package-lock.json (only the lock changes, node_modules is left alone)"
 npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
 rm -rf "$PREFIX"
 echo
-echo "完成。宿主那边**不用**再装（包已经在共享树里）；"
-echo "但宿主若要自己 npm install，装完记得跑 scripts/acceptance/linux-natives.sh restore。"
+echo "Done. The host does **not** have to install anything (the packages are in the shared tree already);"
+echo "but if the host runs its own npm install, run scripts/acceptance/linux-natives.sh restore afterwards."

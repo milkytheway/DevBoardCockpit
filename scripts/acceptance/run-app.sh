@@ -1,16 +1,18 @@
 #!/bin/bash
-# 在无显示器的 Linux 沙箱里跑起应用，并用 CDP 驱动它。
+# Starts the application in a Linux sandbox without a display and drives it
+# with CDP.
 #
-# **为什么需要它**：验收清单里大部分是「点按钮、看屏幕」——
-# 自动化不了就只剩「人肉点」。而 CDP（Chrome DevTools Protocol）
-# 能从外面驱动真实渲染进程：读 DOM、点按钮、敲键盘。
+# **Why it is needed**: most of the acceptance list is "click the button, look
+# at the screen" — without automation only "a human clicking" is left. And CDP
+# (Chrome DevTools Protocol) can drive the real renderer from the outside: read
+# the DOM, click the buttons, type the keys.
 #
-# 依赖：
-#   - Linux 版 Electron 二进制（node_modules/electron/dist/electron）
-#   - Xvfb（虚拟显示）
-#   - GTK 等运行库（在 LD_LIBRARY_PATH 里）
+# The dependencies:
+#   - the Linux binary of Electron (node_modules/electron/dist/electron)
+#   - Xvfb (the virtual display)
+#   - the GTK runtime and the like (in LD_LIBRARY_PATH)
 #
-# 用法：bash scripts/acceptance/run-app.sh <要跑的脚本.mjs>
+# Usage: bash scripts/acceptance/run-app.sh <the script to run.mjs>
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -28,18 +30,19 @@ for _ in $(seq 1 40); do
   sleep 0.4
 done
 if [ "$READY_X" != "1" ]; then
-  echo "Xvfb 没起来" >&2; cat /tmp/xvfb.log >&2
+  echo "Xvfb did not start" >&2; cat /tmp/xvfb.log >&2
   kill "$XVFB_PID" 2>/dev/null; exit 1
 fi
 
 cd "$ROOT"
-# **Linux 版 Electron 不在 node_modules 里**——
-# node_modules 是与 Windows 宿主**共享**的，放 Linux 二进制会挡住
-# 宿主 `npm install` 下 Windows 版（那一步在 Windows 上是必须的）。
+# **The Linux binary of Electron is not in node_modules** — the node_modules
+# is **shared** with the Windows host, and the Linux binary there would keep
+# the host `npm install` from fetching the Windows one (that step is
+# mandatory on Windows).
 ELECTRON_BIN="${ELECTRON_BIN:-/tmp/electron-linux/dist/electron}"
 if [ ! -x "$ELECTRON_BIN" ]; then
-  echo "找不到 Linux 版 Electron：$ELECTRON_BIN" >&2
-  echo "从 https://npmmirror.com/mirrors/electron/ 下对应版本，解到那里即可。" >&2
+  echo "the Linux binary of Electron was not found: $ELECTRON_BIN" >&2
+  echo "Download the matching version from https://npmmirror.com/mirrors/electron/ and unpack it there." >&2
   kill "$XVFB_PID" 2>/dev/null; exit 1
 fi
 DISPLAY=":$DISP_NUM" ELECTRON_DISABLE_SECURITY_WARNINGS=1 \
@@ -52,7 +55,7 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 if [ "$READY" != "1" ]; then
-  echo "CDP 没起来：" >&2; tail -6 /tmp/electron.log >&2
+  echo "CDP did not start:" >&2; tail -6 /tmp/electron.log >&2
   kill "$EL_PID" "$XVFB_PID" 2>/dev/null; exit 1
 fi
 

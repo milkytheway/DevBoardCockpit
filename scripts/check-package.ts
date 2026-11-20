@@ -1,22 +1,27 @@
 /**
- * **打包产物自检**（`npm run check:package`）。
+ * **The self-check of the packaged artefact** (`npm run check:package`).
  *
- * ── 它防的是哪类 bug ──
+ * ── The kind of bug it prevents ──
  *
- * 打包之后 `app.getAppPath()` = **asar 根** ✓（不是源码目录 ✓）。
- * → `cards/`（内置卡 ✓）、`profiles/`（连接 profile ✓ · 板型包 ✓ · 流程包 ✓）
- * **必须被 electron-builder 的 `files` 带进 asar** ✓，
- * 否则装好的应用**一张内置卡都没有** ✓ —— 而它在开发期完全看不出来：
- * `npm run build` 绿 ✓、测试全绿 ✓，**只有装上才炸** ✓。
+ * After the packaging `app.getAppPath()` = **the root of the asar** (not the
+ * source directory).
+ * → `cards/` (the built-in cards), `profiles/` (the connection profiles, the
+ * board packs, the workflow packs) **have to be carried into the asar by the
+ * `files` of electron-builder**, otherwise the installed application **has
+ * not one single built-in card** — and that is completely invisible during
+ * development: `npm run build` is green, the tests are all green, **it only
+ * breaks once it is installed**.
  *
- * → 所以「打包配置对不对」**必须是一条能跑的判据** ✓，不是一段注释 ✓。
+ * → So "is the packaging configuration right" **has to be a criterion that
+ * runs**, not a paragraph of comments.
  *
- * ── 为什么自己读 asar 的头 ──
+ * ── Why it reads the header of the asar itself ──
  *
- * → asar 的头是一段 JSON ✓（文件清单 ✓）→ 读它不需要额外依赖 ✓
- *   （`@electron/asar` 得先装上才能用 ✓ —— 而这个脚本要在**装之前**就能跑 ✓）。
+ * → The header of an asar is a piece of JSON (the file list) → reading it
+ *   needs no extra dependency (`@electron/asar` has to be installed first —
+ *   and this script has to run **before the install**).
  *
- * 用法：`npm run check:package`（`npm run dist` 之后 ✓）
+ * Usage: `npm run check:package` (after `npm run dist`)
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -31,12 +36,15 @@ interface Check {
 }
 
 /**
- * **asar 里的内置卡与 `cards/` 对不对得上** ✓（**纯函数** ✓ —— 好测 ✓）。
+ * **Do the built-in cards in the asar and `cards/` match** (a **pure
+ * function** — easy to test).
  *
- * → 判据 = **两边一模一样** ✓（**不是「至少有一张」** ✓ ——
- *   「≥1」**检不出陈旧的 asar** ✓：今天 10 张 · 旧 asar 6 张 → 照样「有卡」✓ ✗）。
- * → **比的是集合** ✓ —— 顺序无关 ✓。
- * → **期望为空 → 不过** ✓（「`cards/` 一张卡都没有」本身就是不对 ✓）。
+ * → The criterion = **the two sides are identical** (**not "at least one"** —
+ *   "≥1" **does not catch a stale asar**: ten cards today, six in the old
+ *   asar → it still reports "there are cards" ✗).
+ * → **What is compared is the set** — the order does not matter.
+ * → **An empty expectation → it fails** ("not one card in `cards/`" is wrong
+ *   in itself).
  */
 export function compareCards(
   expected: string[],
@@ -48,63 +56,71 @@ export function compareCards(
 }
 
 /**
- * **包里的代码是不是磁盘上那份**（**纯函数** ✓ —— 好测 ✓）。
+ * **Is the code in the package the one on the disk** (a **pure function** —
+ * easy to test).
  *
- * ── 为什么要有这条（**它是被真机事件打出来的** ✓）──
+ * ── Why this one exists (**it was hammered out by a real event**) ──
  *
- * → **2026-11-19**：用户把安装包装上了 ✓ → 我去看 ✓
- *   → **包里跑的是修复之前的代码** ⚠️
- *   （安装包 **00:55** ✓ · 那个修复 **21:38** 才提交 ✓ → **包比修复早 21 小时** ⚠️）。
- * → **后果**：装机版里「凡是能写板子的卡」**永久显示「降级」** ⚠️
- *   → 而**开发期与沙箱里全绿** ✓ → **只有装上才看得见** ✓。
- * → **`check:package` 原来验不出这个** ⚠️ → 它验「卡在不在」✓
- *   → **验不出「代码是不是最新的」** ⚠️ → **所以它成了漏网的** ⚠️。
+ * → **2026-11-19**: the operator installed the build → I looked at it
+ *   → **the package was running the code from before the fix** ⚠️
+ *   (the installer at **00:55**, the fix was only committed at **21:38** →
+ *   **the package was 21 hours older than the fix** ⚠️).
+ * → **The consequence**: in the installed build every card that can write to
+ *   the board **permanently showed "degraded"** ⚠️
+ *   → while **everything was green during the development and in the
+ *   sandbox** → **it is only visible once it is installed**.
+ * → **`check:package` could not see that** ⚠️ → it verified "are the cards
+ *   there" → **it could not verify "is the code the newest one"** ⚠️
+ *   → **so it was the one that got through** ⚠️.
  *
- * ── 判据怎么定 ──
+ * ── How the criterion is defined ──
  *
- * → **逐字节相等** ✓ —— 不比时间戳 ✓（**时间戳会被 `cp` 改** ✓ → 不可靠 ✓）。
- * → **任一边缺 → 不过** ✓ —— **不许「没有就跳过」** ✓（那样等于没这条判据 ✓）。
+ * → **Equal byte by byte** — the timestamps are not compared (**the
+ *   timestamps are changed by `cp`** → unreliable).
+ * → **One side missing → it fails** — **"it is skipped when it is missing" is
+ *   not allowed** (that would void the criterion).
  */
 export function compareBundle(
   inAsar: Buffer | undefined,
   onDisk: Buffer | undefined,
 ): { ok: boolean; detail: string } {
   if (inAsar === undefined) {
-    return { ok: false, detail: 'asar 里没有 out/main/index.js —— 包没带 main 产物' };
+    return { ok: false, detail: 'the asar holds no out/main/index.js — the package carries no main artefact' };
   }
   if (onDisk === undefined) {
     return {
       ok: false,
-      detail: '磁盘上没有 out/main/index.js —— 跑一次 `npm run build` 再验',
+      detail: 'there is no out/main/index.js on the disk — run `npm run build` once and check again',
     };
   }
   if (!inAsar.equals(onDisk)) {
     return {
       ok: false,
       detail:
-        `**包是陈旧的** ✓（asar 里 ${inAsar.length} 字节 · 磁盘上 ${onDisk.length} 字节 ✓）` +
-        ' → **重打一次**（`npm run dist` ✓）→ **否则装上跑的是旧代码** ✓',
+        `**the package is stale** (${inAsar.length} bytes in the asar · ${onDisk.length} bytes on the disk) ` +
+        '→ **build it again** (`npm run dist`) → **otherwise the installed build runs the old code**',
     };
   }
-  return { ok: true, detail: `一致（${inAsar.length} 字节）` };
+  return { ok: true, detail: `identical (${inAsar.length} bytes)` };
 }
 
-/** asar 的头：文件清单（路径 → {size, offset, ...} ✓） */
+/** The header of the asar: the file list (path → {size, offset, ...}) */
 interface AsarHeader {
   files: Record<string, { size: number; offset: string; files?: Record<string, unknown> }>;
 }
 
 /**
- * 读 asar 的头。
+ * Reads the header of the asar.
  *
- * ── asar 的布局（头部）──
+ * ── The layout of an asar (the header) ──
  *
  * ```
- * 0  : UInt32 = 4              （pickle 的载荷长度 ✓）
- * 4  : UInt32 = 头 pickle 的长度 ✓（文件内容从 8 + 它 开始 ✓）
- * 8  : UInt32 = 载荷长度 ✓
- * 12 : UInt32 = JSON 字符串的字节长度 ✓
- * 16 : JSON 字符串 ✓
+ * 0  : UInt32 = 4              (the length of the payload of the pickle)
+ * 4  : UInt32 = the length of the header pickle (the content of the files
+ *              starts at 8 + it)
+ * 8  : UInt32 = the length of the payload
+ * 12 : UInt32 = the length of the JSON string in bytes
+ * 16 : the JSON string
  * ```
  */
 function readAsarHeader(asarPath: string): AsarHeader {
@@ -112,11 +128,11 @@ function readAsarHeader(asarPath: string): AsarHeader {
   const headerPickleSize = buf.readUInt32LE(4);
   const headerStringSize = buf.readUInt32LE(12);
   const json = buf.subarray(16, 16 + headerStringSize).toString('utf8');
-  if (headerPickleSize <= 0) throw new Error(`asar 头长度不对：${headerPickleSize}`);
+  if (headerPickleSize <= 0) throw new Error(`the length of the asar header is wrong: ${headerPickleSize}`);
   return JSON.parse(json) as AsarHeader;
 }
 
-/** 把 asar 头里的嵌套清单摊平成「路径列表」✓ */
+/** Flattens the nested list of the asar header into a list of paths */
 function flatten(header: AsarHeader, prefix = ''): string[] {
   const out: string[] = [];
   for (const [name, entry] of Object.entries(header.files)) {
@@ -129,7 +145,7 @@ function flatten(header: AsarHeader, prefix = ''): string[] {
   return out;
 }
 
-/** 从 asar 里取一个文件的字节（按头里的 offset ✓） */
+/** Takes the bytes of one file out of the asar (by the offset in the header) */
 function readAsarFile(asarPath: string, header: AsarHeader, filePath: string): Buffer | undefined {
   const parts = filePath.split('/');
   let entry = header.files[parts[0] as string];
@@ -138,7 +154,7 @@ function readAsarFile(asarPath: string, header: AsarHeader, filePath: string): B
     entry = entry.files[part] as { size: number; offset: string };
   }
   if (entry === undefined || typeof entry.offset !== 'string') return undefined;
-  // **头之后的字节才是文件内容** ✓（内容起点 = 8 + 头 pickle 长度 ✓）
+  // **Only the bytes after the header are the content of the files** (the start of the content = 8 + the length of the header pickle)
   const buf = readFileSync(asarPath);
   const contentBase = 8 + buf.readUInt32LE(4);
   const start = contentBase + Number(entry.offset);
@@ -150,25 +166,33 @@ function main(): void {
   const releaseDir = join(root, 'release');
   const checks: Check[] = [];
 
-  // ── 产物在吗 ────────────────────────────────────────────────────
-  // **目录名带平台** ✓（`win-unpacked` / `linux-unpacked` / `mac-arm64-unpacked` ✓）
-  // → 找**第一个** `*-unpacked` ✓（打包在哪个平台都能验 ✓）
+  // ── Is the artefact there ───────────────────────────────────────
+  // **The directory name carries the platform** (`win-unpacked` /
+  // `linux-unpacked` / `mac-arm64-unpacked`)
+  // → find the **first** `*-unpacked` (the check works on every platform)
   const unpackedDirs = existsSync(releaseDir)
     ? readdirSync(releaseDir)
         .filter((d) => d.endsWith('-unpacked'))
         .map((d) => join(releaseDir, d))
     : [];
 
-  // **验哪个** —— **必须验「本次构建的那个」** ✓（2026-11-19 修 ✓）
+  // **Which one is checked** — **it has to be the one of this build**
+  // (fixed on 2026-11-19).
   //
-  // → 原来取的是 `unpackedDirs[0]` ✗ —— 那是 **`readdirSync` 的顺序** ✗
-  //   （字母序 ✓ → **`linux-unpacked` 排在 `win-unpacked` 前面** ✓）
-  // → 于是**在 Windows 上打包时，它验的是上一次在 Linux 沙箱里留下的旧包** ✗
-  //   → 旧包 6 张卡 ✓ / 今天的 10 张 ✓ → 报「**少 4 张**」✗
-  //   → 而**这次的 Windows 包里 10 张全在** ✓ → **自检把对的判成错的** ✗
-  //   → **用户会被引到错的方向** ✗（去查 `files` 配置 ✓ —— 而它没问题 ✓）
+  // → It used to take `unpackedDirs[0]` ✗ — that is **the order of
+  //   `readdirSync`** ✗ (alphabetical → **`linux-unpacked` comes before
+  //   `win-unpacked`**)
+  // → So **when it packaged on Windows it checked the old package that a
+  //   previous run had left in the Linux sandbox** ✗
+  //   → six cards in the old package, ten today → it reported "**four are
+  //   missing**" ✗
+  //   → while **all ten are in the Windows package of this run** → **the
+  //   self-check judged the right one wrong** ✗
+  //   → **the user is sent in the wrong direction** ✗ (off to look at the
+  //   `files` configuration — and it is fine)
   //
-  // → **优先当前平台的** ✓ → 没有就取**最新修改的**那个 ✓（那才是最近构建的 ✓）
+  // → **The one of the current platform comes first** → otherwise the **most
+  //   recently modified** one (that is the one that was built last)
   const platformTag =
     process.platform === 'win32'
       ? 'win-'
@@ -186,40 +210,44 @@ function main(): void {
   const hasUnpacked = existsSync(unpackedDir);
   const hasAsar = existsSync(asarPath);
   checks.push({
-    what: '打包产物存在（release/*-unpacked）',
+    what: 'the packaged artefact exists (release/*-unpacked)',
     ok: hasUnpacked,
-    detail: hasUnpacked ? unpackedDir : '还没有跑过 electron-builder',
+    detail: hasUnpacked ? unpackedDir : 'electron-builder has not run yet',
   });
   checks.push({
-    what: 'app.asar 存在',
+    what: 'app.asar exists',
     ok: hasAsar,
-    detail: hasAsar ? asarPath : '找不到 app.asar',
+    detail: hasAsar ? asarPath : 'app.asar was not found',
   });
 
   if (!hasAsar) {
-    console.error('✗ 打包产物自检不过：');
+    console.error('✗ the self-check of the packaged artefact failed:');
     for (const c of checks.filter((c) => !c.ok)) console.error(`  - ${c.what}\n      ${c.detail}`);
-    console.error('\n  先跑 `npm run dist:dir`（不生成安装包，只出目录 ✓）再跑这个检查 ✓。');
+    console.error('\n  Run `npm run dist:dir` first (no installer, it only produces the directory), then run this check.');
     process.exit(1);
   }
 
   const header = readAsarHeader(asarPath);
   const paths = flatten(header);
 
-  // ── 三段产物在 asar 里吗 ────────────────────────────────────────
+  // ── Are the three parts of the artefact in the asar ────────────
   for (const needed of ['out/main/index.js', `out/preload/${PRELOAD_FILE}`, 'out/renderer/index.html']) {
     checks.push({
-      what: `asar 里有 ${needed}`,
+      what: `the asar holds ${needed}`,
       ok: paths.includes(needed),
-      detail: paths.includes(needed) ? '在' : '不在 —— `files` 少写了？',
+      detail: paths.includes(needed) ? 'it is there' : 'it is not there — is `files` short of it?',
     });
   }
 
-  // ── **内置卡**在吗（打包后最常见的一条 ✓）────────────────────────
+  // ── Are the **built-in cards** there (the most common one after the
+  //    packaging) ───────────────────────────────────────────────────
   //
-  // → **判据是「asar 里的卡与 `cards/` 一模一样」✓**，**不是「至少有一张」** ✓
-  //   —— 「≥1」**检不出陈旧的 asar** ✓（今天 10 张 · 旧 asar 6 张 → 照样「有卡」✓ ✗）。
-  // → **期望值来自源码目录** ✓ —— **不写死数字** ✓（写死会随卡片增减而腐烂 ✓）。
+  // → **The criterion is "the cards in the asar are exactly the cards of
+  //   `cards/`"**, **not "at least one"**
+  //   — "≥1" **does not catch a stale asar** (ten cards today, six in the
+  //   old asar → it still reports "there are cards" ✗).
+  // → **The expectation comes from the source directory** — **no hard coded
+  //   number** (a hard coded one rots as the cards come and go).
   const cardManifests = paths.filter((p) => /^cards\/[^/]+\/manifest\.json$/.test(p));
   const inAsar = cardManifests.map((p) => p.split('/')[1]).sort();
   const sourceCardsDir = join(root, 'cards');
@@ -231,70 +259,76 @@ function main(): void {
     : [];
   const { ok: cardsOk, missing, extra } = compareCards(expectedCards, inAsar);
   checks.push({
-    what: `asar 里的内置卡与 cards/ 一致（${expectedCards.length} 张）`,
+    what: `the built-in cards in the asar are the cards of cards/ (${expectedCards.length})`,
     ok: cardsOk,
     detail:
       expectedCards.length === 0
-        ? 'cards/ 目录里一张卡都没有 —— 这不对'
+        ? 'there is not one card in the cards/ directory — that is wrong'
         : missing.length > 0 || extra.length > 0
-          ? `对不上 ✓ —— **少 ${missing.length} 张**（${missing.join('、') || '无'}）` +
-            ` · **多 ${extra.length} 张**（${extra.join('、') || '无'}）` +
-            ` → **asar 是陈旧的？重打一次** ✓`
-          : `${inAsar.length} 张全对：${inAsar.join('、')}`,
+          ? `they do not match — **${missing.length} are missing** (${missing.join(', ') || 'none'})` +
+            ` · **${extra.length} are too many** (${extra.join(', ') || 'none'})` +
+            ` → **is the asar stale? Build it again**`
+          : `all ${inAsar.length} are right: ${inAsar.join(', ')}`,
   });
 
-  // ── **随应用分发的数据**在吗 ────────────────────────────────────
+  // ── Is the **data that ships with the application** there ─────────
   for (const needed of [
     'profiles/settings.json',
-    // **板型包的文件名是 `board.yaml`** ✓（不是 manifest.json ✓ —— 那是卡片用的 ✓）
+    // **The file name of a board pack is `board.yaml`** (not manifest.json —
+    // that one belongs to the cards)
     'profiles/boards/rk3588-atk/board.yaml',
   ]) {
     const present = paths.includes(needed);
     checks.push({
-      what: `asar 里有 ${needed}`,
+      what: `the asar holds ${needed}`,
       ok: present,
-      detail: present ? '在' : '不在 —— `files` 里少了 `profiles/**/*`',
+      detail: present ? 'it is there' : 'it is not there — `files` is short of `profiles/**/*`',
     });
   }
   checks.push({
-    what: 'asar 里有连接 profile（profiles/targets/*）',
+    what: 'the asar holds the connection profiles (profiles/targets/*)',
     ok: paths.some((p) => p.startsWith('profiles/targets/')),
-    detail: paths.filter((p) => p.startsWith('profiles/targets/')).slice(0, 5).join('、') || '没有',
+    detail: paths.filter((p) => p.startsWith('profiles/targets/')).slice(0, 5).join(', ') || 'none',
   });
   checks.push({
-    what: 'asar 里有流程包（profiles/workflows/*）',
+    what: 'the asar holds the workflow packs (profiles/workflows/*)',
     ok: paths.some((p) => p.startsWith('profiles/workflows/')),
-    detail: paths.filter((p) => p.startsWith('profiles/workflows/')).slice(0, 5).join('、') || '没有',
+    detail: paths.filter((p) => p.startsWith('profiles/workflows/')).slice(0, 5).join(', ') || 'none',
   });
 
-  // ── 生产包里不许有假设备（**合成数据不许进生产包** ✓）───────────
+  // ── No fake device in the production package (**synthetic data may not
+  //    enter the production package**) ───────────────────────────────
   const mainBundle = readAsarFile(asarPath, header, 'out/main/index.js');
-  // ── **包里的代码是不是磁盘上那份**（2026-11-19 加 ✓）────────────
+  // ── **Is the code in the package the one on the disk** (added on
+  //    2026-11-19) ─────────────────────────────────────────────────
   //
-  // → **它防的是「包比修复旧」** ✓（2026-11-19 真机事件 ✓）：
-  //   装上以后才发现**包里跑的是修复之前的代码** ⚠️ → 而**开发期全绿** ✓。
-  // → **`npm run dist` 先 `electron-vite build`** ✓ → **`out/` 是刚构建的** ✓
-  //   → **两处不等 = 包是陈旧的** ✓。
+  // → **It prevents "the package is older than the fix"** (the real event of
+  //   2026-11-19): only after the install did it turn out that **the package
+  //   was running the code from before the fix** ⚠️ → while **everything was
+  //   green during the development**.
+  // → **`npm run dist` runs `electron-vite build` first** → **`out/` is the
+  //   fresh build** → **the two differ = the package is stale**.
   const diskBundlePath = join(root, 'out', 'main', 'index.js');
   const diskBundle = existsSync(diskBundlePath)
     ? readFileSync(diskBundlePath)
     : undefined;
   const bundleCmp = compareBundle(mainBundle, diskBundle);
   checks.push({
-    what: '**包里的代码是最新的**（asar 的 out/main/index.js 与磁盘上的一致）',
+    what: '**the code in the package is the newest one** (the out/main/index.js of the asar is the one on the disk)',
     ok: bundleCmp.ok,
     detail: bundleCmp.ok
       ? bundleCmp.detail
-      : `${bundleCmp.detail} —— **这一条抓的就是「装了旧代码」** ✓`,
+      : `${bundleCmp.detail} — **this one catches "the old code was installed"**`,
   });
   const fakeInPackage = mainBundle?.toString('utf8').includes(FAKE_DEVICE_MARKER) ?? false;
   checks.push({
-    what: '生产包里没有假设备',
+    what: 'there is no fake device in the production package',
     ok: !fakeInPackage,
-    detail: fakeInPackage ? '假设备混进包里了 —— 用户会把假数当真数看' : '没有',
+    detail: fakeInPackage ? 'the fake device got into the package — the user takes the false readings for real ones' : 'there is none',
   });
 
-  // ── 原生模块**解包**了吗（不解包 = 运行时找不到 .node ✓）────────
+  // ── Were the native modules **unpacked** (unpacked = the runtime does not
+  //    find the .node files) ────────────────────────────────────────
   const unpackedNative = join(unpackedDir, 'resources', 'app.asar.unpacked', 'node_modules');
   let nativeFound: string[] = [];
   if (existsSync(unpackedNative)) {
@@ -311,34 +345,34 @@ function main(): void {
     walk(unpackedNative, '');
   }
   checks.push({
-    what: '原生模块已解包（.node 文件在 app.asar.unpacked 里）',
+    what: 'the native modules are unpacked (the .node files are in app.asar.unpacked)',
     ok: nativeFound.length > 0,
     detail:
       nativeFound.length > 0
-        ? nativeFound.slice(0, 5).join('、')
-        : '没找到 .node —— node-pty / serialport 在打包后可能加载不了',
+        ? nativeFound.slice(0, 5).join(', ')
+        : 'no .node was found — node-pty / serialport may not load after the packaging',
   });
 
-  // ── 汇总 ────────────────────────────────────────────────────────
+  // ── The summary ────────────────────────────────────────────────
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {
-    console.error('✗ 打包产物自检不过：');
+    console.error('✗ the self-check of the packaged artefact failed:');
     for (const c of failed) console.error(`  - ${c.what}\n      ${c.detail}`);
-    console.error('\n  三种常见原因：');
-    console.error('  ① `files` 少写了 `cards/**/*` 或 `profiles/**/*`');
-    console.error('     —— 打包后 `app.getAppPath()` = asar 根，少了就是「装上后一张卡都没有」。');
-    console.error('  ② 生产构建里混进了假设备（合成数据不许进生产包）');
-    console.error('  ③ **包比源码旧** ✓ —— 修完代码没重打 ✓ → **`npm run dist` 重打一次** ✓');
-    console.error('     （**2026-11-19 真机踩过** ✓：装上以后才发现包里跑的是修复前的代码 ⚠️）');
+    console.error('\n  Three common causes:');
+    console.error('  ① `files` is short of `cards/**/*` or `profiles/**/*`');
+    console.error('     — after the packaging `app.getAppPath()` is the root of the asar, so a missing one means "not one card after the install".');
+    console.error('  ② the fake device got into the production build (synthetic data may not enter the production package)');
+    console.error('  ③ **the package is older than the source** — the code was fixed but not rebuilt → **run `npm run dist` once more**');
+    console.error('     (**the real machine of 2026-11-19 hit this**: only after the install did it turn out that the package was running the code from before the fix ⚠️)');
     process.exit(1);
   }
 
   console.log(
-    `✓ 打包产物自检通过（${cardManifests.length} 张内置卡 ✓ · 原生模块已解包 ✓ · 无假设备 ✓ · 包里的代码是最新的 ✓）`,
+    `✓ the self-check of the packaged artefact passed (${cardManifests.length} built-in cards · the native modules are unpacked · no fake device · the code in the package is the newest one)`,
   );
 }
 
-// 直接运行时才执行 CLI；被 import 时只导出函数（`gen-vocabulary.ts` 同款规矩 ✓）
+// The CLI only runs when it is run directly; when it is imported it only exports the functions (the same rule as `gen-vocabulary.ts`)
 if (process.argv[1] && process.argv[1].endsWith('check-package.ts')) {
   main();
 }

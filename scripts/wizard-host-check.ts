@@ -1,8 +1,9 @@
 /**
- * **验向导在宿主侧真的跑得通** ✓ —— 2026-11-19。
+ * **Verify that the wizard really works on the host side** — 2026-11-19.
  *
- * → **不绕 renderer** ✓ —— 直接调 `runWizardForHost` ✓（**那是 handler 的本体** ✓）。
- * → **用真板** ✓（串口 COM1 ✓ · 1500000 ✓）。
+ * → **It does not go around the renderer** — it calls `runWizardForHost`
+ *   directly (**that is the body of the handler**).
+ * → **With a real board** (serial port COM1 · 1500000).
  */
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,9 +15,9 @@ const REPO = resolve(process.cwd());
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'wiz-host-'));
   try {
-    console.log('=== 调宿主侧的向导（真板 · ADB）===');
+    console.log('=== running the host-side wizard (real board · ADB) ===');
     const r = await runWizardForHost(
-      { port: 'COM1', baudrate: 1500000, boardName: '串口测试板', transport: 'adb' },
+      { port: 'COM1', baudrate: 1500000, boardName: 'Serial Test Board', transport: 'adb' },
       {
         appRoot: REPO,
         userProfilesDir: join(root, 'profiles'),
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
     );
     console.log(JSON.stringify(r, null, 2));
     console.log('');
-    console.log('=== 落了哪些东西 ===');
+    console.log('=== what was installed ===');
     const boards = join(root, 'boards');
     for (const d of readdirSync(boards)) {
       console.log('  boards/' + d + '/');

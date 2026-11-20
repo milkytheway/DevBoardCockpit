@@ -1,4 +1,4 @@
-// 极简 CDP 驱动：连上本地 Electron 的渲染进程，评估表达式
+// A minimal CDP driver: it connects to the renderer of the local Electron and evaluates an expression
 const PORT = process.env.CDP_PORT || 9222;
 
 export async function targets() {
@@ -9,7 +9,7 @@ export async function targets() {
 export async function connect() {
   const list = await targets();
   const page = list.find((t) => t.type === 'page' && t.url && !t.url.startsWith('devtools://'));
-  if (!page) throw new Error('没找到 page target: ' + JSON.stringify(list.map(t => t.type)));
+  if (!page) throw new Error('no page target was found: ' + JSON.stringify(list.map(t => t.type)));
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   let id = 0;
@@ -28,7 +28,7 @@ export async function connect() {
       expression: expr, returnByValue: true, awaitPromise: true,
     });
     if (r.result?.exceptionDetails) {
-      throw new Error('JS 异常: ' + JSON.stringify(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails));
+      throw new Error('JS exception: ' + JSON.stringify(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails));
     }
     return r.result?.result?.value;
   };

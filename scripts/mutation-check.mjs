@@ -1,24 +1,27 @@
 #!/usr/bin/env node
 /**
- * 变异测试：证明这些回归测试**真的在守**着修好的东西。
+ * Mutation testing: it proves that these regression tests **really guard**
+ * the things that were fixed.
  *
- * 为什么需要它：整支评审修完 6 条 Critical 后，其中 3 条（C1 串口端口不开、
- * C4 终端输出重复渲染、C6 renderer 不呈现错误）**没有任何测试守着**——
- * 把修复改回去，整个套件仍然全绿。
- * 「测试通过」和「测试能抓住这个 bug」是两件事，只有变异能区分。
+ * Why it is needed: after a whole round of review had fixed 6 Criticals, 3 of
+ * them (C1 the serial port does not open, C4 the terminal output renders
+ * twice, C6 the renderer does not present the error) **had no test guarding
+ * them** — putting the fix back the way it was left the whole suite green.
+ * "The test passes" and "the test catches this bug" are two different things,
+ * and only a mutation tells them apart.
  *
- * 做法：把修复改回坏的样子 → 跑对应的测试 → **必须变红** → 还原 → 必须变绿。
+ * How it works: put the fix back into its broken shape → run the matching
+ * test → **it has to turn red** → restore it → it has to turn green again.
  *
- * **用 Node 写而不是 shell**：这个工程的目标平台是 Windows，
- * 而 `npm.ps1` 在 PowerShell 下会把 `--` 之后的内容吃掉——
- * 也就是说，**在目标平台上，这个「验证器」自己跑不起来**。
- * 「验证器跑不起来」等于「没有验证器」。
- * （`docs/11-计划1评审报告.md` R-57）
+ * **Written in Node rather than in a shell**: the target platform of this
+ * project is Windows, and `npm.ps1` under PowerShell swallows whatever comes
+ * after `--` — that is, **on the target platform this "verifier" does not
+ * even start**. A verifier that does not start is not a verifier.
  *
- * 用法（在仓库根目录）：
+ * Usage (in the root of the repository):
  *   npm run mutation:check
  *
- * 退出码 0 = 全部守住；非 0 = 有测试形同虚设。
+ * Exit code 0 = everything is guarded; non-zero = a test is a sham.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -29,26 +32,27 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * 每个变异：
- * - `file`   要改坏的文件
- * - `apply`  怎么改坏（返回新内容）
- * - `check`  跑什么来验它变红了
- * - `expect` 输出里必须出现的字样。
- *   **这一条是关键**：只判「退出码非 0」会把「编译失败」误判成「测试守住了」。
+ * One mutation:
+ * - `file`   the file that is broken
+ * - `apply`  how it is broken (it returns the new content)
+ * - `check`  what is run to see that it turned red
+ * - `expect` the text that has to appear in the output.
+ *   **This one is the key**: judging nothing but "the exit code is non-zero"
+ *   mistakes a compile failure for "the test held".
  */
 const MUTATIONS = [
   {
-    name: 'C1 串口端口真的打开',
+    name: 'C1 the serial port really opens',
     file: 'src/main/hal/serial.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/serial-real-factory.test.ts'],
-    expect: '打开端口',
-    apply: (s) => replace(s, '  await port.open();', '  // await port.open();  // 变异'),
+    expect: 'opening the port: it calls the open() of serialport',
+    apply: (s) => replace(s, '  await port.open();', '  // await port.open();  // mutation'),
   },
   {
-    name: 'C2 marker 单行协议',
+    name: 'C2 the marker protocol is a single line',
     file: 'src/main/hal/serial.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/serial.test.ts'],
-    expect: 'marker 在同一行',
+    expect: 'the command that is sent and the marker are on the same line (the board echoes once and the echo answers once = the marker appears twice)',
     apply: (s) =>
       replace(
         s,
@@ -57,42 +61,22 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'C3 SSH shell 异步',
+    name: 'C3 the SSH shell is asynchronous',
     file: 'src/main/hal/ssh.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/ssh.test.ts'],
-    expect: 'shell 通道',
+    expect: 'openSession returns the shell channel, not the client (the shell() of ssh2 gives the channel in its callback)',
     apply: (s) =>
       replace(
         s,
-        `  private openShell(cols: number, rows: number): Promise<ClientChannel> {
-    return new Promise((resolve, reject) => {
-      this.client!.shell({ term: 'xterm-256color', cols, rows }, (err, ch) => {
-        if (err) {
-          reject(makeError('CONN_OPEN_FAILED', \`SSH 开 shell 失败：\${err.message}\`, {
-            detail: { host: this.opts.host, cause: err.message },
-          }));
-          return;
-        }
-        resolve(ch);
-      });
-    });
-  }`,
-        `  private openShell(cols: number, rows: number): Promise<ClientChannel> {
-    let channel: ClientChannel | undefined;
-    this.client!.shell({ term: 'xterm-256color', cols, rows }, (err, ch) => {
-      if (err) throw makeError('CONN_OPEN_FAILED', \`SSH 开 shell 失败：\${err.message}\`);
-      channel = ch;
-    });
-    if (!channel) throw makeError('CONN_OPEN_FAILED', 'SSH 开 shell 失败：没有拿到通道');
-    return Promise.resolve(channel);
-  }`,
+        '  private openShell(cols: number, rows: number): Promise<ClientChannel> {\n    return new Promise((resolve, reject) => {\n      this.client!.shell({ term: \'xterm-256color\', cols, rows }, (err, ch) => {\n        if (err) {\n          reject(makeError(\'CONN_OPEN_FAILED\', `opening the SSH shell failed: ${err.message}`, {\n            detail: { host: this.opts.host, cause: err.message },\n          }));\n          return;\n        }\n        resolve(ch);\n      });\n    });\n  }',
+        '  private openShell(cols: number, rows: number): Promise<ClientChannel> {\n    let channel: ClientChannel | undefined;\n    this.client!.shell({ term: \'xterm-256color\', cols, rows }, (err, ch) => {\n      if (err) throw makeError(\'CONN_OPEN_FAILED\', `opening the SSH shell failed: ${err.message}`);\n      channel = ch;\n    });\n    if (!channel) throw makeError(\'CONN_OPEN_FAILED\', \'opening the SSH shell failed: no channel\');\n    return Promise.resolve(channel);\n  }',
       ),
   },
   {
-    name: 'C4 终端输出不重放历史',
+    name: 'C4 the terminal output does not replay the history',
     file: 'src/renderer/terminal/TerminalView.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/terminal-view.test.tsx'],
-    expect: '不重放历史',
+    expect: 'every chunk is written once and the history is not replayed (C4)',
     apply: (s) =>
       replace(
         s,
@@ -113,10 +97,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'C5 文件互传按传输分派',
+    name: 'C5 the file transfer is dispatched by the transport',
     file: 'src/main/files/transfer.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/file-transfer.test.ts'],
-    expect: 'pull 走连接自己的 pull',
+    expect: 'pull uses the pull of the connection, it does not run a pull command on the remote side',
     apply: (s) =>
       replace(
         s,
@@ -125,40 +109,38 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'C6 renderer 呈现错误',
+    name: 'C6 the renderer presents the error',
     file: 'src/renderer/shell/ErrorBar.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-error.test.tsx'],
-    expect: '把失败的原因显示出来',
+    expect: 'shows why it failed (with the real shape)',
     apply: (s) =>
       replace(
         s,
-        `    <div className="shell-error" role="alert">
-      <span>{message}</span>`,
-        `    <div className="shell-error" role="alert">
-      <span>{'坏了'}</span>`,
+        '    <div className="shell-error" role="alert">\n      <span>{message}</span>',
+        '    <div className="shell-error" role="alert">\n      <span>{\'broken\'}</span>',
       ),
   },
   {
-    name: 'M7 preload 必须是 CommonJS',
+    name: 'M7 the preload must be CommonJS',
     file: 'electron.vite.config.ts',
     check: ['npm', 'run', 'build'],
-    expect: '构建产物自检不过',
+    expect: 'the build artefact self-check failed',
     apply: (s) => replace(s, 'format: PRELOAD_FORMAT,', "format: 'es',"),
   },
   {
-    name: 'M8 错误跨 IPC 要拆包',
+    name: 'M8 an error across the IPC has to be unwrapped',
     file: 'src/preload/index.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/preload.test.ts'],
-    expect: '错误码',
+    expect: 'the error code',
     apply: (s) =>
       replace(
         s,
         '  if (!result.ok) throw appErrorToException(result.error);',
-        '  // 变异：不拆包，直接把失败当成成功',
+        '  // mutation: it does not unwrap, it takes the failure for a success',
       ),
   },
   {
-    name: 'M9 pipe 模式回车要发 LF',
+    name: 'M9 the pipe mode has to send an LF on return',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
     expect: 'LF',
@@ -170,10 +152,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M10 上传要传绝对路径',
+    name: 'M10 an upload has to send the absolute path',
     file: 'src/renderer/shell/files.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-error.test.tsx'],
-    expect: '绝对路径',
+    expect: 'an upload uses the absolute path of the host, not the file name',
     apply: (s) =>
       replace(
         s,
@@ -182,7 +164,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M11 串口的回包缓冲不许被裁剪',
+    name: 'M11 the reply buffer of the serial port may not be clipped',
     file: 'src/main/hal/serial.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/serial.test.ts'],
     expect: '64 KB',
@@ -194,10 +176,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M13 日志逐行加时间戳',
+    name: 'M13 every log line gets a timestamp',
     file: 'src/main/logging/session-log.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/session-log-format.test.ts'],
-    expect: '实现能把样本喂进去',
+    expect: 'the implementation can be fed with the sample and writes a log of the same shape',
     apply: (s) =>
       replace(
         s,
@@ -206,10 +188,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M14 ANSI 要剥干净（含隐藏光标与 OSC）',
+    name: 'M14 the ANSI sequences have to be stripped clean (the hidden cursor and the OSC included)',
     file: 'src/main/logging/session-log.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/session-log-format.test.ts'],
-    expect: '剥掉 ESC[?25l',
+    expect: 'it strips ESC[?25l (the hidden cursor) and the OSC sequences — the old implementation missed those two',
     apply: (s) =>
       replace(
         s,
@@ -218,10 +200,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M15 pipe 模式的历史要能回来',
+    name: 'M15 the history of the pipe mode has to come back',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
-    expect: '历史能回来',
+    expect: 'the history can be recalled',
     apply: (s) =>
       replace(
         s,
@@ -230,18 +212,18 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M16 pipe 模式的 kill ring 要能贴回来',
+    name: 'M16 the kill ring of the pipe mode has to be pasted back',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
-    expect: 'kill ring 能贴回来',
+    expect: 'the kill ring can be pasted back',
     apply: (s) =>
-      replace(s, '    if (this.killed) this.insert(this.killed);', '    // 变异：不贴回来'),
+      replace(s, '    if (this.killed) this.insert(this.killed);', '    // mutation: it is not pasted back'),
   },
   {
-    name: 'M17 重画不得越过提示符',
+    name: 'M17 the redraw may not cross the prompt',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
-    expect: '重画不得越过提示符',
+    expect: 'the redraw may not go past the prompt — a prompt that was erased is no prompt',
     apply: (s) =>
       replace(
         s,
@@ -250,10 +232,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M18 Ctrl+C 要清行',
+    name: 'M18 Ctrl+C has to clear the line',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
-    expect: 'Ctrl+C 要清掉这一行',
+    expect: 'Ctrl+C has to clear the line — the name of the case promises a "clear line"',
     apply: (s) =>
       replace(
         s,
@@ -262,10 +244,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M19 日志文件名要带全 HHMMSS',
+    name: 'M19 the log file name has to carry the full HHMMSS',
     file: 'src/main/logging/session-log.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/session-log.test.ts'],
-    expect: '文件名是',
+    expect: 'the file name is <label>-<HHMMSS>.log — before, one digit was cut off',
     apply: (s) =>
       replace(
         s,
@@ -274,22 +256,22 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M20 ADB 的 stdin 必须接 error',
+    name: 'M20 the stdin of the ADB has to take the error',
     file: 'src/main/hal/adb.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/adb.test.ts'],
-    expect: 'stdin 的 error 必须有人接',
+    expect: 'the error of stdin has to be caught — otherwise an EPIPE takes the main process down',
     apply: (s) =>
       replace(
         s,
         "    child.stdin.on('error', (err: Error) => {",
-        "    // 变异：stdin 的 error 没人接\n    child.stdin.on('nothing', (err: Error) => {",
+        "    // mutation: nobody takes the error of stdin\n    child.stdin.on('nothing', (err: Error) => {",
       ),
   },
   {
-    name: 'M21 运行时的终端模式由 profile 决定',
+    name: 'M21 the terminal mode at runtime is decided by the profile',
     file: 'src/main/terminal/manager.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/terminal-manager.test.ts'],
-    expect: '终端模式由 profile 的 pty 决定',
+    expect: 'the terminal mode is decided by the pty of the profile — the runtime and the interface have to take it from the same source',
     apply: (s) =>
       replace(
         s,
@@ -298,10 +280,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M22 上传的远端目标要补 basename',
+    name: 'M22 the remote target of an upload has to get the basename',
     file: 'src/main/hal/local.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/local.test.ts'],
-    expect: '上传',
+    expect: 'the remote target of push is a **directory**',
     apply: (s) =>
       replace(
         s,
@@ -310,10 +292,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M23 提交时不要画下一个提示符',
+    name: 'M23 no next prompt is drawn on submit',
     file: 'src/main/terminal/line-editor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/line-editor.test.ts'],
-    expect: '提示符在下一条命令开始时才画',
+    expect: 'the prompt is drawn only when the next command begins — the output is not pushed behind the next prompt',
     apply: (s) =>
       replace(
         s,
@@ -322,10 +304,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M24 ADB 的环境脚本不许带 CR',
+    name: 'M24 the environment script of the ADB may not carry a CR',
     file: 'src/main/hal/adb.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/adb.test.ts'],
-    expect: '脚本里不能有 CR',
+    expect: 'the script may not contain a CR — a lonely CR is taken for a command by the remote shell',
     apply: (s) =>
       replace(
         s,
@@ -334,22 +316,22 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M25 进目录要重新列',
+    name: 'M25 entering a directory has to list it again',
     file: 'src/renderer/files/FileBrowser.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/file-browser.test.tsx'],
-    expect: '进目录要**重新列那个目录**',
+    expect: 'entering a directory lists that directory again — the list may not stay the one from the previous path',
     apply: (s) =>
       replace(
         s,
         '      void load(entry.path);',
-        '      // 变异：不重新列',
+        '      // mutation: it does not list it again',
       ),
   },
   {
-    name: 'M26 「↑ 上级」要用 parentPath',
+    name: 'M26 "↑ parent" has to use parentPath',
     file: 'src/renderer/files/FileBrowser.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/file-browser.test.tsx'],
-    expect: '组件级：进 /.cache 再点「↑ 上级」回到根',
+    expect: 'at the component level: entering /.cache and pressing "one level up" returns to the root and lists the new path',
     apply: (s) =>
       replace(
         s,
@@ -358,10 +340,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M12 能力位由 profile 决定',
+    name: 'M12 the capabilities are decided by the profile',
     file: 'src/main/hal/capabilities.ts',
     check: ['npx', 'vitest', 'run', 'tests/integration/registry.test.ts'],
-    expect: '覆盖传输默认值',
+    expect: 'a pty written in the profile overrides the default of the transport — the profile decides the capability bits',
     apply: (s) =>
       replace(
         s,
@@ -370,127 +352,127 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M27 规则 4：绑 *.usage 必须 measure **等于** utilization',
+    name: 'M27 rule 4: a binding to *.usage must declare measure **equal to** utilization',
     file: 'src/main/tags/validator.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 4',
+    expect: 'rule 4',
     apply: (s) =>
       replace(
         s,
         "      if (measure !== 'utilization') {",
-        "      if (measure === undefined) {  // 变异：只判有没有声明",
+        "      if (measure === undefined) {  // mutation: it only checks whether it is declared",
       ),
   },
   {
-    name: 'M28 规则 26：已实现能力集要真的查',
+    name: 'M28 rule 26: the set of implemented capabilities has to be looked up',
     file: 'src/main/tags/vocabulary.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 26',
+    expect: 'rule 26 · a value of requires.capabilities must belong to the set of implemented capabilities',
     apply: (s) =>
       replace(
         s,
         'export function isImplementedCapability(value: string): boolean {\n  return (IMPLEMENTED_CAPABILITIES as readonly string[]).includes(value);\n}',
-        'export function isImplementedCapability(value: string): boolean {\n  return true;  // 变异：什么都算已实现\n}',
+        'export function isImplementedCapability(value: string): boolean {\n  return true;  // mutation: everything counts as implemented\n}',
       ),
   },
   {
-    name: 'M29 危险地板：绝对路径也要算（basename 兜底）',
+    name: 'M29 the danger floor: an absolute path counts as well (the basename is the fallback)',
     file: 'src/main/tags/floor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 16',
+    expect: 'rule 16 · a command that hits the danger floor must be declared destructive',
     apply: (s) =>
       replace(
         s,
         '  return baseName(token) === pattern;',
-        '  return token === pattern;  // 变异：去掉 basename 兜底',
+        '  return token === pattern;  // mutation: the basename fallback is removed',
       ),
   },
   {
-    name: 'M30 危险地板：rm -rf / 与 rm -rf /* 都要拦',
+    name: 'M30 the danger floor: rm -rf / and rm -rf /* are both caught',
     file: 'src/main/tags/floor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 16',
+    expect: 'rule 16 · a command that hits the danger floor must be declared destructive',
     apply: (s) =>
       replace(
         s,
         "    if (p === '/' || p === '/*') {",
-        "    if (p === '/root' || p === '/*') {  // 变异：漏掉 /",
+        "    if (p === '/root' || p === '/*') {  // mutation: it misses /",
       ),
   },
   {
-    name: 'M31 TagStore：stale/error 要**保留旧值**',
+    name: 'M31 TagStore: stale/error has to **keep the old value**',
     file: 'src/main/tags/store.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-store.test.ts'],
-    expect: '保留旧值',
+    expect: 'keeps the old value',
     apply: (s) =>
       replace(
         s,
         "    if (input.status === 'stale' || input.status === 'error') {\n      const good = this.lastGood.get(input.tag);\n      value = good === undefined ? null : good;\n    } else if",
-        "    if (input.status === 'stale' || input.status === 'error') {\n      value = null;  // 变异：不保留旧值\n    } else if",
+        "    if (input.status === 'stale' || input.status === 'error') {\n      value = null;  // mutation: the old value is not kept\n    } else if",
       ),
   },
   {
-    name: 'M32 采样器：截断的那段**不许照常发布**',
+    name: 'M32 the sampler: a truncated section may **not** be published as usual',
     file: 'src/main/tags/sampler.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-sampler.test.ts'],
-    expect: '截断',
+    expect: 'the **truncated** section (the end marker never arrived) → it reports an error and **publishes no half data**',
     apply: (s) =>
       replace(
         s,
-        "          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',\n        );\n        continue;\n      }",
-        "          '这一段没收到结束标记——板子只回了一半（不发布半截数据）',\n        );\n        // 变异：照常发布\n      }",
+        "          'this section got no end marker — the board only replied halfway (half data is not published)',\n        );\n        continue;\n      }",
+        "          'this section got no end marker — the board only replied halfway (half data is not published)',\n        );\n        // mutation: publish it as usual\n      }",
       ),
   },
   {
-    name: 'M33 往返队列：同一时刻只有一次往返在飞',
+    name: 'M33 the round trip queue: only one round trip is in flight at a time',
     file: 'src/main/hal/round-trip-queue.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
-    expect: '任何时刻只有一次往返在飞',
+    expect: '**only one round trip is in flight at any moment** — even when the later one is an action',
     apply: (s) =>
       replace(
         s,
         '    if (this.draining) return;',
-        '    // 变异：去掉重入保护 → 两条链各自开跑',
+        '    // mutation: the re-entry guard is removed → the two chains run on their own',
       ),
   },
   {
-    name: 'M34 调度器：错过的周期要**跳过**，不补发',
+    name: 'M34 the scheduler: a missed period has to be **skipped**, not made up',
     file: 'src/main/tags/scheduler.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-scheduler.test.ts'],
-    expect: '跳过',
+    expect: 'skip',
     apply: (s) =>
       replace(
         s,
         '          if (waited > group.intervalMs + slack) {',
-        '          if (false) {  // 变异：永不跳过',
+        '          if (false) {  // mutation: it never skips',
       ),
   },
   {
-    name: 'M35 调度器：采样必须**经队列**，不直接碰 exec',
+    name: 'M35 the scheduler: the sampling has to **go through the queue**, not straight to exec',
     file: 'src/main/tags/scheduler.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-scheduler.test.ts'],
-    expect: '一切经队列',
+    expect: '**it never calls sampleGroup directly** — everything goes through the queue (P3)',
     apply: (s) =>
       replace(
         s,
         "    void this.queue\n      .run('card-sampling', async () => {",
-        '    // 变异：绕开队列，直接采\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'card-sampling\', async () => {',
+        '    // mutation: it goes around the queue and samples directly\n    void this.sampler.sampleGroup(group.id);\n    void this.queue\n      .run(\'card-sampling\', async () => {',
       ),
   },
   {
-    name: 'M36 读权限：覆盖判定不能恒真（恒真 = 越权读）',
+    name: 'M36 the read permission: the coverage decision may not be constantly true (constantly true = a read without permission)',
     file: 'src/main/cards/permissions.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/tags-service.test.ts'],
-    expect: '没权限的 tag',
+    expect: 'a tag that is not permitted',
     apply: (s) =>
       replace(
         s,
         '  return perms.read.some((pattern) => matchTagPattern(pattern, tag));',
-        '  return true;  // 变异：什么都覆盖',
+        '  return true;  // mutation: it covers everything',
       ),
   },
   {
-    name: 'M37 路径穿越：越界必须挡住',
+    name: 'M37 the path traversal: a path outside the root has to be blocked',
     file: 'src/main/cards/paths.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/paths.test.ts'],
     expect: 'null',
@@ -498,11 +480,11 @@ const MUTATIONS = [
       replace(
         s,
         "  if (full !== base && !full.startsWith(base + sep)) return null;",
-        "  // 变异：不去掉越界检查",
+        "  // mutation: the out of bounds check is not removed",
       ),
   },
   {
-    name: 'M38 manifest：未知字段必须报错（拼错的字段不能静默忽略）',
+    name: 'M38 the manifest: an unknown field has to be reported (a field typed wrong may not be ignored silently)',
     file: 'src/main/cards/manifest.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/manifest.test.ts'],
     expect: 'network',
@@ -510,47 +492,47 @@ const MUTATIONS = [
       replace(
         s,
         '    if (!allowed.includes(key)) {',
-        '    if (false) {  // 变异：未知字段不报错',
+        '    if (false) {  // mutation: an unknown field is not reported',
       ),
   },
   {
-    name: 'M39 规则 5：离线时是「未验证」不是「不合法」',
+    name: 'M39 rule 5: offline means "unverified", not "invalid"',
     file: 'src/main/cards/validate.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
-    expect: '未验证',
+    expect: '**offline → it is a warning, not an error** ("not verified" is not "not valid")',
     apply: (s) =>
       replace(
         s,
         '    if (ctx.availableActions === null) {',
-        '    if (false) {  // 变异：离线分支没了',
+        '    if (false) {  // mutation: the offline branch is gone',
       ),
   },
   {
-    name: 'M40 bridge：不认识的方法必须回 unknown_method（**顶层那层 Proxy**）',
+    name: 'M40 the bridge: an unknown method has to answer unknown_method (**that is the top Proxy**)',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: '不认识的名字仍然回 unknown_method',
+    expect: '**an unknown name is still answered with unknown_method** (not a TypeError)',
     apply: (s) =>
       replace(
         s,
         "      return () => Promise.resolve({ ok: false, reason: 'unknown_method' });",
-        '      return undefined;  // 变异：不认识的方法不回话',
+        '      return undefined;  // mutation: an unknown method gets no answer',
       ),
   },
   {
-    name: 'M40b bridge：**命名空间那层**也不认识的方法要回 unknown_method',
+    name: 'M40b the bridge: an unknown method of the **namespace layer** has to answer unknown_method as well',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: '命名空间里不认识的方法也是 unknown_method',
+    expect: '**an unknown method inside a namespace is unknown_method as well** (the top level and the namespace are two layers of Proxy)',
     apply: (s) =>
       replace(
         s,
         "        return () => Promise.resolve({ ok: false, reason: 'unknown_method' });",
-        '        return undefined;  // 变异：不认识的方法不回话',
+        '        return undefined;  // mutation: an unknown method gets no answer',
       ),
   },
   {
-    name: 'M41 bridge：握手必须带 instanceId（认人的依据）',
+    name: 'M41 the bridge: the handshake has to carry the instanceId (that is what identifies the caller)',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
     expect: 'inst-42',
@@ -558,32 +540,32 @@ const MUTATIONS = [
       replace(
         s,
         '  const INSTANCE_ID = ${JSON.stringify(instanceId)};',
-        "  const INSTANCE_ID = '';  // 变异：不带实例 id",
+        "  const INSTANCE_ID = '';  // mutation: it carries no instance id",
       ),
   },
   {
-    name: 'M42 通配订阅：订阅路径的权限过滤不能整体消失',
+    name: 'M42 the wildcard subscription: the permission filter of the subscription path may not disappear',
     file: 'src/main/cards/tags-service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/tags-service.test.ts'],
-    expect: '一个都不推',
+    expect: 'the subscription: not a single one that is not permitted is pushed',
     apply: (s) =>
-      // **两处都要打掉**：权限固定时「订阅时判」与「推送时判」等价，
-      // 只打掉一处，另一处还在 → 测试照样绿（这不是测试的问题，是这两处本来就冗余）
+      // **Both have to go**: with a fixed permission set "judged at the
+      // subscription" and "judged at the push" are equivalent, so breaking
+      // only one of them leaves the other in place → the test stays green
+      // (that is not the test's fault, the two places are redundant to begin
+      // with)
       replace(
         replace(
           s,
           `    if (!permissionCovers(this.perms, pattern)) return () => undefined;`,
-          `    // 变异：订阅时不再判权限`,
+          `    // mutation: the permission is not judged at the subscription`,
         ),
-        `      if (!matchTagPattern(pattern, reading.tag)) return;
-      // **再判一次权限**（铁律 2）
-      if (!permissionCovers(this.perms, reading.tag)) return;`,
-        `      if (!matchTagPattern(pattern, reading.tag)) return;
-      // 变异：推送时不再判权限`,
+        '      if (!matchTagPattern(pattern, reading.tag)) return;\n      // **The permission is judged again** (iron rule 2)\n      if (!permissionCovers(this.perms, reading.tag)) return;',
+        '      if (!matchTagPattern(pattern, reading.tag)) return;\n      // mutation: the permission is not judged when it is pushed',
       ),
   },
   {
-    name: 'M43 存储：单键配额必须守（否则一张卡能写满磁盘）',
+    name: 'M43 the storage: the quota of a single key has to hold (otherwise one card fills the disk)',
     file: 'src/main/cards/storage.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/storage.test.ts'],
     expect: 'quota_exceeded',
@@ -591,39 +573,39 @@ const MUTATIONS = [
       replace(
         s,
         "    if (size > KEY_LIMIT_BYTES) return { ok: false, reason: 'quota_exceeded' };",
-        '    // 变异：不查单键配额',
+        '    // mutation: the quota of a single key is not looked up',
       ),
   },
   {
-    name: 'M44 CSP 违规：必须归到**对的那张卡**（sourceUrl 里的实例 id）',
+    name: 'M44 a CSP violation has to be filed under **the right card** (the instance id in the sourceUrl)',
     file: 'src/main/cards/runtime-log.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/runtime-log.test.ts'],
-    expect: 'CSP 违规归到',
+    expect: 'a CSP violation is filed under **the right card**',
     apply: (s) =>
       replace(
         s,
         "  const match = /^cockpit:\\/\\/card\\/([^/]+)\\//.exec(sourceUrl);",
-        "  const match = /^(.*)$/.exec(sourceUrl);  // 变异：不从 sourceUrl 里取实例 id",
+        "  const match = /^(.*)$/.exec(sourceUrl);  // mutation: the instance id is not taken from the sourceUrl",
       ),
   },
   {
-    name: 'M45 运行时候选：board_pack 为 null 的 profile 必须剔掉',
+    name: 'M45 the runtime candidates: a profile whose board_pack is null has to be dropped',
     file: 'src/main/tags/runtime.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/runtime-retry.test.ts'],
-    expect: 'null 与缺省都剔掉',
+    expect: 'only the profiles that are bound to a board pack are kept — null and the default are both dropped',
     apply: (s) =>
       replace(
         s,
         '    .filter((p) => p.board_pack != null)',
-        '    .filter((p) => p.board_pack !== undefined)  // 变异：null 又被当成候选',
+        '    .filter((p) => p.board_pack !== undefined)  // mutation: null is a candidate again',
       ),
   },
 
   {
-    name: 'M46 外壳 CSP：frame-src 必须允许 cockpit:（否则一张卡都装不上）',
+    name: 'M46 the shell CSP: frame-src has to allow cockpit: (otherwise not one card installs)',
     file: 'src/main/shell-csp.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/shell-csp.test.ts'],
-    expect: 'frame-src 必须允许',
+    expect: '**frame-src has to allow `cockpit:`** — the card is at cockpit://card, the shell at cockpit://app',
     apply: (s) =>
       replace(
         s,
@@ -632,79 +614,79 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M47 bridge 注入：URL 必须带实例 id（相对根路径会把实例 id 吃掉）',
+    name: 'M47 the bridge injection: the URL has to carry the instance id (a relative root path eats it)',
     file: 'src/main/cards/protocol.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
-    expect: '注入出来的 URL',
+    expect: '**the injected URL has to be routable by the handler** (a path relative to the root would swallow the instance id)',
     apply: (s) =>
       replace(
         s,
         'return `<script type="module" src="cockpit://card/${id}/__host/bridge.js"></script>`;',
-        'return `<script type="module" src="/__host/bridge.js"></script>`;  // 变异：实例 id 被吃掉',
+        'return `<script type="module" src="/__host/bridge.js"></script>`;  // mutation: the instance id is eaten',
       ),
   },
   {
-    name: 'M48 CSP 违规：进日志的那句话必须说清楚「它想干什么」',
+    name: 'M48 a CSP violation: the sentence that goes into the log has to say what it wanted to do',
     file: 'src/main/cards/csp-violation.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/csp-violation.test.ts'],
-    expect: '想干什么',
+    expect: '**it names the directive and says what it wanted to do**',
     apply: (s) =>
       replace(
         s,
-        "  const target = violation.blockedURI === '' ? '（没有地址）' : violation.blockedURI;",
-        "  const target = '';  // 变异：不说它想访问什么",
+        "  const target = violation.blockedURI === '' ? '(no address)' : violation.blockedURI;",
+        "  const target = '';  // mutation: it does not say what it wanted to reach",
       ),
   },
   {
-    name: 'M49 符号链接：软链不能捅穿卡片目录',
+    name: 'M49 the symbolic link: a soft link may not pierce the card directory',
     file: 'src/main/cards/paths.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/paths.test.ts'],
-    expect: '软链指向卡片目录',
+    expect: 'a soft link pointing **outside** the card directory',
     apply: (s) =>
       replace(
         s,
         '    if (!isInside(realBase, realFull)) return null;',
-        '    if (!isInside(realBase, realFull)) { /* 变异：软链不判 */ }',
+        '    if (!isInside(realBase, realFull)) { /* mutation: the soft link is not judged */ }',
       ),
   },
   {
-    name: 'M50 规则 2：id 名单要排除自己（否则改一次文件就成「重名」）',
+    name: 'M50 rule 2: the list of ids has to exclude itself (otherwise editing a file once is a "duplicate name")',
     file: 'src/main/cards/wiring.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/wiring.test.ts'],
-    expect: '第二次刷新不会把卡片自己判成重名',
+    expect: '**a second refresh does not judge the card itself as a duplicate**',
     apply: (s) =>
       replace(
         s,
         '      .filter((c) => c.dir !== dir)',
-        '      .filter(() => true)  // 变异：把自己也算进去',
+        '      .filter(() => true)  // mutation: it counts itself as well',
       ),
   },
   {
-    name: 'M51 会话关闭：退订函数必须真的被调用',
+    name: 'M51 the session closes: the unsubscribe function has to be called for real',
     file: 'src/main/cards/session.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
-    expect: '退订函数被调用',
+    expect: '**closing the session → the unsubscribe function is called**',
     apply: (s) =>
       replace(
         s,
         '          dispose();',
-        '          void 0;  // 变异：不释放订阅',
+        '          void 0;  // mutation: the subscription is not released',
       ),
   },
   {
-    name: 'M52 bridge：必须解包（卡片要拿到值，不是传输信封）',
+    name: 'M52 the bridge: it has to unwrap (the card wants the value, not the transport envelope)',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: '卡片拿到的是「值」',
+    expect: '**on success → the card receives the "value", not the transport envelope**',
     apply: (s) =>
       replace(
         s,
         "      resolve(payload.ok ? payload.value : { ok: false, reason: payload.reason || 'failed' });",
-        '      resolve(payload);  // 变异：把信封原样交给卡片',
+        '      resolve(payload);  // mutation: it hands the envelope to the card as it is',
       ),
   },
   {
-    name: 'M53 订阅上限：一张卡不能把 main 打满',
+    name: 'M53 the subscription limit: one card may not fill up the main process',
     file: 'src/main/cards/session.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
     expect: 'too_many_subscriptions',
@@ -712,27 +694,27 @@ const MUTATIONS = [
       replace(
         s,
         'export const MAX_SUBSCRIPTIONS_PER_SESSION = 64;',
-        'export const MAX_SUBSCRIPTIONS_PER_SESSION = 100000;  // 变异：没有上限',
+        'export const MAX_SUBSCRIPTIONS_PER_SESSION = 100000;  // mutation: there is no limit',
       ),
   },
   {
-    name: 'M54 存储目录：不能落在卡片根目录里（否则写一次存储就是一个回路）',
+    name: 'M54 the storage directory: it may not land inside the card root (otherwise one write is a loop)',
     file: 'src/main/util/paths.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/card-dirs.test.ts'],
-    expect: '存储目录不在卡片根目录里',
+    expect: '**the storage directory is not inside the card root** (otherwise every write of the storage triggers a hot refresh)',
     apply: (s) =>
       replace(
         s,
         "  return join(userDataDir(appName), 'card-storage');",
-        "  return join(userDataDir(appName), 'cards');  // 变异：落在卡片根目录里",
+        "  return join(userDataDir(appName), 'cards');  // mutation: it lands inside the card root",
       ),
   },
 
   {
-    name: 'M55 CSP 监听脚本：必须真的监听 securitypolicyviolation',
+    name: 'M55 the CSP listener script: it has to listen for securitypolicyviolation for real',
     file: 'src/main/cards/csp-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/csp-script.test.ts'],
-    expect: '监听 securitypolicyviolation',
+    expect: '**it listens for securitypolicyviolation** (the only reliable signal of a CSP violation in the browser)',
     apply: (s) =>
       replace(
         s,
@@ -741,10 +723,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M56 bridge：顶层方法必须自己就是函数（契约的用法）',
+    name: 'M56 the bridge: a top level method has to be a function itself (that is the contract)',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: '顶层方法就是函数',
+    expect: 'the bridge script · the top-level methods are functions',
     apply: (s) =>
       replace(
         s,
@@ -753,10 +735,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M57 经纪人：CSP 违规必须转给 main',
+    name: 'M57 the broker: a CSP violation has to be handed to the main process',
     file: 'src/renderer/cards/broker.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/card-broker.test.tsx'],
-    expect: 'CSP 违规',
+    expect: 'The card frame broker · CSP violations',
     apply: (s) =>
       replace(
         s,
@@ -765,7 +747,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M58 协议：必须伺服 __host/csp.js',
+    name: 'M58 the protocol: it has to serve __host/csp.js',
     file: 'src/main/cards/protocol.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
     expect: 'csp.js',
@@ -777,10 +759,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M59 协议：CSP 监听脚本必须在 bridge 之前（监听得早）',
+    name: 'M59 the protocol: the CSP listener script has to come before the bridge (the listener has to be early)',
     file: 'src/main/cards/protocol.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/protocol.test.ts'],
-    expect: 'CSP 监听脚本在 bridge 之前',
+    expect: '**the CSP listener comes before the bridge** (it listens early enough for the bridge to use it)',
     apply: (s) =>
       replace(
         s,
@@ -790,75 +772,77 @@ const MUTATIONS = [
   },
 
   {
-    name: 'M60 监听：用户根目录不存在时要建出来（否则第一次装卡永远不被发现）',
+    name: 'M60 the watcher: the user root directory has to be created when it is missing (otherwise the first installed card is never found)',
     file: 'src/main/cards/watcher.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/watcher.test.ts'],
-    expect: '用户根目录不存在',
+    expect: '**the user root is created when it does not exist** ("a card is a file" needs a place to put the cards)',
     apply: (s) =>
       replace(
         s,
         '          mkdirSync(root.dir, { recursive: true });',
-        '          /* 变异：不建目录 */',
+        '          /* mutation: the directory is not created */',
       ),
   },
   {
-    name: 'M61 监听：变化后要重新挂（新装的卡，它的目录才有人看着）',
+    name: 'M61 the watcher: after a change it has to attach again (the directory of a newly installed card has to be watched)',
     file: 'src/main/cards/watcher.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/watcher.test.ts'],
-    expect: '启动之后才装进来的卡',
+    expect: '**the directory of a card that was installed after the startup is watched as well** (edit the file and it takes effect)',
     apply: (s) =>
       replace(
         s,
         '      ensureWatching();\n      onChange();',
-        '      onChange();  // 变异：不重新挂',
+        '      onChange();  // mutation: it does not attach again',
       ),
   },
 
   {
-    name: 'M62 实例键里要有内容指纹（否则改了文件卡片不重载 = 「改文件即热更新」是假的）',
+    name: 'M62 the instance key has to carry a content fingerprint (otherwise a changed card is not reloaded = "editing a file reloads it" is a lie)',
     file: 'src/main/cards/registry.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/registry.test.ts'],
-    expect: '改了卡片文件 → 实例 id 变了',
+    expect: '**the card file was changed → the instance id changed** (so the iframe reloads, which is the hot reload of "edit the file and it takes effect")',
     apply: (s) =>
       replace(
         s,
         'const key = `${cardId} ${connectionId ?? \'\'} ${revision}`;',
-        'const key = `${cardId} ${connectionId ?? \'\'}`;  // 变异：指纹不参与',
+        'const key = `${cardId} ${connectionId ?? \'\'}`;  // mutation: the fingerprint does not take part',
       ),
   },
 
   {
-    name: 'M63 布局：拖完必须真的落盘（否则位置只在内存里，重启就没）',
+    name: 'M63 the layout: a drag has to reach the disk (otherwise the position only lives in the memory and is gone after a restart)',
     file: 'src/main/cards/layout.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/layout.test.ts'],
-    expect: 'set 之后 get 等值',
+    expect: '**after a set, get returns the same value** (what was written and what is read back agree)',
     apply: (s) =>
       replace(
         s,
         "    writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');",
-        '    /* 变异：不落盘 */',
+        '    /* mutation: nothing reaches the disk */',
       ),
   },
 
-  // ── 假设备（调试用的合成数据）────────────────────────────────────
+  // ── The fake device (the synthetic data of debugging) ─────────────
   //
-  // **为什么假设备也要有守卫**：它喂的是**真 kind + 真 store**——
-  // 一旦它开始编数（而不是吐原始文本），面板上就会出现**没人能解释的值**，
-  // 而调试的人会把那些值当成板子的真实状态。
+  // **Why the fake device needs a guard as well**: it feeds a **real kind
+  // and a real store** — once it starts making up numbers (instead of
+  // handing out the raw text), **values that nobody can explain** show up
+  // on the panel, and the person debugging takes them for the real state of
+  // the board.
 
   {
-    name: 'M64 假设备：读不到的文件必须给空（给 0 就是「板子满载」的假数）',
+    name: 'M64 the fake device: a file that cannot be read has to give nothing (giving 0 is the false reading of a "busy board")',
     file: 'src/main/hal/fake/exec.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '一个字都没有',
+    expect: 'the file does not exist → not a single byte (so that tag reports unavailable, not 0)',
     apply: (s) =>
       replace(s, "    return device.read(path.text) ?? '';", "    return device.read(path.text) ?? '0';"),
   },
   {
-    name: 'M65 假设备：for 循环里的变量要替换成 glob 的每一项（否则温度全是空的）',
+    name: 'M65 the fake device: the variable of the for loop has to be replaced by every item of the glob (otherwise every temperature is empty)',
     file: 'src/main/hal/fake/exec.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '温度按 type 归并',
+    expect: 'the temperatures are merged by type, not by the number of the zone',
     apply: (s) =>
       replace(
         s,
@@ -870,17 +854,17 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M66 假设备：profile 必须指着真的板型包（不然候选挑选选不上它）',
+    name: 'M66 the fake device: the profile has to point at a real board pack (otherwise the candidate selection does not pick it)',
     file: 'src/main/hal/fake/profile.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '假 profile 带 board_pack',
+    expect: 'the fake profile carries a board_pack — otherwise the candidate selection does not pick it',
     apply: (s) => replace(s, "    board_pack: 'rk3588-atk',", "    board_pack: 'rk3588-nonexistent',"),
   },
   {
-    name: 'M67 假设备：超时要真的超时（不然 stale 那一态永远看不见）',
+    name: 'M67 the fake device: a timeout has to time out for real (otherwise the stale state is never seen)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '往返超时',
+    expect: 'the round trip times out → stale, and the previous value is kept (one hiccup may not make the whole instrument disappear)',
     apply: (s) =>
       replace(
         s,
@@ -889,10 +873,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M68 假设备：meminfo 坏了就是坏了（不能偷偷把 MemAvailable 补上）',
+    name: 'M68 the fake device: a broken meminfo is broken (MemAvailable may not be filled in silently)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: 'meminfo 坏掉',
+    expect: 'meminfo is broken',
     apply: (s) =>
       replace(
         s,
@@ -901,159 +885,159 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M69 假设备：计数器必须往前走（否则占用率永远是 pending）',
+    name: 'M69 the fake device: the counter has to move forward (otherwise the usage stays pending forever)',
     file: 'src/main/hal/fake/device.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '第二次采样 cpu.usage 是 ok',
+    expect: 'the second sample of cpu.usage is ok, and it is a real number between 0 and 100',
     apply: (s) =>
       replace(
         s,
         '    const dt = Math.max(0, (at - this.lastAt) / 1000);',
-        '    const dt = 0; // 变异：计数器不推进',
+        '    const dt = 0; // mutation: the counter does not move forward',
       ),
   },
   {
-    name: 'M70 假设备：终端横幅必须真的发出去（构造时发 = 没人接）',
+    name: 'M70 the fake device: the terminal banner has to be sent for real (sent at construction = nobody receives it)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '横幅要真的发出去',
+    expect: 'the banner really has to be sent (at the moment of the construction there is no listener yet, so sending at that moment is sending nothing)',
     apply: (s) =>
       replace(
         s,
-        "    this.emit(`⚠ 合成数据（${FAKE_DEVICE_MARKER}）—— 不是真板子；输入 help 看能做什么\\r\\n`);",
-        '    /* 变异：不发横幅 */',
+        "    this.emit(`⚠ synthetic data (${FAKE_DEVICE_MARKER}) — this is not a real board; type help to see what it can do\\r\\n`);",
+        '    /* mutation: the banner is not sent */',
       ),
   },
   {
-    name: 'M71 假设备：得是 pipe 模式（pty 的话命令永远匹配不上）',
+    name: 'M71 the fake device: it has to be the pipe mode (with a pty the command never matches)',
     file: 'src/main/hal/fake/profile.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '假 profile 声明 pipe 模式',
+    expect: 'the fake profile declares the pipe mode (with pty=true the host only forwards the raw keys, and the command never matches)',
     apply: (s) => replace(s, '      pty: false,', '      pty: true,'),
   },
   {
-    name: 'M72 假设备没载入成功时要**拒绝**（不能回落成真本机连接）',
+    name: 'M72 the fake device: when it fails to load it has to **refuse** (it may not fall back to a real host connection)',
     file: 'src/main/hal/fake/wiring.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-wiring.test.ts'],
-    expect: '路由：载入成功才走假设备',
+    expect: 'the routing: the fake device is only used when it loaded, and when it did not load it is **refused**, it never falls back to a real connection',
     apply: (s) =>
-      replace(s, "  return fakeReady ? 'fake' : 'refuse';", "  return 'fake'; // 变异：永远走假设备"),
+      replace(s, "  return fakeReady ? 'fake' : 'refuse';", "  return 'fake'; // mutation: it always goes through the fake device"),
   },
   {
-    name: 'M73 假设备：meminfo 的坏要真的注入（不然 error 那一态看不见）',
+    name: 'M73 the fake device: the broken meminfo has to be injected for real (otherwise the error state is never seen)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: 'meminfo 坏掉',
+    expect: 'meminfo is broken',
     apply: (s) =>
       replace(
         s,
         '      broken = this.breakMeminfoEvery > 0 && this.meminfoRounds % this.breakMeminfoEvery === 0;',
-        '      broken = false; // 变异：meminfo 永远不坏',
+        '      broken = false; // mutation: the meminfo is never broken',
       ),
   },
   {
-    name: 'M77 控制面：string 参数必须加引号（不加 = 注入面敞开）',
+    name: 'M77 the control plane: a string parameter has to be quoted (unquoted = the injection surface is open)',
     file: 'src/main/actions/encoder.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/encoder.test.ts'],
-    expect: 'string 单引号包裹',
+    expect: 'a string is wrapped in single quotes',
     apply: (s) =>
       replace(
         s,
-        "      return quoteShellValue(raw, '参数值');",
-        '      return raw; // 变异：不加引号',
+        "      return quoteShellValue(raw, 'parameter value');",
+        '      return raw; // mutation: it is not quoted',
       ),
   },
   {
-    name: 'M78 控制面：enum 的取值必须真的查（不查 = 随便什么值都放行）',
+    name: 'M78 the control plane: the value of an enum has to be looked up for real (not looked up = any value is let through)',
     file: 'src/main/actions/encoder.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/encoder.test.ts'],
-    expect: 'enum 的值不在 values 里',
+    expect: 'an enum value that is not in values is rejected',
     apply: (s) =>
       replace(
         s,
         '      if (!values.includes(raw)) {',
-        '      if (values.length === 0) { // 变异：查错了东西',
+        '      if (values.length === 0) { // mutation: it looks up the wrong thing',
       ),
   },
   {
-    name: 'M79 控制面：运行时地板复查必须真的撞表（不撞 = 危险动作直接放行）',
+    name: 'M79 the control plane: the runtime floor re-check has to hit the table for real (a miss = a dangerous action is let through)',
     file: 'src/main/actions/floor-check.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/floor-check.test.ts'],
-    expect: 'reboot → 命中',
+    expect: 'reboot → matches',
     apply: (s) =>
       replace(
         s,
         '  const match = matchDangerFloorArgv(argv);',
-        '  const match = { matched: false, pattern: null, why: null }; // 变异：不撞表',
+        '  const match = { matched: false, pattern: null, why: null }; // mutation: it does not hit the table',
       ),
   },
   {
-    name: 'M80 控制面：basename 形态也要算（/usr/bin/reboot 与 reboot 同罪）',
+    name: 'M80 the control plane: the basename form counts as well (/usr/bin/reboot is as guilty as reboot)',
     file: 'src/main/tags/floor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/floor-check.test.ts'],
-    expect: 'basename 也算',
-    apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // 变异：不看 basename'),
+    expect: 'the basename counts too (/usr/bin/reboot is as guilty as reboot)',
+    apply: (s) => replace(s, '  return baseName(token) === pattern;', '  return false; // mutation: the basename is not looked at'),
   },
   {
-    name: 'M87 控制面：结果必须照回读来（回读不符不能报 ok）',
+    name: 'M87 the control plane: the result has to follow the readback (a readback that does not match may not be reported as ok)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '回读不符 → 不是 ok',
+    expect: 'a readback mismatch is not ok, and verified is false',
     apply: (s) =>
       replace(
         s,
         '    ok: readback.ok,',
-        '    ok: true, // 变异：无视回读的结果',
+        '    ok: true, // mutation: the result of the readback is ignored',
       ),
   },
   {
-    name: 'M88 控制面：审计行里必须有回读值（不然事后追不了责）',
+    name: 'M88 the control plane: the audit line has to carry the readback value (otherwise nobody can trace it afterwards)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '审计行里有**参数**与**回读值**',
-    apply: (s) => replace(s, '  record(outcome, readback.value);', '  record(outcome); // 变异：不记回读值'),
+    expect: 'the audit row carries the **params** and the **readback value**',
+    apply: (s) => replace(s, '  record(outcome, readback.value);', '  record(outcome); // mutation: the readback value is not written down'),
   },
   {
-    name: 'M89 控制面：审计行必须带参数（参数是追责的一半）',
+    name: 'M89 the control plane: the audit line has to carry the parameters (the parameters are half of the trace)',
     file: 'src/main/actions/audit.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/audit.test.ts'],
-    expect: '参数里的换行不能撑成两行',
+    expect: 'a newline inside the params must not split the row in two (one action per row)',
     apply: (s) =>
       replace(
         s,
         '    `params=${JSON.stringify(row.params)}`,',
-        "    '    params=' + JSON.stringify({}), // 变异：不记参数",
+        "    '    params=' + JSON.stringify({}), // mutation: the parameters are not written down",
       ),
   },
   {
-    name: 'M83 控制面：回读形式 5 必须标 verified:false（标成 true = 把没验证当验证了）',
+    name: 'M83 the control plane: readback form 5 has to be marked verified:false (marking it true = calling an unverified thing verified)',
     file: 'src/main/actions/readback.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
     expect: 'verified: false',
     apply: (s) =>
       replace(
         s,
-        "        ok: true,\n        verified: false,\n        detail: spec.consequence ?? '这个动作没有可回读的状态',",
-        "        ok: true,\n        verified: true, // 变异：把「没验证」说成验证了\n        detail: spec.consequence ?? '这个动作没有可回读的状态',",
+        "        ok: true,\n        verified: false,\n        detail: spec.consequence ?? 'this action has no readable state',",
+        "        ok: true,\n        verified: true, // mutation: it says \"verified\" for something that is not\n        detail: spec.consequence ?? 'this action has no readable state',",
       ),
   },
   {
-    name: 'M84 控制面：串口上没有退出码 → 必须报 unsupported_transport（不是「不符」）',
+    name: 'M84 the control plane: a serial port has no exit code → it has to report unsupported_transport (not "does not match")',
     file: 'src/main/actions/readback.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
     expect: 'unsupported_transport',
     apply: (s) =>
       replace(
         s,
-        "      reason: 'unsupported_transport',\n      detail: '这条连接没有退出码（串口），command_ok 用不了',",
-        "      reason: 'failed', // 变异：当成「不符」\n      detail: '这条连接没有退出码（串口），command_ok 用不了',",
+        "      reason: 'unsupported_transport',\n      detail: 'this connection has no exit code (serial), command_ok cannot be used',",
+        "      reason: 'failed', // mutation: it is taken for \"does not match\"\n      detail: 'this connection has no exit code (serial), command_ok cannot be used',",
       ),
   },
   {
-    name: 'M81 队列：四级优先级（动作必须插到采样前面）',
+    name: 'M81 the queue: four priority levels (an action has to be put in front of a sampling)',
     file: 'src/main/hal/round-trip-queue.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
-    expect: '四级：action-verify > manual-refresh > card-sampling > diagnostics',
+    expect: 'the four levels: action-verify > manual-refresh > card-sampling > diagnostics',
     apply: (s) =>
       replace(
         s,
@@ -1062,486 +1046,466 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M82 队列：排队超过 deadline 的事务要被丢掉（不执行）',
+    name: 'M82 the queue: a transaction that waits past its deadline has to be dropped (not executed)',
     file: 'src/main/hal/round-trip-queue.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/round-trip-queue.test.ts'],
-    expect: '排队超过 deadline',
+    expect: 'the queue exceeds the deadline → it reports conn_busy (that transaction is dropped and not executed)',
     apply: (s) =>
       replace(
         s,
         '        if (waited > entry.deadlineMs) {',
-        '        if (waited > entry.deadlineMs * 1000) { // 变异：deadline 形同虚设',
+        '        if (waited > entry.deadlineMs * 1000) { // mutation: the deadline is nothing but a word',
       ),
   },
   {
-    name: 'M90 假设备：cat 读不到文件必须**报错**（空串 + 0 = 把「文件不在」说成「值是空的」）',
+    name: 'M90 the fake device: a cat that cannot read the file has to **report an error** (an empty string + 0 = saying "the file is not there" means "the value is empty")',
     file: 'src/main/hal/fake/file-ops.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device-files.test.ts'],
-    expect: '读不存在的文件',
+    expect: 'reading a file that does not exist → **an error**, not an empty string',
     apply: (s) =>
       replace(
         s,
         '    return failure(1, `cat: ${path}: No such file or directory`);',
-        '    return failure(0, `cat: ${path}: No such file or directory`); // 变异：假装成功',
+        '    return failure(0, `cat: ${path}: No such file or directory`); // mutation: it pretends to have succeeded',
       ),
   },
   {
-    name: 'M91 假设备：push 必须真的写进虚拟盘（不写 = 报告成功却没传）',
+    name: 'M91 the fake device: a push has to write into the virtual disk for real (not writing = it reports success without a transfer)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device-files.test.ts'],
-    expect: 'push：宿主上的文件真的进了虚拟 fs',
+    expect: 'push: the file of the host really enters the virtual fs',
     apply: (s) =>
       replace(
         s,
         '    this.fs.write(target, readFileSync(localPath));',
-        '    // 变异：读到了但不写\n    void readFileSync(localPath);',
+        '    // mutation: it reads it but does not write it\n    void readFileSync(localPath);',
       ),
   },
   {
-    name: 'M92 bridge：端口没到要**等**（立刻回 not_connected = 卡片静默什么都不做）',
+    name: 'M92 the bridge: a port that has not arrived yet has to **wait** (answering not_connected at once = the card silently does nothing)',
     file: 'src/main/cards/bridge-script.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/bridge-script.test.ts'],
-    expect: '调用要**等端口**',
+    expect: 'a call has to **wait for the port** instead of answering not_connected at once',
     apply: (s) =>
       replace(
         s,
         '    if (port !== null) return post(method, args);',
-        '    if (true) return Promise.resolve({ ok: false, reason: \'not_connected\' }); // 变异：不等',
+        '    if (true) return Promise.resolve({ ok: false, reason: \'not_connected\' }); // mutation: it does not wait',
       ),
   },
   {
-    name: 'M93 控制面：回读的值必须在 `readback` 里（平铺 = 与契约 spec/04 §2.4 不符）',
+    name: 'M93 the control plane: the readback value has to be inside `readback` (flat = it does not match the contract spec/04 §2.4)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '回读到的值在 `readback` 里',
+    expect: 'the value that was read back is in `readback` (contract spec/04 §2.4 / spec/03 §5.2)',
     apply: (s) =>
       replace(
         s,
         '          readback: {',
-        '          readback_flat: { // 变异：把 readback 摊平（契约要的是嵌套）',
+        '          readback_flat: { // mutation: it flattens the readback (the contract wants it nested)',
       ),
   },
   {
-    name: 'M94 流程包：未知字段必须报错（静默忽略 = 流程照跑，只是少做了一件事）',
+    name: 'M94 the workflow pack: an unknown field has to be reported (ignoring it silently = the workflow runs on and does one thing less)',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: '之外的字段一律不认',
+    expect: '**fields other than description and version are not accepted** (closed schema)',
     apply: (s) =>
       replace(
         s,
-        "      fail(`未知字段 '${key}'`, ctx.source, { path: `${ctx.path}${path}${path ? '.' : ''}${key}` });",
-        '      void key; // 变异：静默忽略未知字段',
+        "      fail(`Unknown field '${key}'`, ctx.source, { path: `${ctx.path}${path}${path ? '.' : ''}${key}` });",
+        '      void key; // mutation: an unknown field is ignored silently',
       ),
   },
   {
-    name: 'M95 流程层：发现的**排除表**必须真的排除（漏一个 = 把中间文件当产物送上去）',
+    name: 'M95 the workflow layer: the **exclusion list** of the discovery has to exclude for real (missing one = an intermediate file is sent up as a product)',
     file: 'src/main/workflows/discover.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/discover.test.ts'],
-    expect: '排除表里的不要',
+    expect: 'it is found by the pattern, **the ones of the exclusion list are not**',
     apply: (s) =>
       replace(
         s,
         '.filter((entry) => !excluded.some((rule) => matchesPattern(entry.name, rule)))',
-        '.filter(() => true) // 变异：不管排除表',
+        '.filter(() => true) // mutation: the exclusion list is ignored',
       ),
   },
   {
-    name: 'M96 目标登记处：profile 不存在必须**报错**（不许悄悄连到别的目标）',
+    name: 'M96 the target registry: a profile that does not exist has to **report an error** (it may not quietly connect to another target)',
     file: 'src/main/workflows/targets.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/targets.test.ts'],
-    expect: 'profile 不存在',
+    expect: '**the profile does not exist → it reports an error** (it never quietly connects to another target)',
     apply: (s) =>
       replace(
         s,
         '    if (profile === undefined) {',
-        '    if (false) { // 变异：连到别的目标去',
+        '    if (false) { // mutation: it connects to another target',
       ),
   },
   {
-    name: 'M97 流程层：跨目标的判据必须**在指名的角色上读**（在客机上读 = 假阳性）',
+    name: 'M97 the workflow layer: a cross target criterion has to be **read on the named role** (reading it on the guest = a false positive)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '判据在指名的角色上读',
+    expect: '**the criterion is read on the named role** (ask the board on the board)',
     apply: (s) =>
       replace(
         s,
         '  const result = await runReadbackOnRole(ctx, readRole, step.readback, substitution);',
-        '  const result = await runReadbackOnRole(ctx, stepRole ?? readRole, step.readback, substitution); // 变异：在本步的角色上读',
+        '  const result = await runReadbackOnRole(ctx, stepRole ?? readRole, step.readback, substitution); // mutation: it reads on the role of this step',
       ),
   },
   {
-    name: 'M99 流程层：命令的输出必须**进槽**（下一步要靠它 ✓）',
+    name: 'M99 the workflow layer: the output of a command has to **go into the slot** (the next step needs it ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '槽里就是那条命令的输出',
+    expect: 'the `out` slot',
     apply: (s) =>
       replace(
         s,
         '  if (step.out !== undefined && outcome.output !== undefined) {',
-        '  if (false) { // 变异：输出不进槽',
+        '  if (false) { // mutation: the output does not go into the slot',
       ),
   },
   {
-    name: 'M100 假设备：**多个角色**都要走假设备（只认一个 = 流程层演不了）',
+    name: 'M100 the fake device: **every role** has to go through the fake device (only one = the workflow layer cannot be rehearsed)',
     file: 'src/main/hal/fake/wiring.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-wiring.test.ts'],
-    expect: '假设备',
+    expect: 'fake device',
     apply: (s) =>
       replace(
         s,
         '  if (!fakeProfileIds(env).includes(profileId)) return \'not-fake\';',
-        "  if (profileId !== 'fake-board') return 'not-fake'; // 变异：只认一个角色",
+        "  if (profileId !== 'fake-board') return 'not-fake'; // mutation: it only knows one role",
       ),
   },
   {
-    name: 'M101 流程层：命令里的输入必须**用编码后的片段**（原始值 = 注入面敞开）',
+    name: 'M101 the workflow layer: an input in a command has to **use the encoded fragment** (the raw value = the injection surface is open)',
     file: 'src/main/workflows/substitute.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '输入**按类型编码**',
+    expect: 'the inputs are **encoded by type** (`; reboot` stays a literal)',
     apply: (s) =>
       replace(
         s,
         '    const encoded = ctx.encoded[name];',
-        '    const encoded = ctx.inputs[name] === undefined ? undefined : String(ctx.inputs[name]); // 变异：原始值',
+        '    const encoded = ctx.inputs[name] === undefined ? undefined : String(ctx.inputs[name]); // mutation: the raw value',
       ),
   },
   {
-    name: 'M102 流程包：placement 必须在**封闭词表**里（拼错 = 默默落错地方）',
+    name: 'M102 the workflow pack: the placement has to be in the **closed vocabulary** (a typo = it lands in the wrong place silently)',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: '封闭词表',
+    expect: '**placement must be in the closed vocabulary** (a misspelling is reported, it may not silently fall back)',
     apply: (s) =>
       replace(
         s,
         '    if (!isPlacement(placement)) {',
-        '    if (false) { // 变异：词表不查了',
+        '    if (false) { // mutation: the vocabulary is not looked up',
       ),
   },
   {
-    name: 'M103 控制面：回读的**验证命令**也要过危险地板（包给的命令不能借「验证」之名跑危险命令）',
+    name: 'M103 the control plane: the **verification command** of a readback has to pass the danger floor as well (a command from the pack may not run a dangerous command in the name of "verification")',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '验证命令也要过地板',
+    expect: 'executor · the verification command of the readback also passes the danger floor',
     apply: (s) =>
       replace(
         s,
         '          const verifyFloor = checkFloor(cmd);',
-        '          const verifyFloor = { verdict: "ok", matched: false }; // 变异：不查地板',
+        '          const verifyFloor = { verdict: "ok", matched: false }; // mutation: the floor is not looked up',
       ),
   },
   {
-    name: 'M105 流程层：角色事实要**包引号**（profile 是半可信的 → 不能原样插）',
+    name: 'M105 the workflow layer: a role fact has to be **quoted** (the profile is half trusted → it may not be spliced in raw)',
     file: 'src/main/workflows/substitute.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '角色事实**要包引号**',
+    expect: 'the role facts are **quoted** (a profile is only half trusted, so it may not be interpolated as it is)',
     apply: (s) =>
       replace(
         s,
-        "    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), '连接事实');",
-        '    return String(value); // 变异：原样插',
+        "    return typeof value === 'number' ? String(value) : quoteShellValue(String(value), 'connection fact');",
+        '    return String(value); // mutation: it is spliced in raw',
       ),
   },
   {
-    name: 'M111 流程服务：**续跑从停住的那一步开始**（前面的步不重跑 ✓）',
+    name: 'M111 the workflow service: **a resume starts at the step it stopped at** (the earlier steps do not run again ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '续跑',
+    expect: 'resume',
     apply: (s) =>
       replace(
         s,
         '    if (index < startAt) continue;',
-        '    // 变异：续跑时从头再跑一遍',
+        '    // mutation: a resume runs everything from the beginning again',
       ),
   },
   {
-    name: 'M112 审计行：必须带**最终命令**（追责的第一环 ✓）',
+    name: 'M112 the audit line: it has to carry the **final command** (the first link of the trace ✓)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/executor.test.ts'],
-    expect: '命令是编码过的',
+    expect: 'the command that runs is the encoded one',
     apply: (s) =>
       replace(
         s,
         '      command,\n      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),',
-        '      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }), // 变异：命令不进审计行',
+        '      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }), // mutation: the command does not go into the audit line',
       ),
   },
   {
-    name: 'M113 审计行：流程的**输入值**要进去（不然事后看不到用了哪个工程 ✓）',
+    name: 'M113 the audit line: the **input values** of the workflow have to go in (otherwise nobody sees which project was used afterwards ✓)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '这一步的输入',
+    expect: 'the audit row of the workflow carries **the inputs of this step** (the arguments of a workflow live in the workflow pack, not in the board pack)',
     apply: (s) =>
       replace(
         s,
         '      ...(deps.auditInputs === undefined ? {} : { inputs: deps.auditInputs }),',
-        '      // 变异：输入不进审计行',
+        '      // mutation: the inputs do not go into the audit line',
       ),
   },
   {
-    name: 'M114 卡片校验：规则 3 的**流程那一半**（声明了却没授权 → 报错 ✓）',
+    name: 'M114 the card validation: the **workflow half** of rule 3 (declared but not authorised → it is reported ✓)',
     file: 'src/main/cards/validate.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
-    expect: '声明了却没授权',
+    expect: '**it is declared but not granted → it is reported** (rule 3 may not have an exception)',
     apply: (s) =>
       replace(
         s,
         "  for (const workflowId of requires.workflows ?? []) {",
-        '  for (const workflowId of [] as string[]) { // 变异：流程那一半不查',
+        '  for (const workflowId of [] as string[]) { // mutation: the workflow half is not looked up',
       ),
   },
   {
-    name: 'M117 流程服务：**同一个流程同时只允许跑一次**（两个流程抢一条线会串台 ✓）',
+    name: 'M117 the workflow service: **the same workflow may only run once at a time** (two workflows on one line cross the wires ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '同一个流程同时只允许跑一次',
+    expect: '**the same workflow may only run once at a time** (two workflows fighting over one serial port would cross the wires)',
     apply: (s) =>
       replace(
         s,
         "      if (existing.workflowId === id && existing.state === 'running') {",
-        "      if (false) { // 变异：不挡并发",
+        "      if (false) { // mutation: it does not block the concurrency",
       ),
   },
   {
-    name: 'M120 流程包：版本词汇必须与契约一致（`apiVersion`，**不是** formatVersion ✓）',
+    name: 'M120 the workflow pack: the version key has to match the contract (`apiVersion`, **not** formatVersion ✓)',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: 'apiVersion 只认 devboard/v1',
+    expect: 'apiVersion accepts only devboard/v1 (**the same vocabulary as the board pack and the card manifest**)',
     apply: (s) =>
       replace(
         s,
         "  if (raw['apiVersion'] !== KNOWN_API_VERSION) {",
-        "  if (raw['apiVersion'] !== 'devboard/v2') { // 变异：版本词汇漂了",
+        "  if (raw['apiVersion'] !== 'devboard/v2') { // mutation: the version key has drifted",
       ),
   },
   {
-    name: 'M121 流程包：`default` 自己也要合法（宿主不能预填一个非法值 ✓）',
+    name: 'M121 the workflow pack: `default` has to be legal itself (the host may not pre-fill an illegal value ✓)',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: '宿主不能预填一个非法值',
+    expect: '**the `default` itself must be valid** (the host may not prefill an invalid value)',
     apply: (s) =>
       replace(
         s,
         '    if (def.default !== undefined) checkDefault(def, name, ctx);',
-        '    // 变异：不校验 default',
+        '    // mutation: the default is not verified',
       ),
   },
   {
-    name: 'M122 HAL：取消必须**真的杀掉进程**（不是「不等了」✓ —— 尖兵的现象 ✓）',
+    name: 'M122 the HAL: a cancel has to **kill the process for real** (not "stop waiting" ✓ — the symptom of the vanguard ✓)',
     file: 'src/main/util/spawn.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/spawn-abort.test.ts'],
-    expect: '进程真的被杀掉了',
+    expect: '**the process really was killed** (not "we stopped waiting")',
     apply: (s) =>
       replace(
         s,
-        `      try {
-        child.kill('SIGTERM');
-      } catch {
-        // 已经退了就算了
-      }
-      setTimeout(() => {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          // 已经没了就算了
-        }
-      }, 200);`,
-        `      // 变异：**只是不等了**（尖兵的现象 ✓ —— 进程还在后台跑 ✗）`,
+        '      try {\n        child.kill(\'SIGTERM\');\n      } catch {\n        // If it has already exited, fine\n      }\n      setTimeout(() => {\n        try {\n          child.kill(\'SIGKILL\');\n        } catch {\n          // If it is already gone, fine\n        }\n      }, 200);',
+        '      // mutation: **it only stops waiting** (the symptom of the vanguard ✓ — the process keeps running in the background ✗)',
       ),
   },
   {
-    name: 'M123 流程层：**取消**要把状态变成 cancelled（不是 failed ✓）',
+    name: 'M123 the workflow layer: a **cancel** has to turn the state into cancelled (not failed ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '状态变 cancelled',
+    expect: '**cancelling**: the state becomes cancelled (**not failed**)',
     apply: (s) =>
       replace(
         s,
         "    status.state = 'cancelled';",
-        "    status.state = 'failed'; // 变异：取消被当成失败",
+        "    status.state = 'failed'; // mutation: the cancel is taken for a failure",
       ),
   },
   {
-    name: 'M124 流程层：**取消**之后那次收尾不许把状态翻回去（独立评审 40 的 C-1 ✓）',
+    name: 'M124 the workflow layer: the settling after a **cancel** may not turn the state back ✓ (C-1 of the independent review 40 ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '不能把状态翻回去',
+    expect: '**when it finishes on its own after the cancellation, it may not turn the state back** (after the unwind of the await it is still cancelled)',
     apply: (s) =>
       replace(
         s,
         "      if (status.state !== 'cancelled') {",
-        '      if (true) { // 变异：收尾把「取消」翻回去了',
+        '      if (true) { // mutation: the settling turns the "cancel" back',
       ),
   },
   {
-    name: 'M125 流程层：取消一个**已经结束**的运行 → 状态一个字都不改（幂等 ✓）',
+    name: 'M125 the workflow layer: cancelling a run that **already ended** → not one character of the state changes (idempotent ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '状态不变',
+    expect: '**cancelling a run that already finished → the state does not change** (idempotent — it may not turn done into cancelled)',
     apply: (s) =>
       replace(
         s,
         "    if (status.state === 'done' || status.state === 'failed' || status.state === 'cancelled') {",
-        '    if (false) { // 变异：连已经结束的运行也改状态',
+        '    if (false) { // mutation: it changes the state even for a run that already ended',
       ),
   },
   {
-    name: 'M126 执行器：被取消 → 理由是 cancelled（不是「回读不符」✓）',
+    name: 'M126 the executor: cancelled → the reason is cancelled (not "the readback does not match" ✓)',
     file: 'src/main/actions/executor.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '理由写 cancelled',
+    expect: '**the cancelled step gets the reason cancelled** (not "the readback did not match" — the operator stopped it, the board did not disobey)',
     apply: (s) =>
       replace(
         s,
         '  if (execResult.cancelled === true) {',
-        '  if (false) { // 变异：把「取消」当成「跑成了」',
+        '  if (false) { // mutation: it takes the "cancel" for "it ran"',
       ),
   },
   {
-    name: 'M127 流程层：被叫停 → **后面那一步不跑**（人不要了，就别再往下做 ✓）',
+    name: 'M127 the workflow layer: stopped by a person → **the next step does not run** (the person does not want it, so it goes no further ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '后面那一步不跑',
+    expect: '**it was stopped → the later step does not run** (the operator no longer wants it, so it does not go on)',
     apply: (s) =>
       replace(
         s,
         "    if (opts.signal?.aborted === true) break;\n    const stage = await runStep(step, {",
-        "    // 变异：叫停了也往下跑\n    const stage = await runStep(step, {",
+        "    // mutation: it keeps going after it was called off\n    const stage = await runStep(step, {",
       ),
   },
   {
-    name: 'M128 流程层：被叫停 → **不跑跨目标的判据**（取消后别再让人多等一条命令 ✓）',
+    name: 'M128 the workflow layer: stopped by a person → **the cross target criterion does not run** (after a cancel nobody waits for one more command ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '不跑跨目标的判据',
+    expect: '**it was stopped → the cross-target criterion does not run** (after a cancellation nobody should wait for another command)',
     apply: (s) =>
       replace(
         s,
         '  if (ctx.opts.signal?.aborted === true) return undefined;',
-        '  if (false) return undefined; // 变异：取消后还去验',
+        '  if (false) return undefined; // mutation: it still reads back after the cancel',
       ),
   },
   {
-    name: 'M130 流程层：**取消**要记一行审计（「谁叫停的」查得到 ✓）',
+    name: 'M130 the workflow layer: a **cancel** has to write an audit line ("who called it off" has to be traceable — I-8 of the independent review 40 ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '取消要记一行审计',
+    expect: '**a cancellation records one audit row** (who stopped it can be looked up)',
     apply: (s) =>
       replace(
         s,
-        `    // **记一行审计** ✓（「谁叫停的」要查得到 ✓ —— 独立评审 40 的 I-8 ✓）
-    this.opts.runDeps.audit({
-      at: this.now(),
-      actor: 'host',
-      actionId: \`workflow:\${status.workflowId}:cancel\`,
-      params: { runId },
-      ok: true,
-      verified: true,
-      detail: '人叫停了这次运行',
-    });`,
-        '    // 变异：不记审计',
+        '    // One audit line is written ("who called it off" has to be traceable — I-8 of the independent review 40)\n    this.opts.runDeps.audit({\n      at: this.now(),\n      actor: \'host\',\n      actionId: `workflow:${status.workflowId}:cancel`,\n      params: { runId },\n      ok: true,\n      verified: true,\n      detail: \'a human called this run off\',\n    });',
+        '    // mutation: no audit line is written',
       ),
   },
   {
-    name: 'M131 回读：命令被取消 → 理由说「取消」（不是「回读不符」✓）',
+    name: 'M131 the readback: the command was cancelled → the reason says "cancelled" (not "the readback does not match" ✓)',
     file: 'src/main/actions/readback.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/readback.test.ts'],
-    expect: '理由是 cancelled',
+    expect: '**the command of the action was cancelled** → the reason is cancelled (**not a mismatch**)',
     apply: (s) =>
       replace(
         s,
         '  if (actionResult.cancelled === true) {',
-        '  if (false) { // 变异：把「取消」说成「不符」',
+        '  if (false) { // mutation: it says "does not match" for a "cancel"',
       ),
   },
   {
-    name: 'M132 流程层：`status` 要说得出「**现在在第几步**」（界面不能一片死寂 ✓）',
+    name: 'M132 the workflow layer: the `status` has to say **which step it is at right now** (the interface may not be dead silent ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '说得出「现在在第几步',
+    expect: '**half way through, `status` states "which step it is at and since when"** (the interface may not be dead silent)',
     apply: (s) =>
       replace(
         s,
         '              status.current = { stepId: info.stepId, kind: info.kind, at: info.at };',
-        '              status.current = null; // 变异：不说「现在在第几步」',
+        '              status.current = null; // mutation: it does not say "which step it is at right now"',
       ),
   },
   {
-    name: 'M133 流程层：**时间线边跑边填**（不是跑完才给 ✓）',
+    name: 'M133 the workflow layer: the **timeline fills while it runs** (not only when it is done ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '时间线边跑边填',
+    expect: '**the timeline is filled while it runs** (not only when it is over)',
     apply: (s) =>
       replace(
         s,
         '              status.stages = [...status.stages, stage];',
-        '              // 变异：不实时上报',
+        '              // mutation: it is not reported in real time',
       ),
   },
   {
-    name: 'M134 流程层：传输没成 → **清掉那个半截文件**（不留残留 ✓）',
+    name: 'M134 the workflow layer: a transfer that did not work → **the half file has to be removed** (no leftovers ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '清掉那个半截文件',
+    expect: 'the transfer did not succeed → **the half-written file is removed** (no residue is left)',
     apply: (s) =>
       replace(
         s,
         '  const command = `rm -f -- ${quotePath(path)}`;',
-        '  const command = `true`; // 变异：不清理',
+        '  const command = `true`; // mutation: it is not cleaned up',
       ),
   },
   {
-    name: 'M135 流程层：目的地**原本就有** → **不许删**（别删用户的东西 ✓）',
+    name: 'M135 the workflow layer: the destination **was there already** → **it may not be deleted** (do not delete the user\'s things ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '不许删',
+    expect: 'the destination **already has** that file → **it may not be deleted** (the user\'s data stays)',
     apply: (s) =>
       replace(
         s,
         "  if (before !== 'not-there') {",
-        '  if (false) { // 变异：连用户自己的文件也删',
+        '  if (false) { // mutation: it deletes the files of the user as well',
       ),
   },
   {
-    name: 'M136 流程层：**清理路径必须编码**（`to.path` 是包给的 ✓）',
+    name: 'M136 the workflow layer: the **cleanup path has to be encoded** (`to.path` comes from the pack ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '清理路径必须编码',
+    expect: '**the cleanup path must be encoded** (`to.path` comes from the pack, and an unencoded path is an injection surface)',
     apply: (s) =>
       replace(
         s,
         '  const command = `rm -f -- ${quotePath(path)}`;',
-        '  const command = `rm -f -- ${path}`; // 变异：不编码',
+        '  const command = `rm -f -- ${path}`; // mutation: it is not encoded',
       ),
   },
   {
-    name: 'M137 流程层：**传了但没验成** → **不清**（那不是「没传成」✓）',
+    name: 'M137 the workflow layer: **it was transferred but not verified** → **it is not removed** (that is not "the transfer failed" ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '传了，但没验成',
+    expect: '**it was transferred but not verified** → **it is kept** (that is not the same as "not transferred") and the reason is stated',
     apply: (s) =>
       replace(
         s,
         '  const commandFailed = !outcome.ok;',
-        '  const commandFailed = true; // 变异：连「传了但没验成」也清',
+        '  const commandFailed = true; // mutation: it also cleans up a "transferred but not verified" one',
       ),
   },
   {
-    name: 'M138 卡片会话：流程的授权看**自己那一维**（不许混进 permissions.write ✓）',
+    name: 'M138 the card session: the authorisation of a workflow looks at **its own dimension** (it may not be mixed into permissions.write ✓)',
     file: 'src/main/cards/session.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/session.test.ts'],
-    expect: '第四维授权',
+    expect: 'the session · the **fourth dimension of authorisation** of a workflow (contract §3.3)',
     apply: (s) =>
       replace(
         s,
         "        api.permission === 'write' ? session.perms.write : (session.perms.workflows ?? []);",
-        '        session.perms.write; // 变异：两维混成一维',
+        '        session.perms.write; // mutation: the two dimensions are mixed into one',
       ),
   },
   {
-    name: 'M139 卡片侧流程状态：**缩减投影**（路径/角色/明细/审计号一个都不给 ✓ —— V3-M7 ✓）',
+    name: 'M139 the workflow state on the card side: a **reduced projection** (not one of the path, the role, the details or the audit number ✓ — V3-M7 ✓)',
     file: 'src/main/cards/workflow-view.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/workflow-view.test.ts'],
-    expect: '只留契约说的那几个字段',
+    expect: '**every step keeps only the few fields the contract names**',
     apply: (s) =>
       replace(
         s,
@@ -1552,14 +1516,14 @@ const MUTATIONS = [
       verified: stage.verified,
       ...(stage.reason === undefined ? {} : { reason: stage.reason }),
     })),`,
-        '    stages: status.stages.map((stage) => ({ ...stage })), // 变异：全泄',
+        '    stages: status.stages.map((stage) => ({ ...stage })), // mutation: it leaks all of it',
       ),
   },
   {
-    name: 'M140 卡片校验 **规则 14**：流程权限不许通配符（契约 §九 ✓）',
+    name: 'M140 the card validation **rule 14**: a workflow permission may not be a wildcard (contract §9 ✓)',
     file: 'src/main/cards/validate.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
-    expect: '规则 14',
+    expect: 'rule 14 · workflow permissions (the last one of contract §9)',
     apply: (s) =>
       replace(
         s,
@@ -1568,10 +1532,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M141 卡片校验 **规则 14**：宿主里没有这个流程 → 报错 ✓',
+    name: 'M141 the card validation **rule 14**: a workflow the host does not have → it is reported ✓',
     file: 'src/main/cards/validate.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/validate.test.ts'],
-    expect: '规则 14',
+    expect: 'rule 14 · workflow permissions (the last one of contract §9)',
     apply: (s) =>
       replace(
         s,
@@ -1580,178 +1544,178 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M144 流程层：**异常路径**也不许把「取消」翻成 failed（独立评审 40 的 I-1 ✓）',
+    name: 'M144 the workflow layer: the **exception path** may not turn a "cancel" into failed ✓ (I-1 of the independent review 40 ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '取消之后走了异常路径',
+    expect: '**an exception after the cancellation → the state is still cancelled** (not failed)',
     apply: (s) =>
       replace(
         s,
-        "    } catch (err) {\n      // **取消过的运行 → 状态不许被这条异常路径翻回去** ✓（独立评审 40 的 I-1 ✓）\n      // → 「人叫停」必须活到最后 ✓（契约 §八·A·A2 ✓ —— 取消不是失败 ✓）\n      if (status.state !== 'cancelled') {",
-        "    } catch (err) {\n      // 变异：异常路径把「取消」翻成 failed\n      if (true) {",
+        "    } catch (err) {\n      // A cancelled run → the state may not be turned back by this\n      // exception path (I-1 of the independent review 40)\n      // → \"The human called it off\" has to survive to the end (contract\n      //   section 8·A·A2 — a cancellation is not a failure)\n      if (status.state !== 'cancelled') {",
+        "    } catch (err) {\n      // mutation: the exception path turns the \"cancel\" into failed\n      if (true) {",
       ),
   },
   {
-    name: 'M145 流程层：**步出错了也要有那一行**（异常不许穿透整次运行 ✓ —— 独立评审 40 的 I-2 ✓）',
+    name: 'M145 the workflow layer: **a step that failed still has its line** (an exception may not cut through the whole run ✓ — I-2 of the independent review 40 ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '目标连不上 → 时间线上有一行',
+    expect: '**the target cannot be reached → there is a row on the timeline** (the whole run is not thrown)',
     apply: (s) =>
       replace(
         s,
         '    const detail = err instanceof Error ? err.message : String(err);',
-        '    throw err; // 变异：异常穿透整次运行（时间线上一行都没有 ✗）\n    const detail = err instanceof Error ? err.message : String(err);',
+        '    throw err; // mutation: the exception cuts through the whole run (the timeline does not even get a line ✗)\n    const detail = err instanceof Error ? err.message : String(err);',
       ),
   },
   {
-    name: 'M146 流程包：**file.transfer 的 from.path 必填**（契约 §4.4 ✓）',
+    name: 'M146 the workflow pack: **the from.path of a file.transfer is required** (contract §4.4 ✓)',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: 'from 缺 path → 校验就报错',
+    expect: '**a from without a path is reported by the validator** (it must not be left to explode at runtime)',
     apply: (s) =>
       replace(
         s,
-        "      if (step.from.path === undefined) {\n        fail('file.transfer 步的 from 必须有 path（源端的路径）', ctx.source);\n      }",
-        '      // 变异：不收 from.path（留到运行时才炸 ✗）',
+        "      if (step.from.path === undefined) {\n        fail('the from of a file.transfer step must declare path (the path on the source side)', ctx.source);\n      }",
+        '      // mutation: it does not take from.path (it only crashes at runtime ✗)',
       ),
   },
   {
-    name: 'M147 流程层：**值模式也要拿到 default**（两种替换模式都得有它 ✓ —— 独立评审 40 的 I-3 ✓）',
+    name: 'M147 the workflow layer: the **value mode also gets the default** (both substitution modes have to have it ✓ — I-3 of the independent review 40 ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '值模式也要拿到默认值',
+    expect: '**the value form also receives the default** (the expect of a readback uses the value form)',
     apply: (s) =>
       replace(
         s,
         '  const mergedInputs: Record<string, unknown> = { ...defaults, ...inputs };',
-        '  const mergedInputs: Record<string, unknown> = inputs; // 变异：值模式拿不到默认值',
+        '  const mergedInputs: Record<string, unknown> = inputs; // mutation: the value mode does not get the default',
       ),
   },
   {
-    name: 'M148 卡片侧：输入声明要带 **default**（卡片才能自己预填 ✓ —— 独立评审 40 的 I-3 ✓）',
+    name: 'M148 on the card side: an input declaration has to carry a **default** (the card can pre-fill it itself ✓ — I-3 of the independent review 40 ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: '带 default',
+    expect: 'the input declarations in the list **carry the default** (the card has to be able to prefill it)',
     apply: (s) =>
       replace(
         s,
         '              ...(def.default === undefined ? {} : { default: def.default }),',
-        '              // 变异：不给卡片 default',
+        '              // mutation: the card gets no default',
       ),
   },
   {
-    name: 'M149 流程包校验 **规则 11**：destructive 的步不许 `readback.kind: none` ✓',
+    name: 'M149 the workflow pack validation **rule 11**: a destructive step may not have `readback.kind: none` ✓',
     file: 'src/main/workflows/format.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/format.test.ts'],
-    expect: 'destructive 的步不许用',
+    expect: '**a destructive step may not use `readback.kind: none`** (an irreversible action may not skip verification)',
     apply: (s) =>
       replace(
         s,
         "  if (step.danger === 'destructive' && step.readback?.kind === 'none') {",
-        '  if (false) { // 变异：规则 11 不执行',
+        '  if (false) { // mutation: rule 11 is not executed',
       ),
   },
   {
-    name: 'M152 多卡片：**两张卡同时动同一块板子 → 往返不交错**（同一条队列 ✓ —— 串口上不串台 ✓）',
+    name: 'M152 several cards: **two cards on one board → the round trips do not cross** (the same queue ✓ — on a serial port nothing crosses over ✓)',
     file: 'src/main/tags/runtime.ts',
     check: ['npx', 'vitest', 'run', 'tests/integration/multi-card-contention.test.ts'],
-    expect: '往返不交错',
+    expect: 'actions called at the same time do not interleave their round trips (one queue — no talking over each other on a serial line)',
     apply: (s) =>
       replace(
         s,
         "    return this.queue.run('action-verify', () => fn(connection));",
-        '    return fn(connection); // 变异：不经队列（两张卡会交错 ✗）',
+        '    return fn(connection); // mutation: it does not go through the queue (two cards cross over ✗)',
       ),
   },
   {
-    name: 'M153 MCP：**恶意 Origin → 403**（DNS rebinding 的第一道 ✓ —— 契约 §7.1 ✓）',
+    name: 'M153 MCP: **a malicious Origin → 403** (the first line of defence against a DNS rebinding ✓ — contract §7.1 ✓)',
     file: 'src/main/mcp/security.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
-    expect: '恶意 Origin',
+    expect: '**a malicious Origin → 403** (a cross-site request from a web page)',
     apply: (s) =>
       replace(
         s,
         "  return url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';",
-        '  return true; // 变异：什么 Origin 都放行',
+        '  return true; // mutation: every Origin is let through',
       ),
   },
   {
-    name: 'M154 MCP：**别的主机名 → 403**（DNS rebinding 的第二道 ✓ —— 契约 §7.1 ✓）',
+    name: 'M154 MCP: **another host name → 403** (the second line of defence against a DNS rebinding ✓ — contract §7.1 ✓)',
     file: 'src/main/mcp/security.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
-    expect: '别的主机名',
+    expect: '**another host name → 403** (the other half of DNS rebinding)',
     apply: (s) =>
       replace(
         s,
         "  return name === '127.0.0.1' || name === 'localhost' || name === '::1';",
-        '  return true; // 变异：谁的主机名都放行',
+        '  return true; // mutation: every host name is let through',
       ),
   },
   {
-    name: 'M155 MCP：**Bearer 认证要对得上**（token 不对 → 401 ✓ —— 契约 §7.1 ✓）',
+    name: 'M155 MCP: **the Bearer authentication has to match** (a wrong token → 401 ✓ — contract §7.1 ✓)',
     file: 'src/main/mcp/security.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
-    expect: 'token 不对',
+    expect: '**the wrong token → 401**',
     apply: (s) =>
       replace(
         s,
         '  if (a.length !== b.length) return false;',
-        '  // 变异：长度不等也放行',
+        '  // mutation: it lets it through even when the length differs',
       ),
   },
   {
-    name: 'M156 MCP：**没有 Origin → 放行**（不是浏览器的客户端 ✓ —— 契约 §7.1「存在且不合法时」✓）',
+    name: 'M156 MCP: **no Origin → let it through** (it is not a browser client ✓ — contract §7.1 "present and not legal" ✓)',
     file: 'src/main/mcp/security.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/security.test.ts'],
-    expect: '没有 Origin',
+    expect: '**no Origin → let through** (a client that is not a browser, such as an agent itself)',
     apply: (s) =>
       replace(
         s,
         "  if (origin === undefined || origin === '') return true;",
-        "  if (origin === undefined || origin === '') return false; // 变异：没 Origin 也拒",
+        "  if (origin === undefined || origin === '') return false; // mutation: it refuses even without an Origin",
       ),
   },
   {
-    name: 'M157 MCP 发现文件：**先写 .tmp 再原子改名**（agent 不许读到半个文件 ✓ —— 契约 §7.2 ✓）',
+    name: 'M157 the MCP discovery file: **write the .tmp first and rename it atomically** (an agent may not read half a file ✓ — contract §7.2 ✓)',
     file: 'src/main/mcp/discovery.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
-    expect: '读不到半个文件',
+    expect: '**half a file cannot be read while it is written** (a temporary file is written first and then renamed atomically)',
     apply: (s) =>
       replace(
         s,
         '  renameSync(tmp, path);',
-        '  writeFileSync(path, readFileSync(tmp, \'utf8\'), { encoding: \'utf8\' }); // 变异：不原子改名',
+        '  writeFileSync(path, readFileSync(tmp, \'utf8\'), { encoding: \'utf8\' }); // mutation: it is not renamed atomically',
       ),
   },
   {
-    name: 'M158 MCP 发现文件：**权限 0600**（token 不能被同机别的用户读到 ✓ —— 契约 §7.2 ✓）',
+    name: 'M158 the MCP discovery file: **the mode 0600** (the token may not be read by another user on the same machine ✓ — contract §7.2 ✓)',
     file: 'src/main/mcp/discovery.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
-    expect: '权限仅当前用户可读',
+    expect: 'readable by the current user only',
     apply: (s) =>
       replace(
         s,
         "  writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\\n`, { encoding: 'utf8', mode: 0o600 });",
-        "  writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\\n`, { encoding: 'utf8' }); // 变异：不钉权限",
+        "  writeFileSync(tmp, `${JSON.stringify(info, null, 2)}\\n`, { encoding: 'utf8' }); // mutation: the permission is not pinned",
       ),
   },
   {
-    name: 'M159 MCP 发现文件：**退出时要删掉它**（不留指向死进程的发现文件 ✓ —— 契约 §7.2 ✓）',
+    name: 'M159 the MCP discovery file: **it has to be removed on exit** (no discovery file pointing at a dead process ✓ — contract §7.2 ✓)',
     file: 'src/main/mcp/discovery.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/discovery.test.ts'],
-    expect: '删掉之后就没有了',
+    expect: '**once it is deleted it is gone** (the GUI cleans it up on exit)',
     apply: (s) =>
       replace(
         s,
         '    rmSync(path, { force: true });',
-        '    // 变异：不删',
+        '    // mutation: it is not deleted',
       ),
   },
   {
-    name: 'M162 MCP：**list_workflows 只给契约说的那几个键**（多一个键 = 多漏一样东西 ✓ —— 契约 §2.4 ✓）',
+    name: 'M162 MCP: **`list_workflows` gives only the keys the contract names** (one key more = one thing more leaks ✓ — contract §2.4 ✓)',
     file: 'src/main/mcp/server.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
-    expect: '键就只有契约说的那几个',
+    expect: 'only the id, the name and the input declarations',
     apply: (s) =>
       replace(
         s,
@@ -1760,79 +1724,79 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M163 MCP：**工具失败用 ok:false + reason**（不抛异常 ✓ —— 契约 §四 ✓）',
+    name: 'M163 MCP: **a failing tool answers ok:false + reason** (it throws no exception ✓ — contract §4 ✓)',
     file: 'src/main/mcp/server.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
-    expect: '不是偷偷跑起来',
+    expect: '`run_workflow` runs a workflow **without such a pack** → **it fails** (it does not quietly run anyway)',
     apply: (s) =>
       replace(
         s,
         '          return withVersion(\n            failure(reasonOf(err), err instanceof Error ? err.message : String(err)),\n          );',
-        "          return withVersion({ ok: true, run_id: 'wf-bogus' }); // 变异：失败也说成功",
+        "          return withVersion({ ok: true, run_id: 'wf-bogus' }); // mutation: a failure is reported as a success",
       ),
   },
   {
-    name: 'M164 MCP：**每个响应都带 apiVersion**（契约 §四 ✓）',
+    name: 'M164 MCP: **every response carries the apiVersion** (contract §4 ✓)',
     file: 'src/main/mcp/convention.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/server.test.ts'],
-    expect: '每个响应都带 apiVersion',
+    expect: '**every response carries apiVersion** (contract §4: the version field is on every response)',
     apply: (s) =>
       replace(
         s,
         '  return { apiVersion: API_VERSION, ...value };',
-        '  return value as T & { apiVersion: string }; // 变异：不带版本',
+        '  return value as T & { apiVersion: string }; // mutation: it carries no version',
       ),
   },
   {
-    name: 'M165 MCP HTTP：**恶意 Origin → 403**（DNS rebinding ✓ —— 真 HTTP 上才验得了 ✓）',
+    name: 'M165 MCP HTTP: **a malicious Origin → 403** (a DNS rebinding ✓ — only a real HTTP server can verify it ✓)',
     file: 'src/main/mcp/http.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
-    expect: '恶意 Origin',
+    expect: '**a malicious Origin → 403** (DNS rebinding)',
     apply: (s) =>
       replace(
         s,
         "  if (!checkOrigin(typeof origin === 'string' ? origin : undefined)) {",
-        '  if (false) { // 变异：不校验 Origin',
+        '  if (false) { // mutation: the Origin is not verified',
       ),
   },
   {
-    name: 'M166 MCP HTTP：**没带 token → 401**（契约 §7.1 ✓）',
+    name: 'M166 MCP HTTP: **no token → 401** (contract §7.1 ✓)',
     file: 'src/main/mcp/http.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
-    expect: '没带 token',
+    expect: '**no token → 401**',
     apply: (s) =>
       replace(
         s,
         "  if (!checkAuthorization(typeof auth === 'string' ? auth : undefined, opts.token)) {",
-        '  if (false) { // 变异：不验 token',
+        '  if (false) { // mutation: the token is not verified',
       ),
   },
   {
-    name: 'M167 MCP HTTP：**只绑 127.0.0.1**（契约 §7.1 ✓ —— 不许绑 0.0.0.0 ✓）',
+    name: 'M167 MCP HTTP: **it binds 127.0.0.1 only** (contract §7.1 ✓ — it may not bind 0.0.0.0 ✓)',
     file: 'src/main/mcp/http.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
-    expect: '只绑 127.0.0.1',
+    expect: '**it binds 127.0.0.1 only** (contract §7.1 — it may not bind 0.0.0.0)',
     apply: (s) =>
       replace(
         s,
         "  if (opts.host !== '127.0.0.1' && opts.host !== 'localhost' && opts.host !== '::1') {",
-        '  if (false) { // 变异：什么地址都让绑',
+        '  if (false) { // mutation: it binds to any address',
       ),
   },
   {
-    name: 'M168 MCP HTTP：**通知 → 202 空体**（规范 §「Sending Messages」✓）',
+    name: 'M168 MCP HTTP: **a notification → 202 with an empty body** (the specification "Sending Messages" ✓)',
     file: 'src/main/mcp/http.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/http.test.ts'],
-    expect: '202 空体',
+    expect: '**a notification → 202 with an empty body** (specification, "Sending Messages", item 4)',
     apply: (s) =>
       replace(
         s,
         '  if (reply === null) {\n    res.writeHead(202);',
-        '  if (false) { // 变异：通知也回 200',
+        '  if (false) { // mutation: the notification answers 200 as well',
       ),
   },
   {
-    name: 'M169 MCP 读侧：**`exec_regex` 的 command 不给 agent** ✓（契约 §1.3 ✓）',
+    name: 'M169 the MCP read side: **the command of `exec_regex` is not given to the agent** ✓ (contract §1.3 ✓)',
     file: 'src/main/tags/pack-view.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags/pack-view.test.ts'],
     expect: 'command',
@@ -1844,10 +1808,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M170 MCP 读侧：**`script` 的宿主路径与解释器不给 agent** ✓',
+    name: 'M170 the MCP read side: **the host path and the interpreter of `script` are not given to the agent** ✓',
     file: 'src/main/tags/pack-view.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags/pack-view.test.ts'],
-    expect: '宿主路径',
+    expect: '**neither the host path nor the interpreter of `script` is given** (it would leak the directory structure of the host)',
     apply: (s) =>
       replace(
         s,
@@ -1856,7 +1820,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M171 MCP 读侧：**`list_tags` 的字段叫 `name` 不是 `tag`** ✓（契约 §2.1 ✓）',
+    name: 'M171 the MCP read side: **the field of `list_tags` is `name`, not `tag`** ✓ (contract §2.1 ✓)',
     file: 'src/main/mcp/read-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
     expect: 'name',
@@ -1868,7 +1832,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M172 MCP 读侧：**`list_tags` 要算 `source_reader`** ✓（**不算就全是 null** ✓）',
+    name: 'M172 the MCP read side: **`list_tags` has to compute `source_reader`** ✓ (**without it everything is null** ✓)',
     file: 'src/main/mcp/read-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
     expect: 'source_reader',
@@ -1880,7 +1844,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M173 MCP 读侧：**reader 的 status 是映射表** ✓（**不是恒 ok** ✓）',
+    name: 'M173 the MCP read side: **the status of a reader is a mapping** ✓ (**not constantly ok** ✓)',
     file: 'src/main/mcp/read-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/read-tools.test.ts'],
     expect: 'status',
@@ -1892,10 +1856,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M174 MCP 写侧：**`dry_run` 不执行** ✓（契约 §2.4 ✓）',
+    name: 'M174 the MCP write side: **`dry_run` does not execute** ✓ (contract §2.4 ✓)',
     file: 'src/main/mcp/action-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
-    expect: '不执行',
+    expect: '**it does not run** · **it writes no audit row** ("it is not an attempt")',
     apply: (s) =>
       replace(
         s,
@@ -1904,7 +1868,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M175 MCP 写侧：**`dry_run` 在确认之前** ✓（**否则拿不到 destructive 的预览** ✓）',
+    name: 'M175 the MCP write side: **`dry_run` comes before the confirmation** ✓ (**otherwise there is no preview of a destructive step** ✓)',
     file: 'src/main/mcp/action-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
     expect: 'dry_run',
@@ -1916,19 +1880,19 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M177 MCP 写侧：**动作不存在 → `not_found`** ✓（**不是 `denied`** ✓）',
+    name: 'M177 the MCP write side: **the action does not exist → `not_found`** ✓ (**not `denied`** ✓)',
     file: 'src/main/mcp/action-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/action-tools.test.ts'],
     expect: 'not_found',
     apply: (s) =>
       replace(
         s,
-        "    return { ok: false, reason: 'not_found', detail: `没有这个动作：${actionId}` };\n  }\n\n  // **③ 参数校验 + 编码**",
-        "    return { ok: false, reason: 'denied', detail: `没有这个动作：${actionId}` };\n  }\n\n  // **③ 参数校验 + 编码**",
+        "    return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };\n  }\n\n  // **③ Validation of the parameters + encoding**",
+        "    return { ok: false, reason: 'denied', detail: `No such action: ${actionId}` };\n  }\n\n  // **③ Validation of the parameters + encoding**",
       ),
   },
   {
-    name: 'M178 MCP 卡片：**`missing_tags` 与 `unreadable_tags` 分开** ✓（**混在一起 agent 就被骗** ✓）',
+    name: 'M178 the MCP card: **`missing_tags` and `unreadable_tags` are separate** ✓ (**mixed together the agent is deceived** ✓)',
     file: 'src/main/cards/state.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/state.test.ts'],
     expect: 'unreadable',
@@ -1940,10 +1904,10 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M179 MCP 卡片：**通配实例在读数里缺席 → 不算缺失** ✓（采样器不猜具体名 ✓）',
+    name: 'M179 the MCP card: **a wildcard instance that is absent from the readings does not count as missing** ✓ (the sampler does not guess the concrete name ✓)',
     file: 'src/main/cards/state.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/state.test.ts'],
-    expect: '通配实例',
+    expect: '**a wildcard instance is absent from the readings → it is not listed** (that means "not on the board / not sampled yet")',
     apply: (s) =>
       replace(
         s,
@@ -1952,7 +1916,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M180 MCP 读侧：**`connected` 要看运行时是不是 `running`** ✓（**光看 profileId 会误报** ✓）',
+    name: 'M180 the MCP read side: **`connected` has to look at whether the runtime is `running`** ✓ (**looking at the profileId alone reports it wrongly** ✓)',
     file: 'src/main/mcp/wiring.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/wiring.test.ts'],
     expect: 'connected',
@@ -1964,7 +1928,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M185 MCP SDK 活文档：**API 清单来自注册表** ✓（**手抄的会漂** ✓）',
+    name: 'M185 the living SDK documentation: **the API list comes from the registry** ✓ (**a hand written one drifts** ✓)',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'tags.get',
@@ -1976,7 +1940,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M186 MCP SDK 活文档：**没实现的 API 不列** ✓（**列了 = 卡片以为能调** ✓）',
+    name: 'M186 the living SDK documentation: **an API that is not implemented is not listed** ✓ (**listing it = the card believes it can call it** ✓)',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'notify',
@@ -1988,19 +1952,19 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M187 MCP SDK 活文档：**每个方法都要有一句说明** ✓（**光有名字 agent 不知道何时用** ✓）',
+    name: 'M187 the living SDK documentation: **every method has to carry one sentence** ✓ (**a name alone does not tell the agent when to use it** ✓)',
     file: 'src/main/cards/api-registry.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
-    expect: '说明',
+    expect: '**every method carries a sentence of explanation** (**the name alone is not enough** — the agent does not know when to use it)',
     apply: (s) =>
       replace(
         s,
-        "      name: 'tags.get',\n      summary: '读一个 tag 的当前值与状态。**读面板上的数用这个**。',",
+        "      name: 'tags.get',\n      summary: 'Read the current value and status of a tag. **Use this to read a number for a panel**.',",
         "      name: 'tags.get',",
       ),
   },
   {
-    name: 'M188 MCP SDK 活文档：**示例卡是真卡** ✓（**编的会与实际不符** ✓）',
+    name: 'M188 the living SDK documentation: **the example card is a real card** ✓ (**an invented one does not match the reality** ✓)',
     file: 'src/main/mcp/sdk-docs.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/sdk-docs.test.ts'],
     expect: 'cpu-usage',
@@ -2008,11 +1972,11 @@ const MUTATIONS = [
       replace(
         s,
         '      const tags = Array.isArray(perms.read)\n        ? perms.read.filter((t): t is string => typeof t === \'string\')\n        : [];',
-        "      const tags: string[] = []; // 变异：示例卡不列读权限",
+        "      const tags: string[] = []; // mutation: the example card does not list the read permission",
       ),
   },
   {
-    name: 'M193 MCP 装卡：**manifest 坏了就不装** ✓（**不是「装个坏卡」** ✓）',
+    name: 'M193 installing a card through MCP: **a broken manifest is not installed** ✓ (**not "install a broken card"** ✓)',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
     expect: 'manifest',
@@ -2024,43 +1988,43 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M194 MCP 流程 dry_run：**一步都不跑** ✓（**它是预览** ✓）',
+    name: 'M194 the MCP workflow dry_run: **not one step runs** ✓ (**it is a preview** ✓)',
     file: 'src/main/mcp/workflow-dry-run.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/workflow-dry-run.test.ts'],
-    expect: '预览',
+    expect: '**no step is executed** (**it is a preview**)',
     apply: (s) =>
       replace(
         s,
         "  return { ok: true, steps };",
-        "  return { ok: true, steps, run_id: 'wf-dry-run' }; // 变异：预览也产 run_id",
+        "  return { ok: true, steps, run_id: 'wf-dry-run' }; // mutation: the preview also produces a run_id",
       ),
   },
   {
-    name: 'M195 MCP 流程 dry_run：**危险等级要给** ✓（**agent 要知道哪一步会毁东西** ✓）',
+    name: 'M195 the MCP workflow dry_run: **the danger level has to be given** ✓ (**the agent has to know which step destroys things** ✓)',
     file: 'src/main/mcp/workflow-dry-run.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/workflow-dry-run.test.ts'],
-    expect: '危险等级',
+    expect: '**the danger level is given** (**the agent has to know which step destroys things**)',
     apply: (s) =>
       replace(
         s,
         "    danger: step.danger ?? 'reversible',",
-        "    danger: 'reversible', // 变异：不看步骤自己声明的危险等级",
+        "    danger: 'reversible', // mutation: the danger level the step declares itself is not looked at",
       ),
   },
   {
-    name: 'M196 MCP promote：**宿主只记「谁要全屏」** ✓（**铺几行是渲染层的事** ✓）',
+    name: 'M196 the MCP promote: **the host only records "who wants the full screen"** ✓ (**laying out the rows is the renderer\'s business** ✓)',
     file: 'src/main/mcp/promote.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/promote.test.ts'],
-    expect: '全屏',
+    expect: '**it records "who wants full screen"** (**the host does not guess how many rows to fill** — only the renderer knows that)',
     apply: (s) =>
       replace(
         s,
         "    layout: { ...state, promoted: { ...target } },",
-        "    layout: { ...state, promoted: null }, // 变异：不记谁要全屏",
+        "    layout: { ...state, promoted: null }, // mutation: it does not record who wants the full screen",
       ),
   },
   {
-    name: 'M197 MCP promote：**多于一个实例就报错** ✓（**不猜** ✓）',
+    name: 'M197 the MCP promote: **more than one instance is an error** ✓ (**it does not guess** ✓)',
     file: 'src/main/mcp/promote.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/promote.test.ts'],
     expect: 'invalid_params',
@@ -2072,7 +2036,7 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M198 工作流：**只有 kernel-module 才问目标机器的内核版本** ✓（**白问也是硬依赖** ✓）',
+    name: 'M198 the workflow: **only the kernel-module step asks the kernel version of the target machine** ✓ (**asking it is a hard dependency either way** ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/placement-facts.test.ts'],
     expect: 'user-program',
@@ -2084,121 +2048,121 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M74 假设备：超时只落在快组（慢组的读数不该被带走）',
+    name: 'M74 the fake device: a timeout falls only on the fast group (the reading of the slow group must not be carried away)',
     file: 'src/main/hal/fake/connection.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/fake-device.test.ts'],
-    expect: '超时只落在快组上',
+    expect: 'the timeout lands only on the fast group (the readings of the slow group may not be taken away by the timeout of the fast group)',
     apply: (s) =>
-      replace(s, '    if (isFast) {', '    if (true) { // 变异：每一组都算快组'),
+      replace(s, '    if (isFast) {', '    if (true) { // mutation: every group counts as a fast group'),
   },
 
   {
-    name: 'M75 外壳：「已在主区」按实例键判（不是 cardId）',
+    name: 'M75 the shell: "is in the main area" is decided by the instance key (not by the cardId)',
     file: 'src/renderer/shell/nav.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
-    expect: '摆进主区的那张卡',
+    expect: 'the card that is placed in the work area is hinted as "already in the work area"',
     apply: (s) =>
       replace(
         s,
         '    const key = slotKey(card.cardId, card.connectionId);',
-        '    const key = card.cardId; // 变异：按 cardId 判',
+        '    const key = card.cardId; // mutation: it is decided by the cardId',
       ),
   },
   {
-    name: 'M76 外壳：会话行要有关闭按钮（串口与 SSH 的连接是独占的）',
+    name: 'M76 the shell: the session row has to carry a close button (a serial or an SSH connection is exclusive)',
     file: 'src/renderer/shell/nav.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
-    expect: '会话行有关闭按钮',
+    expect: 'the session row has a close button (a serial or SSH connection is exclusive; without a way to close it, it holds the port for good)',
     apply: (s) =>
       replace(
         s,
         '    onClose: () => ctx.onCloseSession(session.sessionId),\n',
-        '    // 变异：没有关闭路径\n',
+        '    // mutation: there is no path to close it\n',
       ),
   },
 
-  // ── 元操作与流程（ADR-D49）────────────────────────────────
+  // ── The actions and the workflows (ADR-D49) ─────────────────────
   {
-    name: 'M230 action 步：**参数必须按动作声明的类型转**（`"1"` → `1` ✓ —— 不转就调不动带类型的动作 ✓）',
+    name: 'M230 an action step: **the parameters have to be converted to the type the action declares** (`"1"` → `1` ✓ — without the conversion an action with a type cannot be called ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/runner.test.ts'],
-    expect: '整型参数按动作声明的类型转',
+    expect: '**an integer parameter is converted to the type the action declares** ("1" → 1)',
     apply: (s) =>
       replace(
         s,
         '    values[key] = spec === undefined ? value : coerceParam(value, spec.type);',
-        '    values[key] = value; // 变异：不按声明的类型转',
+        '    values[key] = value; // mutation: it is not converted to the declared type',
       ),
   },
   {
-    name: 'M231 adb 路径：**必须找得到带版本号的 `platform-tools_*`** ✓（这台机器的 adb 就在那儿 ✓）',
+    name: 'M231 the adb path: **the `platform-tools_*` with a version has to be found** ✓ (that is where the adb of this machine is ✓)',
     file: 'src/main/util/settings.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/util/settings.test.ts'],
-    expect: '找得到带版本号的',
+    expect: '`resolveAdbPath` **finds the `platform-tools_*` that carries the version** (the one fixed on 2026-11-16)',
     apply: (s) =>
       replace(
         s,
         `    const candidates = readdirSync(downloads)
       .filter((name) => name.startsWith('platform-tools'))
       .map((name) => join(downloads, name, 'platform-tools', 'adb.exe'));`,
-        '    const candidates: string[] = []; // 变异：不扫 Downloads 了',
+        '    const candidates: string[] = []; // mutation: it does not scan Downloads any more',
       ),
   },
   {
-    name: 'M232 建连接：**入口必须自己解析 adb 路径** ✓（CLI 与应用不许各找各的 ✓）',
+    name: 'M232 building a connection: **the entry point has to resolve the adb path itself** ✓ (the CLI and the application may not each look for their own ✓)',
     file: 'src/main/hal/registry.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/util/settings.test.ts'],
-    expect: '自己解析 adb 路径',
+    expect: '`createConnection` **resolves the adb path itself** (the CLI has to get it as well — fixed on 2026-11-16)',
     apply: (s) =>
       replace(
         s,
         '  const adbPath = opts.adbPath ?? resolveAdbPath(loadSettings(settingsPath()));',
-        '  const adbPath = opts.adbPath ?? "adb"; // 变异：入口不解析了',
+        '  const adbPath = opts.adbPath ?? "adb"; // mutation: the entry point does not resolve it any more',
       ),
   },
 
-  // ── 色彩纪律（ADR-D41）────────────────────────────────────
+  // ── The colour discipline (ADR-D41) ───────────────────────────
   {
-    name: 'M181 材质层：**不许进卡片**（卡片一旦能造第二套材质，统一皮肤当场就破）',
+    name: 'M181 the material layer: **it may not enter a card** (once a card can build a second set of materials the unified skin breaks at once)',
     file: 'src/shared/theme/map.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
-    expect: '不进卡片',
+    expect: 'the material layer does not reach the cards (a card may only use the contract aliases)',
     apply: (s) =>
       replace(
         s,
         '  if (includeMaterial) Object.assign(vars, materialVars(theme));',
-        '  if (includeMaterial || true) Object.assign(vars, materialVars(theme)); // 变异：卡片也拿到材质层',
+        '  if (includeMaterial || true) Object.assign(vars, materialVars(theme)); // mutation: the card gets the material layer as well',
       ),
   },
   {
-    name: 'M182 色彩纪律：**CSS 里不许再抄色值**（第二份真相的温床）',
+    name: 'M182 the colour discipline: **no colour value may be copied into the CSS again** (the breeding ground of a second source of truth)',
     file: 'src/renderer/shell/visual.css',
     check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
-    expect: '一个颜色字面量都没有',
+    expect: 'no colour literal',
     apply: (s) =>
       replace(
         s,
         '  --ui-highlight: var(--shell-mat-edge-highlight);',
-        '  --ui-highlight: rgba(255, 255, 255, 0.06); // 变异：又抄了一份',
+        '  --ui-highlight: rgba(255, 255, 255, 0.06); // mutation: it copied a second one',
       ),
   },
   {
-    name: 'M183 终端：**兜底色必须等于种子真值**（不许另抄一份回落色）',
+    name: 'M183 the terminal: **the fallback colour has to equal the seed truth** (it may not copy a second fallback colour)',
     file: 'src/renderer/shell/theme.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
-    expect: '兜底色',
+    expect: 'the fallback colours of the terminal are the values of the seed (not a second copy)',
     apply: (s) =>
       replace(
         s,
         "    background: v('--cockpit-bg', FALLBACK['bg-0']),",
-        "    background: v('--cockpit-bg', '#14171c'), // 变异：计划 1 时代的老回落色",
+        "    background: v('--cockpit-bg', '#14171c'), // mutation: the old fallback colour of the plan 1 era",
       ),
   },
   {
-    name: 'M184 材质层：**不许有影子变量**（CSS 里重新定义 = 又一份真相）',
+    name: 'M184 the material layer: **no shadow variable is allowed** (defining it again in the CSS = a second source of truth)',
     file: 'src/renderer/shell/visual.css',
     check: ['npx', 'vitest', 'run', 'tests/web/visual-material.test.ts'],
-    expect: '又定义了一遍材质变量',
+    expect: 'defines the material variables a second time',
     apply: (s) =>
       replace(
         s,
@@ -2207,33 +2171,33 @@ const MUTATIONS = [
       ),
   },
 
-  // ── 设备与连接（ADR-D43）────────────────────────────────────
+  // ── The devices and the connections (ADR-D43) ───────────────────
   {
-    name: 'M199 连接 profile：**`device_key` 缺省 = profile id** ✓（**一板一连** ✓ 的就这么办 ✓）',
+    name: 'M199 the connection profile: **the `device_key` defaults to the profile id** ✓ (**one board, one connection** ✓ is handled that way ✓)',
     file: 'src/main/profiles/schema.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/device-key.test.ts'],
-    expect: '缺省是 profile id',
+    expect: '**no `device_key` written → the default is the profile id**',
     apply: (s) =>
       replace(
         s,
         "    : profile.id;",
-        "    : ''; // 变异：缺省不回落成 profile id",
+        "    : ''; // mutation: the default does not fall back to the profile id",
       ),
   },
   {
-    name: 'M200 MCP execute_action：**给了别的设备 → `not_found`** ✓（**绝不静默地打当前那块** ✓）',
+    name: 'M200 the MCP execute_action: **another device is given → `not_found`** ✓ (**it never silently hits the current board** ✓)',
     file: 'src/main/mcp/action-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/device-key.test.ts'],
-    expect: '给了别的设备',
+    expect: 'another device is given',
     apply: (s) =>
       replace(
         s,
         '  if (deviceKey === current) return undefined;',
-        '  if (true) return undefined; // 变异：设备对不上也放过',
+        '  if (true) return undefined; // mutation: it lets a mismatched device pass',
       ),
   },
   {
-    name: 'M202 工作流：**角色事实取自 `options.ssh`** ✓（**那条 scp 要用板子的地址** ✓）',
+    name: 'M202 the workflow: **a role fact comes from `options.ssh`** ✓ (**that scp has to use the address of the board** ✓)',
     file: 'src/main/workflows/runner.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/role-facts.test.ts'],
     expect: 'options.ssh',
@@ -2241,62 +2205,62 @@ const MUTATIONS = [
       replace(
         s,
         "      host: str(sshFact['host']) ?? str(options['host']) ?? '',",
-        "      host: str(options['host']) ?? '', // 变异：不读 options.ssh",
+        "      host: str(options['host']) ?? '', // mutation: it does not read options.ssh",
       ),
   },
   {
-    name: 'M203 界面：**按板归并** ✓（**同一块板的几条连接归一块板** ✓ —— 板实物与连接是两层 ✓）',
+    name: 'M203 the interface: **it is grouped by board** ✓ (**the several connections of one board become one board** ✓ — the board itself and the connection are two layers ✓)',
     file: 'src/renderer/shell/devices.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/device-picker.test.ts'],
-    expect: '同一块板的多条连接归成一块板',
+    expect: 'the several connections of one board collapse into one board',
     apply: (s) =>
       replace(
         s,
         '      byKey.set(connection.deviceKey, {',
-        '      byKey.set(connection.id, { // 变异：按连接分组，不按板',
+        '      byKey.set(connection.id, { // mutation: it is grouped by connection, not by board',
       ),
   },
   {
-    name: 'M204 界面：**没绑板型包的连接不是板** ✓（**本机 / 客机不是板** ✓）',
+    name: 'M204 the interface: **a connection without a board pack is not a board** ✓ (**the host or the guest is not a board** ✓)',
     file: 'src/renderer/shell/devices.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/device-picker.test.ts'],
-    expect: '没绑板型包的连接不是板子',
+    expect: 'a connection without a board pack is not a board (the local machine and the guest are not boards)',
     apply: (s) =>
       replace(
         s,
         '    if (connection.boardPack === null) continue;',
-        '    if (connection.boardPack === undefined) continue; // 变异：不按板型包过滤',
+        '    if (connection.boardPack === undefined) continue; // mutation: it does not filter by the board pack',
       ),
   },
   {
-    name: 'M205 宿主：**按板挑连接** ✓（**用户点的是板** ✓ —— **不是某条连接** ✓）',
+    name: 'M205 the host: **the connection is picked per board** ✓ (**what the user clicks is a board** ✓ — **not a connection** ✓)',
     file: 'src/main/profiles/device-select.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/profiles/device-select.test.ts'],
-    expect: '板子 → 宿主挑它的第一条连接',
+    expect: '**a board → the host picks its first connection** (**the operator clicks a board, not a channel**)',
     apply: (s) =>
       replace(
         s,
         '  const candidates = profiles.filter((profile) => deviceKeyOf(profile) === deviceKey);',
-        '  const candidates = profiles.filter((profile) => profile.id === deviceKey); // 变异：按连接挑，不按板',
+        '  const candidates = profiles.filter((profile) => profile.id === deviceKey); // mutation: it is picked by connection, not by board',
       ),
   },
   {
-    name: 'M206 宿主：**已经在那块板上就不重连** ✓（**白连一次会掉读数** ✗）',
+    name: 'M206 the host: **it does not reconnect when it is already on that board** ✓ (a needless connection costs the readings ✗)',
     file: 'src/main/profiles/device-select.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/profiles/device-select.test.ts'],
-    expect: '已经在那块板上 → 不重连',
+    expect: '**already on that board → it does not connect again** (a pointless connection loses the readings)',
     apply: (s) =>
       replace(
         s,
         '    if (already !== undefined) return { ok: true, profileId: already.id, reused: true };',
-        '    // 变异：不再判断「已经在这块板上」，一律重连',
+        '    // mutation: it no longer checks "already on this board", it reconnects every time',
       ),
   },
   {
-    name: 'M208 卡片：**声明的流程就是那三条** ✓（**不多不少** ✓ —— 授权面不许变大 ✗）',
+    name: 'M208 the card: **the declared workflows are exactly those three** ✓ (**no more, no fewer** ✓ — the authorisation surface may not grow ✗)',
     file: 'cards/build-deploy/manifest.json',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/build-deploy-card.test.ts'],
-    expect: '声明的流程就是那三条',
+    expect: '**the workflows it declares are exactly the three compile / upload / run workflows** (**no more and no less**)',
     apply: (s) =>
       replace(
         s,
@@ -2305,135 +2269,135 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M210 卡片：**「跑过」与「成了」分得清** ✓（**`verified: false` 不是成功** ✓）',
+    name: 'M210 the card: **"it ran" and "it succeeded" are told apart** ✓ (**`verified: false` is not a success** ✓)',
     file: 'cards/build-deploy/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
-    expect: '每一步分得清「跑过」与「成了」',
+    expect: 'every stage distinguishes "it ran" from "it succeeded" (verified: false is not a success)',
     apply: (s) =>
       replace(
         s,
         "    if (!ok) li.classList.add('is-bad');\n    else if (stage.verified === true) li.classList.add('is-ok');\n    else li.classList.add('is-warn');",
-        "    if (!ok) li.classList.add('is-bad');\n    else li.classList.add('is-ok'); // 变异：没验过的也算成了",
+        "    if (!ok) li.classList.add('is-bad');\n    else li.classList.add('is-ok'); // mutation: something that was not verified counts as succeeded",
       ),
   },
   {
-    name: 'M212 卡片：**手册的关键事实不许错** ✓（**写错了就是在骗人** ✗）',
+    name: 'M212 the card: **the key facts of the manual may not be wrong** ✓ (**a wrong fact is a lie** ✗)',
     file: 'cards/board-hardware/card.js',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/board-hardware-card.test.ts'],
-    expect: '手册的关键事实都在',
-    apply: (s) => replace(s, 'GPIO1_A3', 'GPIO1_A4'), // 变异：引脚写错
+    expect: '**the key facts of the manual are all there** (**a wrong one would be lying to the user**)',
+    apply: (s) => replace(s, 'GPIO1_A3', 'GPIO1_A4'), // mutation: the pin is wrong
   },
   {
-    name: 'M213 卡片：**先认「是不是手册那块板」** ✓（**不装作适用** ✗）',
+    name: 'M213 the card: **it recognises first whether it is the board of the manual** ✓ (**it may not pretend to apply** ✗)',
     file: 'cards/board-hardware/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/board-hardware-card.test.tsx'],
-    expect: '不是手册那块 → 明说不适用',
+    expect: 'another board is not the board of the manual, so it says the list may not apply',
     apply: (s) =>
       replace(
         s,
         '  if (model.includes(BOARD_KEY)) {',
-        '  if (true) { // 变异：不管什么板都说适用',
+        '  if (true) { // mutation: it says it applies to every board',
       ),
   },
   {
-    name: 'M215 校验器：**reader 的命令过危险地板** ✓（**规则 28** ✓ —— 板型包直接生效 ✓）',
+    name: 'M215 the validator: **the command of a reader passes the danger floor** ✓ (**rule 28** ✓ — a board pack takes effect directly ✓)',
     file: 'src/main/tags/validator.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 28',
+    expect: 'rule 28 · the command a reader uses to collect data may not hit the danger floor',
     apply: (s) =>
       replace(
         s,
         '    if (floor.matched) {',
-        '    if (false) { // 变异：reader 的命令不过地板',
+        '    if (false) { // mutation: the command of the reader does not pass the floor',
       ),
   },
   {
-    name: 'M219 校验器：**reader 的参数值不许含 shell 元字符** ✓（**规则 29** ✓）',
+    name: 'M219 the validator: **the parameter values of a reader may not contain shell metacharacters** ✓ (**rule 29** ✓)',
     file: 'src/main/tags/validator.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 29',
+    expect: 'rule 29 · the argument values of a reader may not contain shell metacharacters',
     apply: (s) =>
       replace(
         s,
         '      if (hit !== undefined) {',
-        '      if (false) { // 变异：参数值里的元字符放行',
+        '      if (false) { // mutation: the metacharacters in a parameter value are let through',
       ),
   },
   {
-    name: 'M220 校验器：**exec_regex 的命令不许是解释器包装** ✓（**规则 30** ✓）',
+    name: 'M220 the validator: **the command of an exec_regex may not be an interpreter wrapper** ✓ (**rule 30** ✓)',
     file: 'src/main/tags/validator.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 30',
+    expect: 'rule 30 · the command of exec_regex may not be an interpreter wrapper',
     apply: (s) =>
       replace(
         s,
         '      if (!SHELL_WRAPPERS.has(base)) continue;',
-        '      if (true) continue; // 变异：解释器包装放行',
+        '      if (true) continue; // mutation: the interpreter wrapper is let through',
       ),
   },
   {
-    name: 'M221 校验器：**板型包里不许用 script** ✓（**规则 31** ✓）',
+    name: 'M221 the validator: **the script kind may not be used in a board pack** ✓ (**rule 31** ✓)',
     file: 'src/main/tags/validator.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-validator.test.ts'],
-    expect: '规则 31',
+    expect: 'rule 31 · the script kind may not be used in a board pack',
     apply: (s) =>
       replace(
         s,
         "    if (reader.kind !== 'script') continue;",
-        "    if (true) continue; // 变异：script 放行",
+        "    if (true) continue; // mutation: script is let through",
       ),
   },
   {
-    name: 'M223 权限区：**卡片写板子默认禁止** ✓（**C2 的答案** ✓ —— ADR-D47 ✓）',
+    name: 'M223 the permission area: **a card writing to the board is forbidden by default** ✓ (**the answer of C2** ✓ — ADR-D47 ✓)',
     file: 'src/main/permissions/policy.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
-    expect: '卡片写板子：默认禁止',
+    expect: '**a card writing to the board: forbidden by default** (C2 is blocked here)',
     apply: (s) =>
       replace(
         s,
         '  if (op.startsWith(KIND_PREFIX.action)) return false;',
-        '  if (false) return false; // 变异：卡片写板子也允许',
+        '  if (false) return false; // mutation: a card writing to the board is allowed as well',
       ),
   },
   {
-    name: 'M224 设置页：**把开关交出去** ✓（**谁 + 哪个操作 + 开还是关** ✓）',
+    name: 'M224 the settings page: **the switch is handed over** ✓ (**who + which action + on or off** ✓)',
     file: 'src/renderer/shell/pages/SettingsPage.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/settings-permissions.test.tsx'],
-    expect: '拨开关',
+    expect: 'a switch hands over "who, which operation, on or off"',
     apply: (s) =>
       replace(
         s,
         "onChange={(next) => onPermission('card', row.op, next)}",
-        // 变异里不能带行内注释 —— JSX 里那会把闭合括号吃掉（语法错不算守住）
+        // no inline comment in a mutation — in JSX it would eat the closing bracket (a syntax error does not count as held)
         "onChange={(next) => onPermission('agent', row.op, next)}",
       ),
   },
   {
-    name: 'M233 设置页：**总开关不含危险动作** ✓（**重启不能跟着整类开** ✓）',
+    name: 'M233 the settings page: **the master switch does not cover the dangerous actions** ✓ (**a reboot may not follow the whole class** ✓)',
     file: 'src/renderer/shell/pages/SettingsPage.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/settings-permissions.test.tsx'],
-    expect: '总开关',
+    expect: 'the master switch only covers the non-destructive actions (a destructive one is enabled one by one)',
     apply: (s) =>
       replace(
         s,
         "  const bulkActions = permissions.filter(\n    (row) => row.kind === 'action' && row.danger !== 'destructive',\n  );",
-        "  const bulkActions = permissions.filter((row) => row.kind === 'action'); // 变异：危险动作也进总开关",
+        "  const bulkActions = permissions.filter((row) => row.kind === 'action'); // mutation: the dangerous actions are in the master switch as well",
       ),
   },
   {
-    name: 'M226 权限区：**危险的动作默认关** ✓（**「开启权限默认知道危险性」** ✓ —— ADR-D48 ✓）',
+    name: 'M226 the permission area: **a dangerous action is off by default** ✓ (**"turning a permission on means the danger is known"** ✓ — ADR-D48 ✓)',
     file: 'src/main/permissions/policy.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
-    expect: '危险',
+    expect: 'danger',
     apply: (s) =>
       replace(
         s,
         '  if (dangerous) return false;',
-        '  if (false) return false; // 变异：危险的动作也默认开',
+        '  if (false) return false; // mutation: the dangerous actions are on by default as well',
       ),
   },
   {
-    name: 'M227 授权：**destructive 不再问人** ✓（**直接执行** ✓ —— ADR-D48 ✓）',
+    name: 'M227 the authorisation: **a destructive action no longer asks a person** ✓ (**it runs directly** ✓ — ADR-D48 ✓)',
     file: 'src/main/actions/authorization.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
     expect: 'destructive',
@@ -2441,11 +2405,11 @@ const MUTATIONS = [
       replace(
         s,
         "  if (!Object.prototype.hasOwnProperty.call(granted.actions, action.id)) {",
-        "  if (false && !Object.prototype.hasOwnProperty.call(granted.actions, action.id)) { // 变异：没授权也放行",
+        "  if (false && !Object.prototype.hasOwnProperty.call(granted.actions, action.id)) { // mutation: it lets it through even without an authorisation",
       ),
   },
   {
-    name: 'M228 授权：**超 guard 域 → 拒绝** ✓（**不是「要不要问」** ✓ —— ADR-D48 ✓）',
+    name: 'M228 the authorisation: **outside the guard range → refused** ✓ (**not "should it ask"** ✓ — ADR-D48 ✓)',
     file: 'src/main/actions/authorization.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/actions/authorization.test.ts'],
     expect: 'guard',
@@ -2453,11 +2417,11 @@ const MUTATIONS = [
       replace(
         s,
         "    if (!withinRange(params[name], range)) {",
-        "    if (false && !withinRange(params[name], range)) { // 变异：超域也放行",
+        "    if (false && !withinRange(params[name], range)) { // mutation: it lets it through even outside the range",
       ),
   },
   {
-    name: 'M229 流程：**存在即说明** ✓（**不再查批准账** ✓ —— ADR-D48 ✓）',
+    name: 'M229 the workflow: **its existence is the explanation** ✓ (**the approval ledger is gone** ✓ — ADR-D48 ✓)',
     file: 'src/main/workflows/registry.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/registry.test.ts'],
     expect: 'require',
@@ -2465,75 +2429,75 @@ const MUTATIONS = [
       replace(
         s,
         "  require(id: string): RegisteredWorkflow {",
-        "  requireApproved(id: string): RegisteredWorkflow { // 变异：又变回要批准",
+        "  requireApproved(id: string): RegisteredWorkflow { // mutation: it asks for an approval again",
       ),
   },
   {
-    name: 'M225 权限区：**卡片触发流程默认允许** ✓（**「点了他就执行了」** ✓ —— ADR-D47 ✓）',
+    name: 'M225 the permission area: **a card triggering a workflow is allowed by default** ✓ (**"he clicked it, so it ran"** ✓ — ADR-D47 ✓)',
     file: 'src/main/permissions/policy.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/permissions/policy.test.ts'],
-    expect: '卡片触发流程：默认允许',
+    expect: '**a card triggering a workflow: allowed by default** (the gate is this switch)',
     apply: (s) =>
       replace(
         s,
         "  if (actor === 'agent') return true;",
-        "  if (actor === 'agent' && op.startsWith(KIND_PREFIX.workflow)) return false; // 变异：卡片不许触发流程",
+        "  if (actor === 'agent' && op.startsWith(KIND_PREFIX.workflow)) return false; // mutation: the card may not trigger a workflow",
       ),
   },
   {
-    name: 'M218 装卡：**板型包里没有那个动作就不装** ✓（**板型包说了算** ✓ —— ADR-D46 ✓）',
+    name: 'M218 installing a card: **if the board pack does not have the action it is not installed** ✓ (**the board pack decides** ✓ — ADR-D46 ✓)',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: '要写的动作板型包里没有',
+    expect: '**the board pack does not offer the action to be written → it is not installed** (**the board pack decides**)',
     apply: (s) =>
       replace(
         s,
         '  if (missing.length > 0) {',
-        '  if (false) { // 变异：动作不在板型包里也装',
+        '  if (false) { // mutation: it installs an action that the board pack does not have',
       ),
   },
   {
-    name: 'M214 卡片：**「读不到」不是 0** ✓（**没数与零是两件事** ✓）',
+    name: 'M214 the card: **"it cannot be read" is not 0** ✓ (**a missing number and a zero are two things** ✓)',
     file: 'cards/board-hardware/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/board-hardware-card.test.tsx'],
-    expect: '读不到就说读不到',
+    expect: 'when it cannot be read it says so (not 0 — "no value" and "zero" are two different things)',
     apply: (s) =>
       replace(
         s,
-        "  if (status === 'unavailable') return '读不到';",
-        "  if (status === 'unavailable') return '0'; // 变异：读不到就说 0",
+        "  if (status === 'unavailable') return ",
+        "  if (status === 'unavailable') return '0'; // mutation: it says 0 when it cannot be read\n  if (false) return ",
       ),
   },
   {
-    name: 'M211 卡片：**跑的时候把输入带上** ✓（**不传空参数** ✓）',
+    name: 'M211 the card: **the inputs are carried along when it runs** ✓ (**no empty parameters** ✓)',
     file: 'cards/build-deploy/card.js',
     check: ['npx', 'vitest', 'run', 'tests/web/build-deploy-card.test.tsx'],
-    expect: '点「编译」就调编译流程',
+    expect: 'clicking compile calls the compile workflow, with the directory and the project',
     apply: (s) =>
       replace(
         s,
         'if (editable.build_dir) inputs.build_dir = editable.build_dir;',
-        "if (editable.build_dir) inputs.build_dir = ''; // 变异：输入不带上",
+        "if (editable.build_dir) inputs.build_dir = ''; // mutation: the inputs are not carried along",
       ),
   },
   {
-    name: 'M207 界面：**菜单里列的是板** ✓（**不列连接** ✓ —— 用户 2026-11-16 明确 ✓）',
+    name: 'M207 the interface: **the menu lists the boards** ✓ (**not the connections** ✓ — the user stated it explicitly on 2026-11-16 ✓)',
     file: 'src/renderer/shell/DevicePicker.tsx',
     check: ['npx', 'vitest', 'run', 'tests/web/device-picker-view.test.tsx'],
-    expect: '菜单里列的是板卡',
+    expect: 'the menu lists boards (two of them: the real board and the fake one)',
     apply: (s) =>
       replace(
         s,
         '          {boards.map((board) => (',
-        '          {connections.filter((c) => c.boardPack !== null).map((board) => ( // 变异：列连接，不列板',
+        '          {connections.filter((c) => c.boardPack !== null).map((board) => ( // mutation: it lists the connections, not the boards',
       ),
   },
 ];
 
-/** 替换一次。原文不在就抛错——「变异没打上」本身就是守卫失效 */
+/** One replacement. It throws when the original text is not there — a mutation that does not apply is itself a failed guard */
 function replace(src, oldText, newText) {
   if (!src.includes(oldText)) {
-    throw new Error(`原文不在，变异没打上：\n${oldText.slice(0, 120)}`);
+    throw new Error(`the original text is not there, the mutation did not apply:\n${oldText.slice(0, 120)}`);
   }
   return src.replace(oldText, newText);
 }
@@ -2557,14 +2521,16 @@ let fail = 0;
 let envProblems = 0;
 
 /**
- * 「套件没跑起来」的判据。
+ * The criterion for "the suite did not run".
  *
- * **为什么必须区分**：变异之后测试套件**加载失败**（比如原生模块架构不匹配）
- * 也会让 vitest 退出非 0——但那**不是守卫失效**，是环境问题。
- * 两者混在一起报成「形同虚设」，开发者会得出**完全相反**的结论：
- * 「这几个回归测试是摆设」。而如果真的有一个守卫失效，它也可能被读成「环境问题」。
- * **两个方向都会骗人。**
- * （`docs/13-计划1复评报告.md` S-02）
+ * **Why the two have to be told apart**: after a mutation the test suite can
+ * also **fail to load** (for example when the architecture of a native module
+ * does not match), and that also makes vitest exit non-zero — but that **is
+ * not a failed guard**, it is an environment problem.
+ * Reporting the two together as "a sham" leads the developer to the
+ * **exactly opposite** conclusion: "these regression tests are props". And if
+ * a guard really has failed, it can be read as an environment problem just as
+ * easily. **Both directions deceive.**
  */
 const ENV_PROBLEM = [
   /Tests\s+no tests/i,
@@ -2580,34 +2546,39 @@ function isEnvProblem(out) {
 }
 
 /**
- * **待还原的文件**。
+ * **The file that still has to be restored**.
  *
- * 为什么需要它：变异期间源文件是「坏」的。如果进程在跑检查的过程中
- * 被杀掉（Ctrl+C、超时、关窗），`finally` 里的还原**不会执行**——
- * 源文件就带着变异留在仓库里了。
+ * Why it is needed: while a mutation runs the source file is "broken". If the
+ * process is killed while the checks run (Ctrl+C, a timeout, a closed
+ * window), the restore in the `finally` **does not happen** — and the source
+ * file stays in the repository with the mutation in it.
  *
- * 那不是假设：有一次跑超时被砍，App.tsx 的错误呈现就留在坏状态，
- * 之后的测试全红，而原因在几十行之外。
+ * That is not a hypothesis: once a run was killed on a timeout, the error
+ * presentation of App.tsx stayed in the broken state, every test after it was
+ * red, and the cause was dozens of lines away.
  *
- * 所以：**退出信号与正常退出都要还原**。
+ * So: **both the exit signals and the normal exit restore**.
  */
 let pendingRestore = null;
 
 /**
- * 还原日志（journal）。
+ * The restore journal.
  *
- * ── 为什么信号钩子不够 ──
+ * ── Why the signal hooks are not enough ──
  *
- * `SIGKILL`（OOM killer、容器被杀、任务超时被砍）**拦不住**——
- * `finally`、`exit` 钩子、信号处理器统统不执行。
+ * `SIGKILL` (the OOM killer, a killed container, a task cut off on a timeout)
+ * **cannot be caught** — the `finally`, the `exit` hook and the signal
+ * handlers all do not run.
  *
- * 那不是假设：2026-11-14 有一次跑变异被 SIGKILL，
- * **三个「变异体」留在工作树里**，其中两个是上一轮评审修好的 Critical
- * （串口端口不开、危险地板不命中），随后被 `git add -A` 一起提交了——
- * 单元套件在 HEAD 上是**红的**。
+ * That is not a hypothesis: on 2026-11-14 a mutation run was SIGKILLed and
+ * **three mutants stayed in the working tree**, two of them Criticals that the
+ * previous round of review had fixed (the serial port does not open, the
+ * danger floor does not hit); they were then committed together by
+ * `git add -A` — and the unit suite was **red** at HEAD.
  *
- * → 所以在改坏文件**之前**把原文写进 journal；
- * 下次运行时先看它：有就说明上次被砍了 → **先还原，再跑**。
+ * → So the original text is written into the journal **before** a file is
+ * broken; the next run looks at it first: it is there → the last run was cut
+ * off → **restore first, then run**.
  */
 const JOURNAL = join(ROOT, '.mutation-restore.json');
 
@@ -2615,7 +2586,7 @@ function writeJournal(path, original) {
   try {
     writeFileSync(JOURNAL, JSON.stringify({ path, original }));
   } catch {
-    // 记不上就只剩退出信号那条路了
+    // if it cannot be written down, only the exit signal path is left
   }
 }
 
@@ -2623,11 +2594,11 @@ function clearJournal() {
   try {
     rmSync(JOURNAL, { force: true });
   } catch {
-    /* 忽略 */
+    /* ignored */
   }
 }
 
-/** 上次被砍了？先把文件还原回来。@returns 有没有还原过 */
+/** Was the last run cut off? Restore the file first. @returns whether something was restored */
 function restoreFromJournal() {
   if (!existsSync(JOURNAL)) return false;
   let entry = null;
@@ -2640,10 +2611,10 @@ function restoreFromJournal() {
   try {
     if (entry && typeof entry.path === 'string' && typeof entry.original === 'string') {
       writeFileSync(entry.path, entry.original, 'utf8');
-      console.log(`（已还原上次被中断的变异：${entry.path}）`);
+      console.log(`(the mutation that was interrupted last time has been restored: ${entry.path})`);
     }
   } catch {
-    console.error(`✗ 还原失败：${entry?.path} —— 请手动 git checkout 它`);
+    console.error(`✗ the restore failed: ${entry?.path} — restore it by hand with git checkout`);
   }
   clearJournal();
   return true;
@@ -2653,16 +2624,16 @@ function restorePending() {
   if (!pendingRestore) return;
   try {
     writeFileSync(pendingRestore.path, pendingRestore.original, 'utf8');
-    console.log('\n（已还原被中断的变异）');
+    console.log('\n(the interrupted mutation has been restored)');
   } catch {
-    // 还原不了也要说出来
-    console.error(`\n✗ 还原失败：${pendingRestore.path} —— 请手动 git checkout 它`);
+    // it has to be said even when it cannot be restored
+    console.error(`\n✗ the restore failed: ${pendingRestore.path} — restore it by hand with git checkout`);
   }
   pendingRestore = null;
   clearJournal();
 }
 
-/** 工作树的状态（`git status --porcelain`） */
+/** The state of the working tree (`git status --porcelain`) */
 function gitStatusPorcelain() {
   const r = spawnSync('git', ['status', '--porcelain'], {
     cwd: ROOT,
@@ -2683,15 +2654,16 @@ process.on('SIGTERM', () => {
 });
 process.on('exit', restorePending);
 
-console.log('=== 变异测试：验证回归测试真的在守 ===');
+console.log('=== mutation testing: it checks that the regression tests really guard ===');
 console.log();
 
 /**
- * 可以只跑其中几项：`node scripts/mutation-check.mjs M10 M11`。
+ * A subset of them can be run on their own: `node scripts/mutation-check.mjs M10 M11`.
  *
- * **为什么需要**：12 项一次跑完要好几分钟（web 测试本身就慢），
- * 而工具调用有上限——一次跑不完就会**在变异中途被杀**，
- * 源文件带着变异留在仓库里。
+ * **Why it is needed**: running all of them at once takes several minutes
+ * (the web tests are slow on their own), and a tool call has a limit — a run
+ * that does not finish is **killed in the middle of a mutation**, and the
+ * source file stays in the repository with the mutation in it.
  */
 const FILTERS = process.argv.slice(2);
 const selected = FILTERS.length
@@ -2699,26 +2671,28 @@ const selected = FILTERS.length
   : MUTATIONS;
 
 if (selected.length === 0) {
-  console.error(`没有匹配的变异：${FILTERS.join(', ')}`);
-  console.error(`可用的编号：C1–C6、M7–M12`);
+  console.error(`no mutation matches: ${FILTERS.join(', ')}`);
+  console.error('the id of a mutation is the token in front of its name (C1, M7, M40b, …)');
   process.exit(1);
 }
 
-// 上次被砍了？先还原（journal 里还留着原文）
+// Was the last run cut off? Restore first (the journal still holds the original)
 restoreFromJournal();
 
 /**
- * **工作树必须干净**才跑变异。
+ * The working tree **has to be clean** before a mutation runs.
  *
- * 在脏仓库上跑，「本来就有的改动」与「变异造成的改动」混在一起——
- * 还原错了就说不清，出事时分不清谁是谁。
- * 而且上一次事故正是这么发生的：脏工作树被 `git add -A` 一起提交了。
+ * On a dirty repository the "changes that were there anyway" and "the changes
+ * the mutation caused" are mixed together — a wrong restore cannot be told
+ * apart, and when something goes off nobody knows which is which.
+ * The last incident happened exactly this way: a dirty working tree was
+ * committed together by `git add -A`.
  */
 const dirtyBefore = gitStatusPorcelain();
 if (dirtyBefore !== '') {
-  console.error('✗ 工作树不干净 —— 拒绝在脏仓库上跑变异');
+  console.error('✗ the working tree is not clean — the mutation refuses to run on a dirty repository');
   console.error(dirtyBefore);
-  console.error('   先 commit 或 stash 干净了再跑。');
+  console.error('   commit or stash it clean first, then run again.');
   process.exit(1);
 }
 
@@ -2730,65 +2704,66 @@ for (const m of selected) {
   try {
     mutated = m.apply(original);
   } catch (err) {
-    console.log(`✗ ${m.name}：${err instanceof Error ? err.message : String(err)}`);
+    console.log(`✗ ${m.name}: ${err instanceof Error ? err.message : String(err)}`);
     fail += 1;
     continue;
   }
 
   writeFileSync(path, mutated, 'utf8');
   pendingRestore = { path, original };
-  // **先记账再改坏**——被 SIGKILL 了也有据可查
+  // **the bookkeeping comes before the break** — a SIGKILL still leaves a trace
   writeJournal(path, original);
 
   let result;
   try {
     result = run(m.check[0], m.check.slice(1));
   } finally {
-    // 还原——不管验成什么样，文件必须回到原样
+    // restore — whatever the verdict was, the file has to end up as it was
     writeFileSync(path, original, 'utf8');
     pendingRestore = null;
     clearJournal();
   }
 
   if (result.rc === 0) {
-    console.log(`✗ ${m.name}：改坏之后测试**仍然全绿** —— 这个测试形同虚设`);
+    console.log(`✗ ${m.name}: the tests are **still all green** after the break — this test is a sham`);
     fail += 1;
   } else if (isEnvProblem(result.out)) {
-    console.log(`⚠ ${m.name}：**套件没跑起来**（环境问题，不是守卫失效）`);
-    console.log('    常见原因：原生模块的架构与当前平台对不上（node_modules 是从别的系统搬来的）。');
-    console.log('    这一项**判不了**——修好环境再跑一次。');
+    console.log(`⚠ ${m.name}: **the suite did not run** (an environment problem, not a failed guard)`);
+    console.log('    A common cause: the architecture of a native module does not match the current platform (node_modules was carried over from another system).');
+    console.log('    This one **cannot be judged** — fix the environment and run it again.');
     envProblems += 1;
   } else if (!result.out.includes(m.expect)) {
     console.log(
-      `✗ ${m.name}：红了，但**红的原因不对**（输出里找不到「${m.expect}」）—— ` +
-        '可能是编译失败，不算守住',
+      `✗ ${m.name}: it turned red, but **for the wrong reason** (the output does not contain "${m.expect}") — ` +
+        'it may be a compile failure, which does not count as held',
     );
     fail += 1;
   } else {
-    console.log(`✓ ${m.name}：改坏之后测试变红（守住了）`);
+    console.log(`✓ ${m.name}: the tests turned red after the break (held)`);
     pass += 1;
   }
 }
 
 /**
- * 跑完之后**工作树必须还是干净的**。
+ * After the run the working tree **still has to be clean**.
  *
- * 变了 = 有文件没还原干净 → 判失败（宁可吵，也别留一颗雷）。
+ * It changed = a file was not restored → it is a failure (better to be noisy
+ * than to leave a mine behind).
  */
 const leftover = gitStatusPorcelain();
 if (leftover !== '') {
-  console.error('✗ 跑完之后工作树不干净 —— 有文件没还原干净：');
+  console.error('✗ the working tree is not clean after the run — a file was not restored:');
   console.error(leftover);
   fail += 1;
 }
 
 console.log();
 console.log(
-  `=== 结果：守住 ${pass} 项，守卫失效 ${fail} 项` +
-    (envProblems > 0 ? `，环境问题 ${envProblems} 项（判不了，不是守卫失效）` : '') +
+  `=== the result: ${pass} held, ${fail} failed guards` +
+    (envProblems > 0 ? `, ${envProblems} environment problems (they cannot be judged, they are not failed guards)` : '') +
     ' ===',
 );
 if (envProblems > 0) {
-  console.log('    「环境问题」的那些项**没有判定过**——修好环境（原生模块要与平台对得上）再跑一次。');
+  console.log('    The "environment problems" **have not been judged** — fix the environment (the native modules have to match the platform) and run it again.');
 }
 process.exit(fail > 0 || envProblems > 0 ? 1 : 0);
