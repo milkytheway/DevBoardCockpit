@@ -45,3 +45,9 @@ jobs:
       # on purpose.
       - name: Check the language
         run: npm run check:language
+
+      # Every reference in the contract layer has to resolve: a cross-file
+      # section that does not exist, a pointer outside this repository, a
+      # section number used twice, a path that is not there.
+      - name: Check the links of the contract
+        run: npm run check:links
