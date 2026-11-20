@@ -12,9 +12,8 @@ import { dirname } from 'node:path';
  * ── What is recorded is every attempt, not only the ones that succeeded ──
  *
  * The contract's minimum requirement is "one line per execution"; here every
- * attempt gets a line (including the denied ones and the ones waiting for
- * confirmation) — "who tried what but was not allowed" is precisely the class
- * of event that most deserves a trace.
+ * attempt gets a line (including the denied ones) — "who tried what but was
+ * not allowed" is precisely the class of event that most deserves a trace.
  *
  * ── Line-oriented text, not a JSON file ──
  *

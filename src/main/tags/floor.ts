@@ -6,7 +6,8 @@
  *
  * A pack declares `danger` itself. But an agent can write packs — and
  * without any other constraint a pack that declares `reboot` as `reversible`
- * would skip the user's confirmation, which makes the grading pointless.
+ * would pass the permission area as something harmless, which makes the
+ * grading pointless.
  *
  * So there is a floor:
  *

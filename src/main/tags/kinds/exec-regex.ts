@@ -13,7 +13,7 @@ import type { ReaderKind } from './types';
  * Its `command` goes into the fetch fragment verbatim, and that is
  * deliberate: escaping a command is the same as turning it into a different
  * command. Whether a pack may be installed and which commands it may run is
- * a matter of the user's confirmation (the chain of ADR-D20).
+ * decided by the permission area and by the danger floor.
  */
 
 export const EXEC_REGEX: ReaderKind = {

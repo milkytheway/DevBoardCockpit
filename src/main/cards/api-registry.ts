@@ -208,7 +208,7 @@ export function cardApis(): CardApiDef[] {
       scopeArg: 'id',
       params: ['id', 'params'],
       // **What is returned is the result object** (contract spec/04 §2.4: `{ok, verified, readback, reason, audit_id}`)
-      // → The session layer **does not collapse it into an envelope failure** (collapsing it would lose the `confirm_id` → the confirmation channel would be a sham)
+      // → The session layer **does not collapse it into an envelope failure** (collapsing it would lose the result → the caller could not tell an action failure from a transport failure)
       make: (services) => (_ctx, args) =>
         services.actions.invoke(String(args['id']), (args['params'] ?? {}) as Record<string, unknown>),
     },

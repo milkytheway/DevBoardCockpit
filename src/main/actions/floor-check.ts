@@ -19,8 +19,11 @@ import { matchDangerFloorArgv, tokenizeCommand, type FloorMatch } from '../tags/
  *
  * ── Disposition ──
  *
- * A hit → treat it as `destructive` (it goes through the confirmation
- * channel, not an outright refusal) —
+ * A hit → treat it as `destructive`. That is information, not a refusal:
+ * the confirmation chain is gone (ADR-D48), so the verdict decides what the
+ * permission area shows and what the audit log records, while the granted
+ * set and the guard decide whether the action runs at all
+ * (`authorization.ts`).
  * §5.2.1: "before the runtime executes an action, it compares the command
  * against the floor table. Any hit means the action is treated as
  * destructive".

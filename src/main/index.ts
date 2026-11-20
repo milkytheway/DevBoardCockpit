@@ -287,8 +287,9 @@ const cardRoots: CardRoot[] = [
  *   pack decides ✓; a card's manifest is its permission ✓; the user
  *   clicking is the consent ✓ → there is no second record of 'who granted
  *   this' any more ✓.
- * - Confirmation credentials (`actions/authorization.ts`): one-shot, valid
- *   for 5 minutes.
+ * - No confirmation chain ✓ — there is no "wait for a nod" state any more ✓
+ *   (ADR-D48 ✓): the permission area and the danger floor decide whether an
+ *   action runs, and the audit records what happened ✓.
  * - Audit (`actions/audit.ts`): one line per action, line-oriented text.
  */
 /**
