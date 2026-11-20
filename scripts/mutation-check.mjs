@@ -1887,8 +1887,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };\n  }\n\n  // **③ Validation of the parameters + encoding**",
-        "    return { ok: false, reason: 'denied', detail: `No such action: ${actionId}` };\n  }\n\n  // **③ Validation of the parameters + encoding**",
+        "    return { ok: false, reason: 'not_found', detail: `No such action: ${actionId}` };\n  }\n\n  // **② The unified permission area is the gate of the agent side** ✓",
+        "    return { ok: false, reason: 'denied', detail: `No such action: ${actionId}` };\n  }\n\n  // **② The unified permission area is the gate of the agent side** ✓",
       ),
   },
   {
