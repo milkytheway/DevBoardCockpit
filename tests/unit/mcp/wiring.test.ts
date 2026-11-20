@@ -8,27 +8,27 @@ import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { RuntimeStatus } from '../../../src/shared/runtime-status';
 
 /**
- * **宿主拼装的接线**（`docs/04` §9.2.1 ✓ · ADR-D40 ✓）。
+ * The wiring the host assembles.
  *
- * ── 这组判据守什么 ──
+ * What these criteria guard:
  *
- * | 判据 | 为什么 |
+ * | Criterion | Why |
  * |---|---|
- * | **运行时连不上 → `connected` 是 `false`** ✓ | **「有 profileId」≠「连着」** ✓（评审 I-1 ✓） |
- * | **运行时停下 → `connected` 是 `false`** ✓ | 同上 ✓ |
- * | **开着终端会话 → `connected` 是 `true`** ✓ | 那条也是活连接 ✓ |
- * | **`sample_tag` 要先采一次** ✓ | 不采的话 agent 拿到**冻结的旧样本** ✓（契约 §2.1 ✓） |
+ * | **the runtime cannot be reached → `connected` is `false`** | "it has a profileId" is not "connected" |
+ * | **the runtime stopped → `connected` is `false`** | the same |
+ * | **a terminal session is open → `connected` is `true`** | that is a live connection as well |
+ * | **`sample_tag` has to sample first** | without a sample the agent gets a **frozen old sample** (contract §2.1) |
  */
 
 const PROFILE: ConnectionProfile = {
   id: 'board',
-  label: '板子',
+  label: 'the board',
   transport: 'adb',
   board_pack: 'demo-pack',
   options: {},
 };
 
-/** 假运行时（**只给接线要的那几个** ✓） */
+/** A fake runtime (**only the parts the wiring needs**) */
 function runtime(status: RuntimeStatus, sampled: string[] = []): TagRuntime {
   return {
     get status(): RuntimeStatus {
@@ -37,7 +37,7 @@ function runtime(status: RuntimeStatus, sampled: string[] = []): TagRuntime {
     get packView() {
       return {
         id: 'demo-pack',
-        name: '演示包',
+        name: 'demo pack',
         version: '1.0.0',
         poll_groups: [],
         readers: [],
@@ -83,37 +83,38 @@ function wiring(over: {
   };
 }
 
-describe('MCP 接线的 · connected 的判据', () => {
-  it('**运行时是 `running` 且就是这条 profile → 连着** ✓', () => {
+describe('MCP wiring · the criterion for connected', () => {
+  it('**the runtime is `running` and it is this profile → connected**', () => {
     const host = buildMcpHost(
       wiring({ status: { state: 'running', profileId: 'board' } }),
     );
     expect(host.connected('board')).toBe(true);
   });
 
-  it('**运行时连不上（`error`）→ 不许报「连着」** ✓（**「有 profileId」≠「连着」** ✓）', () => {
-    // **`profileId` 仍然有值** ✓（运行时连不上时它不清 ✓）—— 但**没连着** ✓
+  it('**the runtime cannot be reached (`error`) → it may not report "connected"** ("it has a profileId" is not "connected")', () => {
+    // **the `profileId` still has a value** (it is not cleared when the runtime
+// cannot be reached) — but it is **not connected**
     const host = buildMcpHost(
-      wiring({ status: { state: 'error', profileId: 'board', detail: '连不上' } }),
+      wiring({ status: { state: 'error', profileId: 'board', detail: 'cannot be reached' } }),
     );
     expect(host.connected('board')).toBe(false);
   });
 
-  it('**运行时停下了（`idle`）→ 不许报「连着」** ✓', () => {
+  it('**the runtime stopped (`idle`) → it may not report "connected"**', () => {
     const host = buildMcpHost(
       wiring({ status: { state: 'idle', profileId: 'board' } }),
     );
     expect(host.connected('board')).toBe(false);
   });
 
-  it('**开着终端会话 → 连着** ✓（那也是活连接 ✓）', () => {
+  it('**a terminal session is open → connected** (that is a live connection as well)', () => {
     const host = buildMcpHost(
       wiring({ status: { state: 'idle' }, live: ['board'] }),
     );
     expect(host.connected('board')).toBe(true);
   });
 
-  it('**别的 profile → 不连着** ✓', () => {
+  it('**another profile → not connected**', () => {
     const host = buildMcpHost(
       wiring({ status: { state: 'running', profileId: 'other' } }),
     );
@@ -121,8 +122,8 @@ describe('MCP 接线的 · connected 的判据', () => {
   });
 });
 
-describe('MCP 接线的 · sample_tag 要先采一次', () => {
-  it('**采过了** ✓（**不采的话拿到的是冻结的旧样本** ✓）', async () => {
+describe('MCP wiring · sample_tag has to sample first', () => {
+  it('**it has been sampled** (without a sample the agent gets a **frozen old sample**)', async () => {
     const sampled: string[] = [];
     const host = buildMcpHost(
       wiring({ status: { state: 'running', profileId: 'board' }, sampled }),
@@ -131,7 +132,7 @@ describe('MCP 接线的 · sample_tag 要先采一次', () => {
     expect(sampled).toEqual(['cpu.usage']);
   });
 
-  it('**采不到也不炸** ✓（**没这个 tag 就是没这个 tag** ✓）', async () => {
+  it('**it does not crash when the sample fails** (there is no such tag, so there is no such tag)', async () => {
     const host = buildMcpHost(wiring({ status: { state: 'error' } }));
     await expect(host.refreshTag('nope.nope')).resolves.toBeUndefined();
   });

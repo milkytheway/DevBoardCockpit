@@ -5,15 +5,15 @@ import { join } from 'node:path';
 import { CardStorage, KEY_LIMIT_BYTES, NAMESPACE_LIMIT_BYTES } from '../../../src/main/cards/storage';
 
 /**
- * 卡片的存储（契约 §6.2）。
+ * The storage of a card (contract §6.2).
  *
- * ── 三条硬约束 ──
+ * Three hard constraints:
  *
- * 1. **每张卡一个命名空间**——卡片之间互不可见。
- * 2. **有配额**——单键 64 KB、一个命名空间 1 MB。
- *    卡片是 AI 写的，它可能不小心塞一个巨大的值；
- *    **没有限额，一张卡就能把用户的磁盘写满**。
- * 3. **键名不得以 `__` 开头**——那是留给宿主的。
+ * 1. **One namespace per card** — the cards cannot see each other.
+ * 2. **There is a quota** — 64 KB per key, 1 MB per namespace. A card is
+ *    written by an AI and it may accidentally put a huge value in;
+ *    **without a limit one card fills up the disk of the user**.
+ * 3. **A key name may not start with `__`** — that is reserved for the host.
  */
 function tempStorage(): { storage: CardStorage; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'card-store-'));
@@ -23,8 +23,8 @@ function tempStorage(): { storage: CardStorage; cleanup: () => void } {
   };
 }
 
-describe('卡片存储', () => {
-  it('写进去读得出来', () => {
+describe('the storage of the card', () => {
+  it('what was written can be read back', () => {
     const { storage, cleanup } = tempStorage();
     try {
       expect(storage.set('cpu-usage', 'zoom', 2)).toEqual({ ok: true });
@@ -34,7 +34,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('**卡之间互不可见**', () => {
+  it('**the cards cannot see each other**', () => {
     const { storage, cleanup } = tempStorage();
     try {
       storage.set('card-a', 'k', 'A');
@@ -45,7 +45,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('单键超过 64 KB → quota_exceeded', () => {
+  it('a single key beyond 64 KB → quota_exceeded', () => {
     const { storage, cleanup } = tempStorage();
     try {
       const big = 'x'.repeat(KEY_LIMIT_BYTES + 10);
@@ -55,7 +55,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('命名空间超过 1 MB → quota_exceeded', () => {
+  it('a namespace beyond 1 MB → quota_exceeded', () => {
     const { storage, cleanup } = tempStorage();
     try {
       const chunk = 'y'.repeat(KEY_LIMIT_BYTES - 100);
@@ -66,13 +66,13 @@ describe('卡片存储', () => {
           return;
         }
       }
-      throw new Error('额度没有被拦住');
+      throw new Error('the quota was not stopped');
     } finally {
       cleanup();
     }
   });
 
-  it('键名以 `__` 开头 → 拒绝（**理由码要说对**：不是「值序列化不了」）', () => {
+  it('a key name that starts with `__` → it is refused (**the reason code has to be right**: not "the value cannot be serialised")', () => {
     const { storage, cleanup } = tempStorage();
     try {
       expect(storage.set('cpu-usage', '__x', 1).ok).toBe(false);
@@ -82,7 +82,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('值不能 JSON 序列化 → 拒绝（函数、循环引用）', () => {
+  it('a value that cannot be serialised to JSON → it is refused (a function, a circular reference)', () => {
     const { storage, cleanup } = tempStorage();
     try {
       expect(storage.set('cpu-usage', 'fn', () => 1)).toEqual({
@@ -97,7 +97,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('删键与清空', () => {
+  it('deleting a key and clearing', () => {
     const { storage, cleanup } = tempStorage();
     try {
       storage.set('cpu-usage', 'a', 1);
@@ -111,12 +111,12 @@ describe('卡片存储', () => {
     }
   });
 
-  it('**重启后还在**（卸载保留数据，契约 §6.2）', () => {
+  it('**it is still there after a restart** (the uninstall keeps the data, contract §6.2)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'card-store-'));
     try {
       const first = new CardStorage({ dir });
       first.set('cpu-usage', 'zoom', 3);
-      // 新的实例 = 重启后
+      // A new instance = after a restart
       const second = new CardStorage({ dir });
       expect(second.get('cpu-usage', 'zoom')).toBe(3);
     } finally {
@@ -124,7 +124,7 @@ describe('卡片存储', () => {
     }
   });
 
-  it('命名空间上限是 1 MB（别把它写错）', () => {
+  it('the limit of a namespace is 1 MB (do not write it wrong)', () => {
     expect(NAMESPACE_LIMIT_BYTES).toBe(1024 * 1024);
     expect(KEY_LIMIT_BYTES).toBe(64 * 1024);
   });

@@ -3,13 +3,15 @@ import { discoverArtifacts, matchesPattern } from '../../../src/main/workflows/d
 import type { FileEntry } from '../../../src/shared/ipc-contract';
 
 /**
- * 产物发现 —— **按规则找，不写死文件名**。
+ * The discovery of the artefacts — **it looks by the rules, it does not
+ * hard-code a file name**.
  *
- * ── 为什么规则要严 ──
+ * Why the rules have to be strict:
  *
- * 编译目录里满是中间产物（`.o` / `.cmd` / `.order` / `.mod.c`）——
- * 漏一条排除规则，就可能**把中间文件当产物送到板子上** ✗
- * （板子上的 `modprobe` 会失败，而流程可能还报成功 ✗）。
+ * A build directory is full of intermediate artefacts (`.o` / `.cmd` /
+ * `.order` / `.mod.c`) — miss one exclusion rule and an **intermediate file
+ * may be sent to the board as an artefact** (the `modprobe` on the board
+ * fails while the workflow may still report success).
  */
 function entry(name: string): FileEntry {
   return { name, path: `build/${name}`, isDirectory: false, sizeBytes: 1, modifiedAt: null };
@@ -24,27 +26,27 @@ const DIR = {
   dir: { name: 'sub', path: 'build/sub', isDirectory: true, sizeBytes: null, modifiedAt: null },
 };
 
-describe('产物发现 · 文件名匹配', () => {
-  it('`*` 通配', () => {
+describe('the discovery of the artefacts · the matching of the file name', () => {
+  it('the `*` wildcard', () => {
     expect(matchesPattern('hello.ko', '*.ko')).toBe(true);
     expect(matchesPattern('hello.o', '*.ko')).toBe(false);
     expect(matchesPattern('hello.ko', 'hello.*')).toBe(true);
   });
 
-  it('**没有 `*` 就是精确匹配**', () => {
+  it('**without a `*` it is an exact match**', () => {
     expect(matchesPattern('hello.ko', 'hello.ko')).toBe(true);
     expect(matchesPattern('hello.ko', 'hello')).toBe(false);
   });
 
-  it('`.` 不当通配（正则里的点要转义）', () => {
+  it('`.` is not a wildcard (the dot of a regular expression has to be escaped)', () => {
     expect(matchesPattern('helloxko', '*.ko')).toBe(false);
   });
 });
 
-describe('产物发现 · 找与排除', () => {
+describe('the discovery of the artefacts · finding and excluding', () => {
   const list = async (): Promise<FileEntry[]> => [DIR.hello, DIR.obj, DIR.cmd, DIR.order, DIR.modc, DIR.dir];
 
-  it('按 pattern 找到，**排除表里的不要**', async () => {
+  it('it is found by the pattern, **the ones of the exclusion list are not**', async () => {
     const found = await discoverArtifacts({ list: async () => list() }, {
       dir: 'build',
       pattern: '*.ko',
@@ -53,9 +55,9 @@ describe('产物发现 · 找与排除', () => {
     expect(found).toEqual(['build/hello.ko']);
   });
 
-  it('**模式匹配上了、但被排除表剔掉**的也不算数', async () => {
-    // 模式放宽到 `hello.*` → `.o` / `.cmd` 也会匹配上 →
-    // **这时排除表才真的起作用** ✓
+  it('**a file that the pattern matched but that the exclusion list dropped** does not count either', async () => {
+    // The pattern is widened to `hello.*` → the `.o` and the `.cmd` match as well →
+    // **only then does the exclusion list really do its work**
     const found = await discoverArtifacts({ list: async () => list() }, {
       dir: 'build',
       pattern: 'hello.*',
@@ -63,25 +65,25 @@ describe('产物发现 · 找与排除', () => {
     });
     expect(found).not.toContain('build/hello.o');
     expect(found).not.toContain('build/hello.cmd');
-    // 没被排除的还在
+    // What was not excluded is still there
     expect(found).toContain('build/hello.ko');
   });
 
-  it('**目录不算产物**', async () => {
+  it('**a directory is not an artefact**', async () => {
     const found = await discoverArtifacts({ list: async () => list() }, { dir: 'build', pattern: '*' });
     expect(found).not.toContain('build/sub');
   });
 
-  it('找到**多个**时按名字排序（结果要可复现 ✓）', async () => {
+  it('when **several** are found they are sorted by name (the result has to be reproducible)', async () => {
     const found = await discoverArtifacts({ list: async () => list() }, { dir: 'build', pattern: 'hello.*' });
     expect(found).toHaveLength(5);
-    // **排序稳定**（同样的输入 → 同样的顺序 ✓）
+    // **The order is stable** (the same input → the same order)
     expect(found).toEqual([...found].sort());
-    // 目录不在里面
+    // The directory is not in it
     expect(found).not.toContain('build/sub');
   });
 
-  it('一个都没有 → **空数组**（不是「随便给一个」✓）', async () => {
+  it('when there is none → **an empty array** (not "give any one of them")', async () => {
     const found = await discoverArtifacts({ list: async () => list() }, { dir: 'build', pattern: '*.xyz' });
     expect(found).toEqual([]);
   });

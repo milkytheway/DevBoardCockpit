@@ -3,17 +3,20 @@ import { projectRunStatus, workflowReasonOf } from '../../../src/main/cards/work
 import type { WorkflowRunStatus } from '../../../src/main/workflows/service';
 
 /**
- * 卡片侧看到的流程状态（**缩减投影** ✓）。
+ * The workflow state as the card sees it (**a reduced projection**).
  *
- * ── 这一层在防什么（V3-M7 ✓）──
+ * What this layer defends against (V3-M7):
  *
- * 宿主侧的状态**很全** ✓：`outputs`（**路径** ✓）· `inputs`（**参数值** ✓）·
- * 每一步的 `role`（**哪台机器** ✓）· `detail`（**人话解释** ✓）· `value`（**文件内容** ✓）。
+ * The state on the host side is **very complete**: `outputs` (**the paths**),
+ * `inputs` (**the argument values**), the `role` of every step (**which
+ * machine**), the `detail` (**an explanation in words**), the `value` (**the
+ * content of the file**).
  *
- * → 卡片是 **AI 写的任意网页** ✓ → 给它的东西**越少越安全** ✓。
- * → `docs/37` 的 **V3-M7** 早就点了这一条 ✓（「按最自然的实现 → **全泄**」✓）。
+ * → A card is **an arbitrary web page written by an AI**, so **the less it
+ *   gets, the safer it is**.
  *
- * → 所以判据是：**投影之后那些字段一个都不许在** ✓。
+ * → Therefore the criterion is: **not one of those fields may be there after
+ *   the projection**.
  */
 function fullStatus(): WorkflowRunStatus {
   return {
@@ -28,8 +31,8 @@ function fullStatus(): WorkflowRunStatus {
         ok: false,
         verified: false,
         reason: 'readback_mismatch',
-        detail: '命令返回非零（客机目录 /home/alientek/build）',
-        value: '整段输出',
+        detail: 'the command returned a non-zero code (the guest directory /home/alientek/build)',
+        value: 'the whole output',
         audit_id: 'audit-1',
         at: 1000,
         durationMs: 12,
@@ -44,33 +47,33 @@ function fullStatus(): WorkflowRunStatus {
   };
 }
 
-describe('流程状态给卡片的那一份（V3-M7）', () => {
-  it('**每一步只留契约说的那几个字段** ✓', () => {
+describe('the workflow state as it is given to a card (V3-M7)', () => {
+  it('**every step keeps only the few fields the contract names**', () => {
     const view = projectRunStatus(fullStatus());
     const stage = view.stages[0] as unknown as Record<string, unknown>;
     expect(Object.keys(stage).sort()).toEqual(['kind', 'ok', 'reason', 'stepId', 'verified']);
   });
 
-  it('**路径 / 输出值 / 角色 / 明细 / 审计号一个都不给** ✓', () => {
+  it('**not a single path / output value / role / detail / audit id is given**', () => {
     const view = projectRunStatus(fullStatus()) as unknown as Record<string, unknown>;
     const serialized = JSON.stringify(view);
-    // **路径** ✓
+    // **the path**
     expect(serialized).not.toContain('/home/alientek');
-    // **角色的机器名** ✓
+    // **the machine of the role**
     expect(serialized).not.toContain('build');
-    // **审计号** ✓
+    // **the audit id**
     expect(serialized).not.toContain('audit-1');
-    // **顶层也不给 outputs / inputs** ✓
+    // **the top level does not give outputs / inputs either**
     expect(view['outputs']).toBeUndefined();
     expect(view['inputs']).toBeUndefined();
   });
 
-  it('**`current` 也不给角色** ✓（那是拓扑 ✓）', () => {
+  it('**`current` does not carry a role either** (that is the topology)', () => {
     const view = projectRunStatus(fullStatus());
     expect(Object.keys(view.current ?? {}).sort()).toEqual(['at', 'kind', 'stepId']);
   });
 
-  it('**该给的都给了** ✓（run id · 状态 · 时间线）', () => {
+  it('**everything that has to be given is given** (the run id, the state, the timeline)', () => {
     const view = projectRunStatus(fullStatus());
     expect(view.runId).toBe('wf-abc12345');
     expect(view.workflowId).toBe('demo.run');
@@ -81,31 +84,31 @@ describe('流程状态给卡片的那一份（V3-M7）', () => {
   });
 });
 
-describe('卡片侧流程失败的理由码（**封闭** ✓）', () => {
-  it('**没授权 → denied** ✓', () => {
+describe('the reason codes of a failed workflow on the card side (**closed**)', () => {
+  it('**not permitted → denied**', () => {
     expect(workflowReasonOf(new Error('this card is not authorized to run the workflow "demo.run"'))).toBe('denied');
   });
 
-  it('**「没批准」那一档没了** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓ —— **流程包存在即说明** ✓）', () => {
-    // **不再有 `not_approved` 这个码** ✓ → **一律当 `failed`** ✓
-    // （**不许把原话泄给卡片** ✓ —— **也不许凭空造一个码** ✓）
+  it('**the "not approved" outcome is gone** (**the existence of the workflow pack is the statement**)', () => {
+    // **there is no `not_approved` code any more** → **everything is `failed`**
+    // (**the original wording may not leak to the card** — **and no code may be invented either**)
     expect(workflowReasonOf(new Error('this workflow pack has not been approved'))).toBe('failed');
   });
 
-  it('**没有这个包 → not_found** ✓', () => {
+  it('**there is no such pack → not_found**', () => {
     expect(workflowReasonOf(new Error('no such workflow pack: demo.run'))).toBe('not_found');
   });
 
-  it('**正在跑 → busy** ✓', () => {
+  it('**it is running → busy**', () => {
     expect(workflowReasonOf(new Error('workflow "demo.run" is running'))).toBe('busy');
   });
 
-  it('**别的一律 failed** ✓（**不许把原话泄给卡片** ✓）', () => {
+  it('**everything else is failed** (**the original wording may not leak to the card**)', () => {
     expect(workflowReasonOf(new Error('the path /etc/passwd cannot be opened'))).toBe('failed');
     expect(workflowReasonOf(new Error('the path /etc/passwd cannot be opened'))).not.toContain('/etc');
   });
 
-  it('**理由码是封闭的** ✓（**就那几个** ✓ —— **不许多出 `not_approved`** ✓）', () => {
+  it('**the reason codes are closed** (**just those** — **there may be no `not_approved`**)', () => {
     const codes = new Set<string>();
     for (const message of [
       'this card is not authorized to run the workflow "demo.run"',

@@ -6,32 +6,36 @@ import type { SessionLog } from '../../../src/main/logging/session-log';
 import type { Session } from '../../../src/main/hal/session';
 
 /**
- * **活连接的判定**（契约 `spec/04` §2.1 的 `connected` ✓ · ADR-D40 ✓）。
+ * **The decision of a live connection** (the `connected` of contract
+ * `spec/04` §2.1).
  *
- * ── 为什么要有这一层 ──
+ * Why this layer exists:
  *
- * `connected` 要答的是「**这条 profile 现在有活着的连接吗**」✓
- * —— profile 是**配置** ✓，连接是**实例** ✓。
+ * `connected` has to answer "**does this profile have a live connection
+ * right now**" — a profile is **configuration**, a connection is an
+ * **instance**.
  *
- * → 宿主侧**没有连接 registry** ✓ —— 连接按 **sessionId** 索引 ✓
- *   （`main/index.ts` 的 `connections` Map ✓ · 它是给「文件互传」用的 ✓）。
- * → **按 profileId 索引会撞** ✓ —— 同一个 profile 可以开两个终端标签 ✓
- *   （代码注释里明写过这个坑 ✓ —— 曾经按 profileId 索引导致「关掉一个另一个找不到了」✓）。
+ * → The host side **has no registry of connections** — the connections are
+ *   indexed by **sessionId** (the `connections` Map of `main/index.ts`, it
+ *   is there for the "file transfer").
+ * → **Indexing by profileId would clash** — the same profile can open two
+ *   terminal tabs (the code comment mentions that pitfall: it was indexed by
+ *   profileId once and closing one made the other unfindable).
  *
- * → 所以：**`TerminalManager` 记下每个活会话是哪个 profile** ✓，
- *   并暴露「哪些 profile 现在有活会话」✓。
+ * → Therefore **the `TerminalManager` records which profile every live
+ *   session belongs to** and exposes "which profiles have a live session".
  *
- * ── 一条重要的区分 ──
+ * One important distinction:
  *
- * **「运行时记着这个 profile」≠「连着」** ✓ ——
- * `TagRuntime.status.profileId` 在**连不上**（`state = 'error'` ✓）
- * 与**已停下**（`state = 'idle'` ✓）时**仍然有值** ✓。
- * → 所以 `connected` **不能只看它** ✓（评审 I-1 ✓）。
+ * **"the runtime remembers this profile" is not "connected"** —
+ * `TagRuntime.status.profileId` still has a value when it **cannot be
+ * reached** (`state = 'error'`) and when it **has stopped** (`state =
+ * 'idle'`). → Therefore `connected` **may not look at that alone**.
  */
 
 const PROFILES: ConnectionProfile[] = [
-  { id: 'guest', label: '客机', transport: 'ssh', options: {} },
-  { id: 'board', label: '板子', transport: 'adb', options: {} },
+  { id: 'guest', label: 'the guest', transport: 'ssh', options: {} },
+  { id: 'board', label: 'the board', transport: 'adb', options: {} },
 ];
 
 function fakeConnection(): Connection {
@@ -49,7 +53,7 @@ function fakeConnection(): Connection {
   } as unknown as Connection;
 }
 
-describe('TerminalManager · 活着的 profile', () => {
+describe('TerminalManager · the live profiles', () => {
   let manager: TerminalManager;
 
   beforeEach(() => {
@@ -60,42 +64,42 @@ describe('TerminalManager · 活着的 profile', () => {
     });
   });
 
-  it('**没有会话时是空列表** ✓', () => {
+  it('**without a session it is an empty list**', () => {
     expect(manager.liveProfileIds()).toEqual([]);
   });
 
-  it('**开了会话 → 那条 profile 在列表里** ✓', async () => {
+  it('**a session was opened → that profile is in the list**', async () => {
     await manager.open('guest');
     expect(manager.liveProfileIds()).toEqual(['guest']);
   });
 
-  it('**两个会话 → 两个 profile 都在** ✓', async () => {
+  it('**two sessions → both profiles are there**', async () => {
     await manager.open('guest');
     await manager.open('board');
     expect(manager.liveProfileIds().sort()).toEqual(['board', 'guest']);
   });
 
-  it('**同一个 profile 开两个标签 → 列表里只出现一次** ✓（它是「有哪些 profile 连着」✓）', async () => {
+  it('**two tabs of the same profile → it appears only once in the list** (the list answers "which profiles are connected")', async () => {
     await manager.open('guest');
     await manager.open('guest');
     expect(manager.liveProfileIds()).toEqual(['guest']);
   });
 
-  it('**关掉一个会话 → 那条 profile 不在了** ✓', async () => {
+  it('**a session was closed → that profile is gone**', async () => {
     const { sessionId } = await manager.open('guest');
     await manager.close(sessionId);
     expect(manager.liveProfileIds()).toEqual([]);
   });
 
-  it('**关掉其中一个标签 → 另一个还在 → profile 还在** ✓', async () => {
+  it('**one of the tabs was closed → the other is still there → the profile is still there**', async () => {
     const first = await manager.open('guest');
     await manager.open('guest');
     await manager.close(first.sessionId);
     expect(manager.liveProfileIds()).toEqual(['guest']);
   });
 
-  it('**远端自己退出 → profile 也不在了** ✓', async () => {
-    // **单独捕获回调** ✓ —— `vi.fn()` 只记录不调用 ✓（那是我第一版的坑 ✓）
+  it('**the remote side exited → the profile is gone as well**', async () => {
+    // **The callback is caught on its own** — `vi.fn()` only records and does not call (that was the pitfall of my first version)
     let exitCb: ((code: number | null) => void) | undefined;
     const manager2 = new TerminalManager({
       listProfiles: () => PROFILES,
@@ -119,9 +123,9 @@ describe('TerminalManager · 活着的 profile', () => {
     expect(manager2.liveProfileIds()).toEqual(['guest']);
     expect(exitCb).toBeTruthy();
     exitCb?.(0);
-    // **会话的清理是异步的** ✓（`closeSession` 要先 `await connection.close()` ✓
-    //   —— 串口的 close 是异步的 ✓ —— 之后才从表里删掉 ✓）
-    // → **轮询等它落定** ✓（不是「等一拍」✓ —— 那赌的是时序 ✓）
+    // **The cleanup of a session is asynchronous** (`closeSession` has to `await connection.close()` first
+    //   — the close of a serial port is asynchronous — and only then it is removed from the table)
+    // → **It is polled until it settles** (not "wait a tick" — that would be betting on the timing)
     for (let i = 0; i < 50 && manager2.liveProfileIds().length > 0; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1));
     }

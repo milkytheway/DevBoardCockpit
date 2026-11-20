@@ -3,46 +3,50 @@ import { spawn } from 'node:child_process';
 import { runProcess } from '../../src/main/util/spawn';
 
 /**
- * **中途叫停**（`AbortSignal` ✓）。
+ * **Stopping it half way** (`AbortSignal`).
  *
- * ── 为什么单独立一个测试文件 ──
+ * Why it is a test file of its own:
  *
- * 尖兵实测（2026-11-15）：**一个 75 秒的传输步，收到取消信号后照跑完** ✗。
- * → 根因不是「取消没传下去」✓，而是**当时根本没有「取消」这条路** ✓。
- * → 现在有了 ✓，就得有判据守着 ✓（不然它会悄悄退化回去 ✓）。
+ * The scout measured on 2026-11-15: **a transfer step of 75 seconds ran to
+ * the end after it received the cancel signal**. → The cause was not "the
+ * cancellation was not passed down" but **there was no way to cancel at all**
+ * back then. → Now there is one, so there has to be a criterion that guards
+ * it (otherwise it silently degrades back).
  *
- * ── 这条判据盯的是「**真的停了**」 ──
+ * What the criterion watches is "**it really stopped**":
  *
- * → 「不等了」**不够** ✓：子进程还在后台跑 ✗（那正是尖兵的现象 ✓）。
- * → 所以判据看的是**进程真的没了** ✓（用 `ps` 查不到 ✓）。
+ * → "we stopped waiting" is **not enough**: the child process is still
+ *   running in the background (that was exactly the phenomenon of the scout).
+ * → Therefore the criterion looks at **the process really being gone** (it
+ *   cannot be found with `ps`).
  */
-describe('中途叫停', () => {
-  it('**进程真的被杀掉了**（不是「不等了」✓）', async () => {
+describe('stopping it half way', () => {
+  it('**the process really was killed** (not "we stopped waiting")', async () => {
     const controller = new AbortController();
 
-    // 睡 4 秒（**比判据的门槛长一倍** ✓）：
-    // → 「取消没杀进程」时它会**跑满 4 秒**才自己结束 ✗ → 判据抓得住 ✓
-    // → 而且不会把测试挂死（不是 10 分钟 ✓ —— 沙箱里全量套件会挂住 ✓）
+    // It sleeps for 4 seconds (**twice as long as the threshold of the criterion**):
+    // → when "the cancellation did not kill the process" it runs the full 4 seconds before it ends by itself → the criterion catches it
+    // → and it does not hang the test (not 10 minutes — the whole suite would hang in the sandbox)
     const running = runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 4000)'], {
       signal: controller.signal,
     });
 
-    // **过一会儿叫停** ✓
+    // **It is stopped after a while**
     setTimeout(() => controller.abort(), 200);
 
     const result = await running;
     expect(result.cancelled).toBe(true);
-    // **取消不是超时** ✓（两者不该同码 ✓）
+    // **A cancellation is not a timeout** (the two may not share a code)
     expect(result.timedOut).toBe(false);
 
-    // **关键判据：取消之后要「立刻」就结束了** ✓
-    // → 「只是不等了」的话 → 它会跑满 4 秒 ✗ → 这里红 ✓
-    // （**不能只看 `cancelled` 那个标志** ✗ —— 那是「我标记过了」，
-    //   不是「进程真的没了」✓ —— 尖兵的现象正是标志对了、进程还在跑 ✗）
+    // **The key criterion: after the cancellation it has to be "immediately" over**
+    // → if it were only "we stopped waiting" → it would run the full 4 seconds → this would be red
+    // (**the `cancelled` flag alone may not be looked at** — that is "I marked it",
+    //   not "the process is really gone" — the phenomenon of the scout was exactly that the flag was right and the process was still running)
     expect(result.durationMs).toBeLessThan(2000);
 
-    // **进程真的没了** ✓ —— 查一下系统里还有没有它 ✓
-    // （查的正是 runProcess 起的那个 ✓ —— 它的 pid 在结果里 ✓）
+    // **The process is really gone** — it looks whether the system still has it
+    // (it looks for exactly the one runProcess started — its pid is in the result)
     const pid = result.pid as number;
     await new Promise((r) => setTimeout(r, 300));
     const stillThere = await new Promise<boolean>((resolve) => {
@@ -53,7 +57,7 @@ describe('中途叫停', () => {
     expect(stillThere).toBe(false);
   });
 
-  it('**一开始就取消了 → 干脆别起**（不浪费时间 ✓）', async () => {
+  it('**it was cancelled right away → it is not started at all** (no wasted time)', async () => {
     const controller = new AbortController();
     controller.abort();
     const result = await runProcess(process.execPath, ['-e', 'console.log(1)'], {
@@ -62,14 +66,14 @@ describe('中途叫停', () => {
     expect(result.cancelled).toBe(true);
   });
 
-  it('**没取消 → 正常跑完**（别误伤 ✓）', async () => {
+  it('**it was not cancelled → it runs to the end** (no false alarm)', async () => {
     const result = await runProcess(process.execPath, ['-e', 'console.log("hi")'], {});
     expect(result.cancelled).toBeUndefined();
     expect(result.timedOut).toBe(false);
     expect(result.stdout.trim()).toBe('hi');
   });
 
-  it('**超时 ≠ 取消**（两个码分开 ✓ —— 事实 G1 ✓）', async () => {
+  it('**a timeout is not a cancellation** (the two codes are separate — fact G1)', async () => {
     const result = await runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], {
       timeoutMs: 200,
     });

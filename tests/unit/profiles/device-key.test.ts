@@ -2,33 +2,37 @@ import { describe, it, expect } from 'vitest';
 import { parseProfile, deviceKeyOf, deviceKeyConflicts } from '../../../src/main/profiles/schema';
 
 /**
- * **连接 profile 的两个新字段**（契约 `spec/02` §10.1–10.3 ✓ · ADR-D43 ✓）。
+ * The two new fields of a connection profile (contract `spec/02` §10.1–10.3).
  *
- * ── `device_key`：**板实物**与**连接**是两层 ✓ ──
+ * `device_key`: **the board itself** and **the connection** are two layers:
  *
- * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **界面要按板子分组** ✓
- * → 得先知道「哪些连接是同一块板」✓ → **这就是它** ✓。
- * → **缺省 = `id`** ✓（**一板一连** ✓ 的连接就这么办 ✓）。
+ * → One board has **three connections, ADB / serial / SSH**, so **the
+ *   interface groups by board**, which means it has to know **which
+ *   connections are the same board** — that is what this is for.
+ * → **The default is the `id`** (a connection with one board and one link
+ *   simply does that).
  *
- * ── `options.ssh`：**这条连接背后那台机器**的 SSH 端点 ✓ ──
+ * `options.ssh`: the SSH endpoint of **the machine behind this connection**:
  *
- * → **跨机器的动作在另一台机器上发起** ✓ → 那条命令要用**板子的 SSH 地址** ✓
- * → **流程包不该知道板子的地址** ✓ → **它跟着 profile 走** ✓。
+ * → **An action across machines is started on the other machine**, so that
+ *   command has to use **the SSH address of the board**, and **the workflow
+ *   pack should not know the address of the board** — **it follows the
+ *   profile**.
  */
-describe('连接 profile · device_key 与 options.ssh', () => {
-  it('**`device_key` 缺省 = profile id** ✓', () => {
+describe('the connection profile · device_key and options.ssh', () => {
+  it('**the default of `device_key` is the profile id**', () => {
     const p = parseProfile(
-      { id: 'board-adb', label: '板子', transport: 'adb', options: {} },
+      { id: 'board-adb', label: 'the board', transport: 'adb', options: {} },
       'x.json',
     );
     expect(p.device_key).toBe('board-adb');
   });
 
-  it('**`device_key` 可以显式写** ✓（**同一块板的多条连接写同一个** ✓）', () => {
+  it('**`device_key` may be written explicitly** (**the several connections of one board write the same one**)', () => {
     const p = parseProfile(
       {
         id: 'board-adb',
-        label: '板子',
+        label: 'the board',
         transport: 'adb',
         device_key: 'atk-01',
         options: {},
@@ -38,7 +42,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     expect(p.device_key).toBe('atk-01');
   });
 
-  it('**`device_key` 必须是字符串** ✓', () => {
+  it('**`device_key` has to be a string**', () => {
     expect(() =>
       parseProfile(
         { id: 'x', label: 'x', transport: 'adb', device_key: 7, options: {} },
@@ -47,11 +51,11 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/device_key/);
   });
 
-  it('**`options.ssh` 可以带** ✓（**跨传输的事实** ✓）', () => {
+  it('**`options.ssh` may be carried** (**a fact that crosses the transports**)', () => {
     const p = parseProfile(
       {
         id: 'board-adb',
-        label: '板子',
+        label: 'the board',
         transport: 'adb',
         options: { ssh: { host: '192.168.5.100', port: 22, username: 'root' } },
       },
@@ -60,13 +64,14 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     expect(p.options['ssh']).toEqual({ host: '192.168.5.100', port: 22, username: 'root' });
   });
 
-  it('**ssh 传输的 profile 不许带 `options.ssh`** ✓（**它自己就是那个端点** ✓ —— 双写 = 漂移 ✓）', () => {
-    // **判据要精确** ✓ —— 「未知字段 'ssh'」也含 ssh 字样 ✓ → 那会**假通过** ✓
+  it('**a profile of the ssh transport may not carry `options.ssh`** (**it is the endpoint itself** — writing it twice means drift)', () => {
+    // **The criterion has to be exact** — "unknown field 'ssh'" also contains the
+// word ssh, and that would **pass by accident**
     expect(() =>
       parseProfile(
         {
           id: 'board-ssh',
-          label: '板子',
+          label: 'the board',
           transport: 'ssh',
           options: { host: '192.168.5.100', ssh: { host: '192.168.5.100' } },
         },
@@ -75,12 +80,12 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/makes it drift/);
   });
 
-  it('**local 传输的 profile 不许带 `options.ssh`** ✓（它是宿主自己 ✓）', () => {
+  it('**a profile of the local transport may not carry `options.ssh`** (it is the host itself)', () => {
     expect(() =>
       parseProfile(
         {
           id: 'local',
-          label: '本机',
+          label: 'this machine',
           transport: 'local',
           options: { ssh: { host: '1.2.3.4' } },
         },
@@ -89,12 +94,12 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/the host itself/);
   });
 
-  it('**`options.ssh` 的形状封闭** ✓（未知键报错 ✓ —— **报的是内层那个键** ✓）', () => {
+  it('**the shape of `options.ssh` is closed** (an unknown key is reported — **the key of the inner level**)', () => {
     expect(() =>
       parseProfile(
         {
           id: 'board-adb',
-          label: '板子',
+          label: 'the board',
           transport: 'adb',
           options: { ssh: { host: '1.2.3.4', key: '/root/.ssh/id' } },
         },
@@ -103,12 +108,12 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/Unknown field 'key'/);
   });
 
-  it('**`options.ssh.host` 必填** ✓', () => {
+  it('**`options.ssh.host` is mandatory**', () => {
     expect(() =>
       parseProfile(
         {
           id: 'board-adb',
-          label: '板子',
+          label: 'the board',
           transport: 'adb',
           options: { ssh: { port: 22 } },
         },
@@ -117,7 +122,7 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/host is required/);
   });
 
-  it('**未知顶层字段报错** ✓（`device_key` 之外的还是报错 ✓）', () => {
+  it('**an unknown top-level field is reported** (a field other than `device_key` is still reported)', () => {
     expect(() =>
       parseProfile(
         { id: 'x', label: 'x', transport: 'adb', options: {}, board: 'atk' },
@@ -126,10 +131,10 @@ describe('连接 profile · device_key 与 options.ssh', () => {
     ).toThrow(/Unknown field 'board'/);
   });
 
-  it('**`deviceKeyOf` 是取值的唯一入口** ✓（**缺省回落到 id** ✓）', () => {
-    // **没写 `device_key`** ✓ → **就是 profile id** ✓
+  it('**`deviceKeyOf` is the only way to read the value** (**the default falls back to the id**)', () => {
+    // **No `device_key` was written** → **it is the profile id**
     expect(deviceKeyOf({ id: 'x', label: 'x', transport: 'adb', options: {} })).toBe('x');
-    // **写了** ✓ → **就是它** ✓
+    // **It was written** → **it is that one**
     expect(
       deviceKeyOf({ id: 'x', label: 'x', transport: 'adb', device_key: 'atk-01', options: {} }),
     ).toBe('atk-01');
@@ -137,19 +142,21 @@ describe('连接 profile · device_key 与 options.ssh', () => {
 });
 
 /**
- * **同一个 `device_key` 只能指一块板** ✓（契约 `spec/02` §10.2 ✓）。
+ * **One `device_key` may only stand for one board** (contract `spec/02`
+ * §10.2).
  *
- * → **一块板只有一个型号** ✓ → 同一个 `device_key` 声明了**两个板型包** ✗
- * → **那是个配置写错了** ✓ → **要说得出来** ✓（**不静默** ✓）。
+ * → **One board has one model**, so the same `device_key` declaring **two
+ *   board packs** is **a configuration mistake** and **it has to be said**
+ *   (**not silently**).
  */
-describe('连接 profile · device_key 的冲突', () => {
+describe('the connection profile · a conflict of the device_key', () => {
   const board = (id: string, key: string, pack: string | null) =>
     parseProfile(
       { id, label: id, transport: 'adb', board_pack: pack, device_key: key, options: {} },
       `${id}.json`,
     );
 
-  it('**同一个 key + 同一个板型包 → 没有冲突** ✓', () => {
+  it('**the same key + the same board pack → no conflict**', () => {
     const conflicts = deviceKeyConflicts([
       board('board-adb', 'atk-01', 'rk3588-atk'),
       board('board-ssh', 'atk-01', 'rk3588-atk'),
@@ -157,18 +164,18 @@ describe('连接 profile · device_key 的冲突', () => {
     expect(conflicts).toEqual([]);
   });
 
-  it('**同一个 key + 两个板型包 → 冲突** ✓（**一块板不能两个型号** ✓）', () => {
+  it('**the same key + two board packs → a conflict** (**one board cannot have two models**)', () => {
     const conflicts = deviceKeyConflicts([
       board('board-adb', 'atk-01', 'rk3588-atk'),
       board('board-other', 'atk-01', 'rk3588-other'),
     ]);
     expect(conflicts.length).toBe(1);
     expect(conflicts[0]?.device_key).toBe('atk-01');
-    // **说得清是哪两条** ✓
+    // **It states which two**
     expect(conflicts[0]?.profile_ids.sort()).toEqual(['board-adb', 'board-other']);
   });
 
-  it('**不同的 key → 没有冲突** ✓（**两块同型号的板** ✓ —— **共享一个包** ✓ 但不是一块 ✓）', () => {
+  it('**different keys → no conflict** (**two boards of the same model** — they **share one pack**, but they are not one board)', () => {
     const conflicts = deviceKeyConflicts([
       board('board-a', 'atk-01', 'rk3588-atk'),
       board('board-b', 'atk-02', 'rk3588-atk'),

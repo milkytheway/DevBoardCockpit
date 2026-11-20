@@ -3,23 +3,23 @@ import { promoteCard } from '../../../src/main/mcp/promote';
 import type { LayoutState } from '../../../src/shared/layout';
 
 /**
- * **把一张卡提为全屏**（契约 `spec/04` §2.5 ✓ · ADR-D40 ✓）。
+ * Promoting a card to full screen (contract `spec/04` §2.5).
  *
- * ── 这组判据守什么 ──
+ * What these criteria guard:
  *
- * | 判据 | 为什么 |
+ * | Criterion | Why |
  * |---|---|
- * | **宿主只记「谁要全屏」** ✓ | **铺满几行只有 renderer 知道** ✓（行高是渲染层的常量 ✓）→ 宿主**不猜** ✓ |
- * | **别的格不动** ✓ | **让开是渲染层的事** ✓ —— 宿主改了布局就**毁掉用户的排布** ✗ |
- * | **多于一个实例 → 报错** ✓ | **不猜** ✓ |
- * | **找不到 → `not_found`** ✓ | |
+ * | **the host only records "who wants full screen"** | **only the renderer knows how many rows to fill** (the row height is a constant of the rendering layer), so the host **does not guess** |
+ * | **the other cells are not touched** | **making room is the business of the rendering layer** — a host that changes the layout **destroys the arrangement of the user** |
+ * | **more than one instance → an error** | **it does not guess** |
+ * | **not found → `not_found`** | |
  */
 function layout(units: LayoutState['units']): LayoutState {
   return { version: 3, units, density: 'comfortable', promoted: null, updatedAt: 0 };
 }
 
 describe('MCP · promote_card', () => {
-  it('**记下「谁要全屏」** ✓（**宿主不猜铺几行** ✓ —— 那只有 renderer 知道 ✓）', () => {
+  it('**it records "who wants full screen"** (**the host does not guess how many rows to fill** — only the renderer knows that)', () => {
     const res = promoteCard(
       layout([{ cardId: 'a', connectionId: null, x: 2, y: 3, w: 4, h: 2 }]),
       'a',
@@ -31,7 +31,7 @@ describe('MCP · promote_card', () => {
     expect(res.layout?.promoted?.connectionId).toBeNull();
   });
 
-  it('**别的格一个都不动** ✓（**让开是渲染层的事** ✓ —— 宿主改了就是毁用户排布 ✗）', () => {
+  it('**not one of the other cells is touched** (**making room is the business of the rendering layer** — a host that changes it destroys the arrangement of the user)', () => {
     const res = promoteCard(
       layout([
         { cardId: 'a', connectionId: null, x: 0, y: 0, w: 4, h: 2 },
@@ -47,7 +47,7 @@ describe('MCP · promote_card', () => {
     expect(other?.h).toBe(2);
   });
 
-  it('**格子的数量不变** ✓（**不删、不隐藏** ✓ —— 布局模型里没那个概念 ✓）', () => {
+  it('**the number of cells does not change** (**nothing is removed or hidden** — the layout model has no such concept)', () => {
     const res = promoteCard(
       layout([
         { cardId: 'a', connectionId: null, x: 0, y: 0, w: 4, h: 2 },
@@ -59,7 +59,7 @@ describe('MCP · promote_card', () => {
     expect(res.layout?.units).toHaveLength(2);
   });
 
-  it('**同一张卡在两条连接上 → 报错** ✓（**不猜** ✓）', () => {
+  it('**the same card on two connections → an error** (**it does not guess**)', () => {
     const res = promoteCard(
       layout([
         { cardId: 'a', connectionId: 'c1', x: 0, y: 0, w: 4, h: 2 },
@@ -72,7 +72,7 @@ describe('MCP · promote_card', () => {
     expect(res.reason).toBe('invalid_params');
   });
 
-  it('**给了 connectionId → 提那一个** ✓', () => {
+  it('**a connectionId is given → that one is promoted**', () => {
     const res = promoteCard(
       layout([
         { cardId: 'a', connectionId: 'c1', x: 0, y: 0, w: 4, h: 2 },
@@ -85,13 +85,13 @@ describe('MCP · promote_card', () => {
     expect(res.layout?.promoted?.connectionId).toBe('c2');
   });
 
-  it('**主区里没有这张卡 → `not_found`** ✓', () => {
+  it('**the card is not in the main area → `not_found`**', () => {
     const res = promoteCard(layout([]), 'nope', undefined);
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('not_found');
   });
 
-  it('**提的是原来那一格** ✓（**不是新建一格** ✓ —— 要保它的位置与连接 ✓）', () => {
+  it('**the original cell is promoted** (**not a newly created one** — its position and its connection are kept)', () => {
     const res = promoteCard(
       layout([{ cardId: 'a', connectionId: 'c1', x: 3, y: 5, w: 6, h: 2 }]),
       'a',

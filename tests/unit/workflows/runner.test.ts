@@ -8,23 +8,23 @@ import type { AuditRow } from '../../../src/main/actions/audit';
 import type { FileEntry } from '../../../src/shared/ipc-contract';
 
 /**
- * 流程执行器 —— **把「一件事怎么做」跑出来**。
+ * The workflow executor — it **runs how a task is done**.
  *
- * ── 这几条判据在防什么 ──
+ * What these criteria defend against:
  *
- * | 判据 | 防的是 |
+ * | Criterion | Defends against |
  * |---|---|
- * | 命令**发到指名的目标上** | 「客机那一步跑到了板子上」 |
- * | 输入**按类型编码** | `; reboot` 这种注入 |
- * | **危险等级只是信息**（**不再问人** ✓ —— ADR-D48 ✓） | —— **闸在设置里的统一权限区** ✓（ADR-D47 ✓） |
- * | 判据**在指名的角色上读** | 「板子上没有产物」被判成「有」（假阳性） |
- * | **每步一行审计** | 事后追不了责 |
+ * | the command is **sent to the named target** | a step meant for the guest running on the board |
+ * | the inputs are **encoded by type** | an injection such as `; reboot` |
+ * | the **danger level is informational** (no prompt) | the gate is the permission area in the settings |
+ * | the criterion is **read on the named role** | "the board has no artefact" being judged as "it has one" (a false positive) |
+ * | **one audit row per step** | nobody being able to trace the cause afterwards |
  */
 interface FakeTarget {
   profile: ConnectionProfile;
   commands: string[];
   files: FileEntry[];
-  /** 这个目标上 `cat -- <path>` 的答案 */
+  /** The answer of `cat -- <path>` on this target */
   catAnswers: Record<string, string>;
 }
 
@@ -32,31 +32,31 @@ function harness(
   opts: {
     files?: Record<string, FileEntry[]>;
     onExec?: (command: string) => void;
-    /** 命中这些片段的命令**返回非 0** ✓（模拟传输失败 ✓） */
+    /** A command matching these fragments returns non-zero (it simulates a failed transfer) */
     failCommands?: string[];
-    /** 这个 profile 的目标**连不上** ✓（板子没插 ✓） */
+    /** The target of this profile cannot be reached (the board is not plugged in) */
     failProfile?: string;
   } = {},
 ) {
   const targets: FakeTarget[] = [
     {
-      profile: { id: 'guest', label: '客机', transport: 'ssh', options: { host: '10.0.0.2', username: 'builder' } },
+      profile: { id: 'guest', label: 'the guest', transport: 'ssh', options: { host: '10.0.0.2', username: 'builder' } },
       commands: [],
       files: [],
       catAnswers: {},
     },
     {
-      profile: { id: 'board', label: '板子', transport: 'adb', options: {} },
+      profile: { id: 'board', label: 'the board', transport: 'adb', options: {} },
       commands: [],
       files: [],
       catAnswers: {},
     },
   ];
   const byId = (id: string): FakeTarget | undefined => targets.find((t) => t.profile.id === id);
-  /** 取一个目标（没有就抛——测试里写错了要立刻知道） */
+  /** Returns a target (it throws when there is none, so a mistake in the test surfaces at once) */
   const target = (id: string): FakeTarget => {
     const found = byId(id);
-    if (found === undefined) throw new Error(`没有这个测试目标：${id}`);
+    if (found === undefined) throw new Error(`no such test target: ${id}`);
     return found;
   };
   for (const t of targets) {
@@ -74,20 +74,20 @@ function harness(
         open: async () => undefined,
         close: async () => undefined,
         exec: async (command: string): Promise<ExecResult> => {
-          // **这个目标连不上** ✓（板子没插 ✓ / ssh 认证失败 ✓）
+          // **This target cannot be reached** (the board is not plugged in / the ssh authentication failed)
           if (opts.failProfile === profile.id) {
-            throw new Error(`连不上目标 ${profile.id}`);
+            throw new Error(`cannot reach target ${profile.id}`);
           }
           target.commands.push(command);
-          // **测试可以在这里叫停** ✓（「在飞的那一步被取消」✓）
+          // **The test can stop here** ("the step that is in flight is cancelled")
           opts.onExec?.(command);
-          // **某些命令要失败** ✓（模拟传输没成 ✓）
-          // **传输会在目标上留下那个文件** ✓
-          // （真的 scp **边传边写** ✓ —— 成功是完整文件 ✓，失败是**半截** ✓；
-          //   尖兵 §三·F2 的现象就是它 ✓）
+          // **Some commands have to fail** (it simulates a transfer that did not succeed)
+          // **The transfer leaves that file on the target**
+          // (a real scp **writes while it transfers** — on success it is a complete file, on failure a **half** one;
+          //   that is exactly what the scout of §3·F2 saw)
           if (command.startsWith('scp ')) {
-            // **路径在命令里是带引号的** ✓（命令模式 ✓）→ 取出来要把引号剥掉 ✓
-            // （shell 会剥 ✓ —— 真的 scp 写的是**没引号**的那个路径 ✓）
+            // **The path is quoted in the command** (command mode) → the quotes have to be stripped when it is taken out
+            // (the shell strips them — a real scp writes the path **without** quotes)
             const dest = command.slice(command.lastIndexOf(':') + 1).replace(/^'|'$/g, '');
             const board = byId('board');
             if (board !== undefined) {
@@ -104,7 +104,7 @@ function harness(
             }
           }
           if (opts.failCommands?.some((frag) => command.includes(frag)) === true) {
-            return { exitCode: 1, stdout: '', stderr: '传输失败', durationMs: 1, timedOut: false };
+            return { exitCode: 1, stdout: '', stderr: 'transfer failed', durationMs: 1, timedOut: false };
           }
           if (command.startsWith('cat -- ')) {
             const path = command.slice('cat -- '.length).replace(/^'|'$/g, '');
@@ -117,7 +117,7 @@ function harness(
             return { exitCode: 0, stdout: '6.1.141\n', stderr: '', durationMs: 1, timedOut: false };
           }
           if (command.includes('id_ed25519.pub')) {
-            // **公钥那一步要真的产出东西**（凭据准备靠它 ✓）
+            // **The public key step has to really produce something** (the credential setup depends on it)
             return {
               exitCode: 0,
               stdout: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test claude-sandbox\n',
@@ -133,7 +133,7 @@ function harness(
         list: async (dir: string): Promise<FileEntry[]> =>
           target.files.filter((f) => f.path.startsWith(dir === '.' ? '' : dir)),
         openSession: async () => {
-          throw new Error('测试里不开会话');
+          throw new Error('no session in the test');
         },
       } as unknown as Connection;
       return conn;
@@ -149,30 +149,33 @@ function harness(
       return `audit-${audits.length}`;
     },
     now: () => 1_700_000_000_000,
-    // **`action` 步要的动作定义** ✓（`actionDef` 是可选的 ✓ —— 没有它就调不动动作 ✓）
+    // **The action definition the `action` step needs** (`actionDef` is optional — without it the action cannot be called)
     actionDef: undefined,
   };
   return { targets, byId, target, audits, deps };
 }
 
 const ROLES = {
-  build: { purpose: '客机', profile: 'guest' },
-  target: { purpose: '板子', profile: 'board' },
+  build: { purpose: 'the guest', profile: 'guest' },
+  target: { purpose: 'the board', profile: 'board' },
 };
 
-describe('流程 · action 步（引用板型包里的动作）', () => {
+describe('workflow · the action step (refers to an action of a board pack)', () => {
   /**
-   * ── 这条在防什么 ──
+   * What this case defends against:
    *
-   * **流程里的参数值只能是字符串** ✓（流程包形状封闭 ✓ —— `spec/05` §4.2 ✓），
-   * 而**动作的参数带类型** ✓（`integer` / `number` / `boolean` / `enum` ✓ ——
-   * `spec/02` §4.3 ✓）。**两边对不上** ✗ →
-   * 带类型的动作**在流程里调不动** ✗（实测 2026-11-16：
-   * `invalid_params：参数「value」要 integer` ✓）。
+   * **The argument values of a workflow can only be strings** (the shape of a
+   * workflow pack is closed — `spec/05` §4.2), while **the arguments of an
+   * action carry a type** (`integer` / `number` / `boolean` / `enum` —
+   * `spec/02` §4.3). **The two do not match**, so
+   * a typed action **cannot be called from a workflow** (measured on
+   * 2026-11-16: `invalid_params: the parameter "value" has to be an
+   * integer`).
    *
-   * → 流程层**按动作自己声明的类型转一遍** ✓。
+   * → The workflow layer **converts once according to the type the action
+   *   declares itself**.
    */
-  it('**整型参数按动作声明的类型转**（`"1"` → `1` ✓）', async () => {
+  it('**an integer parameter is converted to the type the action declares** ("1" → 1)', async () => {
     const h = harness();
     h.deps.actionDef = () => ({
       id: 'led.set',
@@ -198,11 +201,11 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **命令里是 `1`，不是 `'1'`** ✓ —— 编码器按**数字**处理 ✓（不引号 ✓）
+    // **The command holds `1`, not `'1'`** — the encoder treats it as a **number** (no quotes)
     expect(h.byId('board')?.commands).toEqual(['echo 1 > /sys/class/leds/work/brightness']);
   });
 
-  it('**布尔参数也转**（`"true"` → `true` ✓）', async () => {
+  it('**a boolean parameter is converted as well** ("true" → true)', async () => {
     const h = harness();
     h.deps.actionDef = () => ({
       id: 'x.set',
@@ -228,7 +231,7 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
     expect(h.byId('board')?.commands).toEqual(['toggle true']);
   });
 
-  it('**转不成就不转**（`"abc"` 不是整数 → 原样留着 → 授权层去报错 ✓ —— **不在这儿编** ✓）', async () => {
+  it('**a value that cannot be converted is left alone** ("abc" is not an integer → it is kept as it is → the authorisation layer reports it; the value is not invented here)', async () => {
     const h = harness();
     h.deps.actionDef = () => ({
       id: 'x.set',
@@ -251,13 +254,13 @@ describe('流程 · action 步（引用板型包里的动作）', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps);
-    // **动作失败了** ✓（授权层说「要 integer」✓）—— **流程层没有悄悄把它变成 0** ✓
+    // **The action failed** (the authorisation layer said "it has to be an integer") — **the workflow layer did not quietly turn it into 0**
     expect(result.ok).toBe(false);
   });
 });
 
-describe('流程 · exec 步', () => {
-  it('命令**发到指名的目标上**', async () => {
+describe('workflow · the exec step', () => {
+  it('the command is **sent to the named target**', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -275,11 +278,11 @@ describe('流程 · exec 步', () => {
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
     expect(h.byId('guest')?.commands).toEqual(['make']);
-    // **板子上一个命令都没有**（不串台 ✓）
+    // **Not a single command on the board** (no crossed wires)
     expect(h.byId('board')?.commands).toEqual([]);
   });
 
-  it('输入**按类型编码**（`; reboot` 被当字面量）', async () => {
+  it('the inputs are **encoded by type** (`; reboot` stays a literal)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -298,7 +301,7 @@ describe('流程 · exec 步', () => {
     expect(h.byId('guest')?.commands[0]).toBe("echo 'x; reboot'");
   });
 
-  it('**命中危险地板 → 不再拦**（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）', async () => {
+  it('**a hit on the danger floor no longer blocks** (the danger level is informational — the gate is the permission area in the settings)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -318,13 +321,13 @@ describe('流程 · exec 步', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **命令跑了** ✓（**不再卡在「等人点头」那一步** ✓）
+    // **The command ran** (**it no longer stops at the step that waits for the operator**)
     expect(h.byId('board')?.commands).toContain('reboot');
-    // **后面的步也跑了** ✓（**不再停在半路** ✓）
+    // **The later step ran as well** (**it no longer stops half way**)
     expect(h.byId('board')?.commands).toContain('echo after');
   });
 
-  it('**审计行里有最终命令**（追责的第一环 ✓）', async () => {
+  it('the audit row carries the final command (the first link in the chain of accountability)', async () => {
     const h = harness();
     await runWorkflow(
       parseWorkflow(
@@ -343,11 +346,11 @@ describe('流程 · exec 步', () => {
       { value: 128 },
       h.deps,
     );
-    // **命令是编码过的** ✓（整数不带引号 ✓）
+    // **The command is encoded** (an integer without quotes)
     expect(h.audits[0]?.command).toBe('echo 128 > /tmp/v');
   });
 
-  it('流程的审计行里有**这一步的输入**（流程的参数在流程包里，不在板型包里 ✓）', async () => {
+  it('the audit row of the workflow carries **the inputs of this step** (the arguments of a workflow live in the workflow pack, not in the board pack)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -367,7 +370,7 @@ describe('流程 · exec 步', () => {
     expect(h.audits[0]?.command).toBe("make '01-hello'");
   });
 
-  it('**每步一行审计**，时间线上的 audit_id 指得到', async () => {
+  it('**one audit row per step**, so the audit_id on the timeline points at a row', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -389,13 +392,13 @@ describe('流程 · exec 步', () => {
     expect(h.audits).toHaveLength(2);
     expect(result.stages[0]?.audit_id).toBe('audit-1');
     expect(result.stages[1]?.audit_id).toBe('audit-2');
-    // 审计的 actor 是这个流程
+    // The actor of the audit is this workflow
     expect(h.audits[0]?.actor).toBe('workflow:w.flow');
   });
 });
 
-describe('流程 · 危险等级与输出', () => {
-  it('**声明 destructive 的步 → 直接执行**（**不再问人** ✓ —— ADR-D48 ✓）', async () => {
+describe('workflow · danger level and output', () => {
+  it('**a step declared destructive runs directly** (no prompt)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -420,11 +423,11 @@ describe('流程 · 危险等级与输出', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **命令真的跑了** ✓（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓）
+    // **The command really ran** (**the danger level is informational** — the gate is the unified permission area in the settings)
     expect(h.byId('board')?.commands).toContain('cat >> /root/.ssh/authorized_keys');
   });
 
-  it('`out` 槽 = **这条命令的输出**（下一步要用它 ✓）', async () => {
+  it('the `out` slot = **the output of this command** (the next step needs it)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -443,13 +446,13 @@ describe('流程 · 危险等级与输出', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **槽里就是那条命令的输出** ✓（下一步要用它 ✓）
+    // **The slot holds the output of that command** (the next step needs it)
     expect(result.outputs['pubkey']).toBe('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test claude-sandbox');
   });
 });
 
-describe('流程 · 角色事实', () => {
-  it('角色事实**要包引号**（profile 是半可信的 → 不能原样插）', async () => {
+describe('workflow · role facts', () => {
+  it('the role facts are **quoted** (a profile is only half trusted, so it may not be interpolated as it is)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -471,8 +474,8 @@ describe('流程 · 角色事实', () => {
   });
 });
 
-describe('流程 · 续跑', () => {
-  it('**从第几步开始** → 前面的步**不重跑**（重跑 = 编译两遍 ✗）', async () => {
+describe('workflow · resume', () => {
+  it('**start at step n** → the earlier steps are **not run again** (running them twice means compiling twice)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -491,11 +494,11 @@ describe('流程 · 续跑', () => {
       'w.yaml',
     );
     await runWorkflow(pack, {}, h.deps, { startAt: 1 });
-    // **第一步没跑** ✓
+    // **The first step did not run**
     expect(h.byId('guest')?.commands).toEqual(['echo second']);
   });
 
-  it('续跑时**带上之前的产出**（槽还在 ✓）', async () => {
+  it('a resume **carries the earlier output** (the slots are still there)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -517,12 +520,12 @@ describe('流程 · 续跑', () => {
       startAt: 1,
       outputs: { artifacts: 'build/hello.ko' },
     });
-    // **第二步用的是之前那个槽** ✓
+    // **The second step used the slot from before**
     expect(h.byId('guest')?.commands).toEqual(["ls 'build/hello.ko'"]);
     expect(result.outputs['artifacts']).toBe('build/hello.ko');
   });
 
-  it('**续跑是同一次运行** → runId 沿用 ✓', async () => {
+  it('**a resume is the same run** → the runId is kept', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -542,8 +545,8 @@ describe('流程 · 续跑', () => {
   });
 });
 
-describe('流程 · 输入的 default', () => {
-  it('**调用方没给 → 用包里的 default** ✓', async () => {
+describe('workflow · the default of an input', () => {
+  it('**the caller gave nothing → the default of the pack is used**', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -559,11 +562,11 @@ describe('流程 · 输入的 default', () => {
       'w.yaml',
     );
     await runWorkflow(pack, {}, h.deps);
-    // **命令里用的是默认值** ✓
+    // **The command used the default value**
     expect(h.byId('guest')?.commands[0]).toBe("make '01-hello'");
   });
 
-  it('**`pattern` 挡形状**（不匹配的输入被拒 ✓）', async () => {
+  it('**`pattern` guards the shape** (an input that does not match is rejected)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -579,16 +582,16 @@ describe('流程 · 输入的 default', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, { project: 'BAD; rm -rf /' }, h.deps);
-    // **不合规的输入 → 不成功** ✓（契约 §7.7：方法不抛异常，返回失败 ✓）
+    // **An input that does not conform → it does not succeed** (contract §7.7: the method throws no exception and returns a failure)
     expect(result.ok).toBe(false);
     expect(result.stages[0]?.reason).toBe('invalid_params');
-    // **命令没发出去** ✓
+    // **The command was not sent**
     expect(h.byId('guest')?.commands).toHaveLength(0);
   });
 });
 
-describe('流程 · discover 步', () => {
-  it('按规则找到产物，**落进槽**', async () => {
+describe('workflow · the discover step', () => {
+  it('the artefact is found by the rules and **goes into the slot**', async () => {
     const h = harness({
       files: {
         guest: [
@@ -625,7 +628,7 @@ describe('流程 · discover 步', () => {
     expect(result.outputs['artifacts']).toBe('build/hello.ko');
   });
 
-  it('没找到 → **失败**（不报成功）', async () => {
+  it('not found → **failure** (it does not report success)', async () => {
     const h = harness({ files: { guest: [] } });
     const pack = parseWorkflow(
       {
@@ -646,8 +649,8 @@ describe('流程 · discover 步', () => {
   });
 });
 
-describe('流程 · file.transfer 步（直传）', () => {
-  it('传输命令在**源目标**上跑，目的地落进槽', async () => {
+describe('workflow · the file.transfer step (a direct transfer)', () => {
+  it('the transfer command runs on the **source target**, the destination goes into the slot', async () => {
     const h = harness({
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
@@ -680,13 +683,13 @@ describe('流程 · file.transfer 步（直传）', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **命令在客机上跑**（源目标 ✓）
+    // **The command runs on the guest** (the source target)
     expect(h.byId('guest')?.commands.some((c) => c.startsWith('scp '))).toBe(true);
-    // 目的地按 placement 解析（内核版本问的是板子 ✓）
+    // The destination is resolved by the placement (the kernel version asks the board)
     expect(result.outputs['dest']).toBe('/usr/lib/modules/6.1.141/extra/hello.ko');
   });
 
-  it('**判据在指名的角色上读**（在板子上问板子）', async () => {
+  it('**the criterion is read on the named role** (ask the board on the board)', async () => {
     const h = harness({
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
@@ -719,13 +722,13 @@ describe('流程 · file.transfer 步（直传）', () => {
     );
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(true);
-    // **验证命令跑在板子上**（不在客机上 ✓）
+    // **The verification command runs on the board** (not on the guest)
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(true);
     expect(h.byId('guest')?.commands.some((c) => c.includes('test -f'))).toBe(false);
   });
 });
 
-describe('流程 · 传输失败后的清理（不留半截文件）', () => {
+describe('workflow · cleanup after a failed transfer (no half-written file is left)', () => {
   const TRANSFER_PACK = {
     apiVersion: 'devboard/v1',
     kind: 'Workflow',
@@ -748,7 +751,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     ],
   };
 
-  it('传输没成 → **清掉那个半截文件**（不留残留 ✓）', async () => {
+  it('the transfer did not succeed → **the half-written file is removed** (no residue is left)', async () => {
     const h = harness({
       failCommands: ['scp '],
       files: {
@@ -759,19 +762,19 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
 
-    // **板子上那条 `rm -f` 跑了** ✓
+    // **The `rm -f` on the board ran**
     const rm = h.byId('board')?.commands.filter((c) => c.includes('rm -f')) ?? [];
     expect(rm.length).toBe(1);
-    // **清的是那个路径** ✓
+    // **The path that is cleaned is that one**
     expect(rm[0]).toContain('hello.ko');
-    // **清理也记一行审计** ✓（谁删的、删的哪个路径 ✓）
+    // **The cleanup also records an audit row** (who deleted it and which path)
     const cleanup = h.audits.filter((a) => a.actionId.endsWith(':cleanup'));
     expect(cleanup).toHaveLength(1);
   });
 
-  it('**传了，但没验成** → **不清**（那不是「没传成」✓）+ 说清楚 ✓', async () => {
+  it('**it was transferred but not verified** → **it is kept** (that is not the same as "not transferred") and the reason is stated', async () => {
     const h = harness({
-      // **判据失败** ✓（传输成功 ✓）
+      // **The criterion fails** (the transfer succeeded)
       failCommands: ['test -f'],
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
@@ -784,7 +787,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
           TRANSFER_PACK.steps[0],
           {
             ...TRANSFER_PACK.steps[1],
-            // **判据的超时调短** ✓（verify 形式默认 5 秒 ✓ → 会把测试拖死 ✓）
+            // **The timeout of the criterion is shortened** (the form verify defaults to 5 seconds, which would drag the test out)
             readback: { kind: 'verify', role: 'target', command: 'test -f {to.path}', timeout_ms: 200 },
           },
         ],
@@ -794,14 +797,14 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
 
-    // **一条 `rm -f` 都不许有** ✓（文件可能是好的 ✓ —— 删掉它比留半截更坏 ✓）
+    // **Not a single `rm -f` may run** (the file may be fine — deleting it is worse than leaving a half one)
     expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
-    // **说清楚「传了，未验成」** ✓（尖兵 Q3 的原型 ✓ —— 板子上现在是什么状态要看得见 ✓）
+    // **It states "it was transferred, it was not verified"** (the prototype of the scout Q3 — what the state on the board is has to be visible)
     const stage = result.stages.find((s) => s.stepId === 'deliver');
     expect(stage?.detail).toContain('transferred but not verified');
   });
 
-  it('**清理路径必须编码**（`to.path` 是包给的 ✓ —— 不编码就是一条注入面 ✓）', async () => {
+  it('**the cleanup path must be encoded** (`to.path` comes from the pack, and an unencoded path is an injection surface)', async () => {
     const h = harness({
       failCommands: ['scp '],
       files: {
@@ -815,7 +818,7 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
           TRANSFER_PACK.steps[0],
           {
             ...TRANSFER_PACK.steps[1],
-            // **目的地路径里带一条命令** ✓（包给的 ✓ → 宿主拼命令时必须编码 ✓）
+            // **The path of the destination carries a command** (it comes from the pack, so the host has to encode it when it composes the command)
             to: { role: 'target', path: '/opt/x; reboot' },
           },
         ],
@@ -825,11 +828,11 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     await runWorkflow(pack, {}, h.deps);
     const rm = h.byId('board')?.commands.filter((c) => c.includes('rm -f')) ?? [];
     expect(rm).toHaveLength(1);
-    // **路径被包在引号里** ✓（`; reboot` 不是第二条命令 ✓）
+    // **The path is wrapped in quotes** (`; reboot` is not a second command)
     expect(rm[0]).toContain("'/opt/x; reboot'");
   });
 
-  it('目的地**原本就有**那个文件 → **不许删**（别删用户的东西 ✓）', async () => {
+  it('the destination **already has** that file → **it may not be deleted** (the user\'s data stays)', async () => {
     const h = harness({
       failCommands: ['scp '],
       files: {
@@ -847,13 +850,13 @@ describe('流程 · 传输失败后的清理（不留半截文件）', () => {
     });
     const pack = parseWorkflow(TRANSFER_PACK, 'w.yaml');
     await runWorkflow(pack, {}, h.deps);
-    // **一条 `rm -f` 都不许有** ✓（那是用户自己的文件 ✓）
+    // **Not a single `rm -f` may run** (that is the file of the user)
     expect(h.byId('board')?.commands.some((c) => c.includes('rm -f'))).toBe(false);
   });
 });
 
-describe('流程 · inputs.default（契约 §二）', () => {
-  it('**值模式也要拿到默认值**（回读的 expect 走值模式 ✓ —— 独立评审 40 的 I-3 ✓）', async () => {
+describe('workflow · inputs.default (contract §2)', () => {
+  it('**the value form also receives the default** (the expect of a readback uses the value form)', async () => {
     const h = harness();
     h.target('board').catAnswers['/tmp/x'] = '5';
     const pack = parseWorkflow(
@@ -863,7 +866,7 @@ describe('流程 · inputs.default（契约 §二）', () => {
         id: 'w.flow',
         name: 'w',
         version: '1.0.0',
-        // **调用方不给 count** ✓ → 用默认值 ✓
+        // **The caller gives no count** → the default is used
         inputs: { count: { type: 'integer', default: 5 } },
         roles: ROLES,
         steps: [
@@ -872,7 +875,7 @@ describe('流程 · inputs.default（契约 §二）', () => {
             kind: 'exec',
             role: 'build',
             cmd: 'echo {input:count}',
-            // ⚠️ **值模式** ✓ —— 比的是**值** ✓，不是 shell 片段 ✓
+            // **The value form** — it compares the **value**, not a shell fragment
             readback: { kind: 'file_equals', role: 'target', path: '/tmp/x', expect: '{input:count}' },
           },
         ],
@@ -880,15 +883,15 @@ describe('流程 · inputs.default（契约 §二）', () => {
       'w.yaml',
     );
     const result = await runWorkflow(pack, {}, h.deps);
-    // **回读对上了** ✓（默认值真的进了值模式 ✓）
+    // **The readback matches** (the default really entered the value form)
     expect(result.ok).toBe(true);
     expect(result.stages[0]?.verified).toBe(true);
   });
 });
 
-describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓）', () => {
-  it('**目标连不上 → 时间线上有一行**（不是整个运行抛出去 ✓）', async () => {
-    // **板子没插** ✓ → 问它内核版本时炸了 ✓
+describe('workflow · a failing step still produces its row', () => {
+  it('**the target cannot be reached → there is a row on the timeline** (the whole run is not thrown)', async () => {
+    // **The board is not plugged in** → asking it for the kernel version blew up
     const h = harness({ failProfile: 'board' });
     const pack = parseWorkflow(
       {
@@ -911,21 +914,21 @@ describe('流程 · 步出错了也要有那一行（独立评审 40 的 I-2 ✓
       },
       'w.yaml',
     );
-    // **不该整个抛出去** ✓（抛出去 → 时间线上一行都没有 ✗ → 用户看不出是哪一步 ✗）
+    // **It may not be thrown as a whole** (thrown out → the timeline has not a single row → the user cannot see which step it was)
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.ok).toBe(false);
-    // **时间线上有那一行** ✓
+    // **The timeline has that row**
     expect(result.stages).toHaveLength(1);
     expect(result.stages[0]?.stepId).toBe('deliver');
     expect(result.stages[0]?.ok).toBe(false);
   });
 });
 
-describe('流程 · 取消（人叫停）', () => {
-  it('**被叫停了 → 后面那一步不跑**（人不要了，就别再往下做 ✓）', async () => {
+describe('workflow · cancellation (the operator stops it)', () => {
+  it('**it was stopped → the later step does not run** (the operator no longer wants it, so it does not go on)', async () => {
     const controller = new AbortController();
     const h = harness({
-      // **第一步跑完就叫停** ✓
+      // **It is stopped right after the first step finished**
       onExec: (command) => {
         if (command.includes('first')) controller.abort();
       },
@@ -949,21 +952,21 @@ describe('流程 · 取消（人叫停）', () => {
     const result = await runWorkflow(pack, {}, h.deps, {
       signal: controller.signal,
     });
-    // **第一步跑了** ✓
+    // **The first step ran**
     expect(h.byId('guest')?.commands.some((c) => c.includes('first'))).toBe(true);
-    // **第二步不该跑** ✓（人叫停了 ✗ → 还往下做 = 不听话 ✗）
+    // **The second step may not run** (the operator stopped it, going on would be disobedience)
     expect(h.byId('guest')?.commands.some((c) => c.includes('second'))).toBe(false);
-    // **时间线上只有第一步** ✓
+    // **The timeline holds only the first step**
     expect(result.stages.map((s) => s.stepId)).toEqual(['one']);
   });
 
-  it('**被叫停了 → 不跑跨目标的判据**（取消后别再让人多等一条命令 ✓）', async () => {
+  it('**it was stopped → the cross-target criterion does not run** (after a cancellation nobody should wait for another command)', async () => {
     const controller = new AbortController();
     const h = harness({
       files: {
         guest: [{ name: 'hello.ko', path: 'build/hello.ko', isDirectory: false, sizeBytes: 10, modifiedAt: null }],
       },
-      // **传输那一步开始时叫停** ✓
+      // **It is stopped when the transfer step begins**
       onExec: (command) => {
         if (command.startsWith('scp ')) controller.abort();
       },
@@ -993,13 +996,13 @@ describe('流程 · 取消（人叫停）', () => {
       'w.yaml',
     );
     await runWorkflow(pack, {}, h.deps, { signal: controller.signal });
-    // **板子上那条 `test -f` 不该跑** ✓（东西都没传完，验它没有意义 ✗）
+    // **The `test -f` on the board may not run** (nothing was transferred, verifying it is meaningless)
     expect(h.byId('board')?.commands.some((c) => c.includes('test -f'))).toBe(false);
   });
 });
 
-describe('流程 · assert 步', () => {
-  it('判据不符 → **失败**（assert 的默认）', async () => {
+describe('workflow · the assert step', () => {
+  it('the criterion does not match → **failure** (the default of assert)', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -1025,7 +1028,7 @@ describe('流程 · assert 步', () => {
     expect(result.stages[0]?.reason).toBe('not_found');
   });
 
-  it('`on_mismatch: continue` → **继续往下跑**', async () => {
+  it('`on_mismatch: continue` → **the run continues**', async () => {
     const h = harness();
     const pack = parseWorkflow(
       {
@@ -1051,7 +1054,7 @@ describe('流程 · assert 步', () => {
     const result = await runWorkflow(pack, {}, h.deps);
     expect(result.stages).toHaveLength(2);
     expect(h.byId('guest')?.commands).toEqual(['echo after']);
-    // **整体仍然不算成功**（那一步确实没成 ✓）
+    // **The whole run is still not a success** (that step indeed did not succeed)
     expect(result.ok).toBe(false);
   });
 });

@@ -6,24 +6,31 @@ import { SessionLog } from '../../src/main/logging/session-log';
 import { FakeConnection } from '../../src/main/hal/fake/connection';
 
 /**
- * 假设备的**文件系统**（调试用）。
+ * The **file system of the fake device** (for the debugging).
  *
- * ── 为什么假设备要有一块文件系统 ──
+ * Why the fake device needs a file system:
  *
- * 写侧（M6）要证明的是「**动作执行 → 回读 → 界面按回读值渲染**」。
- * 而回读的五种形式里有三种落在**文件与命令**上：
- * `file_equals`（读文件比值）、`command_ok`（看退出码）、`verify`（跑二次命令）。
+ * What the write side (M6) has to prove is "**the action runs → the readback
+ * → the interface renders the value of the readback**". And three of the five
+ * forms of the readback land on **files and commands**: `file_equals` (it
+ * reads a file and compares the value), `command_ok` (it looks at the exit
+ * code), `verify` (it runs a second command).
  *
- * → 假设备**不能只会吐 `/proc` 文本**：它得能**写文件、能读回、能被 grep**。
- * 否则「动作闭环」这条判据在假设备上**根本跑不了**（只能靠真板 → 不可自动化）。
+ * → The fake device **may not only emit the text of `/proc`**: it has to be
+ *   able to **write a file, read it back and be grepped**. Otherwise the
+ *   criterion "the action closes the loop" **cannot run on the fake device**
+ *   at all (it would need a real board → it cannot be automated).
  *
- * ── 为什么这块 fs 是「假的」但**诚实** ──
+ * Why this fs is "fake" but **honest**:
  *
- * - **真传**：推上去的文件真的落在虚拟 fs 里，拉下来的文件真的落在宿主磁盘上
- *   → 「报告成功却不传文件」这种骗人的事不再发生；
- * - **不假装有**：拉一个不存在的文件**报错**，不是**报告成功**；
- * - **共享**：同一个假 profile 的两条连接看到**同一块 fs**
- *   → 运行时写进去的文件，终端的文件浏览器看得见（一块板子只有一块盘）。
+ * - **It really transfers**: the file that is pushed really lands in the
+ *   virtual fs and the file that is pulled really lands on the disk of the
+ *   host → "reporting success and transferring nothing" no longer happens;
+ * - **It does not pretend**: pulling a file that does not exist **reports an
+ *   error** instead of **reporting success**;
+ * - **It is shared**: the two connections of the same fake profile see **the
+ *   same fs** → the file the runtime wrote is visible in the file browser of
+ *   the terminal (a board has one disk).
  */
 
 let dir: string;
@@ -42,8 +49,8 @@ function fake(): FakeConnection {
   return new FakeConnection({ now: () => 1_700_000_000_000, log });
 }
 
-describe('假设备 · 文件系统', () => {
-  it('echo 写进去的文件，cat 得回来', async () => {
+describe('the fake device · the file system', () => {
+  it('a file written by echo can be read back by cat', async () => {
     const conn = fake();
     const write = await conn.exec('echo 128 > /sys/class/backlight/backlight/brightness');
     expect(write.exitCode).toBe(0);
@@ -52,7 +59,7 @@ describe('假设备 · 文件系统', () => {
     expect(read.stdout.trim()).toBe('128');
   });
 
-  it('读不存在的文件 → **报错**，不是空串', async () => {
+  it('reading a file that does not exist → **an error**, not an empty string', async () => {
     const conn = fake();
     const read = await conn.exec("cat -- '/nope/nothing'");
     expect(read.exitCode).toBe(1);
@@ -60,21 +67,21 @@ describe('假设备 · 文件系统', () => {
     expect(read.stderr).not.toBe('');
   });
 
-  it('test -s：非空才是 0', async () => {
+  it('test -s: only a non-empty file is 0', async () => {
     const conn = fake();
     await conn.exec('echo hi > /tmp/x');
     expect((await conn.exec("test -s '/tmp/x'")).exitCode).toBe(0);
     expect((await conn.exec("test -s '/tmp/absent'")).exitCode).toBe(1);
   });
 
-  it('grep -qF：找到是 0，没找到是 1', async () => {
+  it('grep -qF: found is 0, not found is 1', async () => {
     const conn = fake();
     await conn.exec("echo 'ssh-rsa AAAA' > /root/.ssh/authorized_keys");
     expect((await conn.exec("grep -qF 'ssh-rsa AAAA' '/root/.ssh/authorized_keys'")).exitCode).toBe(0);
     expect((await conn.exec("grep -qF 'ssh-ed25519' '/root/.ssh/authorized_keys'")).exitCode).toBe(1);
   });
 
-  it('push：宿主上的文件真的进了虚拟 fs', async () => {
+  it('push: the file of the host really enters the virtual fs', async () => {
     const conn = fake();
     const local = join(dir, 'artifact.ko');
     writeFileSync(local, 'ELF-ish');
@@ -83,7 +90,7 @@ describe('假设备 · 文件系统', () => {
     expect(read.stdout).toBe('ELF-ish');
   });
 
-  it('pull：虚拟 fs 里的文件真的落在宿主磁盘上', async () => {
+  it('pull: the file of the virtual fs really lands on the disk of the host', async () => {
     const conn = fake();
     await conn.exec('echo payload > /tmp/report.txt');
     const local = join(dir, 'report.txt');
@@ -92,14 +99,14 @@ describe('假设备 · 文件系统', () => {
     expect(readFileSync(local, 'utf8').trim()).toBe('payload');
   });
 
-  it('pull 不存在的文件 → **报错**（不报告成功）', async () => {
+  it('pulling a file that does not exist → **an error** (it does not report success)', async () => {
     const conn = fake();
     const local = join(dir, 'nope.txt');
     await expect(conn.pull('/tmp/absent', local)).rejects.toThrow();
     expect(existsSync(local)).toBe(false);
   });
 
-  it('同一块假板子的两条连接看到**同一块 fs**', async () => {
+  it('the two connections of the same fake board see **the same fs**', async () => {
     const a = fake();
     const b = fake();
     await a.exec('echo shared > /tmp/shared.txt');
@@ -107,7 +114,7 @@ describe('假设备 · 文件系统', () => {
     expect(read.stdout.trim()).toBe('shared');
   });
 
-  it('list：列的是虚拟 fs 里的东西', async () => {
+  it('list: it lists what is in the virtual fs', async () => {
     const conn = fake();
     await conn.exec('echo x > /tmp/listed.txt');
     const entries = await conn.list('/tmp');

@@ -7,38 +7,42 @@ const profile = (opts: Record<string, unknown>) => ({
   id: 'a', label: 'a', transport: 'adb' as const, options: opts,
 });
 
-/** 连接日志的替身：adb 的用例只关心命令，不关心日志 */
+/** The stand-in for the connection log: the adb cases care about the commands, not about the log */
 const log = { write: () => {}, close: () => {}, filePath: 'x' } as never;
 
 /**
- * 假 runner：**按参数分派**，模拟真实 adb 的行为。
+ * A fake runner: it **dispatches on the arguments** and imitates the behaviour
+ * of a real adb.
  *
- * 为什么不能是「无论什么命令都回同一段 stdout」：
- * `adb devices` 与 `adb shell ls -la` 是两条不同的命令，
- * 真实 adb 对它们的回包完全不同（前者列所有设备与状态，后者回目录内容）。
- * 无视参数的替身会把「到底跑了哪条命令」这类 bug 盖住——
- * 所以这里按命令分派（规矩：替身按行为建模，不按结论建模）。
+ * Why it may not be "the same stdout for every command":
+ * `adb devices` and `adb shell ls -la` are two different commands, and a real
+ * adb answers them completely differently (the first lists every device with
+ * its state, the second returns the content of a directory). A stand-in that
+ * ignores the arguments would hide the bugs of "which command actually ran",
+ * so the dispatch is on the command (the rule: a stand-in is modelled by
+ * behaviour, not by conclusion).
  *
- * 保持异步：真实 adb 是子进程，回包必然落在后面的事件循环。
+ * It stays asynchronous: a real adb is a child process, its answer necessarily
+ * lands in a later turn of the event loop.
  */
 function fakeAdb(opts: {
-  /** `adb devices` 的 stdout */
+  /** The stdout of `adb devices` */
   devices?: string;
-  /** `adb shell ls -la` 的 stdout */
+  /** The stdout of `adb shell ls -la` */
   ls?: string;
-  /** `adb shell ls -la` 的退出码 */
+  /** The exit code of `adb shell ls -la` */
   lsExitCode?: number;
-  /** `adb shell ls -la` 的 stderr */
+  /** The stderr of `adb shell ls -la` */
   lsStderr?: string;
 } = {}): { runner: typeof runProcess; calls: { command: string; args: string[] }[] } {
   const calls: { command: string; args: string[] }[] = [];
   const runner = async (command: string, args: string[]): Promise<SpawnResult> => {
     calls.push({ command, args });
-    // `adb devices`：列**所有**设备（`-s` 也不筛选）
+    // `adb devices`: it lists **every** device (`-s` does not filter either)
     if (args.includes('devices')) {
       return { exitCode: 0, stdout: opts.devices ?? '', stderr: '', durationMs: 1, timedOut: false };
     }
-    // `adb shell <命令>`
+    // `adb shell <command>`
     if (args.includes('shell')) {
       const line = args[args.length - 1] ?? '';
       if (line.startsWith('ls -la')) {
@@ -56,49 +60,51 @@ function fakeAdb(opts: {
   return { runner, calls };
 }
 
-/** 抓住 open() 的错误：既要错误码，也要消息（`toThrow` 只看得到字符串） */
+/** Catches the error of open(): it needs the code and the message (`toThrow` only sees the string) */
 async function openError(conn: AdbConnection): Promise<{ code: string; message: string; detail?: unknown }> {
   try {
     await conn.open();
   } catch (err) {
     return err as { code: string; message: string; detail?: unknown };
   }
-  throw new Error('open() 本该失败，却成功了');
+  throw new Error('open() should have failed, but it succeeded');
 }
 
 describe('adbCapabilities', () => {
-  it('不用 PTY（事实 A1），但能传文件、能拿退出码', () => {
+  it('it uses no PTY (fact A1), but it can transfer files and it can get the exit code', () => {
     expect(adbCapabilities()).toEqual({ exec: true, pty: false, files: true, exitCode: true });
   });
 });
 
 describe('adbArgs', () => {
-  it('有序列号时前置 -s <serial>', () => {
+  it('with a serial number it prefixes -s <serial>', () => {
     expect(adbArgs(profile({ serial: '0000000000000000' }), ['shell']))
       .toEqual(['-s', '0000000000000000', 'shell']);
   });
 
-  it('没有序列号时不带 -s', () => {
+  it('without a serial number it carries no -s', () => {
     expect(adbArgs(profile({}), ['shell'])).toEqual(['shell']);
   });
 });
 
 describe('AdbConnection.open', () => {
-  it('只认 device 状态（事实 A7）', async () => {
+  it('only the state device counts (fact A7)', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n' });
     const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
     await expect(conn.open()).resolves.toBeUndefined();
   });
 
-  it('设备处于 offline 时报错并带出原始状态（运维黑洞的解药）', async () => {
+  it('when the device is offline it reports an error and carries the original state (the cure for the operations black hole)', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\toffline\n' });
     const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
     await expect(conn.open()).rejects.toThrow(/offline/);
   });
 
-  it('profile 钉了 serial 时只认那一块板：别的板子是 device 不算数', async () => {
-    // abc 离线、xyz 正常 —— 老的「有没有任意 device」判据会放行，
-    // 然后每条命令都在 `adb -s abc` 上失败，失败点离原因十万八千里
+  it('when the profile pins a serial only that board counts: another board in the device state does not', async () => {
+    // abc is offline, xyz is fine — the old criterion of "any device at all" would
+// let it pass,
+    // and then every command fails on `adb -s abc`, with the point of failure a
+// long way from the cause
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\toffline\nxyz\tdevice\n' });
     const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
 
@@ -108,7 +114,7 @@ describe('AdbConnection.open', () => {
     expect(err.message).toContain('offline');
   });
 
-  it('profile 指定的 serial 在 adb devices 里没有时报错，并说清是哪个序列号', async () => {
+  it('when the serial of the profile is not in adb devices it reports an error and names the serial', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nxyz\tdevice\n' });
     const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
 
@@ -116,12 +122,13 @@ describe('AdbConnection.open', () => {
     expect(err.code).toBe('CONN_OPEN_FAILED');
     expect(err.message).toContain('abc');
     expect(err.message).toContain('not in the adb devices list');   // says that it is not in the adb devices list
-    // xyz 是 device 也不行：profile 钉的是 abc，它压根不在列表里
+    // xyz being a device does not help either: the profile pins abc, which is not
+// in the list at all
     const present = (err.detail as { present?: string[] }).present ?? [];
     expect(present).toEqual(['xyz']);
   });
 
-  it('unauthorized 同样是失败：没授权的板子不能算连上了', async () => {
+  it('unauthorized is a failure as well: a board that was not authorised cannot count as connected', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tunauthorized\n' });
     const conn = new AdbConnection(profile({ serial: 'abc' }) as never, log, { runner: fake.runner });
 
@@ -131,7 +138,7 @@ describe('AdbConnection.open', () => {
     expect(err.message).toContain('unauthorized');
   });
 
-  it('no permissions 时把原始状态整段带出来（运维黑洞的解药）', async () => {
+  it('with no permissions it carries the original state as it is (the cure for the operations black hole)', async () => {
     const fake = fakeAdb({
       devices: 'List of devices attached\nabc\tno permissions (user in plugdev group); see [http://x]\n',
     });
@@ -141,7 +148,7 @@ describe('AdbConnection.open', () => {
     expect(err.message).toContain('no permissions');
   });
 
-  it('daemon 启动噪声不算设备行，也不进 states', async () => {
+  it('the noise of the starting daemon is not a device line and does not enter the states', async () => {
     const fake = fakeAdb({
       devices: [
         '* daemon not running; starting now at tcp:5037',
@@ -150,7 +157,7 @@ describe('AdbConnection.open', () => {
         'xyz\toffline',
       ].join('\n'),
     });
-    // 没钉 serial：走「有没有任意 device」这条老路
+    // No pinned serial: it takes the old route of "any device at all"
     const conn = new AdbConnection(profile({}) as never, log, { runner: fake.runner });
 
     const err = await openError(conn);
@@ -161,7 +168,7 @@ describe('AdbConnection.open', () => {
     expect(states).toEqual(['offline']);
   });
 
-  it('daemon 噪声也不会混进「指定 serial」分支的错误消息', async () => {
+  it('the noise of the daemon does not leak into the error message of the "given serial" branch either', async () => {
     const fake = fakeAdb({
       devices: [
         '* daemon not running; starting now at tcp:5037',
@@ -177,7 +184,7 @@ describe('AdbConnection.open', () => {
     expect(err.message).toContain('offline');
   });
 
-  it('没钉 serial 时保持老行为：有一块 device 就能开', async () => {
+  it('without a pinned serial the old behaviour is kept: one board in the device state is enough to open', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nxyz\tdevice\nabc\toffline\n' });
     const conn = new AdbConnection(profile({}) as never, log, { runner: fake.runner });
     await expect(conn.open()).resolves.toBeUndefined();
@@ -199,7 +206,7 @@ describe('AdbConnection.list', () => {
     return conn;
   };
 
-  it('走 adb shell ls -la：命令里有 ls -la 和被引号包裹的路径', async () => {
+  it('it runs adb shell ls -la: the command holds ls -la and the quoted path', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
     const conn = await opened(fake);
 
@@ -211,13 +218,13 @@ describe('AdbConnection.list', () => {
     expect(shell!.args.at(-1)).toContain("'/root'");
   });
 
-  it('解析出的条目正确：名字、路径、目录标记、大小、时间', async () => {
+  it('the parsed entries are right: the name, the path, the directory marker, the size, the time', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
     const conn = await opened(fake);
 
     const entries = await conn.list('/root');
 
-    // . 与 .. 不进结果
+    // . and .. do not enter the result
     expect(entries.map((e) => e.name)).toEqual(['sub', 'a.txt']);
     expect(entries[0].path).toBe('/root/sub');
     expect(entries[0].isDirectory).toBe(true);
@@ -227,7 +234,7 @@ describe('AdbConnection.list', () => {
     expect(entries[0].modifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('目录的 sizeBytes 是 null（读不到的东西不是 0 —— 事实 G2）', async () => {
+  it('the sizeBytes of a directory is null (a thing that cannot be read is not 0 — fact G2)', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n', ls: LS_OUT });
     const conn = await opened(fake);
 
@@ -239,7 +246,7 @@ describe('AdbConnection.list', () => {
     expect(dir?.sizeBytes).not.toBe(0);
   });
 
-  it('路径里有空格和单引号时也要包好（路径原样拼进命令会断）', async () => {
+  it('a path with spaces and single quotes is quoted as well (a path spliced in as it is would break the command)', async () => {
     const fake = fakeAdb({ devices: 'List of devices attached\nabc\tdevice\n' });
     const conn = await opened(fake);
 
@@ -249,7 +256,7 @@ describe('AdbConnection.list', () => {
     expect(shell!.args.at(-1)).toContain("'/root/my dir'\\''s'");
   });
 
-  it('ls 非零退出时抛 FILE_TRANSFER_FAILED，并带上 remotePath 与 stderr', async () => {
+  it('when ls exits with a non-zero code it throws FILE_TRANSFER_FAILED and carries the remotePath and the stderr', async () => {
     const fake = fakeAdb({
       devices: 'List of devices attached\nabc\tdevice\n',
       lsExitCode: 1,
@@ -268,25 +275,29 @@ describe('AdbConnection.list', () => {
   });
 });
 
-describe('坏字节（RF-3）', () => {
-  it('板端输出含半个 UTF-8 字符时不抛异常、不丢整条命令', async () => {
+describe('broken bytes (RF-3)', () => {
+  it('when the output of the board contains half a UTF-8 character it throws no exception and loses not the whole command', async () => {
     const { runProcess } = await import('../../src/main/util/spawn');
     const r = await runProcess(process.execPath, ['-e', 'process.stdout.write(Buffer.from([0xff, 0xfe]))']);
-    expect(r.stdout.length).toBeGreaterThan(0);   // 替换符，不是空串
+    expect(r.stdout.length).toBeGreaterThan(0);   // The replacement character, not an empty string
   });
 });
 
-describe('ADB 常驻 shell 的流错误', () => {
-  it('stdin 的 error 必须有人接 —— 否则 EPIPE 会把主进程带崩', async () => {
-    // 往已经关掉的管道写会拿到 EPIPE/ECONNRESET，
-    // 而流的 'error' 事件**没有监听器就会变成未捕获异常**——
-    // 不是终端窗口挂掉，是**整个 Electron 主进程挂掉**。
+describe('the stream errors of the long-lived ADB shell', () => {
+  it('the error of stdin has to be caught — otherwise an EPIPE takes the main process down', async () => {
+    // Writing to a pipe that is already closed yields EPIPE/ECONNRESET,
+    // and the 'error' event of a stream **without a listener becomes an uncaught
+// exception** —
+    // not the terminal window going down, **the whole Electron main process goes
+// down**.
     //
-    // 触发路径是现实的：`adb devices` 校验通过之后、板子掉线或 serial 不匹配，
-    // 构造器里那句写会话环境脚本就打在一条即将死的管道上。
+    // The path is realistic: after the check of `adb devices` passed, the board
+// drops off or the serial does not match,
+    // and the line in the constructor that writes the session environment script
+// lands on a pipe that is about to die.
     //
-    // 串口那条线有 `port.on('error')`、SSH 那条线有 `client.on('error')`，
-    // 唯独 ADB 的 stdin 是裸的（第三轮审计发现）。
+    // The serial line has `port.on('error')`, the SSH line has `client.on('error')`,
+    // only the stdin of ADB is bare (found in the third audit).
     const stdin = new EventEmitter() as EventEmitter & {
       write: (d: string) => void;
       end: () => void;
@@ -322,25 +333,29 @@ describe('ADB 常驻 shell 的流错误', () => {
     await conn.open();
     await conn.openSession();
 
-    // 有监听器 → 只是被记下来，不会变成未捕获异常
+    // With a listener → it is only recorded, it does not become an uncaught
+// exception
     expect(stdin.listenerCount('error')).toBeGreaterThan(0);
     expect(() => stdin.emit('error', new Error('EPIPE'))).not.toThrow();
   });
 });
 
-describe('ADB 会话注入的环境脚本', () => {
-  it('脚本里不能有 CR —— 落单的 CR 会被远端 shell 当成一条命令', async () => {
-    // **真机实测**（2026-11-13，板子的 shell 是 bash 不是 busybox）：
+describe('the environment script an ADB session injects', () => {
+  it('the script may not contain a CR — a lonely CR is taken for a command by the remote shell', async () => {
+    // **Measured on the board** (2026-11-13, the shell of the board is bash, not
+// busybox):
     //
     // ```
     // root@ATK-DLRK3588/bin/bash: line 3: $'\r': command not found
     // ```
     //
-    // 根因：脚本本身以 `\n` 结尾，注入时又补了一个 `\r\n`，
-    // 那个落单的 CR 就成了一条空命令。
+    // The cause: the script itself ends with `\n`, and the injection added a
+// `\r\n` on top,
+    // so that lonely CR became an empty command.
     //
-    // 这条断言守的是**写出去的确切字节**——
-    // 只断言「脚本内容对」是抓不到这个 bug 的。
+    // This assertion guards the **exact bytes that were written** —
+    // asserting only that the content of the script is right would not catch this
+// bug.
     const stdinWrites: string[] = [];
     const stdin = new EventEmitter() as EventEmitter & {
       write: (d: string) => void;
@@ -379,12 +394,12 @@ describe('ADB 会话注入的环境脚本', () => {
 
     expect(stdinWrites.length).toBeGreaterThan(0);
     const script = stdinWrites[0];
-    // 有 TERM 导出与 ls 的 shell 函数
+    // It exports TERM and defines a shell function for ls
     expect(script).toContain('export TERM=xterm-256color');
     expect(script).toContain('ls() {');
-    // **一个 CR 都不能有**
+    // **Not a single CR may be there**
     expect(script).not.toContain('\r');
-    // 行尾是 LF
+    // The line endings are LF
     expect(script.endsWith('\n')).toBe(true);
   });
 });

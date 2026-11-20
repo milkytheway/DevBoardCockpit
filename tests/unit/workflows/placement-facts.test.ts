@@ -5,22 +5,27 @@ import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 
 /**
- * **落位目录不该问用不上的事实**（契约 `05` §九 规则 9 ✓ · ADR-D43 ✓）。
+ * The placement directory must not ask for facts it does not need (contract
+ * `05` §9 rule 9).
  *
- * ── 原来的毛病 ──
+ * The old fault:
  *
- * `resolveEndpoints` **无条件**去问目标机器 `uname -r` ✓ —— 哪怕落位是
- * `user-program`（`/usr/local/bin/` ✓ —— **固定路径** ✓，**根本不需要内核版本** ✓）。
+ * `resolveEndpoints` asked the target machine for `uname -r`
+ * **unconditionally** — even when the placement is `user-program`
+ * (`/usr/local/bin/` — **a fixed path**, **the kernel version is not needed
+ * at all**).
  *
- * → 后果：**多一次往返** ✓ + **宿主必须能连上目标机器** ✓
- * → 而「宿主只有 ADB 没有板子私钥」时 ✓ —— **那条路走不通** ✗。
+ * → The consequence: **one round trip more** and **the host has to be able
+ *   to reach the target machine**, while with "the host only has ADB and not
+ *   the private key of the board" **that route does not work**.
  *
- * → **只有 `kernel-module` 的落位需要内核版本** ✓（`/usr/lib/modules/<版本>/extra/` ✓）。
+ * → **Only the placement `kernel-module` needs the kernel version**
+ *   (`/usr/lib/modules/<version>/extra/`).
  */
-describe('工作流 · 落位目录不问用不上的事实', () => {
+describe('the workflow · the placement directory does not ask for facts it does not need', () => {
   const PROFILE: ConnectionProfile = {
     id: 'board',
-    label: '板子',
+    label: 'the board',
     transport: 'adb',
     board_pack: 'rk3588-atk',
     options: { serial: 'x' },
@@ -48,14 +53,14 @@ describe('工作流 · 落位目录不问用不上的事实', () => {
       push: async () => undefined,
       list: async () => [],
       openSession: async () => {
-        throw new Error('不开会话');
+        throw new Error('no session');
       },
     } as unknown as Connection;
 
     deps = {
       targets: {
         runOn: async <T>(profileId: string, fn: (c: Connection) => Promise<T>): Promise<T> => {
-          if (profileId !== 'board') throw new Error(`没有这个连接：${profileId}`);
+          if (profileId !== 'board') throw new Error(`no such connection: ${profileId}`);
           return fn(conn);
         },
         closeAll: async () => undefined,
@@ -69,12 +74,12 @@ describe('工作流 · 落位目录不问用不上的事实', () => {
     apiVersion: 'devboard/v1',
     kind: 'Workflow',
     id: 'demo.transfer',
-    name: '演示传输',
+    name: 'demo transfer',
     version: '1.0.0',
     inputs: {},
     roles: {
-      build: { purpose: '客机', profile: 'guest' },
-      target: { purpose: '板子', profile: 'board' },
+      build: { purpose: 'the guest', profile: 'guest' },
+      target: { purpose: 'the board', profile: 'board' },
     },
     steps: [
       {
@@ -87,13 +92,13 @@ describe('工作流 · 落位目录不问用不上的事实', () => {
     ],
   };
 
-  it('**`user-program` 的落位 → 不问 `uname -r`** ✓（**固定路径** ✓ —— 问了就是白问 ✓）', async () => {
+  it('**the placement of `user-program` → it does not ask for `uname -r`** (**a fixed path** — asking would be asking for nothing)', async () => {
     const pack = parseWorkflow(TRANSFER_PACK, 'demo.yaml');
     await runWorkflow(pack, {}, deps);
     expect(unameCalls).toBe(0);
   });
 
-  it('**`kernel-module` 的落位 → 要问 `uname -r`** ✓（**路径里有版本号** ✓）', async () => {
+  it('**the placement of `kernel-module` → it has to ask for `uname -r`** (**the path carries the version**)', async () => {
     const pack = parseWorkflow(
       {
         ...TRANSFER_PACK,

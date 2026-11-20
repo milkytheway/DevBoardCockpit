@@ -1,79 +1,86 @@
 /**
- * **打包产物自检里那道「包里的代码是不是最新的」的判据** ✓（2026-11-19 加 ✓）。
+ * The criterion of the self-check of the package that asks "**is the code
+ * inside the package the newest one**" (added on 2026-11-19).
  *
- * ── 它防的是哪类 bug（**这一条是被真机事件打出来的** ✓）──
+ * Which bugs it prevents (**this one was hammered out by a real event**):
  *
- * → **2026-11-19**：用户把安装包装上了 ✓ → 我去看 ✓ → **包里跑的是修复之前的代码** ⚠️
- *   （安装包 **00:55** ✓ · 修复 **21:38** 提交的 ✓ → **包比修复早 21 小时** ⚠️）。
- * → **后果**：装机版里「凡是能写板子的卡」**永久显示「降级」** ⚠️
- *   → 而**开发期与沙箱里全绿** ✓ → **只有装上才看得见** ✓。
- * → **`check:package` 原来验不出这个** ⚠️ → 它验「卡在不在」✓
- *   → **验不出「代码是不是最新的」** ⚠️。
+ * → **2026-11-19**: the operator installed the build → I looked at it →
+ *   **the package was running the code from before the fix** (the installer
+ *   **00:55**, the fix was committed at **21:38** → **the package was 21
+ *   hours older than the fix**).
+ * → **The consequence**: in the installed build every card that can write to
+ *   the board **permanently showed "degraded"**, while **everything was green
+ *   during the development and in the sandbox** — **it is only visible once
+ *   it is installed**.
+ * → **`check:package` could not see that** — it verified "are the cards
+ *   there", and **not "is the code the newest one"**.
  *
- * ── 判据怎么定 ──
+ * How the criterion is defined:
  *
- * → **asar 里的 `out/main/index.js` 与磁盘上的 `out/main/index.js` 逐字节相等** ✓
- *   （`npm run dist` 先 `electron-vite build` ✓ → **`out/` 是刚构建的** ✓
- *   → **两处不等 = 包是陈旧的** ✓）。
- * → **比的是字节** ✓ —— 不比时间戳 ✓（**时间戳会被 `cp` 改** ✓ → 不可靠 ✓）。
+ * → **The `out/main/index.js` of the asar and the `out/main/index.js` of the
+ *   disk are equal byte by byte** (`npm run dist` runs `electron-vite
+ *   build` first → **`out/` is the fresh build** → **the two differ = the
+ *   package is stale**).
+ * → **The bytes are compared**, not the timestamps (**the timestamps are
+ *   changed by `cp`** — unreliable).
  */
 import { describe, it, expect } from 'vitest';
 import { compareCards, compareBundle } from '../../scripts/check-package';
 
-describe('打包自检 · 内置卡', () => {
-  it('**两边一模一样 → 通过** ✓', () => {
+describe('the self-check of the package · the built-in cards', () => {
+  it('**the two sides are identical → it passes**', () => {
     const r = compareCards(['a', 'b'], ['a', 'b']);
     expect(r.ok).toBe(true);
     expect(r.missing).toEqual([]);
     expect(r.extra).toEqual([]);
   });
 
-  it('**asar 少一张 → 不过** ✓（**陈旧的 asar** ✓ —— 这正是要抓的那一种 ✓）', () => {
+  it('**one card is missing in the asar → it fails** (**a stale asar** — that is exactly the kind to catch)', () => {
     const r = compareCards(['a', 'b', 'c'], ['a', 'b']);
     expect(r.ok).toBe(false);
     expect(r.missing).toEqual(['c']);
     expect(r.extra).toEqual([]);
   });
 
-  it('**asar 多一张 → 不过** ✓（**陈旧的 asar（老卡没删掉）** ✓）', () => {
+  it('**one card too many in the asar → it fails** (**a stale asar, an old card that was not deleted**)', () => {
     const r = compareCards(['a'], ['a', 'b']);
     expect(r.ok).toBe(false);
     expect(r.missing).toEqual([]);
     expect(r.extra).toEqual(['b']);
   });
 
-  it('**`cards/` 一张都没有 → 不过** ✓（**不是「0 张也算过」** ✓）', () => {
+  it('**there is not a single card in `cards/` → it fails** (**not "zero cards also passes"**)', () => {
     expect(compareCards([], []).ok).toBe(false);
   });
 
-  it('**顺序不同也算对** ✓（**比的是集合，不是顺序** ✓）', () => {
+  it('**a different order is also right** (**what is compared is the set, not the order**)', () => {
     expect(compareCards(['a', 'b'], ['b', 'a']).ok).toBe(true);
   });
 });
 
-describe('打包自检 · **包里的代码是不是最新的**（2026-11-19 加 ✓）', () => {
-  it('**两边逐字节相等 → 通过** ✓', () => {
+describe('the self-check of the package · **is the code inside the package the newest one** (added on 2026-11-19)', () => {
+  it('**the two sides are equal byte by byte → it passes**', () => {
     const r = compareBundle(Buffer.from('same bytes'), Buffer.from('same bytes'));
     expect(r.ok).toBe(true);
   });
 
-  it('**字节不同 → 不过** ✓（**包是陈旧的** ✓ —— 这正是 2026-11-19 装机版踩的那一个 ✓）', () => {
+  it('**the bytes differ → it fails** (**the package is stale** — that is exactly the one the installed build of 2026-11-19 ran into)', () => {
     const r = compareBundle(Buffer.from('old code'), Buffer.from('new code'));
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('陈旧');
   });
 
-  it('**磁盘上那份没有 → 不过** ✓（**不是「没有就跳过」** ✓ —— 那样等于没这条判据 ✓）', () => {
+  it('**it is not on the disk → it fails** (**not "it is skipped when it is missing"** — that would make the criterion void)', () => {
     const r = compareBundle(Buffer.from('code'), undefined);
     expect(r.ok).toBe(false);
   });
 
-  it('**asar 里那份没有 → 不过** ✓（**包没带 main 产物** ✓）', () => {
+  it('**it is not in the asar → it fails** (**the package carries no main artefact**)', () => {
     const r = compareBundle(undefined, Buffer.from('code'));
     expect(r.ok).toBe(false);
   });
 
-  it('**两边都没有 → 不过** ✓（**不许「都缺 = 算了」** ✓）', () => {
+  it('**neither of them is there → it fails** (**"both are missing, never mind" is not allowed**)', () => {
     const r = compareBundle(undefined, undefined);
     expect(r.ok).toBe(false);
   });

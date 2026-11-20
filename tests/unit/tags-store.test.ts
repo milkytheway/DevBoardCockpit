@@ -3,14 +3,17 @@ import { TagStore } from '../../src/main/tags/store';
 import { REASON_CODES, type ReasonCode, type TagStatus } from '../../src/shared/tag-reading';
 
 /**
- * TagStore —— 读数的**唯一汇点**（ADR-D22）。
+ * TagStore — the **single meeting point** of the readings (ADR-D22).
  *
- * 「驾驶舱」的产品底线是「UI 显示板子的真实状态」。
- * **一份状态有多个副本，就等于没有真相**——
- * 所以不管数据来自轮询还是将来的推送，进 TagStore 之后再分发。
+ * The product bottom line of a "cockpit" is that the interface shows the real
+ * state of the board. **Several copies of one state mean there is no truth at
+ * all**, so whether the data comes from polling or from a push later, the
+ * dispatch happens after it entered the TagStore.
  *
- * 五态迁移照抄契约 `docs/spec/01` §2.1 的那张表——
- * **不许各写各的**（契约原话：「这张表是**有状态的**：运行时必须按这张表迁移」）。
+ * The migration of the five states follows the table of contract
+ * `docs/spec/01` §2.1 — **nobody may write their own** (the words of the
+ * contract: "this table is **stateful**: the runtime has to migrate along
+ * this table").
  */
 
 function input(
@@ -22,8 +25,8 @@ function input(
   return { tag, value, unit: 'percent', status, at: 1000, ...extra };
 }
 
-describe('reason 码表 · 封闭且最小（契约 §2.1.1）', () => {
-  it('**恰好七个**——码表保持最小，具体性由 detail 承担', () => {
+describe('the table of reason codes · closed and minimal (contract §2.1.1)', () => {
+  it('**exactly seven** — the table stays minimal, the detail carries the specificity', () => {
     expect([...REASON_CODES]).toEqual([
       'not_found',
       'device_absent',
@@ -35,27 +38,29 @@ describe('reason 码表 · 封闭且最小（契约 §2.1.1）', () => {
     ]);
   });
 
-  it('**没有 not_in_pack**——它合并进 not_found 了（ADR-D27 的 O14）', () => {
-    // 「你问的那个东西不存在」读侧写侧同名同义——
-    // **不给 AI 两套要互相翻译的方言**。
+  it('**there is no not_in_pack** — it was merged into not_found (O14 of ADR-D27)', () => {
+    // "the thing you asked for does not exist" has the same name on the reading
+// and the writing side —
+    // **No two dialects for an AI that would have to be translated into each
+// other**.
     expect(REASON_CODES).not.toContain('not_in_pack');
   });
 });
 
-describe('写入与读出', () => {
-  it('写进去能读出来', () => {
+describe('writing and reading', () => {
+  it('what was written can be read back', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     expect(store.get('cpu.usage')?.value).toBe(12.5);
   });
 
-  it('读出来的是**同一个对象**（不是副本）', () => {
+  it('what is read back is **the same object** (not a copy)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     expect(store.get('cpu.usage')).toBe(store.get('cpu.usage'));
   });
 
-  it('写进去的读数是**冻结的**（改了不会影响 store）', () => {
+  it('the reading that was written is **frozen** (changing it does not affect the store)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     const got = store.get('cpu.usage')!;
@@ -66,11 +71,11 @@ describe('写入与读出', () => {
     expect(store.get('cpu.usage')!.value).toBe(12.5);
   });
 
-  it('没写过的 tag 读出来是 undefined', () => {
+  it('a tag that was never written reads back as undefined', () => {
     expect(new TagStore().get('nosuch')).toBeUndefined();
   });
 
-  it('all() 给出全部读数', () => {
+  it('all() gives every reading', () => {
     const store = new TagStore();
     store.put(input('a', 1));
     store.put(input('b', 2));
@@ -78,34 +83,34 @@ describe('写入与读出', () => {
   });
 });
 
-describe('seq · 同一 tag 内单调递增', () => {
-  it('同一个 tag 连续写入，seq 递增', () => {
+describe('seq · it increases monotonically within one tag', () => {
+  it('writing the same tag in a row, the seq increases', () => {
     const store = new TagStore();
     const r1 = store.put(input('cpu.usage', 1));
     const r2 = store.put(input('cpu.usage', 2));
     expect(r2.seq).toBeGreaterThan(r1.seq);
   });
 
-  it('不同 tag 的 seq **各自独立**', () => {
+  it('the seq of different tags is **independent**', () => {
     const store = new TagStore();
     const a1 = store.put(input('a', 1));
     const b1 = store.put(input('b', 1));
     expect(a1.seq).toBe(b1.seq);
   });
 
-  it('**乱序的旧值被丢弃**（渲染层拿到的是最新的那个）', () => {
+  it('**an out-of-order old value is dropped** (the rendering layer gets the newest one)', () => {
     const store = new TagStore();
     const first = store.put(input('cpu.usage', 1));
     const second = store.put(input('cpu.usage', 2));
-    // 拿一个更旧的 seq 来写：必须被丢掉
+    // Writing with an older seq: it has to be dropped
     const stale = store.put({ ...input('cpu.usage', 999), seq: first.seq } as never);
     expect(stale.seq).toBe(second.seq);
     expect(store.get('cpu.usage')!.value).toBe(2);
   });
 });
 
-describe('五态迁移 · 契约 §2.1', () => {
-  it('ok → stale **保留旧值**', () => {
+describe('the migration of the five states · contract §2.1', () => {
+  it('ok → stale **keeps the old value**', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     store.put(input('cpu.usage', 12.5, 'stale'));
@@ -114,7 +119,7 @@ describe('五态迁移 · 契约 §2.1', () => {
     expect(got.value).toBe(12.5);
   });
 
-  it('ok → unavailable **不保留**（值为 null）', () => {
+  it('ok → unavailable **does not keep it** (the value is null)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     store.put(input('cpu.usage', null, 'unavailable'));
@@ -123,7 +128,7 @@ describe('五态迁移 · 契约 §2.1', () => {
     expect(got.value).toBeNull();
   });
 
-  it('ok → error **保留旧值**（值坏了，不是没了）', () => {
+  it('ok → error **keeps the old value** (the value is broken, not gone)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     store.put(input('cpu.usage', null, 'error'));
@@ -132,21 +137,21 @@ describe('五态迁移 · 契约 §2.1', () => {
     expect(got.value).toBe(12.5);
   });
 
-  it('pending → error **没有旧值**（从没成功过）', () => {
+  it('pending → error **has no old value** (it never succeeded)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', null, 'pending'));
     store.put(input('cpu.usage', null, 'error'));
     expect(store.get('cpu.usage')!.value).toBeNull();
   });
 
-  it('unavailable → error 没有旧值', () => {
+  it('unavailable → error has no old value', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', null, 'unavailable'));
     store.put(input('cpu.usage', null, 'error'));
     expect(store.get('cpu.usage')!.value).toBeNull();
   });
 
-  it('error → error **继续保留**上一次的值', () => {
+  it('error → error **keeps** the value of the last time', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', 12.5));
     store.put(input('cpu.usage', null, 'error'));
@@ -154,24 +159,24 @@ describe('五态迁移 · 契约 §2.1', () => {
     expect(store.get('cpu.usage')!.value).toBe(12.5);
   });
 
-  it('pending 的值是 null（**不是 0**）', () => {
+  it('the value of pending is null (**not 0**)', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', null, 'pending'));
     expect(store.get('cpu.usage')!.value).toBeNull();
   });
 
-  it('unavailable 带着 reason 与 detail', () => {
+  it('unavailable carries the reason and the detail', () => {
     const store = new TagStore();
     store.put(input('cpu.usage', null, 'unavailable', {
       reason: 'device_absent',
-      detail: '/sys/kernel/debug/rknpu/load 不存在：debugfs 未挂载',
+      detail: '/sys/kernel/debug/rknpu/load does not exist: debugfs is not mounted',
     }));
     const got = store.get('cpu.usage')!;
     expect(got.reason).toBe('device_absent');
     expect(got.detail).toContain('debugfs');
   });
 
-  it('ok 之后又 ok：值换新，seq 继续涨', () => {
+  it('ok and then ok again: the value is new, the seq keeps growing', () => {
     const store = new TagStore();
     const r1 = store.put(input('cpu.usage', 1));
     const r2 = store.put(input('cpu.usage', 2));
@@ -180,8 +185,8 @@ describe('五态迁移 · 契约 §2.1', () => {
   });
 });
 
-describe('分发 · ADR-D22「进 TagStore 之后再分发」', () => {
-  it('写进一个读数就通知订阅者', () => {
+describe('the dispatch · the dispatch happens after the TagStore (ADR-D22)', () => {
+  it('writing a reading notifies the subscribers', () => {
     const store = new TagStore();
     const seen: string[] = [];
     store.subscribe((r) => seen.push(r.tag));
@@ -189,7 +194,7 @@ describe('分发 · ADR-D22「进 TagStore 之后再分发」', () => {
     expect(seen).toEqual(['cpu.usage']);
   });
 
-  it('退订之后不再通知', () => {
+  it('after the unsubscription there is no more notification', () => {
     const store = new TagStore();
     const seen: string[] = [];
     const off = store.subscribe((r) => seen.push(r.tag));
@@ -199,7 +204,7 @@ describe('分发 · ADR-D22「进 TagStore 之后再分发」', () => {
     expect(seen).toEqual(['a']);
   });
 
-  it('**乱序的旧值被丢掉时不通知**（别把旧值再发一遍）', () => {
+  it('**an out-of-order old value that was dropped notifies nothing** (the old value must not be sent again)', () => {
     const store = new TagStore();
     const first = store.put(input('cpu.usage', 1));
     store.put(input('cpu.usage', 2));

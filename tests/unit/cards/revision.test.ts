@@ -5,22 +5,25 @@ import { join } from 'node:path';
 import { cardRevision } from '../../../src/main/cards/revision';
 
 /**
- * 卡片目录的**内容指纹**。
+ * The **fingerprint of the content** of a card directory.
  *
- * ── 它是「改文件即热更新」的地基 ──
+ * It is the foundation of "edit the file and it takes effect":
  *
- * 契约 §八 与验收清单都承诺「改卡片里的一个字 → 不用重启，卡片就变了」。
- * 而**光刷新清单不够**——iframe 的 URL 没变 → 浏览器不重新加载 →
- * 卡片里跑的还是**旧代码**。
+ * Contract §8 and the acceptance list both promise that "one character
+ * changed in a card → no restart, the card has changed". And **refreshing the
+ * list is not enough** — the URL of the iframe does not change → the browser
+ * does not reload → the card still runs the **old code**.
  *
- * → 所以「卡片内容变了」必须体现在**实例 id** 上：
- * 实例 id 变 → URL 变 → React 的 key 变 → **iframe 重建** → 新代码生效。
+ * → Therefore "the content of the card changed" has to show up in the
+ *   **instance id**: the instance id changes → the URL changes → the key of
+ *   React changes → **the iframe is rebuilt** → the new code takes effect.
  *
- * ── 为什么用**内容**哈希，不用 mtime ──
+ * Why a hash of the **content** and not the mtime:
  *
- * 文件系统的时间戳粒度不一（有的地方是 1 秒），
- * 「刚写完又改一次」可能落在**同一秒**里 → mtime 一样 → 不会重载。
- * 卡片文件都很小，直接算内容哈希最稳。
+ * The granularity of the timestamps of the file system differs (in some
+ * places it is one second), so "written and changed again in a moment" may
+ * fall into the **same second** → the mtime is the same → no reload. The
+ * files of a card are small, so hashing the content is the most reliable.
  */
 function scene(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'card-rev-'));
@@ -29,8 +32,8 @@ function scene(): { dir: string; cleanup: () => void } {
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-describe('卡片目录的内容指纹', () => {
-  it('**内容一样 → 指纹一样**（不能每次刷新都换 id，否则卡片永远在重载）', () => {
+describe('the fingerprint of the content of a card directory', () => {
+  it('**the same content → the same fingerprint** (it may not get a new id on every refresh, otherwise the card reloads for ever)', () => {
     const { dir, cleanup } = scene();
     try {
       expect(cardRevision(dir)).toBe(cardRevision(dir));
@@ -39,7 +42,7 @@ describe('卡片目录的内容指纹', () => {
     }
   });
 
-  it('**内容变了 → 指纹变了**（这是热更新的触发点）', () => {
+  it('**the content changed → the fingerprint changed** (this is what triggers the hot reload)', () => {
     const { dir, cleanup } = scene();
     try {
       const before = cardRevision(dir);
@@ -50,7 +53,7 @@ describe('卡片目录的内容指纹', () => {
     }
   });
 
-  it('**同秒内改两次也要认出来**（mtime 靠不住，内容靠得住）', () => {
+  it('**two changes in the same second are recognised as well** (the mtime is unreliable, the content is not)', () => {
     const { dir, cleanup } = scene();
     try {
       const before = cardRevision(dir);
@@ -64,7 +67,7 @@ describe('卡片目录的内容指纹', () => {
     }
   });
 
-  it('**新增一个文件也算变了**', () => {
+  it('**an added file counts as a change as well**', () => {
     const { dir, cleanup } = scene();
     try {
       const before = cardRevision(dir);
@@ -75,7 +78,7 @@ describe('卡片目录的内容指纹', () => {
     }
   });
 
-  it('`node_modules` / `.git` **不算**（它们很大，而且跟卡片代码无关）', () => {
+  it('`node_modules` / `.git` **do not count** (they are large and unrelated to the code of the card)', () => {
     const { dir, cleanup } = scene();
     try {
       const before = cardRevision(dir);
@@ -89,7 +92,7 @@ describe('卡片目录的内容指纹', () => {
     }
   });
 
-  it('**子目录里的文件也算**（卡片的资源常常在子目录里）', () => {
+  it('**the files of a subdirectory count as well** (the resources of a card are often in a subdirectory)', () => {
     const { dir, cleanup } = scene();
     try {
       const before = cardRevision(dir);

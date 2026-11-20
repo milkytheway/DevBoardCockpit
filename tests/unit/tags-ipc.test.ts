@@ -1,18 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
 
 /**
- * tag 读数的 IPC 通道。
+ * The IPC channel of the tag readings.
  *
- * ── 为什么这两条通道是「判据」而不只是「实现」──
+ * Why these two channels are "criteria" and not only "implementation":
  *
- * 契约 §2.1 的五态迁移是**有状态的**（ADR-D22）：
- * 「读数只经 TagStore 进、只经 TagStore 出」。
- * 所以 renderer 侧**只能**拿到两种东西：
- * 1. **当前快照**（`tags:readings`）——晚订阅的人**不会丢当前值**；
- * 2. **变化推送**（`tags:changed`）——值自己会动。
+ * The migration of the five states of contract §2.1 is **stateful** (ADR-D22):
+ * "the readings only enter through the TagStore and only leave through the
+ * TagStore". Therefore the renderer side can **only** get two things:
+ * 1. the **current snapshot** (`tags:readings`) — a late subscriber does
+ *    **not** lose the current value;
+ * 2. the **pushes of a change** (`tags:changed`) — the values move by
+ *    themselves.
  *
- * **只推不取**会漏掉晚订阅的人；**只取不推**则值不会自己动。
- * 两条都要有——这就是它们为什么是判据。
+ * **Only pushing loses the late subscribers; only pulling means the values do
+ * not move.** Both are needed — that is why they are criteria.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -43,18 +45,18 @@ vi.mock('electron', () => ({
 import { IPC } from '../../src/shared/ipc-contract';
 import { api } from '../../src/preload/index';
 
-describe('tag 读数的 IPC 通道', () => {
-  it('通道名拼错要在**编译期**就红——这就是 IPC 表存在的理由', () => {
+describe('the IPC channel of the tag readings', () => {
+  it('a misspelled name of the channel has to be **red at compile time** — that is what the table of the IPC is for', () => {
     expect(IPC.tagsReadings).toBe('tags:readings');
     expect(IPC.tagsChanged).toBe('tags:changed');
   });
 
-  it('preload 暴露了「取快照」与「听变化」两个方法', () => {
+  it('the preload offers the two methods "take a snapshot" and "listen for changes"', () => {
     expect(typeof api.tagsReadings).toBe('function');
     expect(typeof api.onTagChanged).toBe('function');
   });
 
-  it('取快照走 invoke，并回到主进程给的结果', async () => {
+  it('taking a snapshot goes through invoke and gives the result of the main process', async () => {
     const snapshot = [
       { tag: 'cpu.usage', value: 12.5, unit: 'percent', status: 'ok', at: 1, seq: 1 },
     ];
@@ -64,13 +66,13 @@ describe('tag 读数的 IPC 通道', () => {
     expect(mocks.invoke).toHaveBeenCalledWith('tags:readings');
   });
 
-  it('听变化：订阅拿得到推送，**退订后不再拿得到**', () => {
+  it('listening for changes: the subscriber gets the pushes, and **after the unsubscription it does not get them any more**', () => {
     const seen: unknown[] = [];
     const off = api.onTagChanged((reading) => seen.push(reading));
 
     expect(mocks.on).toHaveBeenCalledWith('tags:changed', expect.any(Function));
 
-    // 模拟主进程推一次
+    // It simulates one push of the main process
     const handler = mocks.on.mock.calls[0]?.[1] as (e: unknown, r: unknown) => void;
     const reading = { tag: 'cpu.usage', value: 1, unit: 'percent', status: 'ok', at: 1, seq: 2 };
     handler({}, reading);

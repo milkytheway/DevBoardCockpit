@@ -5,31 +5,39 @@ import { validatePack, errorsOf } from '../../src/main/tags/validator';
 import { instantiatePack, type ProbeOutcome } from '../../src/main/wizard/instantiate';
 
 /**
- * **实例化**：通用包（配方）→ 一块板的初版包 ✓ —— 2026-11-19 加 ✓。
+ * The **instantiation**: the generic pack (the recipe) → the first pack of one
+ * board, added on 2026-11-19.
  *
- * ── 它是什么 ──
+ * What it is:
  *
- * → **通用包在一块板子上试出来的结果** ✓ → **变成那块板的包** ✓。
- * → **打破了「先有包才能连板」的鸡生蛋** ✓（`docs/探索/02` §一·1.2 第③条 ✓）。
+ * → **The result of trying the generic pack on a board** becomes **the pack of
+ *   that board**. This breaks the chicken-and-egg problem of "a pack has to
+ *   exist before a board can be connected".
  *
- * ── ⚠️ **它必须改写 `custom.` 前缀**（**这是最容易漏的一步** ✓）──
+ * → It **has to rewrite the `custom.` prefix** (this is the step that is
+ *   easiest to miss):
  *
- * → **规则 1** ✓：`tag` 必须落在核心词表**或 `custom.<本包 id>.` 下** ✓
- *   （`isCustomTag(name, packId)` → `custom.${packId}.*` ✓）。
- * → 通用包的 id 是 `generic-linux` ✓ → **它的 tag 必然是 `custom.generic-linux.*`** ✓。
- * → **实例化出来的包 id 是 `atk-01`** ✓ → **那些 tag 原样带过去 → 规则 1 立刻拦** ⚠️
- *   → **落盘的包天生是非法的** ⚠️ → **向导的产物落地即废** ⚠️。
- * → **所以：实例化必须重写前缀** ✓ —— `custom.generic-linux.*` → `custom.atk-01.*` ✓。
+ * → **Rule 1**: a `tag` has to be in the core vocabulary **or under
+ *   `custom.<pack id>.`** (`isCustomTag(name, packId)` → `custom.${packId}.*`).
+ * → The id of the generic pack is `generic-linux`, so **its tags are
+ *   necessarily `custom.generic-linux.*`**.
+ * → **The id of the instantiated pack is `atk-01`**, so **those tags carried
+ *   over unchanged are stopped by rule 1 at once**, and **the pack on disk is
+ *   illegal from the start** — the product of the wizard would be dead on
+ *   arrival.
+ * → Therefore **the instantiation has to rewrite the prefix**:
+ *   `custom.generic-linux.*` → `custom.atk-01.*`.
  *
- * ── 它与现有包**同形** ✓ ──
+ * It has the **same shape** as the existing packs:
  *
- * → `rk3588-atk` 那份包里的 `custom.rk3588-atk.*` ✓ → **同一个形状** ✓
- * → **所以产物白拿校验器** ✓ → **判据就是「它必须过真校验器」** ✓。
+ * → The pack of `rk3588-atk` holds `custom.rk3588-atk.*` — the same shape, so
+ *   the product gets the validator for free and **the criterion is "it has to
+ *   pass the real validator"**.
  */
 const REPO_ROOT = resolve(process.cwd());
 const GENERIC_DIR = join(REPO_ROOT, 'profiles', 'boards', 'generic-linux');
 
-/** 一条探针结果 */
+/** One result of the probe */
 function outcome(
   readerId: string,
   ok: boolean,
@@ -38,7 +46,7 @@ function outcome(
   return { readerId, ok, detail, tags: ok ? [] : [] };
 }
 
-/** 通用包探出来的结果（**模拟**：大部分绿 ✓） */
+/** The results the generic pack found (**simulated**: mostly green) */
 const ALL_GREEN: ProbeOutcome[] = [
   outcome('cpu', true),
   outcome('mem', true),
@@ -55,25 +63,25 @@ const ALL_GREEN: ProbeOutcome[] = [
   outcome('net', true),
 ];
 
-describe('实例化 · **落盘的包必须过真校验器** ✓', () => {
-  it('**全绿 → 实例化出的包 0 错误** ✓（**这是判据的本体** ✓）', () => {
+describe('the instantiation · **the pack on disk has to pass the real validator**', () => {
+  it('**all green → the instantiated pack has 0 errors** (**this is the criterion itself**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN,
     });
     expect(
-      errorsOf(validatePack(result.pack)).map((e) => `规则 ${e.rule} · ${e.path}：${e.message}`),
-      '**实例化出的包必须过校验** ✓ —— 否则向导的产物落地即废 ⚠️',
+      errorsOf(validatePack(result.pack)).map((e) => `rule ${e.rule} · ${e.path}: ${e.message}`),
+      '**the instantiated pack has to pass the validation** — otherwise the product of the wizard is dead on arrival',
     ).toEqual([]);
   });
 
-  it('**`custom.` 前缀被改写成新包的 id** ✓（**规则 1 的必然要求** ✓）', () => {
+  it('**the `custom.` prefix is rewritten to the id of the new pack** (**an unavoidable requirement of rule 1**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN,
     });
     for (const reader of [...result.pack.readers, ...result.pack.custom]) {
@@ -81,19 +89,19 @@ describe('实例化 · **落盘的包必须过真校验器** ✓', () => {
         if (p.tag.startsWith('custom.')) {
           expect(
             p.tag,
-            `tag「${p.tag}」还是通用包的命名空间 ✓ → **规则 1 会拦** ⚠️` +
-              `（新包的 id 是 atk-01 ✓ → 应该是 custom.atk-01.* ✓）`,
+            `the tag "${p.tag}" is still in the namespace of the generic pack → **rule 1 stops it**` +
+              `(the id of the new pack is atk-01 → it should be custom.atk-01.*)`,
           ).toMatch(/^custom\.atk-01\./);
         }
       }
     }
   });
 
-  it('**核心词表里的 tag 不动** ✓（**`cpu.usage` 不是 custom 命名空间** ✓）', () => {
+  it('**a tag of the core vocabulary does not move** (**`cpu.usage` is not in the custom namespace**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN,
     });
     const tags = result.pack.readers.flatMap((r) => r.provides.map((p) => p.tag));
@@ -101,23 +109,23 @@ describe('实例化 · **落盘的包必须过真校验器** ✓', () => {
     expect(tags).toContain('mem.total_bytes');
   });
 
-  it('**红的 reader 被删掉** ✓（**「绿的留、红的删」** ✓ —— `docs/探索/02` §四.1 ✓）', () => {
+  it('**a red reader is removed** (**the green ones stay, the red ones go**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN.map((o) => (o.readerId === 'led' ? outcome('led', false) : o)),
     });
     const ids = [...result.pack.readers, ...result.pack.custom].map((r) => r.id);
-    expect(ids, '红的 reader 不该留下 ✓').not.toContain('led');
+    expect(ids, 'a red reader may not stay').not.toContain('led');
     expect(ids).toContain('cpu');
   });
 
-  it('**被删掉的 reader 也不该留在轮询组里** ✓（**规则 17 会拦** ✓）', () => {
+  it('**a removed reader may not stay in the poll group either** (**rule 17 would stop it**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN.map((o) => (o.readerId === 'led' ? outcome('led', false) : o)),
     });
     for (const group of result.pack.poll_groups) {
@@ -127,24 +135,24 @@ describe('实例化 · **落盘的包必须过真校验器** ✓', () => {
     }
   });
 
-  it('**组里空了 → 那个组整个去掉** ✓（**空组是坏包** ✓）', () => {
+  it('**the group became empty → the whole group is dropped** (**an empty group is a broken pack**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN.map((o) => (o.readerId === 'led' ? outcome('led', false) : o)),
     });
     const ledGroups = result.pack.poll_groups.filter((g) => g.readers.includes('led'));
-    expect(ledGroups, '组里只剩红灯 → 那个组没了 ✓').toEqual([]);
+    expect(ledGroups, 'only a red light is left in the group → the group is gone').toEqual([]);
   });
 });
 
-describe('实例化 · **它要留痕**（**「这份包是猜的」** ✓）', () => {
-  it('**`provenance.json` 说得出它是怎么来的** ✓', () => {
+describe('the instantiation · **it has to leave a trace** (**"this pack is a guess"**)', () => {
+  it('**`provenance.json` states where it came from**', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN,
       connection: { transport: 'serial', port: 'COM3', baudrate: 1500000 },
     });
@@ -158,23 +166,23 @@ describe('实例化 · **它要留痕**（**「这份包是猜的」** ✓）', 
     });
   });
 
-  it('**「猜的」那几条要标出来** ✓（**`thermal` 的 type_map 是猜的** ✓）', () => {
+  it('**the guessed entries are marked** (**the type_map of `thermal` is a guess**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN,
     });
     const guessed = result.provenance.guessed;
-    expect(guessed.length, '至少有「温区归并」这一条是猜的 ✓').toBeGreaterThan(0);
-    expect(guessed.every((g) => g.why.length > 0), '每条都要说清为什么猜 ✓').toBe(true);
+    expect(guessed.length, 'at least the entry "merging the thermal zones" is a guess').toBeGreaterThan(0);
+    expect(guessed.every((g) => g.why.length > 0), 'every entry has to say why it is a guess').toBe(true);
   });
 
-  it('**红的 reader 也记一笔** ✓（**「这板没有」也是事实** ✓）', () => {
+  it('**a red reader is recorded as well** (**"this board does not have it" is a fact as well**)', () => {
     const result = instantiatePack({
       source: loadBoardPack(GENERIC_DIR),
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: ALL_GREEN.map((o) => (o.readerId === 'led' ? outcome('led', false) : o)),
     });
     expect(result.provenance.missing.map((m) => m.readerId)).toContain('led');

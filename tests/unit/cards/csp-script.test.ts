@@ -2,48 +2,52 @@ import { describe, it, expect } from 'vitest';
 import { cspScriptFor, cspScriptTag } from '../../../src/main/cards/csp-script';
 
 /**
- * 卡片里的 **CSP 违规监听脚本**。
+ * The **script that listens for the CSP violations** inside the card.
  *
- * ── 为什么要有它 ──
+ * Why it exists:
  *
- * 契约 `spec/03` §6.1：「浏览器的 CSP 违规会记在卡片运行时日志里，
- * agent 因此能看到『这张卡试图联网』」。
+ * Contract `spec/03` §6.1: "the CSP violations of the browser are recorded in
+ * the runtime log of the card, so the agent can see "this card tried to reach
+ * the network"".
  *
- * **但宿主原来靠 `console-message` 抓，抓不到**（实测，Electron 34.5.8）：
+ * **But the host used to catch them with `console-message`, and that does
+ * not work** (measured on Electron 34.5.8):
  *
- * | 违规类型 | `console-message` 的 `sourceId` | 能不能归属到卡 |
+ * | Kind of violation | the `sourceId` of `console-message` | attributable to a card |
  * |---|---|---|
- * | `img-src`（外链图片） | **有**（卡片的 URL） | 能 |
- * | `connect-src`（`fetch` 外网） | **空串** | **不能** |
- * | `script-src`（内联脚本） | **空串** | **不能** |
+ * | `img-src` (an external image) | **there is one** (the URL of the card) | yes |
+ * | `connect-src` (`fetch` to the outside) | **an empty string** | **no** |
+ * | `script-src` (an inline script) | **an empty string** | **no** |
  *
- * 而「试图联网」正是 **`connect-src`** 那条——
- * **恰恰是宿主抓不到的那一类**。
+ * And "tried to reach the network" is exactly the `connect-src` case —
+ * **precisely the one the host cannot catch**.
  *
- * → 改用浏览器唯一的标准信号：**DOM 的 `securitypolicyviolation` 事件**。
- * 它**在违规发生的那张卡的文档里**触发（归属天然精确），
- * 而且带 `blockedURI` / `effectiveDirective` / `violatedDirective`——
- * agent 能直接看出「它想干什么」。
+ * → Therefore the one standard signal of the browser is used instead: **the
+ *   `securitypolicyviolation` event of the DOM**. It **fires in the document
+ *   of the card where the violation happened** (the attribution is exact by
+ *   nature) and it carries `blockedURI` / `effectiveDirective` /
+ *   `violatedDirective` — the agent can see directly "what it wanted to do".
  *
- * ── 为什么是**经典脚本**而不是 module ──
+ * Why a **classic script** and not a module:
  *
- * 监听必须**在卡片自己的脚本之前**就装上。
- * `type="module"` 的脚本是 defer 的 → 整个文档解析完才执行 →
- * 卡片在解析期做的违规（内联脚本、外链图片）会漏掉。
- * 经典脚本在解析时**同步执行** → 装得早 ✓。
+ * The listener has to be installed **before the script of the card itself**. A
+ * script with `type="module"` is deferred → it runs after the whole document
+ * was parsed → a violation that happens while the document is parsed (an
+ * inline script, an external image) is missed. A classic script runs
+ * **synchronously while the document is parsed** → it is installed early.
  */
-describe('CSP 违规监听脚本', () => {
-  it('**监听 securitypolicyviolation**（浏览器唯一可靠的 CSP 违规信号）', () => {
+describe('the script that listens for the CSP violations', () => {
+  it('**it listens for securitypolicyviolation** (the only reliable signal of a CSP violation in the browser)', () => {
     expect(cspScriptFor('inst-1')).toContain("addEventListener('securitypolicyviolation'");
   });
 
-  it('报给宿主时带上 instanceId（归属的依据）', () => {
+  it('the instanceId is carried when it is reported to the host (the basis of the attribution)', () => {
     const script = cspScriptFor('inst-1');
     expect(script).toContain('inst-1');
     expect(script).toContain('cockpit-csp');
   });
 
-  it('把违规的关键字段都带上去（**agent 要知道它想干什么**）', () => {
+  it('the key fields of the violation are carried as well (**the agent has to know what it wanted to do**)', () => {
     const script = cspScriptFor('inst-1');
     for (const field of [
       'blockedURI',
@@ -57,13 +61,13 @@ describe('CSP 违规监听脚本', () => {
     }
   });
 
-  it('注入的标签是**经典脚本**（不是 module）——要赶在卡片自己的脚本之前', () => {
+  it('the injected tag is a **classic script** (not a module) — it has to come before the script of the card', () => {
     const tag = cspScriptTag('inst-1');
     expect(tag).toContain('src="cockpit://card/inst-1/__host/csp.js"');
     expect(tag).not.toContain('type="module"');
   });
 
-  it('脚本里没有外部依赖（它跑在不透明源的 iframe 里，没有 Node、没有网络）', () => {
+  it('the script has no external dependency (it runs in an opaque origin iframe, there is no Node and no network)', () => {
     const script = cspScriptFor('inst-1');
     expect(script).not.toMatch(/\brequire\s*\(/);
     expect(script).not.toMatch(/\bimport\s/);

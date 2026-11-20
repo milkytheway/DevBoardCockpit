@@ -17,16 +17,16 @@ afterEach(() => {
 const prof = (id: string) => JSON.stringify({ id, label: id, transport: 'local', options: {} });
 
 describe('loadProfiles', () => {
-  it('内置与用户目录合并，同 id 时用户优先', () => {
+  it('the built-in and the user directory are merged, the user one wins with the same id', () => {
     writeFileSync(join(builtin, 'a.json'), prof('dup'));
-    writeFileSync(join(user, 'a.json'), JSON.stringify({ id: 'dup', label: '用户的', transport: 'local', options: {} }));
+    writeFileSync(join(user, 'a.json'), JSON.stringify({ id: 'dup', label: 'the one of the user', transport: 'local', options: {} }));
     writeFileSync(join(builtin, 'b.json'), prof('b'));
     const list = loadProfiles({ builtinDir: builtin, userDir: user });
     expect(list.map(p => p.id).sort()).toEqual(['b', 'dup']);
-    expect(list.find(p => p.id === 'dup')!.label).toBe('用户的');
+    expect(list.find(p => p.id === 'dup')!.label).toBe('the one of the user');
   });
 
-  it('坏文件不拖垮其余 profile', () => {
+  it('a broken file does not drag the other profiles down', () => {
     writeFileSync(join(builtin, 'ok.json'), prof('ok'));
     writeFileSync(join(builtin, 'bad.json'), '{ not json');
     expect(loadProfiles({ builtinDir: builtin }).map(p => p.id)).toEqual(['ok']);

@@ -7,22 +7,23 @@ import type { ActionDef } from '../../../src/main/tags/schema';
 import type { TagReading } from '../../../src/shared/tag-reading';
 
 /**
- * **设备（板实物）与连接是两层**（契约 `spec/02` §10.2–10.3 ✓ · `spec/04` §2.1/§2.4 ✓ · ADR-D43 ✓）。
+ * A device (the board itself) and a connection are two layers (contract
+ * `spec/02` §10.2–10.3, `spec/04` §2.1/§2.4).
  *
- * ── 这组判据守什么 ──
+ * What these criteria guard:
  *
- * | 判据 | 为什么 |
+ * | Criterion | Why |
  * |---|---|
- * | **`list_connections` 带 `device_key`** ✓ | agent 才知道**哪些连接是同一块板** ✓ |
- * | **`list_connections` 带 `current`** ✓ | 不然它**不知道当前那块是谁** ✓ → `device_key` 无合法值可填 ✓ |
- * | **`execute_action` 给了别的设备 → `not_found`** ✓ | **绝不静默地打当前那块** ✓（那是「静默地做另一件事」✗） |
+ * | **`list_connections` carries a `device_key`** | only then does the agent know **which connections are the same board** |
+ * | **`list_connections` carries `current`** | otherwise it **does not know which board is the current one**, and `device_key` has no legal value to fill in |
+ * | **`execute_action` with another device → `not_found`** | **it never silently targets the current board** (that would be doing something else without saying so) |
  *
- * → **凭据那一层没了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）——
- *   **设备这一道还在** ✓（**它不是「问人」** ✓ —— **它是「打对东西」** ✓）。
+ * The credential layer is gone. The device check remains: it is not a matter of
+ * asking the operator, it is a matter of hitting the right thing.
  */
 const BACKLIGHT: ActionDef = {
   id: 'backlight.set',
-  label: '设置背光亮度',
+  label: 'set the backlight brightness',
   danger: 'reversible',
   params: { value: { type: 'integer', min: 16, max: 255 } },
   guard: { value: { min: 16, max: 255 } },
@@ -32,17 +33,17 @@ const BACKLIGHT: ActionDef = {
 
 const REBOOT: ActionDef = {
   id: 'system.reboot',
-  label: '重启板子',
+  label: 'reboot the board',
   danger: 'destructive',
   command: 'reboot',
   readback: { kind: 'verify', command: 'true' },
 };
 
-/** 一块板的两个连接 + 一台客机 ✓ */
+/** The two connections of one board plus a guest machine */
 const PROFILES = [
   {
     id: 'board-adb',
-    label: '板子 · ADB',
+    label: 'board · ADB',
     transport: 'adb' as const,
     board_pack: 'demo-pack',
     device_key: 'atk-01',
@@ -50,13 +51,13 @@ const PROFILES = [
   },
   {
     id: 'board-ssh',
-    label: '板子 · SSH',
+    label: 'board · SSH',
     transport: 'ssh' as const,
     board_pack: 'demo-pack',
     device_key: 'atk-01',
     options: { host: '192.168.5.100' },
   },
-  { id: 'guest', label: '客机', transport: 'ssh' as const, options: {} },
+  { id: 'guest', label: 'the guest', transport: 'ssh' as const, options: {} },
 ];
 
 function hostDeps(over: Partial<McpHostDeps> = {}): McpHostDeps {
@@ -87,7 +88,7 @@ function hostDeps(over: Partial<McpHostDeps> = {}): McpHostDeps {
 
 let executed: string[];
 let audits: number;
-/** **当前运行时那条连接的 `device_key`** ✓（**会变** ✓ —— 换板了 ✓） */
+/** **the `device_key` of the connection of the current runtime** (it changes — when the board is swapped) */
 let currentDevice: string;
 let deps: AgentActionDeps;
 
@@ -100,7 +101,7 @@ beforeEach(() => {
     packIdOf: () => 'demo-pack',
     contractVersion: 'devboard/v1',
     hasExitCode: true,
-    // **当前那块板是谁** ✓（**会变** ✓）
+    // **which board is the current one** (it changes)
     deviceKey: () => currentDevice,
     runTransaction: async (fn: (c: unknown) => Promise<unknown>) =>
       fn({
@@ -126,18 +127,18 @@ beforeEach(() => {
   } as unknown as AgentActionDeps;
 });
 
-describe('MCP · list_connections · 设备与连接', () => {
-  it('**每条连接都带 `device_key`** ✓（**同一块板的两个连接给同一个** ✓）', () => {
+describe('MCP · list_connections · device and connection', () => {
+  it('**every connection carries a `device_key`** (**the two connections of one board get the same one**)', () => {
     const rows = listConnections(hostDeps());
     expect(rows.map((r) => r.device_key)).toEqual(['atk-01', 'atk-01', 'guest']);
   });
 
-  it('**没写 `device_key` → 缺省是 profile id** ✓', () => {
+  it('**no `device_key` written → the default is the profile id**', () => {
     const rows = listConnections(hostDeps());
     expect(rows.find((r) => r.id === 'guest')?.device_key).toBe('guest');
   });
 
-  it('**`current` 标出当前运行时那条** ✓（**agent 才知道能填什么** ✓）', () => {
+  it('**`current` marks the connection of the current runtime** (only then does the agent know what it may fill in)', () => {
     const rows = listConnections(hostDeps());
     expect(rows.find((r) => r.id === 'board-ssh')?.current).toBe(true);
     expect(rows.find((r) => r.id === 'board-adb')?.current).toBe(false);
@@ -145,30 +146,30 @@ describe('MCP · list_connections · 设备与连接', () => {
 });
 
 describe('MCP · execute_action · device_key', () => {
-  it('**给了别的设备 → `not_found`** ✓（**绝不静默地打当前那块** ✓）', async () => {
+  it('**another device is given → `not_found`** (**it never silently targets the current board**)', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 }, { deviceKey: 'board-b' });
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('not_found');
-    // **说清楚是哪个设备** ✓
+    // **it states which device it is**
     expect(res.detail).toContain('board-b');
-    // **一个命令都没发出去** ✓
+    // **not a single command went out**
     expect(executed.length).toBe(0);
     expect(audits).toBe(0);
   });
 
-  it('**给了当前那块 → 照做** ✓', async () => {
+  it('**the current board is given → it is done**', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 }, { deviceKey: 'atk-01' });
     expect(res.ok).toBe(true);
     expect(executed.length).toBe(1);
   });
 
-  it('**不给 → 照做（当前那块）** ✓（**从前的行为没变** ✓）', async () => {
+  it('**nothing is given → it is done (on the current board)** (the earlier behaviour is unchanged)', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 });
     expect(res.ok).toBe(true);
     expect(executed.length).toBe(1);
   });
 
-  it('**`dry_run` 也照样挡** ✓（**不给它看别的设备的命令** ✓）', async () => {
+  it('**`dry_run` is blocked as well** (**it may not see the commands of another device**)', async () => {
     const res = await executeAction(deps, 'backlight.set', { value: 100 }, {
       deviceKey: 'board-b',
       dryRun: true,
@@ -178,26 +179,26 @@ describe('MCP · execute_action · device_key', () => {
   });
 });
 
-describe('MCP · execute_action · device_key 与危险动作', () => {
-  it('**destructive 给了别的设备 → `not_found`** ✓（**设备这一道与危险等级无关** ✓）', async () => {
+describe('MCP · execute_action · device_key and dangerous actions', () => {
+  it('**a destructive action with another device → `not_found`** (the device check is independent of the danger level)', async () => {
     const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'board-b' });
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('not_found');
-    // **一个命令都没发出去** ✓（**绝不静默地打当前那块** ✓）
+    // **not a single command went out** (**it never silently targets the current board**)
     expect(executed.filter((c) => c === 'reboot').length).toBe(0);
   });
 
-  it('**destructive 给了当前那块 → 照做** ✓（**不再问人** ✓ —— ADR-D48 ✓）', async () => {
+  it('**a destructive action with the current board → it is done** (no prompt)', async () => {
     const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'atk-01' });
     expect(res.ok).toBe(true);
     expect(executed.filter((c) => c === 'reboot').length).toBe(1);
   });
 
-  it('**换板了 → 旧的那个 device_key 不再对得上** ✓（**当前那块变了** ✓）', async () => {
-    // **当前那块换成 B** ✓（**连接切了** ✓）
+  it('**the board was swapped → the old device_key no longer matches** (the current board changed)', async () => {
+    // **the current board becomes B** (the connection switched)
     currentDevice = 'board-b';
     const res = await executeAction(deps, 'system.reboot', {}, { deviceKey: 'atk-01' });
-    // **认不出来 → 拒绝** ✓（**绝不静默地打新那块** ✓）
+    // **it cannot be identified → it is refused** (**it never silently targets the new board**)
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('not_found');
     expect(executed.filter((c) => c === 'reboot').length).toBe(0);

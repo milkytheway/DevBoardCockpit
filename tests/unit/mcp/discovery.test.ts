@@ -10,16 +10,18 @@ import {
 } from '../../../src/main/mcp/discovery';
 
 /**
- * **记下 `writeFileSync` 的调用参数** ✓（跨平台 ✓）。
+ * Records the arguments of every `writeFileSync` call (cross-platform).
  *
- * → **为什么要 mock 掉 `node:fs`** ✓：
- *   Windows 上**没有 POSIX 模式** ✓（`statSync().mode` 那一位在那边**恒为默认值** ✓）
- *   → 那里唯一能断的只有「**有没有表达「仅当前用户可读」这个意图**」✓
- *   → 而那正是**权限这件事唯一能表达的地方** ✓（实际权限靠**用户数据目录的 ACL** ✓）。
+ * Why `node:fs` is mocked:
+ *   Windows has **no POSIX mode**, so the mode bits of `statSync().mode` are
+ *   **always the default** there. The only thing that can be checked is
+ *   **whether the intent "readable by the current user only" was expressed**,
+ *   and that is the only place where this permission can be expressed at all
+ *   (the actual permissions rely on the **ACL of the user data directory**).
  *
- * → **mock 的是整个 `node:fs`** ✓（`importOriginal` 兜住其余的 ✓）
- *   → 实现文件（`src/main/mcp/discovery.ts`）**也拿到同一个 mock** ✓
- *   → 所以「实现写没带 mode」**看得到** ✓。
+ * The mock replaces **the whole `node:fs`** (`importOriginal` covers the rest),
+ *   so the implementation file (`src/main/mcp/discovery.ts`) **receives the same
+ *   mock** and it is visible **whether the implementation wrote a mode**.
  */
 const fsCalls = vi.hoisted(() => ({ writes: [] as Array<{ path: string; mode?: number }> }));
 
@@ -41,17 +43,21 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 /**
- * **发现文件**（契约 `spec/04` §7.2 ✓）。
+ * The discovery file (contract `spec/04` §7.2).
  *
- * ── 它是 agent 与 GUI 之间**唯一的耦合点** ✓ ──
+ * It is **the only coupling point between the agent and the GUI**.
  *
- * 换了传输方式，agent 只需要改读文件的方式 ✓ —— 所以这个文件**必须准** ✓。
+ * When the transport changes, the agent only has to change the way it reads
+ * this file, so the file **has to be accurate**.
  *
- * ── 为什么要「先写临时文件再原子改名」 ──
+ * Why the temporary file is written first and then renamed atomically:
  *
- * agent 可能在**写入的过程中**来读 ✓ → 读到半个 JSON ✓ → 解析失败 ✓
- * → agent 以为 GUI 没起来 ✓ → **它不会重试** ✓（契约明写：连不上就**直接报错** ✓，
- * 避免连到别的进程 ✓）→ **一次半截文件就让 agent 以为服务没了** ✗。
+ * The agent may read **while the file is being written** → it reads half a
+ * JSON → the parse fails → the agent thinks the GUI is not running → **it does
+ * not retry** (the contract says explicitly: when it cannot connect it
+ * **reports the error right away**, so that it does not reach another
+ * process) → **a single truncated file makes the agent believe the service is
+ * gone**.
  */
 let dir: string;
 let info: DiscoveryInfo;
@@ -74,8 +80,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('MCP · 发现文件', () => {
-  it('**写出来的字段与契约一致** ✓（agent 照着它连 ✓）', () => {
+describe('MCP · the discovery file', () => {
+  it('**the fields written out match the contract** (an agent connects by them)', () => {
     const path = discoveryFilePath(dir);
     writeDiscoveryFile(path, info);
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
@@ -89,37 +95,42 @@ describe('MCP · 发现文件', () => {
     expect(typeof parsed['started_at']).toBe('string');
   });
 
-  it('**写的过程里读不到半个文件** ✓（先写 .tmp 再原子改名 ✓）', () => {
+  it('**half a file cannot be read while it is written** (a temporary file is written first and then renamed atomically)', () => {
     const path = discoveryFilePath(dir);
     writeDiscoveryFile(path, info);
-    // **不留临时文件** ✓（改名不是复制 ✓）
+    // **no temporary file is left behind** (a rename is not a copy)
     const strays = readdirSync(dir).filter((f) => f.endsWith('.tmp'));
     expect(strays).toEqual([]);
   });
 
-  it('**权限仅当前用户可读**（POSIX 0600 ✓ —— 契约 §7.2 ✓）', () => {
+  it('**readable by the current user only** (POSIX 0600, contract §7.2)', () => {
     const path = discoveryFilePath(dir);
     writeDiscoveryFile(path, info);
     const mode = statSync(path).mode & 0o777;
-    // ⚠️ Windows 上没有 POSIX 模式 ✓ → 那里靠用户数据目录**本身的 ACL** ✓
-    // → **这一条在 POSIX 上才有效** ✓（Windows 上它是空的 ✓ → 所以另有下面一条 ✓）
+    // Windows has no POSIX mode → there the **ACL of the user data directory
+// itself** applies
+    // → **this one only holds on POSIX** (on Windows it is empty, which is why
+// there is another one below)
     if (process.platform !== 'win32') {
       expect(mode).toBe(0o600);
     }
   });
 
-  it('**权限仅当前用户可读**：写的时候必须带上 `mode: 0o600`（**两个平台都断** ✓）', () => {
-    // ⚠️ Windows 上 `mode` 基本被忽略 ✓ → 那边的实际权限靠**用户数据目录的 ACL** ✓
-    // → 所以在 Windows 上**唯一能断的就是「有没有表达这个意图」** ✓
-    // → 而「忘了钉权限」正是这条契约要防的事 ✓。
+  it('**readable by the current user only**: the write has to carry `mode: 0o600` (**checked on both platforms**)', () => {
+    // On Windows `mode` is largely ignored → the actual permissions there rely on
+// the **ACL of the user data directory**
+    // → so on Windows the **only thing that can be checked is whether the intent
+// was expressed**
+    // → and "forgetting to pin the permissions" is exactly what this contract
+// prevents.
     fsCalls.writes.length = 0;
     writeDiscoveryFile(discoveryFilePath(dir), info);
     const call = fsCalls.writes.find((c) => c.path.endsWith('.tmp'));
-    expect(call, '没有写临时文件').toBeTruthy();
-    expect(call?.mode, '写入时没有带 mode → 权限是默认的（同机别的用户读得到 token）').toBe(0o600);
+    expect(call, 'no temporary file was written').toBeTruthy();
+    expect(call?.mode, 'the write carried no mode → the permissions are the default ones (another user on the same machine can read the token)').toBe(0o600);
   });
 
-  it('**删掉之后就没有了** ✓（GUI 退出时清理 ✓）', () => {
+  it('**once it is deleted it is gone** (the GUI cleans it up on exit)', () => {
     const path = discoveryFilePath(dir);
     writeDiscoveryFile(path, info);
     expect(existsSync(path)).toBe(true);
@@ -127,11 +138,11 @@ describe('MCP · 发现文件', () => {
     expect(existsSync(path)).toBe(false);
   });
 
-  it('**删一个不存在的文件不炸** ✓（退出流程不能因为它挂 ✓）', () => {
+  it('**deleting a file that does not exist does not crash** (the exit path may not hang on it)', () => {
     expect(() => removeDiscoveryFile(discoveryFilePath(dir))).not.toThrow();
   });
 
-  it('**文件在用户数据目录里** ✓（契约 §7.2 的路径 ✓）', () => {
+  it('**the file is in the user data directory** (the path of contract §7.2)', () => {
     expect(discoveryFilePath(dir).endsWith('mcp.json')).toBe(true);
   });
 });

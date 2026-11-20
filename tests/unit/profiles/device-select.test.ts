@@ -4,24 +4,29 @@ import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { RuntimeStatus } from '../../../src/shared/runtime-status';
 
 /**
- * **选板子 = 宿主挑连接**（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+ * **Picking a board = the host picks the connection** (the board itself and
+ * the connection are two layers — contract `spec/02` §10.2).
  *
- * ── 为什么宿主挑 ──
+ * Why the host picks:
  *
- * → 界面**只列板卡** ✓（用户 2026-11-16 明确：「仅支持板卡选择，不要把连接放进去」✓）
- * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **哪条能用宿主才知道** ✓
- * → 界面挑 → **不静默地做另一件事** ✗ → **连不上要说出来** ✓。
+ * → The interface **lists only the boards** (the operator said so explicitly
+ *   on 2026-11-16: "only the selection of a board is supported, do not put
+ *   the connections into it").
+ * → One board has **three connections, ADB / serial / SSH**, and **only the
+ *   host knows which one works**.
+ * → The interface picks → **it does not silently do something else** →
+ *   **when it cannot connect it has to say so**.
  *
- * ── 三条规矩 ──
+ * Three rules:
  *
- * | # | 规矩 | 为什么 |
+ * | # | Rule | Why |
  * |---|---|---|
- * | 1 | **已经在那块板上 → 不重连** ✓ | **白连一次会掉读数** ✗ —— 采样器会重起 ✓ |
- * | 2 | **挨个试这块板的连接** ✓ | **用户点的是板，不是某条通道** ✓ → 宿主挑一条能用的 ✓ |
- * | 3 | **全都不行 → 报错** ✓ | **不静默地换一块板** ✗ |
+ * | 1 | **already on that board → it does not connect again** | **a pointless connection loses the readings** — the sampler restarts |
+ * | 2 | **the connections of that board are tried one by one** | **the operator clicks a board, not a channel** → the host picks one that works |
+ * | 3 | **none of them works → it reports an error** | **it does not silently switch to another board** |
  */
 
-/** 一条连接 profile（**只填这里用得上的字段** ✓） */
+/** A connection profile (**only the fields that are used here**) */
 function profile(id: string, deviceKey: string, label = id): ConnectionProfile {
   return {
     id,
@@ -34,13 +39,13 @@ function profile(id: string, deviceKey: string, label = id): ConnectionProfile {
 }
 
 const ATK: ConnectionProfile[] = [
-  profile('board-adb', 'atk-01', '板子 · ADB'),
-  profile('board-serial', 'atk-01', '板子 · 串口'),
-  profile('board-ssh', 'atk-01', '板子 · SSH'),
-  profile('fake-board', 'fake-board', '假板子 · 合成数据'),
+  profile('board-adb', 'atk-01', 'board · ADB'),
+  profile('board-serial', 'atk-01', 'board · serial'),
+  profile('board-ssh', 'atk-01', 'board · SSH'),
+  profile('fake-board', 'fake-board', 'fake board · synthetic data'),
 ];
 
-/** 一次「起运行时」的记录 —— 用来断言宿主到底试了哪几条 */
+/** One record of "starting the runtime" — it asserts which connections the host really tried */
 interface Attempt {
   profileId: string;
   status: RuntimeStatus;
@@ -56,7 +61,7 @@ function runtime(
     deps: {
       currentProfileId: () => current,
       start: async (p: ConnectionProfile) => {
-        const status = results[p.id] ?? { state: 'error', detail: `没有为 ${p.id} 安排结果` };
+        const status = results[p.id] ?? { state: 'error', detail: `no result was arranged for ${p.id}` };
         attempts.push({ profileId: p.id, status });
         return status;
       },
@@ -64,26 +69,26 @@ function runtime(
   };
 }
 
-describe('选板子', () => {
-  it('**板子 → 宿主挑它的第一条连接** ✓（**用户点的是板，不是通道** ✓）', async () => {
+describe('picking a board', () => {
+  it('**a board → the host picks its first connection** (**the operator clicks a board, not a channel**)', async () => {
     const rt = runtime({ 'board-adb': { state: 'running' } });
     const result = await selectDevice(ATK, 'atk-01', rt.deps);
     expect(result).toEqual({ ok: true, profileId: 'board-adb', reused: false });
     expect(rt.attempts.map((a) => a.profileId)).toEqual(['board-adb']);
   });
 
-  it('**已经在那块板上 → 不重连** ✓（**白连一次会掉读数** ✗）', async () => {
+  it('**already on that board → it does not connect again** (a pointless connection loses the readings)', async () => {
     const rt = runtime({}, 'board-ssh');
     const result = await selectDevice(ATK, 'atk-01', rt.deps);
     expect(result).toEqual({ ok: true, profileId: 'board-ssh', reused: true });
-    // **一次都没起** ✓ —— 采样器没有被重启 ✓
+    // **It was never started** — the sampler was not restarted
     expect(rt.attempts).toEqual([]);
   });
 
-  it('**第一条连不上 → 试下一条** ✓（**这块板还有别的通道** ✓）', async () => {
+  it('**the first one cannot be reached → the next one is tried** (**the board has other channels**)', async () => {
     const rt = runtime({
       'board-adb': { state: 'error', detail: 'adb: device not found' },
-      'board-serial': { state: 'error', detail: '串口 COM3 不存在' },
+      'board-serial': { state: 'error', detail: 'the serial port COM3 does not exist' },
       'board-ssh': { state: 'running' },
     });
     const result = await selectDevice(ATK, 'atk-01', rt.deps);
@@ -95,7 +100,7 @@ describe('选板子', () => {
     ]);
   });
 
-  it('**全都不行 → 报错** ✓（**不静默地换一块板** ✗ —— 那是「静默地做另一件事」✗）', async () => {
+  it('**none of them works → it reports an error** (**it does not silently switch to another board**)', async () => {
     const rt = runtime({
       'board-adb': { state: 'error', detail: 'adb: device not found' },
     });
@@ -103,28 +108,28 @@ describe('选板子', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe('connect_failed');
-    // **说清楚每一条都试过了** ✓ —— 不是一个含糊的「失败了」✓
+    // **It states that every one of them was tried** — not a vague "it failed"
     expect(result.detail).toContain('board-adb');
     expect(result.detail).toContain('board-ssh');
   });
 
-  it('**没有这个设备 → not_found** ✓（**不猜** ✓）', async () => {
+  it('**there is no such device → not_found** (**it does not guess**)', async () => {
     const rt = runtime({});
     const result = await selectDevice(ATK, 'atk-99', rt.deps);
     expect(result).toEqual({ ok: false, reason: 'not_found', detail: 'no such device: atk-99' });
     expect(rt.attempts).toEqual([]);
   });
 
-  it('**假板子也是一块板** ✓（**它的连接也是它的** ✓）', async () => {
+  it('**a fake board is a board as well** (**its connections are its own**)', async () => {
     const rt = runtime({ 'fake-board': { state: 'running' } });
     const result = await selectDevice(ATK, 'fake-board', rt.deps);
     expect(result).toEqual({ ok: true, profileId: 'fake-board', reused: false });
   });
 
-  it('**没有 `device_key` 的 profile 归到它自己名下** ✓（**一板一连的老写法** ✓）', async () => {
+  it('**a profile without `device_key` is filed under its own name** (**the old way of one board and one link**)', async () => {
     const legacy: ConnectionProfile = {
       id: 'legacy-ssh',
-      label: '老连接',
+      label: 'the old connection',
       transport: 'ssh',
       board_pack: 'rk3588-atk',
       options: {},

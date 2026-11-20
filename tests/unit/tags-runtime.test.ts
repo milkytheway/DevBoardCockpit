@@ -7,23 +7,25 @@ import type { ConnectionProfile } from '../../src/main/profiles/schema';
 import type { ExecResult } from '../../src/main/hal/connection';
 
 /**
- * tag 运行时（把 M3/M4 的库**接进应用**的那一层）。
+ * The tag runtime (the layer that **wires the library of M3/M4 into the
+ * application**).
  *
- * ── 它管三件事 ──
+ * It handles three things:
  *
- * | 事 | 为什么 |
+ * | Thing | Why |
  * |---|---|
- * | 建连接、绑包、校验、起调度器 | 「值要自己会动」的四个前提 |
- * | **只经 TagStore 进出读数** | ADR-D22：一份状态只有一份副本 |
- * | **晚订阅不丢当前值** | 晚打开的窗口也该看到现在的数（契约 §2.1） |
+ * | build the connection, bind the pack, validate, start the scheduler | the four premises of "the values move by themselves" |
+ * | **the readings only go in and out through the TagStore** | ADR-D22: one state has one copy |
+ * | **a late subscription does not lose the current value** | a window that opens late also has to see the values of now (contract §2.1) |
  *
- * ── 判据 ──
+ * The criteria:
  *
- * 状态机（idle / running / no-pack / error）+ 快照 + 订阅。
- * 「值自己在动」由**调度器与采样器**各自的测试守着（这里只验接线）。
+ * The state machine (idle / running / no-pack / error) + the snapshot + the
+ * subscription. "The values move by themselves" is guarded by the tests of the
+ * scheduler and of the sampler (here only the wiring is verified).
  */
 
-/** 一个只读一个文件的最小包 */
+/** A minimal pack that reads one file */
 function packYaml(id: string): string {
   return [
     'apiVersion: devboard/v1',
@@ -62,7 +64,7 @@ function makePacksDir(id = 'tiny'): string {
   return root;
 }
 
-/** 一个假的连接：按协议回带 marker 的内容 */
+/** A fake connection: it answers with the content and the markers according to the protocol */
 function fakeConnection(body = '42'): { exec: (cmd: string) => Promise<ExecResult> } {
   return {
     async exec(command: string): Promise<ExecResult> {
@@ -84,8 +86,8 @@ const profile = (boardPack: string | null): ConnectionProfile => ({
   options: {},
 });
 
-describe('TagRuntime · 状态机', () => {
-  it('连接指名了包 → running', async () => {
+describe('TagRuntime · the state machine', () => {
+  it('the connection names a pack → running', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -103,7 +105,7 @@ describe('TagRuntime · 状态机', () => {
     }
   });
 
-  it('连接指名了**不存在的**包 → no-pack + 说清为什么', async () => {
+  it('the connection names a pack that **does not exist** → no-pack and it says why', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -122,7 +124,7 @@ describe('TagRuntime · 状态机', () => {
     }
   });
 
-  it('**连不上** → error + 错误消息（不是静默什么都不做）', async () => {
+  it('**it cannot be reached** → error and an error message (it does not silently do nothing)', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -130,7 +132,7 @@ describe('TagRuntime · 状态机', () => {
         createConnection: () =>
           ({
             open: async () => {
-              throw new Error('打不开串口 COM3');
+              throw new Error('the serial port COM3 cannot be opened');
             },
             close: async () => undefined,
             ...fakeConnection(),
@@ -148,8 +150,8 @@ describe('TagRuntime · 状态机', () => {
   });
 });
 
-describe('TagRuntime · 独占事务（M6 的入口）', () => {
-  it('没连上 → 拒（不是静默等着）', async () => {
+describe('TagRuntime · the exclusive transaction (the entry of M6)', () => {
+  it('not connected → it is refused (it does not silently wait)', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -167,7 +169,7 @@ describe('TagRuntime · 独占事务（M6 的入口）', () => {
     }
   });
 
-  it('事务跑在**那条连接**上', async () => {
+  it('the transaction runs **on that connection**', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -185,7 +187,7 @@ describe('TagRuntime · 独占事务（M6 的入口）', () => {
     }
   });
 
-  it('事务与采样**不并发**（同一条队列 → 串口上不串台）', async () => {
+  it('the transaction and the sampling **do not run at the same time** (the same queue → no crossed wires on a serial port)', async () => {
     const dir = makePacksDir();
     try {
       let inFlight = 0;
@@ -217,8 +219,8 @@ describe('TagRuntime · 独占事务（M6 的入口）', () => {
   });
 });
 
-describe('TagRuntime · 读数的进出', () => {
-  it('**晚订阅不丢当前值**：快照里有订阅之前就写进去的读数', async () => {
+describe('TagRuntime · the readings going in and out', () => {
+  it('**a late subscription does not lose the current value**: the snapshot holds the readings that were written before the subscription', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({
@@ -229,10 +231,10 @@ describe('TagRuntime · 读数的进出', () => {
       });
 
       await runtime.start(profile('tiny'));
-      // 等一个采样周期（200ms）
+      // It waits for one sampling period (200ms)
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // 订阅**之后**取快照 → 快照里已经有值了
+      // The snapshot is taken **after** the subscription → the snapshot already holds a value
       const seen: unknown[] = [];
       runtime.subscribe((r) => seen.push(r));
       const snapshot = runtime.readings();
@@ -245,7 +247,7 @@ describe('TagRuntime · 读数的进出', () => {
     }
   });
 
-  it('订阅者能收到**变化推送**', async () => {
+  it('the subscribers receive a **push of a change**', async () => {
     const dir = makePacksDir();
     try {
       const runtime = new TagRuntime({

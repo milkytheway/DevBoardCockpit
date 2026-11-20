@@ -5,21 +5,28 @@ import { startMcpHttp } from '../../../src/main/mcp/http';
 import type { McpServer } from '../../../src/main/mcp/server';
 
 /**
- * **MCP 的 HTTP 传输**（契约 `spec/04` §7.1 ✓ · MCP 规范 2025-06-18 ✓）。
+ * The HTTP transport of MCP (contract `spec/04` §7.1, MCP specification
+ * 2025-06-18).
  *
- * ── 为什么这一层要真跑 HTTP ──
+ * Why this layer has to run real HTTP:
  *
- * 安全基线的几条**只有在真 HTTP 上才验得了** ✓：
- * 恶意 `Origin` → **403** ✓ · 别的 `Host` → **403** ✓ · 没 token → **401** ✓
- * —— 这些是**头**上的事 ✓，单元测试拼不出「请求真的被拒了」✓。
+ * Several parts of the security baseline **can only be verified over real
+ * HTTP**: a malicious `Origin` → **403**, another `Host` → **403**, no token →
+ * **401**. These are matters of **headers**, and a unit test cannot compose
+ * "the request was really refused".
  *
- * ── 规范要求的几件事 ──
+ * What the specification requires:
  *
- * - 客户端 `POST` 发 JSON-RPC ✓；带 `Accept: application/json, text/event-stream` ✓；
- * - 请求 → 回 `application/json`（**一个 JSON 对象** ✓ —— 规范允许 JSON 或 SSE ✓，本轮选 JSON ✓）；
- * - 通知 / 响应 → **202 空体** ✓（规范 §「Sending Messages」第 4 条 ✓）；
- * - `GET` → 本轮**不提供 SSE** → **405** ✓（规范允许 ✓）；
- * - `MCP-Protocol-Version` 头 → 不支持的版本 → **400** ✓（规范 §「Protocol Version Header」✓）。
+ * - the client sends JSON-RPC with `POST` and an `Accept: application/json,
+ *   text/event-stream` header;
+ * - a request is answered with `application/json` (**one JSON object** — the
+ *   specification allows JSON or SSE, and this round chooses JSON);
+ * - a notification or a response → **202 with an empty body** (specification,
+ *   "Sending Messages", item 4);
+ * - `GET` → this round **offers no SSE** → **405** (the specification allows
+ *   it);
+ * - the `MCP-Protocol-Version` header with an unsupported version → **400**
+ *   (specification, "Protocol Version Header").
  */
 
 let server: Server;
@@ -29,7 +36,8 @@ let mcp: McpServer;
 let close: () => Promise<void>;
 
 beforeEach(async () => {
-  // **桩要像真的**：没有 `id` 的消息（通知 ✓）→ 回 `null` ✓（HTTP 层据此给 202 ✓）
+  // **The stub has to behave like the real thing**: a message without an `id` (a
+// notification) is answered with `null`, and the HTTP layer turns that into 202
   mcp = {
     handle: async (message: { id?: unknown }) =>
       message.id === undefined
@@ -58,7 +66,7 @@ interface Reply {
   body: string;
 }
 
-/** 发一个请求（**头可以覆盖** ✓ —— 测「恶意 Origin」这类就要改头 ✓） */
+/** Sends a request (**the headers can be overridden** — a case such as a malicious Origin needs them) */
 function send(
   method: string,
   body: unknown,
@@ -99,34 +107,34 @@ function send(
   });
 }
 
-describe('MCP · HTTP 传输', () => {
-  it('**只绑 127.0.0.1** ✓（契约 §7.1 ✓ —— 不许绑 0.0.0.0 ✓）', () => {
+describe('MCP · HTTP transport', () => {
+  it('**it binds 127.0.0.1 only** (contract §7.1 — it may not bind 0.0.0.0)', () => {
     const address = server.address();
     expect(typeof address === 'object' && address !== null).toBe(true);
     expect((address as { address: string }).address).toBe('127.0.0.1');
   });
 
-  it('**要绑别的地址 → 直接拒绝** ✓（不是「绑上了再说」✗ —— 那就晚了 ✓）', async () => {
-    // ⚠️ **0.0.0.0 = 所有网卡** ✓ —— 那是把服务暴露到局域网 ✓
+  it('**binding another address → it is refused right away** (not "bind it and see", that would be too late)', async () => {
+    // ⚠️ **0.0.0.0 = every network card** — that exposes the service to the local network
     await expect(
       startMcpHttp({ mcp, token, host: '0.0.0.0', port: 0 }),
     ).rejects.toThrow(/only bind to localhost/);
   });
 
-  it('**JSON-RPC 请求 → 200 + JSON** ✓', async () => {
+  it('**a JSON-RPC request → 200 and JSON**', async () => {
     const reply = await send('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(reply.status).toBe(200);
     expect(String(reply.headers['content-type'])).toContain('application/json');
     expect(JSON.parse(reply.body)).toEqual({ jsonrpc: '2.0', id: 1, result: {} });
   });
 
-  it('**通知 → 202 空体** ✓（规范 §「Sending Messages」第 4 条 ✓）', async () => {
+  it('**a notification → 202 with an empty body** (specification, "Sending Messages", item 4)', async () => {
     const reply = await send('POST', { jsonrpc: '2.0', method: 'notifications/initialized' });
     expect(reply.status).toBe(202);
     expect(reply.body).toBe('');
   });
 
-  it('**恶意 Origin → 403** ✓（DNS rebinding ✓）', async () => {
+  it('**a malicious Origin → 403** (DNS rebinding)', async () => {
     const reply = await send(
       'POST',
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
@@ -135,7 +143,7 @@ describe('MCP · HTTP 传输', () => {
     expect(reply.status).toBe(403);
   });
 
-  it('**别的主机名 → 403** ✓', async () => {
+  it('**another host name → 403**', async () => {
     const reply = await send(
       'POST',
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
@@ -144,7 +152,7 @@ describe('MCP · HTTP 传输', () => {
     expect(reply.status).toBe(403);
   });
 
-  it('**没带 token → 401** ✓', async () => {
+  it('**no token → 401**', async () => {
     const reply = await new Promise<Reply>((resolve) => {
       const req = httpRequest(
         {
@@ -173,7 +181,7 @@ describe('MCP · HTTP 传输', () => {
     expect(reply.status).toBe(401);
   });
 
-  it('**token 不对 → 401** ✓', async () => {
+  it('**the wrong token → 401**', async () => {
     const reply = await send(
       'POST',
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
@@ -182,12 +190,12 @@ describe('MCP · HTTP 传输', () => {
     expect(reply.status).toBe(401);
   });
 
-  it('**不发 CORS 头** ✓（契约 §7.1 ✓ —— 不做跨域放行 ✓）', async () => {
+  it('**no CORS headers are sent** (contract §7.1 — no cross-origin allowance)', async () => {
     const reply = await send('POST', { jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(reply.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  it('**不支持的协议版本 → 400** ✓（规范 §「Protocol Version Header」✓）', async () => {
+  it('**an unsupported protocol version → 400** (specification, "Protocol Version Header")', async () => {
     const reply = await send(
       'POST',
       { jsonrpc: '2.0', id: 1, method: 'tools/list' },
@@ -196,7 +204,7 @@ describe('MCP · HTTP 传输', () => {
     expect(reply.status).toBe(400);
   });
 
-  it('**GET → 405** ✓（本轮不提供 SSE ✓ —— 规范允许这样回 ✓）', async () => {
+  it('**GET → 405** (this round offers no SSE, and the specification allows that answer)', async () => {
     const reply = await send('GET', undefined);
     expect(reply.status).toBe(405);
   });

@@ -3,19 +3,19 @@ import { assertTransferAllowed, TransferService } from '../../src/main/files/tra
 import type { ConnectionCapabilities, Connection } from '../../src/main/hal/connection';
 
 describe('assertTransferAllowed', () => {
-  it('串口不支持文件传输（事实 S7）', () => {
+  it('the serial port does not support the file transfer (fact S7)', () => {
     expect(() => assertTransferAllowed({ exec: true, pty: true, files: false, exitCode: false }))
       .toThrow(/does not support file transfer/);
   });
-  it('支持 files 的连接放行', () => {
+  it('a connection that supports files is let through', () => {
     expect(() => assertTransferAllowed({ exec: true, pty: true, files: true, exitCode: true })).not.toThrow();
   });
 });
 
-describe('TransferService 的分派', () => {
+describe('the dispatch of the TransferService', () => {
   const caps: ConnectionCapabilities = { exec: true, pty: true, files: true, exitCode: true };
 
-  /** 造一个假连接。`list` / `pull` / `push` 都是连接自己的方法 */
+  /** Builds a fake connection. `list` / `pull` / `push` are the methods of the connection itself */
   function fakeConnection(overrides: Partial<Connection> = {}): Connection {
     return {
       id: 'c', transport: 'adb' as const,
@@ -30,7 +30,7 @@ describe('TransferService 的分派', () => {
     } as unknown as Connection;
   }
 
-  it('pull 走连接自己的 pull，不跑远端的 pull 命令', async () => {
+  it('pull uses the pull of the connection, it does not run a pull command on the remote side', async () => {
     const pull = vi.fn(async () => undefined);
     const exec = vi.fn();
     const conn = fakeConnection({ pull, exec });
@@ -39,11 +39,11 @@ describe('TransferService 的分派', () => {
     await svc.pull('c', '/root/a.txt', 'C:\\tmp\\a.txt');
 
     expect(pull).toHaveBeenCalledWith('/root/a.txt', 'C:\\tmp\\a.txt');
-    // **不能**跑远端的 pull 命令——板子上没有这个命令
+    // It **may not** run a pull command on the remote side — there is no such command on the board
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it('push 同理', async () => {
+  it('push behaves the same way', async () => {
     const push = vi.fn(async () => undefined);
     const exec = vi.fn();
     const conn = fakeConnection({ push, exec });
@@ -55,7 +55,7 @@ describe('TransferService 的分派', () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it('list 走连接自己的 list，不跑远端的 ls —— 本机在 Windows 上根本没有 ls', async () => {
+  it('list uses the list of the connection, it does not run ls on the remote side — the host machine has no ls on Windows at all', async () => {
     const list = vi.fn(async () => [
       { name: 'a.txt', path: '/root/a.txt', isDirectory: false, sizeBytes: 3, modifiedAt: null },
     ]);
@@ -70,7 +70,7 @@ describe('TransferService 的分派', () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it('pull 没有本地落盘路径时直接拒 —— 空路径会让 adb pull / copyFile 必挂', async () => {
+  it('pull without a local path to write to is refused right away — an empty path makes adb pull / copyFile fail for sure', async () => {
     const pull = vi.fn(async () => undefined);
     const conn = fakeConnection({ pull });
 
@@ -79,7 +79,7 @@ describe('TransferService 的分派', () => {
     expect(pull).not.toHaveBeenCalled();
   });
 
-  it('push 没有本地源路径时直接拒', async () => {
+  it('push without a local source path is refused right away', async () => {
     const push = vi.fn(async () => undefined);
     const conn = fakeConnection({ push });
 
@@ -88,7 +88,7 @@ describe('TransferService 的分派', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('连接不支持传输时拒绝，并说是哪个连接', async () => {
+  it('when the connection does not support the transfer it is refused, and it says which connection it is', async () => {
     const conn = fakeConnection({
       transport: 'serial' as const,
       capabilities: () => ({ exec: true, pty: true, files: false, exitCode: false }),
@@ -98,7 +98,7 @@ describe('TransferService 的分派', () => {
     await expect(svc.pull('c', '/a', 'b')).rejects.toThrow(/does not support file transfer/);
   });
 
-  it('连接不存在时报错', async () => {
+  it('when the connection does not exist it reports an error', async () => {
     const svc = new TransferService({ getConnection: () => undefined });
     await expect(svc.list('nope', '/')).rejects.toMatchObject({ code: 'CONN_CLOSED' });
   });

@@ -6,19 +6,24 @@ import { createCardProtocol, CARD_CSP, injectBridge } from '../../../src/main/ca
 import { cspScriptFor } from '../../../src/main/cards/csp-script';
 
 /**
- * `cockpit://` 协议处理器。
+ * The `cockpit://` protocol handler.
  *
- * ── 契约 §6.1 的三条硬承诺，全在这个文件里兑现 ──
+ * The three hard promises of contract §6.1 are all delivered in this file:
  *
- * 1. **CSP 响应头由宿主注入**（卡片改不了——`meta` 里的 CSP 管不了自己）
- * 2. **MIME 给对**（给错 → module script 被浏览器拒）
- * 3. **路径不许逃出卡片目录**（卡片是 AI 写的任意网页）
+ * 1. **the CSP response header is injected by the host** (the card cannot
+ *    change it — a CSP in a `meta` tag cannot police itself)
+ * 2. **the MIME type is right** (the wrong one makes the browser reject the
+ *    module script)
+ * 3. **a path may not escape the card directory** (a card is an arbitrary web
+ *    page written by an AI)
  *
- * ── 为什么要在这里测（而不是等 Electron） ──
+ * Why it is tested here instead of waiting for Electron:
  *
- * 处理器就是 `(Request) => Response`——**web 标准的全局对象**，
- * Node 20 里就有。所以它的每一条行为都能**在单测里验**，
- * 不必等真浏览器。浏览器那一层（真沙箱、真断网）留给 e2e。
+ * The handler is `(Request) => Response` — **a global object of the web
+ * standard**, available in Node 20. Every behaviour of it can therefore be
+ * **verified in a unit test** without waiting for a real browser. The browser
+ * layer (a real sandbox, real isolation from the network) is left to the
+ * end-to-end tests.
  */
 function cardDir(): { dir: string; cleanup: () => void } {
   const base = mkdtempSync(join(tmpdir(), 'card-proto-'));
@@ -38,8 +43,8 @@ function handler(dir: string): (request: Request) => Response {
   });
 }
 
-describe('CSP 头（契约 §6.1 逐条原文）', () => {
-  it('就是契约写的那一段', () => {
+describe('the CSP header (the wording of contract §6.1, item by item)', () => {
+  it('it is exactly the section the contract writes', () => {
     expect(CARD_CSP).toContain("default-src 'none'");
     expect(CARD_CSP).toContain("script-src 'self'");
     expect(CARD_CSP).toContain("connect-src 'none'");
@@ -49,26 +54,26 @@ describe('CSP 头（契约 §6.1 逐条原文）', () => {
   });
 });
 
-describe('bridge 脚本的注入', () => {
-  it('插在 `<head>` 之后', () => {
+describe('the injection of the bridge script', () => {
+  it('it is inserted after the `<head>`', () => {
     const html = injectBridge('<!doctype html><html><head><title>x</title></head><body></body></html>', 'inst-1');
     expect(html).toContain('<script type="module" src="cockpit://card/inst-1/__host/bridge.js"></script>');
     expect(html.indexOf('bridge.js')).toBeLessThan(html.indexOf('<title>') + 100);
   });
 
-  it('没有 head 就插在 `<html>` 之后', () => {
+  it('without a head it is inserted after the `<html>`', () => {
     const html = injectBridge('<!doctype html><html><body>x</body></html>', 'inst-1');
     expect(html).toContain('bridge.js');
   });
 
-  it('连 html 标签都没有就前置到文档开头', () => {
+  it('without an html tag either it is prepended to the beginning of the document', () => {
     const html = injectBridge('hello', 'inst-1');
     expect(html.startsWith('<script type="module" src="cockpit://card/inst-1/__host/bridge.js"></script>')).toBe(true);
   });
 });
 
-describe('协议处理器的路由', () => {
-  it('入口 HTML：带 CSP 头，注入了 bridge，还带了主题样式', async () => {
+describe('the routing of the protocol handler', () => {
+  it('the entry HTML: it carries the CSP header, the bridge is injected, and it has the theme styles', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/index.html'));
@@ -82,7 +87,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('**注入出来的 URL 必须真的能被处理器路由到**（相对根路径会把实例 id 吃掉）', async () => {
+  it('**the injected URL has to be routable by the handler** (a path relative to the root would swallow the instance id)', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const entryUrl = 'cockpit://card/inst-1/index.html';
@@ -90,10 +95,11 @@ describe('协议处理器的路由', () => {
       const html = await res.text();
       const src = /<script type="module" src="([^"]+)"><\/script>/.exec(html)?.[1];
       expect(src).toBeDefined();
-      // **按浏览器的规则解析**（相对路径会在这里丢掉实例 id）
+      // **It is resolved by the rules of the browser** (a relative path loses the
+// instance id here)
       const resolved = new URL(src as string, entryUrl);
       expect(resolved.href).toBe('cockpit://card/inst-1/__host/bridge.js');
-      // 拿解析出来的 URL 去请求 → 必须是 bridge 脚本，不是 404
+      // Request the resolved URL → it has to be the bridge script, not a 404
       const bridge = handler(dir)(new Request(resolved.href));
       expect(bridge.status).toBe(200);
       expect(await bridge.text()).toContain('bridge');
@@ -102,7 +108,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('js：MIME 是 text/javascript（**给错 module script 就被拒**）', async () => {
+  it('js: the MIME type is text/javascript (**the wrong one makes the browser reject the module script**)', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/card.js'));
@@ -113,7 +119,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('`__host/bridge.js`：宿主注入的那一份', async () => {
+  it('`__host/bridge.js`: the copy the host injects', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/__host/bridge.js'));
@@ -124,7 +130,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('**`__host/csp.js`：宿注入的 CSP 监听脚本**', async () => {
+  it('**`__host/csp.js`: the CSP listener script the host injects**', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/__host/csp.js'));
@@ -137,7 +143,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('**CSP 监听脚本在 bridge 之前**（监听得早，bridge 才能用）', async () => {
+  it('**the CSP listener comes before the bridge** (it listens early enough for the bridge to use it)', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/index.html'));
@@ -152,7 +158,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('**路径穿越 → 403**（不许逃出卡片目录）', async () => {
+  it('**a path traversal → 403** (it may not escape the card directory)', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/..%2f..%2fetc%2fpasswd'));
@@ -162,7 +168,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('没登记的实例 → 404', () => {
+  it('an instance that is not registered → 404', () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/nope/index.html'));
@@ -172,7 +178,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('不是 `card` 这个 host → 404', () => {
+  it('a host other than `card` → 404', () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://app/index.html'));
@@ -182,7 +188,7 @@ describe('协议处理器的路由', () => {
     }
   });
 
-  it('文件不存在 → 404', async () => {
+  it('the file does not exist → 404', async () => {
     const { dir, cleanup } = cardDir();
     try {
       const res = handler(dir)(new Request('cockpit://card/inst-1/nope.js'));

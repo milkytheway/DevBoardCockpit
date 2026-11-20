@@ -9,19 +9,22 @@ import type { ConnectionProfile } from '../../src/main/profiles/schema';
 import type { SessionLog } from '../../src/main/logging/session-log';
 
 /**
- * **向导主流程** ✓ —— 2026-11-19 加 ✓。
+ * The **main flow of the wizard**, added on 2026-11-19.
  *
- * ── 为什么用假连接 ✓ ──
+ * Why a fake connection:
  *
- * → **判据不该依赖真板子** ✓（**沙箱里跑不了** ✓ · **CI 跑不了** ✓）。
- * → **假连接要模拟真实行为** ✓（AGENTS.md §3 ✓ · 「替身按行为建模，不按结论建模」✓）
- *   → **它真的回每一行** ✓ → **它真的按命令回不同的东西** ✓
- *   → **而不是「直接返回契约期待的那个答案」** ✓ —— 那样会把协议形状的 bug 盖住 ✓。
+ * → **The criterion must not depend on a real board** (it cannot run in the
+ *   sandbox and it cannot run in the CI).
+ * → **The fake connection has to imitate the real behaviour** (AGENTS.md §3: a
+ *   stand-in is modelled by behaviour, not by conclusion) → **it really
+ *   answers every line** and **it really answers different things for
+ *   different commands**, and **not "it returns the answer the contract
+ *   expects"**, which would hide the bugs in the shape of the protocol.
  */
 const REPO_ROOT = resolve(process.cwd());
 const GENERIC_DIR = join(REPO_ROOT, 'profiles', 'boards', 'generic-linux');
 
-/** 假的连接 ✓ —— **按真实行为建模** ✓ */
+/** A fake connection — **modelled by the real behaviour** */
 function fakeConnection(): {
   connection: Connection;
   commands: string[];
@@ -39,7 +42,7 @@ function fakeConnection(): {
     },
     async exec(command: string): Promise<ExecResult> {
       commands.push(command);
-      // **按命令回不同的东西** ✓ —— 像真板子那样 ✓
+      // **It answers different things for different commands** — as a real board does
       if (command.includes('/proc/device-tree/model')) {
         return {
           exitCode: 0,
@@ -79,20 +82,20 @@ function fakeConnection(): {
       if (command.includes('thermal_zone')) {
         return { exitCode: 0, stdout: 'gpu-thermal=31461\nnpu-thermal=31461\n', stderr: '', durationMs: 2, timedOut: false };
       }
-      // **没接的设备 → 报错** ✓（像真板子那样 ✓）
+      // **A device that is not connected → an error** — as a real board does
       return { exitCode: 1, stdout: '', stderr: 'No such file or directory', durationMs: 2, timedOut: false };
     },
     async list(): Promise<never[]> {
-      throw new Error('串口不支持文件传输');
+      throw new Error('the serial port does not support file transfer');
     },
     async pull(): Promise<void> {
-      throw new Error('串口不支持文件传输');
+      throw new Error('the serial port does not support file transfer');
     },
     async push(): Promise<void> {
-      throw new Error('串口不支持文件传输');
+      throw new Error('the serial port does not support file transfer');
     },
     async openSession(): Promise<never> {
-      throw new Error('这个测试不需要会话');
+      throw new Error('this test needs no session');
     },
   } as unknown as Connection;
   return { connection, commands };
@@ -114,13 +117,13 @@ function deps(root: string, conn: Connection): {
   };
 }
 
-describe('向导 · **主流程** ✓', () => {
-  it('**从人选串口到包落盘，一条龙** ✓', async () => {
+describe('the wizard · **the main flow**', () => {
+  it('**from the operator picking the serial port to the pack on disk, in one chain**', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
     try {
       const { connection } = fakeConnection();
       const r = await runWizard(
-        { port: 'COM3', baudrate: 1500000, boardName: '我的板子' },
+        { port: 'COM3', baudrate: 1500000, boardName: 'myboard' },
         deps(root, connection),
       );
       expect(r.ok, r.message).toBe(true);
@@ -133,55 +136,55 @@ describe('向导 · **主流程** ✓', () => {
     }
   });
 
-  it('**落盘的包过真校验器** ✓（**落地即废 = 白做** ⚠️）', async () => {
+  it('**the pack on disk passes the real validator** (**dead on arrival means wasted work**)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
     try {
       const { connection } = fakeConnection();
       const r = await runWizard(
-        { port: 'COM3', baudrate: 1500000, boardName: '我的板子' },
+        { port: 'COM3', baudrate: 1500000, boardName: 'myboard' },
         deps(root, connection),
       );
       const errors = errorsOf(validatePack(r.pack as never));
-      expect(errors.map((e) => `规则 ${e.rule} · ${e.path}：${e.message}`)).toEqual([]);
+      expect(errors.map((e) => `rule ${e.rule} · ${e.path}: ${e.message}`)).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('**落一条连接 profile** ✓（**不然这块板在界面上选不到** ✓）', async () => {
+  it('**it writes a connection profile** (**otherwise the board cannot be picked in the interface**)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
     try {
       const { connection } = fakeConnection();
       const r = await runWizard(
-        { port: 'COM3', baudrate: 1500000, boardName: '我的板子' },
+        { port: 'COM3', baudrate: 1500000, boardName: 'myboard' },
         deps(root, connection),
       );
       expect(r.ok).toBe(true);
-      expect(profileExists(join(root, 'profiles'), '我的板子')).toBe(true);
-      const raw = readFileSync(join(root, 'profiles', 'board-我的板子.json'), 'utf8');
+      expect(profileExists(join(root, 'profiles'), 'myboard')).toBe(true);
+      const raw = readFileSync(join(root, 'profiles', 'board-myboard.json'), 'utf8');
       const profile = JSON.parse(raw) as Record<string, unknown>;
-      expect(profile['board_pack']).toBe('我的板子');
-      expect(profile['device_key']).toBe('我的板子');
+      expect(profile['board_pack']).toBe('myboard');
+      expect(profile['device_key']).toBe('myboard');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('**临时 profile 指名 `generic-linux`** ✓（**零新机制** ✓）', () => {
+  it('**the temporary profile names `generic-linux`** (**no new mechanism**)', () => {
     const profile = serialProfileOf({ port: 'COM3', baudrate: 1500000, boardName: 'x' }, 'atk-01');
     expect(profile.board_pack).toBe('generic-linux');
     expect(profile.options['port']).toBe('COM3');
     expect(profile.options['baudrate']).toBe(1500000);
   });
 
-  it('**名字派生出 id** ✓（**小写 ✓ · 非法字符换横线** ✓）', () => {
-    expect(boardIdOf('我的板子'), '**中文名要能用** ✓').toBe('我的板子');
+  it('**the name derives the id** (**lowercase · an illegal character becomes a hyphen**)', () => {
+    expect(boardIdOf('我的板子'), 'a Chinese name has to work').toBe('我的板子');
     expect(boardIdOf('ATK-01')).toBe('ATK-01');
     expect(boardIdOf('a/b')).toBe('a-b');
     expect(boardIdOf('  ')).toBe('board');
   });
 
-  it('**端口打不开 → 立刻停** ✓（**不往下跑** ✓）', async () => {
+  it('**the port cannot be opened → it stops at once** (**it does not go on**)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
     try {
       const conn = {
@@ -196,7 +199,7 @@ describe('向导 · **主流程** ✓', () => {
       );
       expect(r.ok).toBe(false);
       expect(r.firstTruth.kind).toBe('port-unopenable');
-      expect(r.installedDir, '没成就不该落盘 ✓').toBeUndefined();
+      expect(r.installedDir, 'nothing was written, so nothing may be on disk').toBeUndefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

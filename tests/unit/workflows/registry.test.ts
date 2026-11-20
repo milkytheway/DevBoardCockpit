@@ -5,15 +5,20 @@ import { join } from 'node:path';
 import { WorkflowRegistry, digestOf } from '../../../src/main/workflows/registry';
 
 /**
- * 流程包**注册表** —— 「哪些流程可以跑」这本账。
+ * The **registry of the workflow packs** — the ledger of "which workflows can
+ * be run".
  *
- * ── 现在的规矩（**2026-11-16 改完** ✓ · ADR-D48 ✓）──
+ * The rules as they are now (**changed on 2026-11-16**):
  *
- * ① **只认 id，不认路径** ✓ —— 卡片与 agent **给不了路径** ✓；
- * ② **不再有批准账** ✓ —— **流程包的存在本身就是说明** ✓
- *    （**闸在设置里的统一权限区** ✓ —— ADR-D47 ✓）；
- * ③ 坏包**不拖垮其余** ✓（与 profile 加载器同规矩 ✓）；
- * ④ **内容摘要还在** ✓ —— **改了内容摘要就变** ✓（**给人看「变没变」用** ✓）。
+ * ① **It knows the id, not the path** — a card and an agent **cannot hand in
+ *    a path**;
+ * ② **There is no approved ledger any more** — **the existence of the
+ *    workflow pack is the statement** (the gate is the unified permission area
+ *    in the settings);
+ * ③ A broken pack **does not drag the others down** (the same rule as the
+ *    loader of the profiles);
+ * ④ **The digest of the content is still there** — **it changes when the
+ *    content changes** (it is meant to show a person "whether it changed").
  */
 let dir: string;
 let builtinDir: string;
@@ -23,10 +28,10 @@ const PACK = {
   apiVersion: 'devboard/v1',
   kind: 'Workflow',
   id: 'demo.run',
-  name: '演示流程',
+  name: 'demo workflow',
   version: '1.0.0',
   inputs: {},
-  roles: { build: { purpose: '客机', profile: 'ubuntu-ssh' } },
+  roles: { build: { purpose: 'the guest', profile: 'ubuntu-ssh' } },
   steps: [{ id: 'hello', kind: 'exec', role: 'build', cmd: 'echo hi' }],
 };
 
@@ -36,7 +41,7 @@ function write(dirName: string, file: string, content: unknown): void {
 }
 
 function yamlOf(pack: unknown): string {
-  // **手写一份 YAML**（不引 yaml 库 → 测试的依赖面更小 ✓）
+  // **A YAML is written by hand** (no yaml library → the dependency surface of the test stays smaller)
   const p = pack as typeof PACK;
   const roles = Object.entries(p.roles)
     .map(([name, r]) => `  ${name}: { purpose: ${r.purpose}, profile: ${r.profile} }`)
@@ -76,8 +81,8 @@ function registry(warn?: (m: string) => void): WorkflowRegistry {
   });
 }
 
-describe('流程包注册表 · 扫目录', () => {
-  it('扫到包，登记 id / 摘要', () => {
+describe('the registry of the workflow packs — it scans the directory', () => {
+  it('it scans a pack and registers the id / the digest', () => {
     write(builtinDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
@@ -87,9 +92,9 @@ describe('流程包注册表 · 扫目录', () => {
     expect(list[0]?.digest).toHaveLength(16);
   });
 
-  it('**坏包不拖垮其余**（跳过 + 一条警告 ✓）', () => {
+  it('**a broken pack does not drag the others down** (it is skipped and one warning is recorded)', () => {
     write(builtinDir, 'demo.yaml', yamlOf(PACK));
-    write(builtinDir, 'broken.yaml', 'apiVersion: devboard/v1\nkind: 不存在的\n');
+    write(builtinDir, 'broken.yaml', 'apiVersion: devboard/v1\nkind: does not exist\n');
     const warnings: string[] = [];
     const reg = registry((m) => warnings.push(m));
     reg.scan();
@@ -98,32 +103,32 @@ describe('流程包注册表 · 扫目录', () => {
     expect(warnings[0]).toContain('broken.yaml');
   });
 
-  it('**同 id 时用户目录优先**（与卡片/profile 同规矩 ✓）', () => {
+  it('**with the same id the user directory wins** (the same rule as for the cards and the profiles)', () => {
     write(builtinDir, 'demo.yaml', yamlOf(PACK));
-    write(userDir, 'demo.yaml', yamlOf({ ...PACK, name: '用户那一份' }));
+    write(userDir, 'demo.yaml', yamlOf({ ...PACK, name: 'the one of the user' }));
     const reg = registry();
     reg.scan();
     expect(reg.list()).toHaveLength(1);
-    expect(reg.list()[0]?.name).toBe('用户那一份');
+    expect(reg.list()[0]?.name).toBe('the one of the user');
   });
 });
 
-describe('流程包注册表 · 取包', () => {
-  it('**放一个文件进目录 → 就能跑** ✓（**存在即说明** ✓ —— ADR-D48 ✓）', () => {
+describe('the registry of the workflow packs — it takes a pack', () => {
+  it('**putting a file into the directory is enough to run it** (**the existence is the statement**)', () => {
     write(userDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
-    // **不再有「有没有被批准」那一问** ✓
+    // **There is no "was it approved" question any more**
     expect(reg.require('demo.run').id).toBe('demo.run');
   });
 
-  it('**没有这个包** → 报错（说清楚是哪一种 ✓）', () => {
+  it('**there is no such pack** → it reports an error (and says which kind it is)', () => {
     const reg = registry();
     reg.scan();
     expect(() => reg.require('nobody')).toThrow(/no such workflow pack/);
   });
 
-  it('**列表里列出全部** ✓（**不再过滤「没批过的」** ✓ —— 用户要看得见）', () => {
+  it('**the list holds all of them** (**the unapproved ones are not filtered out any more** — the operator has to see them)', () => {
     write(userDir, 'demo.yaml', yamlOf(PACK));
     write(userDir, 'other.yaml', yamlOf({ ...PACK, id: 'other.run' }));
     const reg = registry();
@@ -131,14 +136,14 @@ describe('流程包注册表 · 取包', () => {
     expect(reg.list().map((w) => w.id)).toEqual(['demo.run', 'other.run']);
   });
 
-  it('**内容摘要**（16 位十六进制 ✓）—— **改了内容摘要就变** ✓', () => {
+  it('**the digest of the content** (16 hexadecimal digits) — **it changes when the content changes**', () => {
     write(userDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
     const before = reg.get('demo.run')?.digest;
     expect(before).toHaveLength(16);
 
-    // **改了内容**（命令变了 ✓）
+    // **The content was changed** (the command changed)
     write(userDir, 'demo.yaml', yamlOf({ ...PACK, steps: [{ ...PACK.steps[0], cmd: 'echo bye' }] }));
     reg.scan();
     expect(reg.get('demo.run')?.digest).not.toBe(before);
@@ -147,7 +152,7 @@ describe('流程包注册表 · 取包', () => {
     );
   });
 
-  it('**这个包会干什么**（`planOf` ✓ —— 人过目用的 ✓）', () => {
+  it('**what this pack would do** (`planOf` — it is meant for a person to look at)', () => {
     write(userDir, 'demo.yaml', yamlOf(PACK));
     const reg = registry();
     reg.scan();
@@ -157,7 +162,7 @@ describe('流程包注册表 · 取包', () => {
     expect(plan?.steps.map((s) => s.id)).toEqual(['hello']);
   });
 
-  it('**没有这个包 → `planOf` 给 undefined** ✓（**不抛** ✓）', () => {
+  it('**there is no such pack → `planOf` gives undefined** (**it does not throw**)', () => {
     const reg = registry();
     reg.scan();
     expect(reg.planOf('nobody')).toBeUndefined();

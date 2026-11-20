@@ -20,22 +20,23 @@ import type { CardManifest } from '../../../src/main/cards/manifest';
 import type { CardLogEntry } from '../../../src/main/cards/runtime-log';
 
 /**
- * **读侧工具的投影**（契约 `spec/04` §2.1 / §2.2 / §2.3 / §2.5 ✓ · ADR-D40 ✓）。
+ * The projections of the read-side tools (contract `spec/04` §2.1 / §2.2 / §2.3
+ * / §2.5).
  *
- * ── 这组判据守什么 ──
+ * What these criteria guard:
  *
- * | 判据 | 为什么 |
+ * | Criterion | Why |
  * |---|---|
- * | **字段名照契约**（`name` 不是 `tag` ✓ · `card_id` 不是 `cardId` ✓） | agent 按名字取字段 ✓ |
- * | **`apiVersion` 每一项都带** ✓ | 契约 §四 ✓ |
- * | **`source_reader` 算 `custom` 的 reader** ✓ | 否则 `custom.*` 全是 `null` ✓ |
- * | **reader 的 status 是映射表** ✓ | 契约 §2.1 ✓ |
- * | **命令不漏** ✓ | `args_summary` ✓ |
+ * | **the field names follow the contract** (`name` is not `tag`, `card_id` is not `cardId`) | an agent takes the fields by name |
+ * | **`apiVersion` is on every item** | contract §4 |
+ * | **`source_reader` also resolves a `custom` reader** | otherwise every `custom.*` is `null` |
+ * | **the status of a reader is a mapping table** | contract §2.1 |
+ * | **the command is not dropped** | `args_summary` |
  */
 
 const PACK: PackView = {
   id: 'demo-pack',
-  name: '演示包',
+  name: 'demo pack',
   version: '1.0.0',
   poll_groups: [{ id: 'fast', interval_ms: 1000, readers: ['cpu'] }],
   readers: [
@@ -70,12 +71,12 @@ function deps(over: Partial<McpHostDeps> = {}): McpHostDeps {
     history: () => [],
     refreshTag: async () => undefined,
     profiles: () => [
-      { id: 'guest', label: '客机', transport: 'ssh', options: {} },
-      { id: 'board', label: '板子', transport: 'adb', board_pack: 'demo-pack', options: {} },
+      { id: 'guest', label: 'the guest', transport: 'ssh', options: {} },
+      { id: 'board', label: 'the board', transport: 'adb', board_pack: 'demo-pack', options: {} },
     ],
     capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
     connected: () => false,
-    // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+    // **the connection of the current runtime** (**null when there is none**)
     currentProfileId: () => 'board',
     cards: () => [],
     cardDir: () => null,
@@ -97,23 +98,23 @@ const MANIFEST: CardManifest = {
   apiVersion: 'devboard/v1',
   kind: 'Card',
   id: 'demo',
-  name: '演示卡',
+  name: 'demo card',
   version: '1.0.0',
   entry: 'index.html',
   permissions: { read: ['cpu.usage'], write: [] },
 };
 
-describe('MCP · 读侧 · list_connections', () => {
-  it('**字段是契约的那些** ✓（`board_pack` 给 id ✓ —— **不给版本** ✓）', () => {
+describe('MCP · read side · list_connections', () => {
+  it('**the fields are the ones of the contract** (`board_pack` gives the id, **not the version**)', () => {
     const list = listConnections(deps());
     expect(list[0]).toEqual({
       id: 'guest',
-      label: '客机',
+      label: 'the guest',
       transport: 'ssh',
       board_pack: null,
-      // **设备（板实物）与连接是两层** ✓ —— 契约 `spec/02` §10.2 ✓
+      // **a device (the board) and a connection are two layers** — contract `spec/02` §10.2
       device_key: 'guest',
-      // **当前运行时那条** ✓（契约 `spec/04` §2.1 ✓）
+      // **the one of the current runtime** (contract `spec/04` §2.1)
       current: false,
       connected: false,
       capabilities: { exec: true, pty: false, files: true, exitCode: true },
@@ -121,15 +122,15 @@ describe('MCP · 读侧 · list_connections', () => {
     expect(list[1]?.['board_pack']).toBe('demo-pack');
   });
 
-  it('**`connected` 问的是「这条 profile 现在有活连接吗」✓', () => {
+  it('**`connected` asks whether this profile has a live connection right now**', () => {
     const list = listConnections(deps({ connected: (id) => id === 'guest' }));
     expect(list[0]?.['connected']).toBe(true);
     expect(list[1]?.['connected']).toBe(false);
   });
 });
 
-describe('MCP · 读侧 · list_data_sources', () => {
-  it('**`id` 是 reader id** ✓（数据源就是 reader 粒度 ✓）', () => {
+describe('MCP · read side · list_data_sources', () => {
+  it('**`id` is the reader id** (a data source has the granularity of a reader)', () => {
     const list = listDataSources(deps());
     expect(list.map((r) => r['id'])).toEqual(['cpu', 'priv']);
     expect(list[0]?.['board']).toBe('demo-pack');
@@ -137,21 +138,21 @@ describe('MCP · 读侧 · list_data_sources', () => {
     expect(list[0]?.['interval_ms']).toBe(1000);
   });
 
-  it('**`provides` 展开成具体名** ✓（包里写的是模式 ✓）', () => {
+  it('**`provides` is expanded into concrete names** (the pack states a pattern)', () => {
     const list = listDataSources(deps());
     expect(list[0]?.['provides']).toEqual(['cpu.core.0.usage', 'cpu.usage']);
   });
 
-  it('**reader 的 status 是映射表** ✓', () => {
-    // **全部 ok → ok** ✓
+  it('**the status of a reader is a mapping table**', () => {
+    // **all ok → ok**
     expect(listDataSources(deps())[0]?.['status']).toBe('ok');
-    // **有 error → error** ✓
+    // **one error → error**
     expect(
       listDataSources(deps({ readings: () => [reading('cpu.usage', 'error', null)] }))[0]?.['status'],
     ).toBe('error');
-    // **一个都没读出来 → pending** ✓
+    // **none of them was read → pending**
     expect(listDataSources(deps({ readings: () => [] }))[0]?.['status']).toBe('pending');
-    // **全部 unavailable → unavailable** ✓
+    // **all unavailable → unavailable**
     expect(
       listDataSources(deps({ readings: () => [reading('cpu.usage', 'unavailable', null)] }))[0]?.[
         'status'
@@ -159,59 +160,60 @@ describe('MCP · 读侧 · list_data_sources', () => {
     ).toBe('unavailable');
   });
 
-  it('**没有包 → 空数组** ✓', () => {
+  it('**no pack → an empty array**', () => {
     expect(listDataSources(deps({ pack: () => null }))).toEqual([]);
   });
 });
 
-describe('MCP · 读侧 · list_capabilities', () => {
-  it('**`transports` 是当前有的传输** ✓ · `features` 是封闭词表** ✓', () => {
+describe('MCP · read side · list_capabilities', () => {
+  it('**`transports` are the transports available now** · `features` is a closed vocabulary', () => {
     const caps = listCapabilities(deps());
     expect(caps['transports']).toEqual(['adb', 'ssh']);
     expect(caps['features']).toEqual(['cards', 'mcp', 'layout_share', 'record']);
   });
 });
 
-describe('MCP · 读侧 · list_tags', () => {
-  it('**`name` 不是 `tag`** ✓（契约的字段名 ✓）', () => {
+describe('MCP · read side · list_tags', () => {
+  it('**the field is `name`, not `tag`** (the field names of the contract)', () => {
     const list = listTags(deps());
     expect(list[0]?.['name']).toBe('cpu.usage');
     expect(list[0]?.['tag']).toBeUndefined();
   });
 
-  it('**`type` / `unit` / `range` 来自核心词表** ✓', () => {
+  it('**`type` / `unit` / `range` come from the core vocabulary**', () => {
     const list = listTags(deps());
     expect(list[0]?.['type']).toBe('number');
-    // **词表里的单位是 `percent`** ✓（**不是**读数上的那个 `%` ✓ —— 那是采样器给的 ✓）
+    // **the unit in the vocabulary is `percent`** (**not** the `%` of a reading —
+// that one comes from the sampler)
     expect(list[0]?.['unit']).toBe('percent');
     expect(list[0]?.['range']).toEqual([0, 100]);
   });
 
-  it('**`source_reader` 算得出来** ✓', () => {
+  it('**`source_reader` can be computed**', () => {
     const list = listTags(deps());
     expect(list[0]?.['source_reader']).toBe('cpu');
   });
 
-  it('**`custom.*` 的量 `source_reader` 也要算得出** ✓（不算就全是 null ✓）', () => {
+  it('**the `source_reader` of a `custom.*` quantity can be computed as well** (otherwise they are all null)', () => {
     const list = listTags(
       deps({ readings: () => [reading('custom.demo-pack.priv')] }),
     );
     expect(list[0]?.['source_reader']).toBe('priv');
   });
 
-  it('**`board` 是当前包 id** ✓', () => {
+  it('**`board` is the id of the current pack**', () => {
     expect(listTags(deps())[0]?.['board']).toBe('demo-pack');
   });
 });
 
-describe('MCP · 读侧 · describe_tag', () => {
-  it('**`semantics` 是词表原文** ✓ · `history` 是样本** ✓', () => {
+describe('MCP · read side · describe_tag', () => {
+  it('**`semantics` is the vocabulary entry verbatim** · `history` is the samples', () => {
     const d = describeTag(deps(), 'cpu.usage');
     expect(d?.['semantics']).toBeTruthy();
     expect(Array.isArray(d?.['history'])).toBe(true);
   });
 
-  it('**`source.args_summary` 不含命令** ✓（脱敏 ✓）', () => {
+  it('**`source.args_summary` does not contain the command** (it is redacted)', () => {
     const pack: PackView = {
       ...PACK,
       readers: [
@@ -231,21 +233,21 @@ describe('MCP · 读侧 · describe_tag', () => {
     expect(dumped).not.toContain('command');
   });
 
-  it('**没有词表条目的 `custom.*` → `semantics` 是 `null`** ✓', () => {
+  it('**a `custom.*` without a vocabulary entry → `semantics` is `null`**', () => {
     const d = describeTag(deps(), 'custom.demo-pack.priv');
     expect(d?.['semantics']).toBeNull();
     expect(d?.['type']).toBeNull();
   });
 });
 
-describe('MCP · 读侧 · sample_tag', () => {
-  it('**给的就是宿主缓冲里的样本** ✓', () => {
+describe('MCP · read side · sample_tag', () => {
+  it('**what it returns is the sample in the host buffer**', () => {
     const samples = [{ value: 1, unit: '%', status: 'ok' as const, at: 5 }];
     expect(sampleTag(deps({ history: () => samples }), 'cpu.usage', 10)).toEqual(samples);
   });
 });
 
-describe('MCP · 读侧 · list_cards', () => {
+describe('MCP · read side · list_cards', () => {
   const card: McpCardEntry = {
     cardId: 'demo-dir',
     dir: '/cards/demo-dir',
@@ -260,13 +262,13 @@ describe('MCP · 读侧 · list_cards', () => {
     },
   };
 
-  it('**`id` 是目录名、`manifest_id` 是 manifest 声明的** ✓（两者可不同 ✓）', () => {
+  it('**`id` is the directory name, `manifest_id` is the one the manifest declares** (the two may differ)', () => {
     const list = listCards(deps({ cards: () => [card] }));
     expect(list[0]?.['id']).toBe('demo-dir');
     expect(list[0]?.['manifest_id']).toBe('demo');
   });
 
-  it('**`missing_tags` 与 `unreadable_tags` 都在** ✓', () => {
+  it('**both `missing_tags` and `unreadable_tags` are present**', () => {
     const list = listCards(deps({ cards: () => [card] }));
     expect(list[0]?.['missing_tags']).toEqual(['npu.usage']);
     expect(list[0]?.['unreadable_tags']).toEqual(['cpu.usage']);
@@ -274,37 +276,37 @@ describe('MCP · 读侧 · list_cards', () => {
     expect(list[0]?.['status']).toBe('degraded');
   });
 
-  it('**`path` 是绝对路径** ✓ · `installed_at` 是目录 mtime** ✓', () => {
+  it('**`path` is an absolute path** · `installed_at` is the mtime of the directory', () => {
     const list = listCards(deps({ cards: () => [card] }));
     expect(list[0]?.['path']).toBe('/cards/demo-dir');
     expect(list[0]?.['installed_at']).toBe(1234);
   });
 });
 
-describe('MCP · 读侧 · get_card_runtime_log', () => {
+describe('MCP · read side · get_card_runtime_log', () => {
   const entries: CardLogEntry[] = [
     { at: 100, source: 'card', level: 'info', message: 'a' },
     { at: 200, source: 'csp', level: 'error', message: 'b' },
   ];
 
-  it('**`since` 过滤真的过滤** ✓', () => {
+  it('**the `since` filter really filters**', () => {
     const list = getCardRuntimeLog(deps({ cardLog: () => entries }), 'demo', 150);
     expect(list).toHaveLength(1);
     expect(list[0]?.['message']).toBe('b');
   });
 
-  it('**缺省给全部** ✓', () => {
+  it('**the default gives everything**', () => {
     expect(getCardRuntimeLog(deps({ cardLog: () => entries }), 'demo', undefined)).toHaveLength(2);
   });
 
-  it('**字段是 `level` / `at` / `message` / `source`** ✓', () => {
+  it('**the fields are `level` / `at` / `message` / `source`**', () => {
     const list = getCardRuntimeLog(deps({ cardLog: () => entries }), 'demo', undefined);
     expect(Object.keys(list[0] as object).sort()).toEqual(['at', 'level', 'message', 'source']);
   });
 });
 
-describe('MCP · 读侧 · 布局', () => {
-  it('**`card_id` 不是 `cardId`** ✓ · `connection_id` 要带上** ✓', () => {
+describe('MCP · read side · layout', () => {
+  it('**the field is `card_id`, not `cardId`** · `connection_id` must be carried', () => {
     const layout = deps({
       layout: () => ({
         version: 3,
@@ -319,7 +321,7 @@ describe('MCP · 读侧 · 布局', () => {
     ]);
   });
 
-  it('**越界的格子整条丢掉并报进 `dropped`** ✓', () => {
+  it('**a cell out of bounds is dropped as a whole and reported in `dropped`**', () => {
     const out = normalizeLayoutCards([
       { card_id: 'ok', x: 0, y: 0, w: 3, h: 2 },
       { card_id: 'wide', x: 0, y: 0, w: 99, h: 2 },
@@ -330,7 +332,7 @@ describe('MCP · 读侧 · 布局', () => {
     expect(out.dropped.sort()).toEqual(['neg', 'wide', 'zero']);
   });
 
-  it('**重叠不判** ✓（交给渲染器 ✓）', () => {
+  it('**overlap is not judged** (that is left to the renderer)', () => {
     const out = normalizeLayoutCards([
       { card_id: 'a', x: 0, y: 0, w: 3, h: 2 },
       { card_id: 'b', x: 0, y: 0, w: 3, h: 2 },
@@ -341,11 +343,11 @@ describe('MCP · 读侧 · 布局', () => {
 });
 
 describe('MCP · apiVersion', () => {
-  it('**每个响应都带** ✓', () => {
+  it('**every response carries it**', () => {
     expect(withVersion({ ok: true })['apiVersion']).toBe('devboard/v1');
   });
 
-  it('**列表是每一项都带** ✓', () => {
+  it('**a list carries it on every item**', () => {
     const list = withVersionEach([{ a: 1 }, { a: 2 }]);
     expect(list.every((i) => i['apiVersion'] === 'devboard/v1')).toBe(true);
   });

@@ -3,22 +3,22 @@ import { authorize, type GrantedActions } from '../../../src/main/actions/author
 import type { ActionDef } from '../../../src/main/tags/schema';
 
 /**
- * 授权 —— 契约 `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4.1。
+ * Authorisation — contract `docs/spec/02-board-pack.md` §5.5 + `spec/04` §2.4.1.
  *
- * ── **只有两条判据**（**2026-11-16 砍完** ✓ · ADR-D48 ✓）──
+ * There are exactly two criteria:
  *
- * | 情形 | 行为 |
+ * | Case | Outcome |
  * |---|---|
- * | 动作**在授权集里** + 参数**落在 `guard` 域内** | **直接执行**（仍记审计） |
- * | 动作**没被授权** | **拒绝** |
- * | 参数**超出 `guard` 域** | **拒绝**（**不是「问不问」** ✓） |
- * | `destructive` | **直接执行**（**危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓） |
+ * | the action is **in the granted set** and the params are **inside the `guard` range** | **run directly** (still audited) |
+ * | the action is **not granted** | **denied** |
+ * | the params are **outside the `guard` range** | **denied** (never "ask the operator") |
+ * | `destructive` | **run directly** (the danger level is informational — the gate is the permission area in the settings) |
  *
- * → **没有第三档了** ✓（`needs_confirmation` 那一档没了 ✓ —— ADR-D48 ✓）。
+ * There is no third outcome: the `needs_confirmation` verdict was removed.
  */
 const ACTION: ActionDef = {
   id: 'backlight.set',
-  label: '设置背光',
+  label: 'set backlight',
   danger: 'reversible',
   params: { value: { type: 'integer', min: 0, max: 255 } },
   guard: { value: { min: 16, max: 255 } },
@@ -30,35 +30,35 @@ const GRANTED: GrantedActions = {
   actions: { 'backlight.set': { value: { min: 16, max: 255 } } },
 };
 
-describe('授权 · 两条判据', () => {
-  it('reversible + 域内 + 已授权 → ok（直接执行）', () => {
+describe('authorisation · two criteria', () => {
+  it('reversible + inside the range + granted → ok (runs directly)', () => {
     const result = authorize(ACTION, { value: 100 }, GRANTED);
     expect(result.verdict).toBe('ok');
   });
 
-  it('动作**没被授权** → denied', () => {
+  it('the action is **not granted** → denied', () => {
     const result = authorize(ACTION, { value: 100 }, { actions: {} });
     expect(result.verdict).toBe('denied');
   });
 
-  it('destructive → ok（**直接执行**，不再问人 ✓ —— **危险等级只是信息** ✓）', () => {
+  it('destructive → ok (**runs directly**, no prompt — the danger level is informational)', () => {
     const destructive: ActionDef = { ...ACTION, danger: 'destructive' };
     const result = authorize(destructive, { value: 100 }, GRANTED);
     expect(result.verdict).toBe('ok');
   });
 
-  it('reversible 但参数**超出 guard** → denied（**不是「问人」** ✓）', () => {
+  it('reversible but the param is **outside the guard** → denied (never "ask the operator")', () => {
     const result = authorize(ACTION, { value: 5 }, GRANTED);
     expect(result.verdict).toBe('denied');
   });
 
-  it('**超出域时说得出是哪个参数** ✓（人看得懂 ✓）', () => {
+  it('the **out-of-range parameter is named**, so the operator can read the refusal', () => {
     const result = authorize(ACTION, { value: 5 }, GRANTED);
     expect(result.param).toBe('value');
     expect(result.detail ?? '').toContain('value');
   });
 
-  it('**结果只有两档** ✓（`needs_confirmation` 那一档没了 ✓ —— ADR-D48 ✓）', () => {
+  it('the **result has exactly two outcomes** (the `needs_confirmation` outcome is gone)', () => {
     const verdicts = new Set<string>();
     verdicts.add(authorize(ACTION, { value: 100 }, GRANTED).verdict);
     verdicts.add(authorize(ACTION, { value: 5 }, GRANTED).verdict);
@@ -68,28 +68,28 @@ describe('授权 · 两条判据', () => {
   });
 });
 
-describe('授权 · 参数域的判据', () => {
-  it('没有声明 guard → 用参数自己声明的域（0..255 全域）', () => {
+describe('authorisation · criteria for a parameter range', () => {
+  it('no guard declared → the range declared by the parameter itself applies (0..255, the full range)', () => {
     const noGuard: ActionDef = { ...ACTION, guard: undefined };
     const granted: GrantedActions = { actions: { 'backlight.set': undefined } };
     const result = authorize(noGuard, { value: 5 }, granted);
     expect(result.verdict).toBe('ok');
   });
 
-  it('越出参数自己声明的域 → denied（**guard 只是更窄的那一档** ✓）', () => {
+  it('outside the range declared by the parameter → denied (a guard is only a narrower range)', () => {
     const noGuard: ActionDef = { ...ACTION, guard: undefined };
     const granted: GrantedActions = { actions: { 'backlight.set': undefined } };
     const result = authorize(noGuard, { value: 999 }, granted);
     expect(result.verdict).toBe('denied');
   });
 
-  it('**授权集把域收得更窄** → 按更窄的那一档判 ✓（人授过的优先 ✓）', () => {
+  it('**the granted set narrows the range** → the narrower range applies (what the operator granted wins)', () => {
     const granted: GrantedActions = { actions: { 'backlight.set': { value: { min: 200, max: 255 } } } };
     expect(authorize(ACTION, { value: 100 }, granted).verdict).toBe('denied');
     expect(authorize(ACTION, { value: 220 }, granted).verdict).toBe('ok');
   });
 
-  it('**字符串参数不走 min/max** ✓（套到 string 上只会得到「永远超出」这种假拒绝 ✓）', () => {
+  it('**string parameters do not use min/max** (applying them to a string only produces false rejections)', () => {
     const note: ActionDef = {
       ...ACTION,
       id: 'note.set',

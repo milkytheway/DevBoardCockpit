@@ -8,14 +8,17 @@ import { tokenizeCommand } from '../../../src/main/tags/floor';
 import type { PackParam } from '../../../src/main/tags/schema';
 
 /**
- * 参数编码 —— 契约 `docs/spec/02-board-pack.md` §4.6「注入防线」。
+ * Parameter encoding — contract `docs/spec/02-board-pack.md` §4.6, the
+ * injection defence.
  *
- * **为什么它是一等公民**：板端会话是 root 权限，
- * 一条 `--model 'x; reboot'` 就能把「启动管线」变成「重启板子」——
- * 而 `reboot` **不在命令模板里**，所以危险地板按模板匹配**根本拦不住**。
+ * It is a first-class concern because the board session runs as root: a single
+ * `--model 'x; reboot'` turns "start the pipeline" into "reboot the board",
+ * and `reboot` is not part of the command template, so matching the template
+ * against the danger floor cannot catch it.
  *
- * → 编码是**运行时**的活：包只声明类型与范围，不负责转义
- * （十个包作者会写出十种转义方式，其中九种是错的）。
+ * Encoding belongs to the runtime. A pack declares types and ranges, it does
+ * not escape: ten pack authors would write ten escaping schemes and nine of
+ * them would be wrong.
  */
 const SCHEMA: Record<string, PackParam> = {
   model: { type: 'string', maxLength: 32 },
@@ -25,12 +28,12 @@ const SCHEMA: Record<string, PackParam> = {
   mode: { type: 'enum', values: ['fast', 'slow'] },
 };
 
-describe('参数编码 · 四种类型的正例', () => {
-  it('integer 按十进制字面量注入，不带引号', () => {
+describe('parameter encoding · positive cases for the four types', () => {
+  it('an integer is injected as a decimal literal, without quotes', () => {
     expect(encodeParams({ fps: SCHEMA.fps! }, { fps: 30 })).toEqual({ fps: '30' });
   });
 
-  it('number 同理', () => {
+  it('a number behaves the same way', () => {
     expect(encodeParams({ ratio: SCHEMA.ratio! }, { ratio: 1.5 })).toEqual({ ratio: '1.5' });
   });
 
@@ -39,31 +42,31 @@ describe('参数编码 · 四种类型的正例', () => {
     expect(encodeParams({ on: SCHEMA.on! }, { on: false })).toEqual({ on: 'false' });
   });
 
-  it('enum 原样注入（值必须在 values 里）', () => {
+  it('an enum is injected verbatim (the value must be in values)', () => {
     expect(encodeParams({ mode: SCHEMA.mode! }, { mode: 'fast' })).toEqual({ mode: 'fast' });
   });
 
-  it('string 单引号包裹', () => {
+  it('a string is wrapped in single quotes', () => {
     expect(encodeParams({ model: SCHEMA.model! }, { model: 'x' })).toEqual({ model: "'x'" });
   });
 
-  it("string 里的单引号按 POSIX 方式转义（' → '\\''）", () => {
+  it("a single quote inside a string is escaped POSIX style (' → '\\'')", () => {
     expect(encodeParams({ model: SCHEMA.model! }, { model: "it's" })).toEqual({
       model: "'it'\\''s'",
     });
   });
 });
 
-describe('参数编码 · 注入不改变参数个数（这条是 §4.6 的核心）', () => {
-  it('分号被包在单引号里 → 仍然只有一个参数', () => {
+describe('parameter encoding · injection does not change the number of arguments (this is the core of §4.6)', () => {
+  it('a semicolon inside single quotes still yields a single argument', () => {
     const encoded = encodeParams({ model: SCHEMA.model! }, { model: 'x; reboot' });
     const command = renderCommand('pipeline start --model {model}', encoded);
     const tokens = tokenizeCommand(command);
-    // 参数个数不变 → `reboot` 不可能成为第二条命令
+    // The argument count is unchanged, so `reboot` cannot become a second command
     expect(tokens).toEqual(['pipeline', 'start', '--model', 'x; reboot']);
   });
 
-  it('命令替换后参数个数不变（模板两个词 + 两个参数）', () => {
+  it('the argument count is unchanged after substitution (two words in the template, two arguments)', () => {
     const { command } = buildCommand(
       'pipeline start --model {model} --fps {fps}',
       { model: SCHEMA.model!, fps: SCHEMA.fps! },
@@ -79,62 +82,62 @@ describe('参数编码 · 注入不改变参数个数（这条是 §4.6 的核�
     ]);
   });
 
-  it('命令替换后带空格的参数不会被拆开（空格也在引号里）', () => {
+  it('an argument containing spaces is not split after substitution (the spaces are inside the quotes)', () => {
     const { command } = buildCommand('run {model}', { model: SCHEMA.model! }, { model: 'a b c' });
     expect(tokenizeCommand(command)).toEqual(['run', 'a b c']);
   });
 });
 
-describe('参数编码 · 负例（运行时**不信任包与调用方的自述**）', () => {
+describe('parameter encoding · negative cases (the runtime does not trust the self-description of the pack or of the caller)', () => {
   const bad = (schema: PackParam, value: unknown): () => unknown =>
     () => encodeParams({ p: schema }, { p: value });
 
-  it('enum 的值不在 values 里 → 拒掉', () => {
+  it('an enum value that is not in values is rejected', () => {
     expect(bad(SCHEMA.mode!, 'turbo')).toThrow(/values/);
   });
 
-  it('integer 收到字符串 → 拒掉（不因为「看起来像数字」就放行）', () => {
+  it('an integer given a string is rejected (it looks numeric but is not)', () => {
     expect(bad(SCHEMA.fps!, '30')).toThrow(/integer/);
   });
 
-  it('number 收到 NaN → 拒掉', () => {
+  it('a number given NaN is rejected', () => {
     expect(bad(SCHEMA.ratio!, Number.NaN)).toThrow(/number/);
   });
 
-  it('boolean 收到字符串 → 拒掉', () => {
+  it('a boolean given a string is rejected', () => {
     expect(bad(SCHEMA.on!, 'true')).toThrow(/boolean/);
   });
 
-  it('integer 超出 min/max → 拒掉', () => {
+  it('an integer outside min/max is rejected', () => {
     expect(bad(SCHEMA.fps!, 0)).toThrow(/out of range/);
     expect(bad(SCHEMA.fps!, 999)).toThrow(/out of range/);
   });
 
-  it('string 超 maxLength → 拒掉（没有上限的字符串参数就是注入面）', () => {
+  it('a string longer than maxLength is rejected (an unbounded string argument is an injection surface)', () => {
     expect(bad(SCHEMA.model!, 'x'.repeat(33))).toThrow(/maxLength/);
   });
 
-  it('string 不匹配 pattern → 拒掉', () => {
+  it('a string that does not match pattern is rejected', () => {
     expect(bad({ type: 'string', maxLength: 8, pattern: '^[a-z]+$' }, 'ABC')).toThrow(/pattern/);
   });
 
-  it('string 里有换行 → 拒掉（串口是一行一条命令，事实 S6）', () => {
+  it('a string containing a newline is rejected (a serial line carries one command, fact S6)', () => {
     expect(bad(SCHEMA.model!, 'a\nb')).toThrow(/newline/);
   });
 
-  it('缺值且没有 default → 拒掉', () => {
+  it('a missing value without a default is rejected', () => {
     expect(() => encodeParams({ model: SCHEMA.model! }, {})).toThrow(/is missing/);
   });
 
-  it('多出来的参数 → 拒掉（调用方塞了一个没声明的参数）', () => {
+  it('an extra argument is rejected (the caller passed an argument that was not declared)', () => {
     expect(() => encodeParams({ fps: SCHEMA.fps! }, { fps: 30, extra: 'x' })).toThrow(/is not declared/);
   });
 
-  it('模板里的占位没有声明 → 拒掉（不信任包的模板）', () => {
+  it('a placeholder in the template that is not declared is rejected (the template of the pack is not trusted)', () => {
     expect(() => renderCommand('run {undeclared}', { model: "'x'" })).toThrow(/placeholder/);
   });
 
-  it('错误是 AppError，带错误码', () => {
+  it('the error is an AppError and carries an error code', () => {
     try {
       encodeParams({ mode: SCHEMA.mode! }, { mode: 'turbo' });
       expect.unreachable();
@@ -144,29 +147,29 @@ describe('参数编码 · 负例（运行时**不信任包与调用方的自述*
   });
 });
 
-describe('参数编码 · 取值', () => {
-  it('缺值时用 default', () => {
+describe('parameter encoding · resolving values', () => {
+  it('a missing value falls back to the default', () => {
     expect(encodeParams({ fps: { type: 'integer', default: 60 } }, {})).toEqual({ fps: '60' });
   });
 
-  it('给了值就用给的值（不给 default 优先）', () => {
+  it('a supplied value wins over the default', () => {
     expect(encodeParams({ fps: { type: 'integer', default: 60 } }, { fps: 30 })).toEqual({
       fps: '30',
     });
   });
 });
 
-describe('命令渲染', () => {
-  it('同一个占位出现两次 → 两处都替换', () => {
+describe('command rendering', () => {
+  it('the same placeholder twice is substituted in both places', () => {
     const encoded = encodeParams({ fps: SCHEMA.fps! }, { fps: 30 });
     expect(renderCommand('a {fps} b {fps}', encoded)).toBe('a 30 b 30');
   });
 
-  it('模板里没有占位 → 原样返回', () => {
+  it('a template without placeholders is returned unchanged', () => {
     expect(renderCommand('lsmod', {})).toBe('lsmod');
   });
 
-  it('buildCommand 一次给全：命令 + 每个参数的编码片段（审计要记参数）', () => {
+  it('buildCommand returns everything at once: the command plus the encoded fragment of every argument (the audit records the arguments)', () => {
     const result = buildCommand('run --fps {fps}', { fps: SCHEMA.fps! }, { fps: 30 });
     expect(result.command).toBe('run --fps 30');
     expect(result.encoded).toEqual({ fps: '30' });

@@ -8,12 +8,13 @@ import { instantiatePack } from '../../src/main/wizard/instantiate';
 import type { ProbeReaderReport } from '../../src/main/tags/probe';
 
 /**
- * **探针报告 → 实例化** ✓ —— 2026-11-19 加 ✓。
+ * **The report of the probe → the instantiation** — added on 2026-11-19.
  *
- * ── 它是「真探针」与「实例化」之间**唯一**的桥 ✓ ──
+ * It is **the only** bridge between the "real probe" and the "instantiation".
  *
- * → **形状不一样** ✓ → **中间这一层是隔离带** ✓
- *   → **实例化不依赖探针** ✓（它是个纯函数 ✓）→ **探针改形状时它不动** ✓。
+ * → **The shapes differ** → **this layer in between is a buffer** →
+ *   **the instantiation does not depend on the probe** (it is a pure
+ *   function) → **it does not move when the probe changes its shape**.
  */
 const REPO_ROOT = resolve(process.cwd());
 const GENERIC_DIR = join(REPO_ROOT, 'profiles', 'boards', 'generic-linux');
@@ -22,37 +23,37 @@ function report(readerId: string, ok: boolean, problems: string[] = []): ProbeRe
   return { readerId, kind: 'file_read', tags: [], problems, ok };
 }
 
-describe('探针 → 实例化 · **那座桥** ✓', () => {
-  it('**绿/红原样过去** ✓', () => {
-    const outcomes = outcomesOf([report('cpu', true), report('led', false, ['读不到'])]);
+describe('the probe → the instantiation · **that bridge**', () => {
+  it('**the green and the red go over unchanged**', () => {
+    const outcomes = outcomesOf([report('cpu', true), report('led', false, ['it cannot be read'])]);
     expect(outcomes.map((o) => [o.readerId, o.ok])).toEqual([
       ['cpu', true],
       ['led', false],
     ]);
   });
 
-  it('**「为什么红」合成一句话** ✓（**探针给的是一组问题** ✓）', () => {
-    const one = outcomesOf([report('led', false, ['路径不对'])])[0];
-    expect(one?.detail).toBe('路径不对');
-    const many = outcomesOf([report('led', false, ['甲', '乙', '丙'])])[0];
+  it('**"why it is red" is composed into one sentence** (the probe gives a set of questions)', () => {
+    const one = outcomesOf([report('led', false, ['the path is wrong'])])[0];
+    expect(one?.detail).toBe('the path is wrong');
+    const many = outcomesOf([report('led', false, ['A', 'B', 'C'])])[0];
     expect(many?.detail).toContain('3 problems');
-    expect(many?.detail).toContain('甲');
+    expect(many?.detail).toContain('A');
   });
 
-  it('**真探针的报告能直接喂进实例化** ✓（**端到端** ✓）', () => {
-    // → **真的跑一遍探针的判定** ✓ —— 不手造报告 ✓
+  it('**the report of the real probe can be fed into the instantiation directly** (**end to end**)', () => {
+    // → **the decision of the probe really runs** — the report is not made up by hand
     const generic = loadBoardPack(GENERIC_DIR);
     const readerIds = [...generic.readers, ...generic.custom].map((r) => r.id);
     const reports = readerIds.map((id) => report(id, true));
     const result = instantiatePack({
       source: generic,
       targetId: 'atk-01',
-      targetName: '我的板子',
+      targetName: 'my board',
       outcomes: outcomesOf(reports),
     });
     expect(
-      errorsOf(validatePack(result.pack)).map((e) => `规则 ${e.rule} · ${e.path}：${e.message}`),
-      '**真探针的报告喂进去 → 产物仍然过校验** ✓',
+      errorsOf(validatePack(result.pack)).map((e) => `rule ${e.rule} · ${e.path}: ${e.message}`),
+      '**the report of the real probe is fed in → the product still passes the validation**',
     ).toEqual([]);
   });
 });

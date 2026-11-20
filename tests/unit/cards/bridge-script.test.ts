@@ -3,19 +3,21 @@ import { cardApis, apiByName } from '../../../src/main/cards/api-registry';
 import { bridgeScriptFor } from '../../../src/main/cards/bridge-script';
 
 /**
- * 卡片 API 的**单一真源**。
+ * The **single source of truth** of the card API.
  *
- * ── 为什么必须是「一份」 ──
+ * Why it has to be one copy:
  *
- * 宿主实现与注入给卡片的 bridge 脚本，**如果各写一份**，
- * 它们迟早对不上——卡片调 `cockpit.tags.get` 而宿主只有 `cockpit.tagsGet`，
- * 症状是「卡片说方法不存在」，而**没人查得出是哪边错了**。
+ * If the host implementation and the bridge script injected into the card were
+ * written separately, they would drift apart — the card calls
+ * `cockpit.tags.get` while the host only has `cockpit.tagsGet`, the symptom is
+ * "the card says the method does not exist", and **nobody can tell which side
+ * is wrong**.
  *
- * → 所以：**注册表是唯一的清单**，bridge 脚本由它**生成** ✓。
- * 加一个新方法只改注册表一处。
+ * Therefore **the registry is the only list** and the bridge script is
+ * **generated** from it. Adding a method touches the registry in one place.
  */
-describe('卡片 API 注册表', () => {
-  it('有 M5 需要的那些方法', () => {
+describe('the card API registry', () => {
+  it('it has the methods that M5 needs', () => {
     const names = [...apiByName().keys()].sort();
     expect(names).toContain('capabilities');
     expect(names).toContain('tags.get');
@@ -27,30 +29,32 @@ describe('卡片 API 注册表', () => {
     expect(names).toContain('log');
   });
 
-  it('**`notify` 不在已实现清单里**（宿主通道还没接上；列了 = 卡片以为通知发出去了）', () => {
+  it('**`notify` is not in the list of implemented methods** (the host channel is not connected yet; listing it would mean the card believes the notification went out)', () => {
     const names = [...apiByName().keys()];
     expect(names).not.toContain('notify');
   });
 
-  it('**写侧自 M6 起有了**（actions.invoke 在清单里）', () => {
+  it('**the write side exists since M6** (actions.invoke is in the list)', () => {
     expect(apiByName().has('actions.invoke')).toBe(true);
-    // 写权限按**动作 id** 判（契约 §2.3：读权限用模式，写权限不用）
+    // The write permission is judged by **action id** (contract §2.3: the read
+// permission uses a pattern, the write permission does not)
     expect(apiByName().get('actions.invoke')?.permission).toBe('write');
     expect(apiByName().get('actions.invoke')?.scopeArg).toBe('id');
   });
 
-  it('**流程侧自计划 7 起有了**（契约 §7.7 的三行 ✓）', () => {
+  it('**the workflow side exists since plan 7** (the three entries of contract §7.7)', () => {
     const byName = apiByName();
     expect(byName.has('workflows.list')).toBe(true);
     expect(byName.has('workflows.run')).toBe(true);
     expect(byName.has('workflows.status')).toBe(true);
-    // **流程的写权限是它自己那一维** ✓（**不许混进 permissions.write** ✓ —— 契约 §2.3 ✓）
+    // **The write permission of a workflow is a dimension of its own** (**it may
+// not be mixed into permissions.write** — contract §2.3)
     expect(byName.get('workflows.run')?.permission).toBe('workflow');
-    // **权限看流程 id** ✓
+    // **The permission looks at the workflow id**
     expect(byName.get('workflows.run')?.scopeArg).toBe('id');
   });
 
-  it('读方法的权限是 read，存储与日志是 none', () => {
+  it('the permission of a read method is read, the one of storage and logging is none', () => {
     const byName = apiByName();
     expect(byName.get('tags.get')?.permission).toBe('read');
     expect(byName.get('tags.list')?.permission).toBe('read');
@@ -59,27 +63,27 @@ describe('卡片 API 注册表', () => {
     expect(byName.get('capabilities')?.permission).toBe('none');
   });
 
-  it('读方法说清楚「权限看哪个参数」', () => {
+  it('a read method states which parameter the permission looks at', () => {
     const byName = apiByName();
     expect(byName.get('tags.get')?.scopeArg).toBe('name');
     expect(byName.get('tags.subscribePattern')?.scopeArg).toBe('pattern');
   });
 
-  it('每个方法名都合法（点分、不为空）', () => {
+  it('every method name is valid (dotted, not empty)', () => {
     for (const api of cardApis()) {
       expect(api.name).toMatch(/^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)*$/);
     }
   });
 });
 
-describe('bridge 脚本的生成', () => {
+describe('the generation of the bridge script', () => {
   const script = bridgeScriptFor(cardApis(), 'inst-42');
 
-  it('定义 window.cockpit', () => {
+  it('it defines window.cockpit', () => {
     expect(script).toContain('window.cockpit');
   });
 
-  it('**每个注册的方法都在里面**（单一真源的兑现）', () => {
+  it('**every registered method is in it** (the single source of truth delivered)', () => {
     for (const api of cardApis()) {
       const [ns, fn] = api.name.split('.');
       expect(script).toContain(ns ?? '');
@@ -87,46 +91,48 @@ describe('bridge 脚本的生成', () => {
     }
   });
 
-  it('**没有** require / import（它跑在沙箱 iframe 里，没有 Node）', () => {
+  it('**no** require / import (it runs in a sandboxed iframe, there is no Node)', () => {
     expect(script).not.toMatch(/\brequire\s*\(/);
     expect(script).not.toMatch(/\bimport\s/);
   });
 
-  it('握手时带上 instanceId（宿主据此认人，RF-1 的防线）', () => {
+  it('the handshake carries the instanceId (the host identifies the caller by it, the defence of RF-1)', () => {
     expect(script).toContain('inst-42');
     expect(script).toContain('cockpit-hello');
   });
 
-  it('不认识的方法回 unknown_method，**不发出去**', () => {
+  it('an unknown method is answered with unknown_method, **it is not sent on**', () => {
     expect(script).toContain('unknown_method');
   });
 
-  it('是一个自包含的 IIFE（不往全局漏东西）', () => {
+  it('it is a self-contained IIFE (it leaks nothing into the global scope)', () => {
     expect(script).toContain('(() => {');
     expect(script).toContain('})();');
   });
 });
 
 /**
- * bridge 脚本**真的跑起来**。
+ * The bridge script **really runs**.
  *
- * ── 为什么不能只测「脚本文本里有这句话」 ──
+ * Why it is not enough to test "the script text contains this sentence":
  *
- * 脚本文本的断言只能证明「代码被生成出来了」，
- * 证明不了「**卡片拿到的是不是它要的东西**」。
+ * An assertion on the script text only proves that the code was generated, not
+ * that **the card receives what it needs**.
  *
- * ── 这条曾经真的错着 ──
+ * This was once genuinely wrong:
  *
- * 契约 `spec/03` §7.7 写的用法是：
+ * The usage written down in contract `spec/03` §7.7 is:
  * ```js
  * const caps = await cockpit.capabilities();
  * // { apiVersion: 'devboard/v1', methods: […], connection: {…}, tags: […] }
  * ```
- * 而 bridge 把**整个传输信封**（`{ id, ok, value }`）交给了卡片 →
- * 卡片拿到的是 `{ id: 'r1', ok: true, value: {…} }` →
- * `caps.methods` 是 **undefined** → 卡片以为宿主不支持任何方法。
+ * while the bridge handed the card **the whole transport envelope**
+ * (`{ id, ok, value }`), so the card received
+ * `{ id: 'r1', ok: true, value: {…} }`, `caps.methods` was **undefined**, and
+ * the card believed the host supported no method at all.
  *
- * → 所以 bridge 必须**解包**：成功给 `value`，失败给 `{ ok:false, reason }`。
+ * Therefore the bridge has to **unwrap**: `value` on success,
+ * `{ ok:false, reason }` on failure.
  */
 interface FakePort {
   postMessage: (m: unknown) => void;
@@ -141,7 +147,7 @@ function runBridge(
   port: FakePort;
   hello: unknown[];
   sent: unknown[];
-  /** 端口晚点到了就调它 */
+  /** Calls it when the port arrives later */
   deliverPort: () => void;
 } {
   const script = bridgeScriptFor(cardApis(), instanceId);
@@ -154,10 +160,10 @@ function runBridge(
     },
   };
   const fakeParent = { postMessage: (m: unknown) => void hello.push(m) };
-  // `window` 与 `parent` 作为**参数**传进去，遮住全局
+  // `window` and `parent` are passed in as **parameters** to shadow the globals
   new Function('window', 'parent', script)(fakeWindow, fakeParent);
   const port: FakePort = { postMessage: (m) => sent.push(m), onmessage: null };
-  // 宿主把 port 递给卡片
+  // The host hands the port to the card
   const deliver = (): void => {
     listeners[0]?.({ data: { type: 'cockpit-port' }, ports: [port] });
   };
@@ -171,20 +177,20 @@ function runBridge(
   };
 }
 
-/** 从发出去的消息里取请求 id（bridge 的序号会先给订阅 id 让一步） */
+/** Takes the request id from a sent message (the counter of the bridge gives the subscription id one step earlier) */
 function idOf(sent: unknown[]): string {
   const first = sent[0] as { id?: string } | undefined;
-  if (first?.id === undefined) throw new Error('bridge 没有发出请求');
+  if (first?.id === undefined) throw new Error('the bridge did not send a request');
   return first.id;
 }
 
-describe('bridge 脚本 · 卡片真正看到的东西', () => {
-  it('握手时把 instanceId 报给宿主（RF-1 的凭据）', () => {
+describe('the bridge script · what the card really sees', () => {
+  it('the handshake reports the instanceId to the host (the credential of RF-1)', () => {
     const { hello } = runBridge('inst-42');
     expect(hello).toEqual([{ type: 'cockpit-hello', instanceId: 'inst-42' }]);
   });
 
-  it('**成功 → 卡片拿到的是「值」，不是传输信封**', async () => {
+  it('**on success → the card receives the "value", not the transport envelope**', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const pending = (cockpit['capabilities'] as () => Promise<unknown>)();
     const caps = { apiVersion: 'devboard/v1', methods: ['tags.get'], connection: null, tags: [] };
@@ -192,7 +198,7 @@ describe('bridge 脚本 · 卡片真正看到的东西', () => {
     await expect(pending).resolves.toEqual(caps);
   });
 
-  it('**失败 → 卡片拿到 { ok:false, reason }**（契约 §7.7：不抛异常）', async () => {
+  it('**on failure → the card receives { ok:false, reason }** (contract §7.7: no exception is thrown)', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const pending = tags['get']?.('cpu.usage');
@@ -200,7 +206,7 @@ describe('bridge 脚本 · 卡片真正看到的东西', () => {
     await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
   });
 
-  it('订阅被拒 → 卡片能看到 reason（**不是**静默接受）', async () => {
+  it('the subscription is refused → the card sees the reason (**not** a silent acceptance)', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const pending = tags['subscribe']?.('cpu.usage', () => undefined);
@@ -209,8 +215,8 @@ describe('bridge 脚本 · 卡片真正看到的东西', () => {
   });
 });
 
-describe('bridge 脚本 · 顶层方法就是函数', () => {
-  it('**`cockpit.capabilities()` 能调**（契约 §7.7 的用法，不是 `cockpit.capabilities.capabilities()`）', async () => {
+describe('the bridge script · the top-level methods are functions', () => {
+  it('**`cockpit.capabilities()` can be called** (the usage of contract §7.7, not `cockpit.capabilities.capabilities()`)', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const pending = (cockpit['capabilities'] as () => Promise<unknown>)();
     const caps = { apiVersion: 'devboard/v1', methods: ['tags.get'], connection: null, tags: [] };
@@ -218,34 +224,34 @@ describe('bridge 脚本 · 顶层方法就是函数', () => {
     await expect(pending).resolves.toEqual(caps);
   });
 
-  it('**`cockpit.log(level, message)` 能调**', async () => {
+  it('**`cockpit.log(level, message)` can be called**', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const pending = (cockpit['log'] as (...a: unknown[]) => Promise<unknown>)('error', 'hi');
     port.onmessage?.({ data: { id: idOf(sent), ok: true, value: { ok: true } } });
     await expect(pending).resolves.toEqual({ ok: true });
   });
 
-  it('**`cockpit.degradation()` 能调**', async () => {
+  it('**`cockpit.degradation()` can be called**', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const pending = (cockpit['degradation'] as () => Promise<unknown>)();
     port.onmessage?.({ data: { id: idOf(sent), ok: true, value: [] } });
     await expect(pending).resolves.toEqual([]);
   });
 
-  it('**不认识的名字仍然回 unknown_method**（不是 TypeError）', async () => {
+  it('**an unknown name is still answered with unknown_method** (not a TypeError)', async () => {
     const { cockpit } = runBridge('inst-42');
     const pending = (cockpit['nope'] as () => Promise<unknown>)();
     await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
   });
 
-  it('**命名空间里不认识的方法也是 unknown_method**（顶层与命名空间是两层 Proxy）', async () => {
+  it('**an unknown method inside a namespace is unknown_method as well** (the top level and the namespace are two layers of Proxy)', async () => {
     const { cockpit } = runBridge('inst-42');
     const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const pending = tags['nope']?.();
     await expect(pending).resolves.toEqual({ ok: false, reason: 'unknown_method' });
   });
 
-  it('**命名空间方法不受影响**（`cockpit.tags.get`）', async () => {
+  it('**the methods of a namespace are unaffected** (`cockpit.tags.get`)', async () => {
     const { cockpit, port, sent } = runBridge('inst-42');
     const tags = cockpit['tags'] as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const pending = tags['get']?.('cpu.usage');
@@ -254,37 +260,42 @@ describe('bridge 脚本 · 顶层方法就是函数', () => {
   });
 });
 
-describe('bridge · 端口还没到的时候', () => {
+describe('the bridge · while the port has not arrived yet', () => {
   /**
-   * ── 这条判据在防什么 ──
+   * What this criterion defends against:
    *
-   * 端口是**握手之后**才到的（页面 → iframe 的 postMessage），
-   * 而卡片的脚本**先跑**、端口**后到**是常态
-   *（尤其**热更新装进来的卡**：iframe 刚建好，脚本立刻跑，端口还在路上）。
+   * The port arrives **after the handshake** (page → iframe postMessage), and
+   * it is normal that the script of the card **runs first** and the port
+   * **arrives later** (especially for a card **installed by a hot reload**:
+   * the iframe has just been created, the script runs at once, and the port is
+   * still on its way).
    *
-   * → 老行为：端口没到就立刻回 `not_connected`
-   * → 卡片**静默地什么都不做** ✗（AI 写的卡片最常犯的错：加载时直接调 API）
-   * → 新行为：**等它**（上限 10 秒），到了才真的发出去 ✓
+   * → The old behaviour answered `not_connected` as soon as the port was
+   *   missing, and the card **silently did nothing** (the mistake an
+   *   AI-written card makes most often: calling the API while loading).
+   * → The new behaviour **waits for it** (up to 10 seconds) and only then
+   *   really sends it.
    *
-   * → 这条是 e2e 逮到的真 bug（`tests/e2e/action.test.ts`）。
+   * → This was a real bug caught by an end-to-end test.
    */
-  it('调用要**等端口**，不是立刻回 not_connected', async () => {
+  it('a call has to **wait for the port** instead of answering not_connected at once', async () => {
     const bridge = runBridge('inst-late', { deliverPort: false });
     const cockpit = bridge.cockpit as {
       tags: { get(name: string): Promise<unknown> };
     };
 
     const pending = cockpit.tags.get('cpu.usage');
-    // **还没发出去**（端口没到，发了也没人接）
+    // **it has not been sent yet** (the port has not arrived, there is nobody to
+// receive it)
     expect(bridge.sent).toHaveLength(0);
 
-    // 端口到了 → **等着的那个调用真的发出去了**
+    // The port arrived → **the waiting call really was sent**
     bridge.deliverPort();
     await Promise.resolve();
     await Promise.resolve();
     expect(bridge.sent.length).toBe(1);
 
-    // 把它答完，调用要真的 resolve
+    // It answers it, and the call really resolves
     const first = bridge.sent[0] as { id: string };
     bridge.port.onmessage?.({ data: { id: first.id, ok: true, value: 42 } });
     await expect(pending).resolves.toBe(42);

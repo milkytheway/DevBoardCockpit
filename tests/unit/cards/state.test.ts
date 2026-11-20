@@ -10,23 +10,23 @@ import type { PackView } from '../../../src/main/tags/pack-view';
 import type { TagReading } from '../../../src/shared/tag-reading';
 
 /**
- * **卡片在当前板上的状态**（契约 `spec/04` §2.2 ✓ · ADR-D40 ✓）。
+ * The state of a card on the current board (contract `spec/04` §2.2).
  *
- * ── 这组判据守住的核心 ──
+ * The core this group of criteria protects:
  *
- * | 判据 | 为什么 |
+ * | Criterion | Why |
  * |---|---|
- * | `missing_tags` 与 `unreadable_tags` **分开** | 混在一起 → **agent 被骗** ✓ |
- * | **通配实例在读数里缺席 → 不算 missing** | 采样器**不猜具体实例名** ✓ |
- * | `invalid` 的卡**仍然列出来** | agent 要知道「我上次装的那张卡坏了」✓ |
- * | `installed_at` 是**目录 mtime** | 宿主**从没记过安装时间** ✓ |
+ * | `missing_tags` and `unreadable_tags` are **kept apart** | mixed together → **the agent is misled** |
+ * | **a wildcard instance absent from the readings does not count as missing** | the sampler **does not guess the concrete instance names** |
+ * | an `invalid` card is **still listed** | the agent has to know that "the card I installed last time is broken" |
+ * | `installed_at` is the **mtime of the directory** | the host **never recorded an installation time** |
  */
 
 const MANIFEST: CardManifest = {
   apiVersion: 'devboard/v1',
   kind: 'Card',
   id: 'demo',
-  name: '演示卡',
+  name: 'demo card',
   version: '1.0.0',
   entry: 'index.html',
   permissions: { read: ['cpu.usage', 'mem.usage'], write: [] },
@@ -34,7 +34,7 @@ const MANIFEST: CardManifest = {
 
 const PACK: PackView = {
   id: 'demo-pack',
-  name: '演示包',
+  name: 'demo pack',
   version: '1.0.0',
   poll_groups: [],
   readers: [
@@ -62,27 +62,27 @@ function reading(tag: string, status: TagReading['status'], value: number | null
   return { tag, value, unit: '%', status, at: 1000, seq: 1 };
 }
 
-describe('卡片状态 · 模式覆盖判定', () => {
-  it('**通配的一侧覆盖字面的一侧** ✓', () => {
+describe('card state · the pattern shadowing decision', () => {
+  it('**the wildcard side shadows the literal side**', () => {
     expect(patternCovered('cpu.*.usage', 'cpu.core.usage')).toBe(true);
     expect(patternCovered('cpu.core.usage', 'cpu.core.usage')).toBe(true);
   });
 
-  it('**段数不同 → 不覆盖** ✓', () => {
+  it('**a different number of segments → no shadowing**', () => {
     expect(patternCovered('cpu.core.*.usage', 'cpu.usage')).toBe(false);
   });
 
-  it('**字面不同 → 不覆盖** ✓', () => {
+  it('**a different literal → no shadowing**', () => {
     expect(patternCovered('cpu.usage', 'mem.usage')).toBe(false);
   });
 });
 
-describe('卡片状态 · missing_tags（板上根本没有）', () => {
-  it('**包里有的 → 不算缺** ✓', () => {
+describe('card state · missing_tags (the board does not have them at all)', () => {
+  it('**the pack has it → it does not count as missing**', () => {
     expect(missingTags(MANIFEST, PACK)).toEqual([]);
   });
 
-  it('**包里没有的 → 记进去** ✓（记模式本身 ✓）', () => {
+  it('**the pack does not have it → it is recorded** (the pattern itself is recorded)', () => {
     const manifest: CardManifest = {
       ...MANIFEST,
       permissions: { read: ['cpu.usage', 'npu.usage'], write: [] },
@@ -90,7 +90,7 @@ describe('卡片状态 · missing_tags（板上根本没有）', () => {
     expect(missingTags(manifest, PACK)).toEqual(['npu.usage']);
   });
 
-  it('**通配的读权限 → 被包提供 → 不算缺** ✓', () => {
+  it('**a wildcard read permission → the pack provides it → it does not count as missing**', () => {
     const manifest: CardManifest = {
       ...MANIFEST,
       permissions: { read: ['cpu.core.*.usage'], write: [] },
@@ -102,39 +102,40 @@ describe('卡片状态 · missing_tags（板上根本没有）', () => {
     expect(missingTags(manifest, pack)).toEqual([]);
   });
 
-  it('**没有包 → 不判「板上根本没有」** ✓（那是「还不知道」✓ 不是「没有」✓）', () => {
+  it('**no pack → "not on the board at all" is not decided** (that is "not known yet", not "absent")', () => {
     expect(missingTags(MANIFEST, null)).toEqual([]);
   });
 });
 
-describe('卡片状态 · unreadable_tags（现在读不出来）', () => {
-  it('**状态不是 ok 的 → 记进去** ✓', () => {
+describe('card state · unreadable_tags (they cannot be read right now)', () => {
+  it('**the status is not ok → it is recorded**', () => {
     const readings = [reading('cpu.usage', 'error', null), reading('mem.usage', 'ok')];
     expect(unreadableTags(MANIFEST, PACK, readings)).toEqual(['cpu.usage']);
   });
 
-  it('**这张卡不读的 → 不记** ✓', () => {
+  it('**this card does not read it → it is not recorded**', () => {
     const readings = [reading('gpu.usage', 'error', null)];
     expect(unreadableTags(MANIFEST, PACK, readings)).toEqual([]);
   });
 
-  it('**通配实例在读数里缺席 → 不列** ✓（那是「板上就没有 / 还没采到」✓）', () => {
+  it('**a wildcard instance is absent from the readings → it is not listed** (that means "not on the board / not sampled yet")', () => {
     const manifest: CardManifest = {
       ...MANIFEST,
       permissions: { read: ['cpu.core.*.usage'], write: [] },
     };
-    // **读数里只有 cpu.core.0.usage（ok）** —— cpu.core.7.usage **不在**读数里 ✓
+    // **the readings hold only cpu.core.0.usage (ok)** — cpu.core.7.usage is **not**
+// among them
     const readings = [reading('cpu.core.0.usage', 'ok')];
     expect(unreadableTags(manifest, PACK, readings)).toEqual([]);
   });
 
-  it('**stale 也算「读不出来」** ✓（拿到的是旧值 ✓ ≠ 现在读得到 ✓）', () => {
+  it('**stale counts as "cannot be read"** (an old value is not the same as reading it now)', () => {
     const readings = [reading('cpu.usage', 'stale', 5)];
     expect(unreadableTags(MANIFEST, PACK, readings)).toEqual(['cpu.usage']);
   });
 });
 
-describe('卡片状态 · 整体', () => {
+describe('card state · as a whole', () => {
   const base = {
     cardId: 'demo',
     dir: '/tmp/cards/demo',
@@ -144,7 +145,7 @@ describe('卡片状态 · 整体', () => {
     readings: [] as TagReading[],
   };
 
-  it('**干净 → `ok`** ✓', () => {
+  it('**clean → `ok`**', () => {
     const state = cardState(base);
     expect(state.status).toBe('ok');
     expect(state.degraded).toBe(false);
@@ -152,36 +153,36 @@ describe('卡片状态 · 整体', () => {
     expect(state.unreadable_tags).toEqual([]);
   });
 
-  it('**有 tag 读不到 → `degraded`** ✓', () => {
+  it('**a tag cannot be read → `degraded`**', () => {
     const state = cardState({ ...base, readings: [reading('mem.usage', 'error', null)] });
     expect(state.status).toBe('degraded');
     expect(state.degraded).toBe(true);
     expect(state.unreadable_tags).toEqual(['mem.usage']);
   });
 
-  it('**manifest 不合法 → `invalid`** ✓（**但它仍然被列出来** ✓）', () => {
+  it('**the manifest is invalid → `invalid`** (**it is still listed**)', () => {
     const state = cardState({ ...base, issues: [{ severity: 'error' }] });
     expect(state.status).toBe('invalid');
     expect(state.id).toBe('demo');
   });
 
-  it('**只有警告 → `degraded`** ✓', () => {
+  it('**warnings only → `degraded`**', () => {
     const state = cardState({ ...base, issues: [{ severity: 'warning' }] });
     expect(state.status).toBe('degraded');
   });
 
-  it('**`id` 是目录名、`manifest_id` 是 manifest 声明的** ✓（两者可以不同 ✓）', () => {
+  it('**`id` is the directory name, `manifest_id` is the one the manifest declares** (the two may differ)', () => {
     const state = cardState({ ...base, cardId: 'demo-dir', manifest: { ...MANIFEST, id: 'demo' } });
     expect(state.id).toBe('demo-dir');
     expect(state.manifest_id).toBe('demo');
   });
 
-  it('**`path` 是绝对路径** ✓', () => {
+  it('**`path` is an absolute path**', () => {
     expect(cardState(base).path).toBe('/tmp/cards/demo');
   });
 
-  it('**`installed_at` 是目录 mtime** ✓（**不是**「装上的时刻」✓）', () => {
-    // **目录不存在 → 0** ✓（不猜 ✓）
+  it('**`installed_at` is the mtime of the directory** (**not** the moment of installation)', () => {
+    // **the directory does not exist → 0** (it does not guess)
     expect(cardState(base).installed_at).toBe(0);
   });
 });

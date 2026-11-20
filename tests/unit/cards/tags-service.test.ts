@@ -6,22 +6,25 @@ import type { CardPermissions } from '../../../src/main/cards/permissions';
 import type { TagReading } from '../../../src/shared/tag-reading';
 
 /**
- * 读侧 API 与**权限过滤**。
+ * The read-side API and the **permission filter**.
  *
- * ── 这是整个产品最要紧的一段代码 ──
+ * This is the most important piece of code of the whole product:
  *
- * 卡片是 AI 写的任意网页，它能调用 `cockpit.*`。
- * 权限过滤**只在这一层**做（main 侧），页面与 bridge 都不判。
+ * A card is an arbitrary web page written by an AI and it can call
+ * `cockpit.*`. The permission filter is applied **on this layer only** (in
+ * the main process), neither the page nor the bridge decides anything.
  *
- * ── 两条铁律 ──
+ * Two iron rules:
  *
- * 1. **没权限的 tag 读不到**，而且**看不出它存不存在**
- *    （返回 `unavailable` + `not_found`，与「本来就没有」**一模一样**）
- *    ——否则卡片可以拿「读得到 / 读不到」当**探测通道**，把板子上的
- *    所有 tag 名一个一个试出来。
- * 2. **通配订阅每次推送都要再判一次**
- *    ——订阅时判一次不够：权限集是**建卡时**定的，
- *    但推送是**每次**发生的。
+ * 1. **A tag that is not permitted cannot be read**, and **it is not visible
+ *    whether it exists** (the answer is `unavailable` + `not_found`, **exactly
+ *    the same** as for one that does not exist) — otherwise a card could use
+ *    "readable / not readable" as a **probe channel** and try out every tag
+ *    name of the board one by one.
+ * 2. **A wildcard subscription is judged again on every push** — judging it
+ *    once at the time of the subscription is not enough: the permission set
+ *    is fixed **when the card is created**, but the push happens **every
+ *    time**.
  */
 
 function reading(tag: string, over: Partial<TagReading> = {}): TagReading {
@@ -51,14 +54,14 @@ function service(perms: CardPermissions): TagsService {
   });
 }
 
-describe('读侧 · 权限过滤', () => {
-  it('有权限的 tag → 读得到真值', () => {
+describe('the read side · the permission filter', () => {
+  it('a tag that is permitted → the real value can be read', () => {
     const svc = service({ read: ['cpu.usage'], write: [] });
     expect(svc.get('cpu.usage').value).toBe(37.2);
     expect(svc.get('cpu.usage').status).toBe('ok');
   });
 
-  it('**没权限的 tag → 读不到，而且看不出存不存在**', () => {
+  it('**a tag that is not permitted → it cannot be read, and it is not visible whether it exists**', () => {
     const svc = service({ read: ['cpu.usage'], write: [] });
     const hidden = svc.get('mem.usage');
     expect(hidden.value).toBeNull();
@@ -66,7 +69,7 @@ describe('读侧 · 权限过滤', () => {
     expect(hidden.reason).toBe('not_found');
   });
 
-  it('本来就没有的 tag → **和没权限的长得一模一样**', () => {
+  it('a tag that does not exist → **it looks exactly like one that is not permitted**', () => {
     const svc = service({ read: ['cpu.usage'], write: [] });
     const missing = svc.get('nope.not.here');
     const hidden = svc.get('mem.usage');
@@ -74,19 +77,21 @@ describe('读侧 · 权限过滤', () => {
     expect(missing.reason).toBe(hidden.reason);
   });
 
-  it('list() 只给有权限的', () => {
+  it('list() only gives the permitted ones', () => {
     const svc = service({ read: ['cpu.usage'], write: [] });
     expect(svc.list().map((r) => r.tag)).toEqual(['cpu.usage']);
   });
 
-  it('通配权限能覆盖具体的 tag', () => {
+  it('a wildcard permission covers a concrete tag', () => {
     const svc = service({ read: ['cpu.core.*.usage'], write: [] });
     expect(svc.get('cpu.core.3.usage').value).toBe(40);
   });
 
-  it('订阅：没权限的**一个都不推**', () => {
-    // **假 store 必须真的推** —— 不推的话「一个都不推」这句断言是空的，
-    // 过滤掉了也照样绿（变异测试 M42 就是靠这条抓出来的）
+  it('the subscription: not a single one that is not permitted is pushed', () => {
+    // **The fake store has to really push** — otherwise the assertion "not a
+// single one is pushed" is empty,
+    // and it stays green even though it was filtered out (the mutation test M42
+// caught it with this one)
     const pushed: TagReading[] = [];
     const svc = new TagsService(
       { read: ['cpu.usage'], write: [] },
@@ -103,14 +108,14 @@ describe('读侧 · 权限过滤', () => {
     expect(pushed).toEqual([]);
   });
 
-  it('订阅：有权限的按周期推', () => {
+  it('the subscription: the permitted ones are pushed with the period', () => {
     const pushed: TagReading[] = [];
     const svc = new TagsService(
       { read: ['cpu.core.*.usage'], write: [] },
       {
         readings: () => READINGS,
         subscribe: (cb) => {
-          // 立刻推一次（模拟一次变化）
+          // It pushes once right away (it simulates a change)
           cb(reading('cpu.core.3.usage', { value: 41 }));
           return () => undefined;
         },
@@ -121,7 +126,7 @@ describe('读侧 · 权限过滤', () => {
     expect(pushed.map((r) => r.tag)).toEqual(['cpu.core.3.usage']);
   });
 
-  it('降级信息：把 unavailable 的读数与原因列出来', () => {
+  it('the degradation information: it lists the readings that are unavailable and their reason', () => {
     const svc = service({ read: ['cpu.usage', 'npu.usage'], write: [] });
     const degraded = svc.degradation();
     expect(degraded.length).toBeGreaterThan(0);
@@ -129,7 +134,7 @@ describe('读侧 · 权限过滤', () => {
   });
 });
 
-describe('卡片会话 · 分发与鉴权', () => {
+describe('the card session · the dispatch and the authorisation', () => {
   function manager(perms: CardPermissions): CardSessionManager {
     return new CardSessionManager({
       runtime: {
@@ -141,7 +146,7 @@ describe('卡片会话 · 分发与鉴权', () => {
     });
   }
 
-  it('不认识的方法 → unknown_method', async () => {
+  it('an unknown method → unknown_method', async () => {
     const m = manager({ read: ['cpu.usage'], write: [] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
@@ -154,7 +159,7 @@ describe('卡片会话 · 分发与鉴权', () => {
     expect(res.reason).toBe('unknown_method');
   });
 
-  it('**写侧自 M6 起有了**：动作不在 permissions.write 里 → denied', async () => {
+  it('**the write side exists since M6**: the action is not in permissions.write → denied', async () => {
     const m = manager({ read: ['cpu.usage'], write: [] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
@@ -164,11 +169,11 @@ describe('卡片会话 · 分发与鉴权', () => {
       args: { id: 'cpu.governor.set' },
     });
     expect(res.ok).toBe(false);
-    // **denied（没权限）**，不是 unknown_method（没这个方法）
+    // **denied (not permitted)**, not unknown_method (no such method)
     expect(res.reason).toBe('denied');
   });
 
-  it('动作在 permissions.write 里 → **放行到执行器**（这里没有执行器 → unknown_action）', async () => {
+  it('the action is in permissions.write → **it is let through to the executor** (there is no executor here → unknown_action)', async () => {
     const m = manager({ read: ['cpu.usage'], write: ['cpu.governor.set'] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
@@ -177,12 +182,13 @@ describe('卡片会话 · 分发与鉴权', () => {
       method: 'actions.invoke',
       args: { id: 'cpu.governor.set' },
     });
-    // 过了**权限**那道门（不是 denied），死在「没有执行器」上
+    // It passed the gate of the **permission** (it is not denied) and died on
+// "there is no executor"
     expect(res.reason).toBe('unknown_action');
     expect(apiByName().has('actions.invoke')).toBe(true);
   });
 
-  it('没权限的 tag → not_found（不泄露存在性）', async () => {
+  it('a tag that is not permitted → not_found (it does not leak the existence)', async () => {
     const m = manager({ read: ['cpu.usage'], write: [] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
@@ -196,7 +202,7 @@ describe('卡片会话 · 分发与鉴权', () => {
     expect((res.value as TagReading).reason).toBe('not_found');
   });
 
-  it('有权限的 tag → 拿得到真值', async () => {
+  it('a tag that is permitted → the real value can be obtained', async () => {
     const m = manager({ read: ['cpu.usage'], write: [] });
     m.open('inst-1', 'cpu-usage', 'board-adb');
     const res = await m.handle({
@@ -209,7 +215,7 @@ describe('卡片会话 · 分发与鉴权', () => {
     expect((res.value as TagReading).value).toBe(37.2);
   });
 
-  it('没登记的实例 → 拒绝（不猜）', async () => {
+  it('an instance that is not registered → it is refused (it does not guess)', async () => {
     const m = manager({ read: ['cpu.usage'], write: [] });
     const res = await m.handle({
       instanceId: 'nope',

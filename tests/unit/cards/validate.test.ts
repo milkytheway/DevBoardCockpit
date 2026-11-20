@@ -3,17 +3,18 @@ import { validateCard, type ValidateCardContext } from '../../../src/main/cards/
 import { parseManifest, type CardManifest } from '../../../src/main/cards/manifest';
 
 /**
- * 卡片 manifest 的 **13 条校验规则**（契约 `spec/03` §九）。
+ * The **13 validation rules** of a card manifest (contract `spec/03` §9).
  *
- * ── 为什么规则号要留着 ──
+ * Why the rule number is kept:
  *
- * 报告里写「这张卡不合法」没用；写「**规则 5**：这个动作当前板型包里没有」才有用——
- * 人能照着改，agent 能照着改。
+ * "This card is invalid" is useless; "**rule 5**: this action is not in the
+ * current board pack" is useful — a person can act on it and so can an agent.
  *
- * ── 「未验证」≠「不合法」 ──
+ * "Not verified" is not "not valid":
  *
- * 规则 5 在**连不上板**的时候没法查——那时候**不是**这张卡有问题，
- * 是**我们还没查**。所以离线时它进 `warnings`（琥珀），不进 `errors`（红）。
+ * Rule 5 cannot be checked while the board is unreachable — the card is not
+ * at fault then, **we have not checked yet**. Offline it therefore lands in
+ * `warnings` (amber), not in `errors` (red).
  */
 
 function manifest(over: Record<string, unknown> = {}): CardManifest {
@@ -22,7 +23,7 @@ function manifest(over: Record<string, unknown> = {}): CardManifest {
       apiVersion: 'devboard/v1',
       kind: 'Card',
       id: 'cpu-usage',
-      name: 'CPU 占用率',
+      name: 'CPU usage',
       version: '1.0.0',
       entry: 'index.html',
       requires: { tags: ['cpu.usage'] },
@@ -35,7 +36,7 @@ function manifest(over: Record<string, unknown> = {}): CardManifest {
   );
 }
 
-/** 连上了板子的上下文 */
+/** The context of a board that is connected */
 function ctx(over: Partial<ValidateCardContext> = {}): ValidateCardContext {
   return {
     availableTags: ['cpu.usage', 'mem.usage'],
@@ -47,7 +48,7 @@ function ctx(over: Partial<ValidateCardContext> = {}): ValidateCardContext {
   };
 }
 
-/** 找某个规则号的 issue */
+/** Finds the issue of a given rule number */
 function byRule(
   result: {
     errors: { rule: number; path?: string; severity?: string }[];
@@ -58,10 +59,12 @@ function byRule(
   return [...result.errors, ...result.warnings].filter((i) => i.rule === rule);
 }
 
-describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
-  it('**通配符 → 报错**（流程权限只许精确 id ✓ —— 同 §2.3 ✓）', () => {
-    // **宿主里「有」这个 id** ✓ → 这样**只有通配那一条能报** ✓
-    // （否则「宿主里没有它」那条也会报 ✓ → 判据就分不清是哪条了 ✓）
+describe('rule 14 · workflow permissions (the last one of contract §9)', () => {
+  it('**a wildcard → it is reported** (a workflow permission allows an exact id only — as in §2.3)', () => {
+    // **the host "has" this id** → so that **only the wildcard rule can be
+// reported**
+    // (otherwise the "the host does not have it" rule would be reported too → the
+// criterion could no longer tell which rule it was)
     const result = validateCard(
       manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.*'] } }),
       ctx({ availableWorkflows: ['demo.*'] }),
@@ -71,7 +74,7 @@ describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
     expect(issues[0]?.severity).toBe('error');
   });
 
-  it('**宿主里没有这个流程 → 报错** ✓', () => {
+  it('**the host does not have this workflow → it is reported**', () => {
     const result = validateCard(
       manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['nope.run'] } }),
       ctx(),
@@ -80,7 +83,7 @@ describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
     expect(issues.some((i) => i.severity === 'error')).toBe(true);
   });
 
-  it('**离线 → 是警告不是错误** ✓（「未验证」≠「不合法」✓）', () => {
+  it('**offline → it is a warning, not an error** ("not verified" is not "not valid")', () => {
     const result = validateCard(
       manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.run'] } }),
       ctx({ availableWorkflows: null }),
@@ -91,7 +94,7 @@ describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('**宿主里有的流程 → 通过** ✓', () => {
+  it('**the host has the workflow → it passes**', () => {
     const result = validateCard(
       manifest({ permissions: { read: ['cpu.usage'], write: [], workflows: ['demo.run'] } }),
       ctx(),
@@ -100,8 +103,8 @@ describe('规则 14 · 流程权限（契约 §九 的最后一条）', () => {
   });
 });
 
-describe('规则 3 的流程那一半（评审 35 的 V2-C2）', () => {
-  it('`requires.workflows` 被 `permissions.workflows` 覆盖 → 通过', () => {
+describe('the workflow half of rule 3', () => {
+  it('`requires.workflows` is covered by `permissions.workflows` → it passes', () => {
     const result = validateCard(
       manifest({
         requires: { workflows: ['demo.run'] },
@@ -112,7 +115,7 @@ describe('规则 3 的流程那一半（评审 35 的 V2-C2）', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('**声明了却没授权 → 报错**（规则 3 不能有例外口子 ✓）', () => {
+  it('**it is declared but not granted → it is reported** (rule 3 may not have an exception)', () => {
     const result = validateCard(
       manifest({
         requires: { workflows: ['demo.run'] },
@@ -126,18 +129,18 @@ describe('规则 3 的流程那一半（评审 35 的 V2-C2）', () => {
   });
 });
 
-describe('契约 §九 的 13 条规则', () => {
-  it('规则 1：apiVersion 不是已知版本', () => {
+describe('the 13 rules of contract §9', () => {
+  it('rule 1: the apiVersion is not a known version', () => {
     const result = validateCard(manifest({ apiVersion: 'devboard/v9' }), ctx());
     expect(byRule(result, 1)).toHaveLength(1);
   });
 
-  it('规则 2：id 与已装卡片冲突', () => {
+  it('rule 2: the id clashes with an installed card', () => {
     const result = validateCard(manifest({ id: 'other-card' }), ctx());
     expect(byRule(result, 2)).toHaveLength(1);
   });
 
-  it('规则 3：requires 里有没被 permissions.read 覆盖的项', () => {
+  it('rule 3: requires holds an item that permissions.read does not cover', () => {
     const result = validateCard(
       manifest({ requires: { tags: ['mem.usage'] }, permissions: { read: ['cpu.usage'], write: [] } }),
       ctx(),
@@ -145,7 +148,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(result, 3)).toHaveLength(1);
   });
 
-  it('规则 4：permissions.read 里的 tag 不在核心词表、也不是 custom.*', () => {
+  it('rule 4: a tag in permissions.read is neither in the core vocabulary nor custom.*', () => {
     const result = validateCard(
       manifest({ permissions: { read: ['foo.bar'], write: [] } }),
       ctx(),
@@ -153,7 +156,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(result, 4)).toHaveLength(1);
   });
 
-  it('规则 4：custom.* 的量是允许的', () => {
+  it('rule 4: a custom.* quantity is allowed', () => {
     const result = validateCard(
       manifest({ permissions: { read: ['custom.rk3588-atk.x'], write: [] } }),
       ctx(),
@@ -161,7 +164,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(result, 4)).toHaveLength(0);
   });
 
-  it('规则 5：写权限里的动作当前板型包没有', () => {
+  it('rule 5: the current board pack does not offer an action of the write permissions', () => {
     const result = validateCard(
       manifest({ permissions: { read: [], write: ['nope.set'] } }),
       ctx(),
@@ -170,7 +173,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(result.errors.some((e) => e.rule === 5)).toBe(true);
   });
 
-  it('规则 5：**离线时不是不合法，是没验证**', () => {
+  it('rule 5: **offline it is not invalid, it is unverified**', () => {
     const result = validateCard(
       manifest({ permissions: { read: [], write: ['nope.set'] } }),
       ctx({ availableActions: null }),
@@ -181,7 +184,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(warning?.message).toMatch(/unverified/);
   });
 
-  it('规则 6：写权限里不许通配符', () => {
+  it('rule 6: a wildcard is not allowed in the write permissions', () => {
     const result = validateCard(
       manifest({ permissions: { read: [], write: ['backlight.*'] } }),
       ctx(),
@@ -189,7 +192,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(result, 6)).toHaveLength(1);
   });
 
-  it('规则 7：板型动作的 target 必须在 permissions.write 里', () => {
+  it('rule 7: the target of a board action must be in permissions.write', () => {
     const result = validateCard(
       manifest({
         permissions: { read: [], write: [] },
@@ -200,23 +203,23 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(result, 7)).toHaveLength(1);
   });
 
-  it('规则 8：min_w/min_h 不能大于 w/h', () => {
+  it('rule 8: min_w/min_h may not be greater than w/h', () => {
     const result = validateCard(manifest({ layout: { w: 3, h: 2, min_w: 4, min_h: 1 } }), ctx());
     expect(byRule(result, 8)).toHaveLength(1);
   });
 
-  it('规则 9：entry 文件不存在', () => {
+  it('rule 9: the entry file does not exist', () => {
     const result = validateCard(manifest(), ctx({ fileExists: () => false }));
     expect(byRule(result, 9)).toHaveLength(1);
   });
 
-  it('规则 10：未知字段 → **解析阶段就报错**（不静默忽略）', () => {
+  it('rule 10: an unknown field → **it is reported while parsing** (it is not silently ignored)', () => {
     expect(() => parseManifest({ ...(manifest() as object), network: true }, 'cpu-usage')).toThrow(
       /network/,
     );
   });
 
-  it('规则 11：卡片不许声明 danger / readback → 解析阶段报错', () => {
+  it('rule 11: a card may not declare danger / readback → it is reported while parsing', () => {
     expect(() =>
       parseManifest(
         {
@@ -228,18 +231,18 @@ describe('契约 §九 的 13 条规则', () => {
     ).toThrow(/danger/);
   });
 
-  it('规则 12：视图内动作（没有 target）不许出现在 permissions.write 里', () => {
+  it('rule 12: a view action (without a target) may not appear in permissions.write', () => {
     const result = validateCard(
       manifest({
         permissions: { read: [], write: ['view-only'] },
-        actions: [{ id: 'view-only', label: '视图内动作' }],
+        actions: [{ id: 'view-only', label: 'view action' }],
       }),
       ctx(),
     );
     expect(byRule(result, 12)).toHaveLength(1);
   });
 
-  it('规则 11：**手写的** manifest 带 danger → 校验器也拦（不只靠解析器）', () => {
+  it('rule 11: a **hand-written** manifest carries danger → the validator stops it as well (not only the parser)', () => {
     const raw = {
       ...(manifest() as object),
       actions: [{ id: 'a', label: 'A', target: 'backlight.set', danger: 'destructive' }],
@@ -247,7 +250,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(validateCard(raw, ctx()), 11)).toHaveLength(1);
   });
 
-  it('规则 13：**手写的** manifest 里 string 参数没有 maxLength → 校验器也拦', () => {
+  it('rule 13: a string parameter in a **hand-written** manifest has no maxLength → the validator stops it as well', () => {
     const raw = {
       ...(manifest() as object),
       actions: [
@@ -257,7 +260,7 @@ describe('契约 §九 的 13 条规则', () => {
     expect(byRule(validateCard(raw, ctx()), 13)).toHaveLength(1);
   });
 
-  it('规则 13：string 参数没有 maxLength → 解析阶段报错', () => {
+  it('rule 13: a string parameter has no maxLength → it is reported while parsing', () => {
     expect(() =>
       parseManifest(
         {
@@ -276,7 +279,7 @@ describe('契约 §九 的 13 条规则', () => {
     ).toThrow(/maxLength/);
   });
 
-  it('规则 13：参数 type 不在封闭取值里 → 解析阶段报错', () => {
+  it('rule 13: the type of a parameter is not in the closed set → it is reported while parsing', () => {
     expect(() =>
       parseManifest(
         {
@@ -296,21 +299,21 @@ describe('契约 §九 的 13 条规则', () => {
   });
 });
 
-describe('校验结果的整体形状', () => {
-  it('合法的卡 → ok，且没有 error', () => {
+describe('the overall shape of the validation result', () => {
+  it('a valid card → ok, and no error', () => {
     const result = validateCard(manifest(), ctx());
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
   });
 
-  it('resolved 给出解析出来的清单', () => {
+  it('resolved gives the resolved manifest', () => {
     const result = validateCard(manifest(), ctx());
     expect(result.resolved.tags).toEqual(['cpu.usage']);
     expect(result.resolved.actions).toEqual([]);
     expect(result.resolved.layout).toEqual({ w: 3, h: 2, min_w: 2, min_h: 1 });
   });
 
-  it('manifest 没有 layout → resolved.layout 是 null', () => {
+  it('the manifest has no layout → resolved.layout is null', () => {
     const raw = manifest();
     delete (raw as { layout?: unknown }).layout;
     const result = validateCard(raw, ctx());

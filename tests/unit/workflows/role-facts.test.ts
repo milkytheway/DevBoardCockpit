@@ -7,19 +7,22 @@ import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 import type { AuditRow } from '../../../src/main/actions/audit';
 
 /**
- * **角色事实从哪来**（契约 `spec/05` §六 ✓ · `spec/02` §10.3 ✓ · ADR-D43 ✓）。
+ * **Where the facts of a role come from** (contract `spec/05` §6,
+ * `spec/02` §10.3).
  *
- * ── 触发这件事的实测 ──
+ * The measurement that triggered this:
  *
- * 宿主 → 板子 `192.168.5.100`（SSH）：**网络通** ✓ · **认证失败** ✓
- * —— **那把私钥在客机上** ✓。
+ * host → board `192.168.5.100` (SSH): **the network works**, **the
+ * authentication fails** — **the private key is on the guest**.
  *
- * → **`file.transfer` 的 `scp` 命令在**客机**上跑** ✓（命令在源目标上跑 ✓）
- * → **它要用板子的 SSH 地址** ✓ —— 而 target 角色绑的是 `board-adb` ✓
- * → **那条 profile 里没有 `host`** ✗ → **命令里的地址是空串** ✗。
+ * → The `scp` command of `file.transfer` runs **on the guest** (the command
+ *   runs on the source target), so **it needs the SSH address of the board**,
+ *   while the target role is bound to `board-adb`, and **that profile has no
+ *   `host`** — so **the address in the command is an empty string**.
  *
- * → **`options.ssh`** 就是补这个洞的 ✓ —— **它是「这条连接背后那台机器」的端点** ✓。
- * → **流程包一个字不用改** ✓（**机器专属的值不进包** ✓）。
+ * → **`options.ssh` closes that hole** — it is the endpoint of **the machine
+ *   behind this connection**. → **The workflow pack does not change at all**
+ *   (**machine specific values do not go into a pack**).
  */
 interface FakeTarget {
   profile: ConnectionProfile;
@@ -34,14 +37,14 @@ function harness(boardOptions: Record<string, unknown>): {
     {
       profile: {
         id: 'guest',
-        label: '客机',
+        label: 'the guest',
         transport: 'ssh',
         options: { host: '10.0.0.2', username: 'builder' },
       },
       commands: [],
     },
     {
-      profile: { id: 'board', label: '板子', transport: 'adb', options: boardOptions },
+      profile: { id: 'board', label: 'the board', transport: 'adb', options: boardOptions },
       commands: [],
     },
   ];
@@ -65,7 +68,7 @@ function harness(boardOptions: Record<string, unknown>): {
         push: async () => undefined,
         list: async () => [],
         openSession: async () => {
-          throw new Error('测试里不开会话');
+          throw new Error('no session in the test');
         },
       } as unknown as Connection;
       return conn;
@@ -81,7 +84,7 @@ function harness(boardOptions: Record<string, unknown>): {
   return { byId, deps };
 }
 
-/** 一条「客机编译 → scp 到板子」的流程 ✓ */
+/** A workflow of "the guest compiles → scp to the board" */
 function transferPack() {
   return parseWorkflow(
     {
@@ -92,8 +95,8 @@ function transferPack() {
       version: '1.0.0',
       inputs: {},
       roles: {
-        build: { purpose: '客机', profile: 'guest' },
-        target: { purpose: '板子', profile: 'board' },
+        build: { purpose: 'the guest', profile: 'guest' },
+        target: { purpose: 'the board', profile: 'board' },
       },
       steps: [
         {
@@ -109,18 +112,18 @@ function transferPack() {
   );
 }
 
-describe('流程 · 角色事实的来源', () => {
-  it('**adb 的板子 → 事实取自 `options.ssh`** ✓（**那条 scp 要用板子的地址** ✓）', async () => {
+describe('the workflow · where the facts of a role come from', () => {
+  it('**the board of an adb → the facts come from `options.ssh`** (**that scp needs the address of the board**)', async () => {
     const h = harness({ serial: 'x', ssh: { host: '192.168.5.100', port: 22, username: 'root' } });
     await runWorkflow(transferPack(), {}, h.deps);
     const scp = h.byId('guest')?.commands.find((c) => c.startsWith('scp '));
-    // **命令里有板子的地址** ✓（**不是空串** ✓）
+    // **The command holds the address of the board** (**not an empty string**)
     expect(scp).toContain('192.168.5.100');
-    // **角色事实带引号** ✓（半可信 ✓ —— 同 `substitute.ts` 的规矩 ✓）
+    // **The facts of the role are quoted** (half trusted — the same rule as in `substitute.ts`)
     expect(scp).toContain("'root'@'192.168.5.100'");
   });
 
-  it('**`options.ssh.port` 也进事实** ✓', async () => {
+  it('**`options.ssh.port` is part of the facts as well**', async () => {
     const h = harness({ ssh: { host: '192.168.5.100', port: 2222, username: 'root' } });
     await runWorkflow(
       parseWorkflow(
@@ -132,8 +135,8 @@ describe('流程 · 角色事实的来源', () => {
           version: '1.0.0',
           inputs: {},
           roles: {
-            build: { purpose: '客机', profile: 'guest' },
-            target: { purpose: '板子', profile: 'board' },
+            build: { purpose: 'the guest', profile: 'guest' },
+            target: { purpose: 'the board', profile: 'board' },
           },
           steps: [
             {
@@ -153,7 +156,7 @@ describe('流程 · 角色事实的来源', () => {
     expect(cmd).toContain('-p 2222');
   });
 
-  it('**ssh 的客机 → 事实仍取自 `options.host`** ✓（**从前的行为没变** ✓）', async () => {
+  it('**the guest of an ssh → the facts still come from `options.host`** (**the earlier behaviour is unchanged**)', async () => {
     const h = harness({});
     await runWorkflow(
       parseWorkflow(
@@ -165,8 +168,8 @@ describe('流程 · 角色事实的来源', () => {
           version: '1.0.0',
           inputs: {},
           roles: {
-            build: { purpose: '客机', profile: 'guest' },
-            target: { purpose: '板子', profile: 'board' },
+            build: { purpose: 'the guest', profile: 'guest' },
+            target: { purpose: 'the board', profile: 'board' },
           },
           steps: [
             {
@@ -185,11 +188,11 @@ describe('流程 · 角色事实的来源', () => {
     expect(h.byId('guest')?.commands[0]).toBe("ssh 'builder'@'10.0.0.2'");
   });
 
-  it('**板子没声明 `options.ssh` → 地址留空** ✓（**不猜** ✓ —— **不编一个地址出来** ✓）', async () => {
+  it('**the board declares no `options.ssh` → the address stays empty** (**it does not guess** — **it does not invent an address**)', async () => {
     const h = harness({ serial: 'x' });
     await runWorkflow(transferPack(), {}, h.deps);
     const scp = h.byId('guest')?.commands.find((c) => c.startsWith('scp '));
-    // **没有编出地址** ✓
+    // **No address was invented**
     expect(scp).not.toContain('192.168');
     expect(scp).toContain("@'':");
   });

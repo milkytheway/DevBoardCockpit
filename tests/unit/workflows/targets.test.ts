@@ -4,21 +4,26 @@ import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 
 /**
- * 目标登记处 —— **role → 连接**。
+ * The registry of the targets — **role → connection**.
  *
- * ── 为什么需要它 ──
+ * Why it is needed:
  *
- * M6 的执行器**只能用运行时那一条连接**（板子）。
- * 而「在客机上跑一条 scp」（直传，ADR-D31 R7）**要的是另一条连接**。
- * → 计划 5 的 A17 写了「执行器要能对指定的连接执行」，**接线一直没做** ✗。
- * → 这一层就是补那个缺口：**按 profile id 拿到连接**，并且**每个目标一条线**。
+ * The executor of M6 could **only use the one connection of the runtime** (the
+ * board), while "running an scp on the guest" (a direct transfer) **needs
+ * another connection**.
+ * → The A17 of plan 5 wrote "the executor has to be able to run on a given
+ *   connection" and **the wiring was never done**.
+ * → This layer closes that gap: **it gets the connection by the profile id**
+ *   and **every target has its own line**.
  *
- * ── 三条规矩 ──
+ * Three rules:
  *
- * 1. **一个目标一条线**：每个 profile 一条连接 + **它自己的队列**
- *    （串口是一根线；两条目标各走各的 ✓）。
- * 2. **profile 不存在 → 报错**：绝不悄悄连到别的目标 ✓。
- * 3. **同一个目标复用同一条连接**：不每次重开（重开要 10 秒 ✗）。
+ * 1. **One line per target**: one connection per profile + **its own queue**
+ *    (a serial port is one line; two targets each go their own way).
+ * 2. **The profile does not exist → it reports an error**: it never quietly
+ *    connects to another target.
+ * 3. **The same target reuses the same connection**: it is not opened again
+ *    every time (opening it again takes 10 seconds).
  */
 function profile(id: string): ConnectionProfile {
   return { id, label: id, transport: 'ssh', options: { host: '10.0.0.1' } };
@@ -30,7 +35,7 @@ interface Fake extends Connection {
 }
 
 function fakeConnection(id: string, commands: string[]): Fake {
-  // **用闭包变量记状态**（不用 `this`——对象字面量里的 `this` 类型推不出来）
+  // **The state is kept in a closure** (not in `this` — the type of `this` in an object literal cannot be inferred)
   const state = { closed: false };
   const conn = {
     id,
@@ -52,7 +57,7 @@ function fakeConnection(id: string, commands: string[]): Fake {
     push: async () => undefined,
     list: async () => [],
     openSession: async () => {
-      throw new Error('测试里不开会话');
+      throw new Error('no session in the test');
     },
   } as unknown as Fake;
   return conn;
@@ -72,8 +77,8 @@ function registry(ids: string[] = ['guest', 'board']) {
   return { reg, created };
 }
 
-describe('目标登记处 · 取得连接', () => {
-  it('同一个 profile id → **同一条连接**（复用，不重开）', async () => {
+describe('the registry of the targets · it gets a connection', () => {
+  it('the same profile id → **the same connection** (it is reused, it is not opened again)', async () => {
     const { reg, created } = registry();
     const a = await reg.connectionFor('guest');
     const b = await reg.connectionFor('guest');
@@ -81,7 +86,7 @@ describe('目标登记处 · 取得连接', () => {
     expect(created).toHaveLength(1);
   });
 
-  it('两个 profile → **两条连接**（各走各的线）', async () => {
+  it('two profiles → **two connections** (each on its own line)', async () => {
     const { reg, created } = registry();
     const guest = await reg.connectionFor('guest');
     const board = await reg.connectionFor('board');
@@ -89,12 +94,12 @@ describe('目标登记处 · 取得连接', () => {
     expect(created).toHaveLength(2);
   });
 
-  it('**profile 不存在 → 报错**（绝不悄悄连到别的目标）', async () => {
+  it('**the profile does not exist → it reports an error** (it never quietly connects to another target)', async () => {
     const { reg } = registry();
     await expect(reg.connectionFor('nobody')).rejects.toThrow(/nobody/);
   });
 
-  it('连接建好后**真的 open 过**', async () => {
+  it('the connection was really opened once it was built', async () => {
     let opened = 0;
     const reg = new TargetRegistry({
       profileFor: (id) => profile(id),
@@ -111,15 +116,15 @@ describe('目标登记处 · 取得连接', () => {
   });
 });
 
-describe('目标登记处 · 独占事务', () => {
-  it('在目标上跑一条命令，**命令发到那条线上**', async () => {
+describe('the registry of the targets · the exclusive transaction', () => {
+  it('a command runs on a target, **the command goes onto that line**', async () => {
     const { reg } = registry();
     await reg.runOn('guest', async (conn) => conn.exec('make'));
     const guest = await reg.connectionFor('guest');
     expect((guest as Fake).commands).toEqual(['make']);
   });
 
-  it('**两个目标各跑各的**（不串台）', async () => {
+  it('**two targets each run their own** (no crossed wires)', async () => {
     const { reg } = registry();
     await reg.runOn('guest', async (conn) => conn.exec('on-guest'));
     await reg.runOn('board', async (conn) => conn.exec('on-board'));
@@ -129,7 +134,7 @@ describe('目标登记处 · 独占事务', () => {
     expect(board.commands).toEqual(['on-board']);
   });
 
-  it('**同一个目标上的两次往返不并发**（一条线一次只能有一个）', async () => {
+  it('**two round trips on the same target do not run at the same time** (one line carries one at a time)', async () => {
     const { reg } = registry();
     const order: string[] = [];
     const slow = async (label: string, ms: number): Promise<void> => {
@@ -141,22 +146,22 @@ describe('目标登记处 · 独占事务', () => {
       reg.runOn('guest', async () => slow('a', 40)),
       reg.runOn('guest', async () => slow('b', 5)),
     ]);
-    // **不许交错**：a 结束之后 b 才开始
+    // **They may not interleave**: b only starts after a ended
     expect(order).toEqual(['a:start', 'a:end', 'b:start', 'b:end']);
   });
 
-  it('事务失败 → 错误**照原样抛出来**（不吞）', async () => {
+  it('when the transaction fails the error is **thrown as it is** (it is not swallowed)', async () => {
     const { reg } = registry();
     await expect(
       reg.runOn('guest', async () => {
-        throw new Error('炸了');
+        throw new Error('it blew up');
       }),
-    ).rejects.toThrow(/炸了/);
+    ).rejects.toThrow(/it blew up/);
   });
 });
 
-describe('目标登记处 · 收摊', () => {
-  it('closeAll 把**每条连接都关掉**', async () => {
+describe('the registry of the targets · closing up', () => {
+  it('closeAll closes **every connection**', async () => {
     const { reg, created } = registry();
     await reg.connectionFor('guest');
     await reg.connectionFor('board');
@@ -165,7 +170,7 @@ describe('目标登记处 · 收摊', () => {
     expect(reg.openCount).toBe(0);
   });
 
-  it('关掉之后**再取会重新开**（不是拿着关掉的连接继续用）', async () => {
+  it('after it was closed **getting it again opens it anew** (it does not go on with a closed connection)', async () => {
     const { reg, created } = registry();
     const first = await reg.connectionFor('guest');
     await reg.closeAll();

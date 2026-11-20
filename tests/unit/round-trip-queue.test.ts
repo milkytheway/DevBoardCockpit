@@ -2,26 +2,27 @@ import { describe, it, expect } from 'vitest';
 import { RoundTripQueue } from '../../src/main/hal/round-trip-queue';
 
 /**
- * 一次往返的队列（契约 `docs/spec/02-board-pack.md` §1.2.1）。
+ * The queue of one round trip (contract `docs/spec/02-board-pack.md` §1.2.1).
  *
- * ── 契约要的四件事 ──
+ * The four things the contract asks for:
  *
- * | 契约 | 这份测试的哪一条 |
+ * | Contract | Which case of this test |
  * |---|---|
- * | 一个连接上有一个往返队列，采样与动作都进同一个队列 | 「串行」「动作插队」 |
- * | **动作优先于采样**，采样让路 | 「动作插队」 |
- * | 采样因让路错过本周期 → **跳过本周期**，不补发 | （那是调度器的责任，Task 2） |
- * | 往返超时后必须等 marker 收齐或明确放弃才能开始下一次 | （那是**传输层**的责任——队列**不**自己超时） |
+ * | one connection has one queue of round trips, the samples and the actions go into the same queue | "serially", "an action cuts the queue" |
+ * | **an action has priority over a sample**, the sample gives way | "an action cuts the queue" |
+ * | a sample that missed its period because it gave way → **the period is skipped**, it is not made up | (that is the duty of the scheduler) |
+ * | after a round trip timed out the next one may only start once the markers are complete or the attempt was given up | (that is the duty of the **transport** — the queue does **not** time out by itself) |
  *
- * ── 最要紧的一条 ──
+ * The most important one:
  *
- * **同一时刻只有一次往返在飞。**
- * 串口上只有一根线、一个读线程、一份 transcript——
- * 两次往返并发会让两个 marker 的回包在同一份 transcript 里交错。
- * 契约点名的症状是：「**点了按钮，监控卡数值乱跳**」。
+ * **Only one round trip is in flight at a time.** A serial port has one
+ * wire, one reader thread and one transcript — two concurrent round trips
+ * let the answers of two markers interleave in the same transcript. The
+ * symptom the contract names is: "**the operator pressed a button and the
+ * values on the monitor jumped around**".
  */
 
-/** 一个可控的闭包：记录自己被调用的顺序，并让调用方决定何时放行 */
+/** A controllable closure: it records the order of its calls and lets the caller decide when to let it through */
 function deferred<T>(): { fn: () => Promise<T>; release: (v: T) => void; called: number } {
   let release!: (v: T) => void;
   const promise = new Promise<T>((resolve) => {
@@ -40,17 +41,20 @@ function deferred<T>(): { fn: () => Promise<T>; release: (v: T) => void; called:
   };
 }
 
-describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
-  it('四级：action-verify > manual-refresh > card-sampling > diagnostics', async () => {
+describe('RoundTripQueue · the four levels of priority of ADR-D23', () => {
+  it('the four levels: action-verify > manual-refresh > card-sampling > diagnostics', async () => {
     const queue = new RoundTripQueue();
     const order: string[] = [];
 
-    // 先占住队列（**队列空时先到的先跑** —— 优先级只对**等着的那几条**生效，
-    // 不可能为了等一个还没来的高优先级请求而空等）
+    // The queue is occupied first (**when the queue is empty the one that arrived
+// first runs** — the priority only applies to **the ones that are waiting**,
+    // it cannot idle in the hope of a higher priority request that has not arrived
+// yet)
     const blocker = deferred<string>();
     const p0 = queue.run('diagnostics', () => blocker.fn());
 
-    // **倒着入队** —— 谁先跑，看的是优先级，不是入队顺序
+    // **Enqueued in reverse order** — which one runs first depends on the priority,
+// not on the order of the queue
     const p1 = queue.run('diagnostics', async () => {
       order.push('diagnostics');
       return 'd';
@@ -78,13 +82,13 @@ describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
     ]);
   });
 
-  it('排队超过上限 → 报 conn_busy（不无限排队）', async () => {
+  it('the queue exceeds the limit → it reports conn_busy (it does not queue without end)', async () => {
     const queue = new RoundTripQueue({ maxPending: 2 });
     const d = deferred<string>();
     const p1 = queue.run('card-sampling', () => d.fn());
     const p2 = queue.run('card-sampling', async () => 'second');
 
-    // 第三个**立刻**被拒（不排队）
+    // The third one is **immediately** refused (it does not queue)
     await expect(queue.run('card-sampling', async () => 'third')).rejects.toMatchObject({
       code: 'CONN_BUSY',
     });
@@ -93,7 +97,7 @@ describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
     await Promise.all([p1, p2]);
   });
 
-  it('排队超过 deadline → 报 conn_busy（那条事务被丢掉，不执行）', async () => {
+  it('the queue exceeds the deadline → it reports conn_busy (that transaction is dropped and not executed)', async () => {
     let clock = 1000;
     const queue = new RoundTripQueue({ now: () => clock });
     const order: string[] = [];
@@ -108,16 +112,16 @@ describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
       return 'second';
     });
 
-    // 排队期间时间过去了 → 它的 deadline 到了
+    // Time passed while it was queued → its deadline was reached
     clock += 5000;
     d.release('first');
 
     await expect(p2).rejects.toMatchObject({ code: 'CONN_BUSY' });
     await p1;
-    expect(order).toEqual(['first']); // 第二条**没有被执行**
+    expect(order).toEqual(['first']); // The second one **was not executed**
   });
 
-  it('deadline 可以按事务覆盖', async () => {
+  it('the deadline can be overridden per transaction', async () => {
     let clock = 0;
     const queue = new RoundTripQueue({ now: () => clock, deadlineMs: 10_000 });
     const d = deferred<string>();
@@ -132,8 +136,8 @@ describe('RoundTripQueue · ADR-D23 的四级优先级', () => {
   });
 });
 
-describe('RoundTripQueue · 排队与动作优先', () => {
-  it('两个采样**串行**：前一个没回来，后一个的闭包不会被调用', async () => {
+describe('RoundTripQueue · the queue and the priority of an action', () => {
+  it('two samples run **serially**: while the first has not returned, the closure of the second is not called', async () => {
     const queue = new RoundTripQueue();
     const order: string[] = [];
 
@@ -147,7 +151,8 @@ describe('RoundTripQueue · 排队与动作优先', () => {
       return 'second';
     });
 
-    // sample1 还没放行 → sample2 的闭包**不应该**被调用
+    // sample1 has not been let through → the closure of sample2 **must not** be
+// called
     await Promise.resolve();
     expect(order).toEqual(['sample1']);
 
@@ -156,7 +161,7 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     expect(order).toEqual(['sample1', 'sample2']);
   });
 
-  it('**动作插队**：两个采样在排队时，动作插到它们中间', async () => {
+  it('**an action cuts the queue**: while two samples are queued, the action steps between them', async () => {
     const queue = new RoundTripQueue();
     const order: string[] = [];
 
@@ -177,11 +182,12 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     first.release('first');
     await Promise.all([p1, p2, p3]);
 
-    // 动作优先于**排队中的**采样，但它**不能**插到飞行中的那次往返中间
+    // An action has priority over a **queued** sample, but it **may not** step
+// into the middle of the round trip that is in flight
     expect(order).toEqual(['sample1', 'action', 'sample2']);
   });
 
-  it('**任何时刻只有一次往返在飞**——哪怕后来的那个是动作', async () => {
+  it('**only one round trip is in flight at any moment** — even when the later one is an action', async () => {
     const queue = new RoundTripQueue();
     const d1 = deferred<string>();
     const d2 = deferred<string>();
@@ -206,7 +212,8 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    // 动作**还没**被调用 —— 飞行中的那次往返必须等它回来
+    // The action **has not** been called — the round trip in flight has to wait
+// for it to come back
     expect(maxInFlight).toBe(1);
     expect(queue.busy).toBe(true);
 
@@ -220,13 +227,13 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     expect(maxInFlight).toBe(1);
   });
 
-  it('`run` 的返回值是闭包的返回值（await 透传）', async () => {
+  it('the return value of `run` is the return value of the closure (await passes it through)', async () => {
     const queue = new RoundTripQueue();
     await expect(queue.run('card-sampling', async () => 42)).resolves.toBe(42);
     await expect(queue.run('action-verify', async () => 'acted')).resolves.toBe('acted');
   });
 
-  it('闭包**抛错**时 run reject 同样的错误，且**队列继续可用**', async () => {
+  it('when the closure **throws**, run rejects with the same error and **the queue stays usable**', async () => {
     const queue = new RoundTripQueue();
     const boom = new Error('boom');
 
@@ -236,11 +243,11 @@ describe('RoundTripQueue · 排队与动作优先', () => {
       }),
     ).rejects.toBe(boom);
 
-    // 「一把锁坏了，通道就废了」是更糟的失败
+    // "a broken lock wastes the channel" is a worse failure
     await expect(queue.run('card-sampling', async () => 'still works')).resolves.toBe('still works');
   });
 
-  it('同一个 run 里闭包**被调用恰好一次**', async () => {
+  it('inside one run the closure is **called exactly once**', async () => {
     const queue = new RoundTripQueue();
     let called = 0;
     await queue.run('card-sampling', async () => {
@@ -250,7 +257,7 @@ describe('RoundTripQueue · 排队与动作优先', () => {
     expect(called).toBe(1);
   });
 
-  it('`busy` 反映「有没有往返在飞」，`pending` 反映「还没开始的个数」', async () => {
+  it('`busy` reflects "whether a round trip is in flight", `pending` reflects "how many have not started"', async () => {
     const queue = new RoundTripQueue();
     expect(queue.busy).toBe(false);
     expect(queue.pending).toBe(0);

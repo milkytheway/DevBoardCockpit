@@ -6,45 +6,53 @@ import { createCardWiring } from '../../../src/main/cards/wiring';
 import type { CardPermissions } from '../../../src/main/cards/permissions';
 
 /**
- * 卡片宿主的**接线**。
+ * The **wiring** of the card host.
  *
- * ── 这层为什么要有测试 ──
+ * Why this layer needs its own test:
  *
- * 单个模块都对，接起来还是错的——这不是假设，是本轮真实发生过的事：
+ * Every module can be right and the assembly still be wrong — that is not a
+ * hypothesis, it is what happened in this round:
  *
- * | 症状 | 哪个模块的错 |
+ * | Symptom | Whose fault it was |
  * |---|---|
- * | 卡片区一片空白 | 外壳 CSP 的 `frame-src`（不在卡片模块里） |
- * | `window.cockpit` 恒 undefined | 注入的 URL 少了实例 id（不在卡片模块里） |
- * | 改了文件卡片就「不合法」 | 接线层传给校验器的 id 名单 |
+ * | the card area stayed blank | the `frame-src` of the CSP of the shell (not in the card module) |
+ * | `window.cockpit` was always undefined | the injected URL missed the instance id (not in the card module) |
+ * | editing a file made the card "invalid" | the list of ids that the wiring layer hands to the validator |
  *
- * → 单模块测试覆盖不到**接线**，接线要有自己的测试。
+ * → The tests of the single modules do not cover the **wiring**, so the wiring
+ * needs its own test.
  */
 
 /**
- * **规则 5 的「未验证」**（2026-11-19 装机时暴露的洞 ✓）
+ * The "not verified" of **rule 5** (a hole that was exposed when the
+ * application was installed on 2026-11-19).
  *
- * ── 症状 ──
+ * The symptom:
  *
- * 装机后 `list_cards` 报：**凡是能写板子的卡 `status: "degraded"`** ⚠️
- * —— 而 `degraded: false` ✓ · `missing_tags: []` ✓ · `unreadable_tags: []` ✓
- * → **自相矛盾** ⚠️ → agent 会读成「这张卡坏了」⚠️
+ * After the installation `list_cards` reported: **every card that can write
+ * to the board has `status: "degraded"`** — while `degraded: false`,
+ * `missing_tags: []` and `unreadable_tags: []` are all empty, which
+ * **contradicts itself** and makes an agent read it as "this card is broken".
  *
- * ── 根因 ──
+ * The cause:
  *
- * ① 注册表那条校验路（`validateManifest` ✓）把 **`availableActions` 硬编码成 `null`** ✓
- *    → **规则 5 永远走「未验证」分支** ✓ → **永远带一个警告** ✓
- *    → 而 `status` 把**警告**也算 degraded ✓ → **装上就是「降级」** ⚠️
- * ② **卡片在启动时校验** ✓ → 那时板子还没连上 ✓ → 就算给了真表也拿不到 ✓
- *    → **连上之后不重算** ⚠️ → 警告**永远挂着** ⚠️
+ * ① The validation route through the registry hard-codes `availableActions`
+ *    to `null`, so **rule 5 always takes the "not verified" branch** and
+ *    **always carries a warning**, and `status` counts a **warning** as
+ *    degraded, so **the card is degraded right after the installation**.
+ * ② **The card is validated at startup**, when the board is not connected
+ *    yet, so even a real table cannot be obtained, and **it is not recomputed
+ *    after the connection**, so the **warning stays forever**.
  *
- * ── 而 MCP 的 `validate_card` 那条路给的是**真表** ✓ → **同一个产品两个答案** ✗
- * → **开发期看不见** ✗ → **装机后才暴露** ✗
+ * The route of `validate_card` in MCP, on the other hand, is given a **real
+ * table**, so **one product had two answers** — invisible during the
+ * development and only exposed after the installation.
  *
- * → 修法：**注册表那条路也给真表** ✓ + **连上之后重扫一次** ✓
+ * The fix: **the route through the registry is given a real table as well**
+ * and **it is scanned once more after the connection**.
  */
-describe('规则 5 · 「未验证」不该永远挂着', () => {
-  it('**板子连着 → 注册表那条路不报「未验证」** ✓（与 MCP 的 validate_card 同口径 ✓）', () => {
+describe('rule 5 · "not verified" may not stay forever', () => {
+  it('**the board is connected → the route through the registry does not report "not verified"** (the same wording as the validate_card of MCP)', () => {
     const fx = fixtureWithWrite();
     try {
       const wiring = createCardWiring({
@@ -53,22 +61,23 @@ describe('规则 5 · 「未验证」不该永远挂着', () => {
         broadcast: () => undefined,
         currentConnectionId: () => 'board-a',
         permsFor: () => ({ read: [], write: ['led.set'] }),
-        // **板型包绑上了 → 给真表** ✓
+        // **The board pack is bound → a real table is given**
         availableActions: () => ['led.set'],
-        // **接线层要的那两样** ✓（存储目录 ✓ · 布局文件 ✓ —— 与 `wiringOf` 同款 ✓）
+        // **The two things the wiring layer needs** (the storage directory, the layout
+// file — the same as in `wiringOf`)
         storageDir: fx.storageDir,
         layoutFile: join(fx.base, 'layout.json'),
       });
       wiring.refresh();
       const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');
       const warnings = card?.issues.filter((i) => i.severity === 'warning') ?? [];
-      expect(warnings, '连着板子就不该说「未验证」').toEqual([]);
+      expect(warnings, 'with the board connected it may not say "not verified"').toEqual([]);
     } finally {
       fx.cleanup();
     }
   });
 
-  it('**离线 → 是警告不是错误** ✓（「未验证」≠「不合法」✓）', () => {
+  it('**offline → it is a warning, not an error** ("not verified" is not "not valid")', () => {
     const fx = fixtureWithWrite();
     try {
       const wiring = createCardWiring({
@@ -77,18 +86,18 @@ describe('规则 5 · 「未验证」不该永远挂着', () => {
         broadcast: () => undefined,
         currentConnectionId: () => 'board-a',
         permsFor: () => ({ read: [], write: ['led.set'] }),
-        // **离线 → null** ✓
+        // **Offline → null**
         availableActions: () => null,
-        // **接线层要的那两样** ✓（与 `wiringOf` 同款 ✓）
+        // **The two things the wiring layer needs** (the same as in `wiringOf`)
         storageDir: fx.storageDir,
         layoutFile: join(fx.base, 'layout.json'),
       });
       wiring.refresh();
       const card = wiring.registry.cards().find((c) => c.manifest.id === 'write-card');
       const warnings = card?.issues.filter((i) => i.severity === 'warning') ?? [];
-      expect(warnings.length, '离线就该说「未验证」').toBeGreaterThan(0);
+      expect(warnings.length, 'offline it has to say "not verified"').toBeGreaterThan(0);
       const errors = card?.issues.filter((i) => i.severity === 'error') ?? [];
-      expect(errors, '「未验证」不是「不合法」').toEqual([]);
+      expect(errors, '"not verified" is not "not valid"').toEqual([]);
     } finally {
       fx.cleanup();
     }
@@ -113,9 +122,9 @@ function fixture(): Fixture {
       apiVersion: 'devboard/v1',
       kind: 'Card',
       id: 'cpu-usage',
-      name: 'CPU 占用率',
+      name: 'CPU usage',
       version: '1.0.0',
-      description: '显示 CPU 总占用',
+      description: 'shows the total CPU usage',
       entry: 'index.html',
       requires: { tags: ['cpu.usage'] },
       layout: { w: 3, h: 2, min_w: 2, min_h: 1 },
@@ -135,7 +144,7 @@ function fixture(): Fixture {
 
 const PERMS: CardPermissions = { read: ['cpu.usage'], write: [] };
 
-/** 一张**有写权限**的卡** ✓（规则 5 只对有写权限的卡触发 ✓） */
+/** A card **with write permissions** (rule 5 only fires for a card that has write permissions) */
 function fixtureWithWrite(): Fixture {
   const fx = fixture();
   mkdirSync(join(fx.roots, 'write-card'), { recursive: true });
@@ -145,7 +154,7 @@ function fixtureWithWrite(): Fixture {
       apiVersion: 'devboard/v1',
       kind: 'Card',
       id: 'write-card',
-      name: '会写板子的卡',
+      name: 'a card that writes to the board',
       version: '1.0.0',
       entry: 'index.html',
       requires: {},
@@ -170,15 +179,15 @@ function wiringOf(fx: Fixture, opts: { connectionId?: () => string | null } = {}
   });
 }
 
-describe('卡片接线 · 规则 2（id 全局唯一）', () => {
-  it('**第二次刷新不会把卡片自己判成重名**', () => {
+describe('the card wiring · rule 2 (the id is unique worldwide)', () => {
+  it('**a second refresh does not judge the card itself as a duplicate**', () => {
     const fx = fixture();
     try {
       const wiring = wiringOf(fx);
       wiring.refresh();
       expect(wiring.list()[0]?.degraded).toBe(false);
-      // **再来一次**——「改了文件就热更新」是核心动作，
-      // 而热更新必然触发第二次 refresh
+      // **Once again** — "edit the file and it takes effect" is the central action,
+      // and the hot reload necessarily triggers a second refresh
       wiring.refresh();
       expect(wiring.list()[0]?.degraded).toBe(false);
     } finally {
@@ -186,7 +195,7 @@ describe('卡片接线 · 规则 2（id 全局唯一）', () => {
     }
   });
 
-  it('两张卡**真的**重名 → 第二个要报出来', () => {
+  it('two cards **really** share an id → the second one has to be reported', () => {
     const fx = fixture();
     try {
       mkdirSync(join(fx.roots, 'other'), { recursive: true });
@@ -195,8 +204,8 @@ describe('卡片接线 · 规则 2（id 全局唯一）', () => {
         JSON.stringify({
           apiVersion: 'devboard/v1',
           kind: 'Card',
-          id: 'cpu-usage', // ← **同一个 id**
-          name: '另一个',
+          id: 'cpu-usage', // ← **the same id**
+          name: 'another one',
           version: '1.0.0',
           description: 'x',
           entry: 'index.html',
@@ -216,8 +225,8 @@ describe('卡片接线 · 规则 2（id 全局唯一）', () => {
   });
 });
 
-describe('卡片接线 · 会话的生命周期', () => {
-  it('连接变了 → **旧实例的会话被关掉**（订阅不会一直挂着）', () => {
+describe('the card wiring · the lifecycle of a session', () => {
+  it('the connection changed → **the session of the old instance is closed** (a subscription does not hang around forever)', () => {
     const fx = fixture();
     try {
       let connectionId: string | null = 'board-a';

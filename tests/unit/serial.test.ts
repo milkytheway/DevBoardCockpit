@@ -8,14 +8,17 @@ const profile = {
 const log = { write: vi.fn(), close: vi.fn(), filePath: 'x' };
 
 /**
- * 假串口：**像真板子一样回显**它收到的每一行，然后模拟执行。
+ * A fake serial port: it **echoes every line it receives**, the way a real
+ * board does, and then simulates the execution.
  *
- * 这是本轮最重要的一个测试基建改动：原来的假串口是「按契约编好的答案」，
- * 把 marker 协议的形状 bug 盖住了。现在它按真实行为建模：
- *   收到 `uptime; echo __DBC..__`
- *   → 回显这一行（marker 第一次出现）
- *   → 输出命令的结果
- *   → 执行 echo（marker 第二次出现）
+ * This is the most important change of the test scaffolding in this round:
+ * the earlier fake serial port was "an answer written to the contract" and it
+ * hid the bugs in the shape of the marker protocol. It is now modelled by the
+ * real behaviour:
+ *   it receives `uptime; echo __DBC..__`
+ *   → it echoes that line (the marker appears the first time)
+ *   → it writes the result of the command
+ *   → it executes the echo (the marker appears the second time)
  */
 const fakeBoard = (output = 'hi'): { factory: SerialPortFactory; sent: string[] } => {
   const sent: string[] = [];
@@ -25,12 +28,12 @@ const fakeBoard = (output = 'hi'): { factory: SerialPortFactory; sent: string[] 
       sent.push(data);
       const line = data.replace(/\r\n$/, '');
       const m = /;\s*echo\s+(__DBC\d+_\d+__)\s*$/.exec(line);
-      // 回显（第一次出现 marker）
+      // The echo (the marker appears the first time)
       cb?.(`${line}\r\n`);
       if (!m) return;
-      // 命令输出
+      // The output of the command
       cb?.(`${output}\r\n`);
-      // echo 的输出（第二次出现 marker）
+      // The output of the echo (the marker appears the second time)
       cb?.(`${m[1]}\r\n`);
     },
     onData(handler) { cb = handler; },
@@ -41,23 +44,23 @@ const fakeBoard = (output = 'hi'): { factory: SerialPortFactory; sent: string[] 
 };
 
 describe('serialCapabilities', () => {
-  it('串口是控制台：能传文件吗？不能；能拿退出码吗？不能（事实 S5/S7）', () => {
+  it('the serial port is a console: can it transfer files? No; can it give an exit code? No (facts S5/S7)', () => {
     expect(serialCapabilities()).toEqual({ exec: true, pty: true, files: false, exitCode: false });
   });
 });
 
 describe('SerialConnection.exec', () => {
-  it('认领 marker 之间的输出并返回退出码 0（串口无退出码，有文本即 0）', async () => {
+  it('it claims the output between the markers and returns the exit code 0 (a serial port has no exit code, text means 0)', async () => {
     const { factory } = fakeBoard(' 12:00:00 up 3 days');
     const conn = new SerialConnection(profile, log as never, factory);
     await conn.open();
     const res = await conn.exec('uptime');
-    // 输出是命令的结果，**不是命令文本本身**
+    // The output is the result of the command, **not the command text itself**
     expect(res.stdout.trim()).toBe('12:00:00 up 3 days');
     expect(res.exitCode).toBe(0);
   });
 
-  it('发出的命令与 marker 在同一行（板子回显一次、echo 一次 = marker 出现两次）', async () => {
+  it('the command that is sent and the marker are on the same line (the board echoes once and the echo answers once = the marker appears twice)', async () => {
     const { factory, sent } = fakeBoard();
     const conn = new SerialConnection(profile, log as never, factory);
     await conn.open();
@@ -66,7 +69,7 @@ describe('SerialConnection.exec', () => {
     expect(sent[0].trimEnd()).toMatch(/^uptime; echo __DBC\d+_\d+__$/);
   });
 
-  it('输出里不含 marker（RF-1）', async () => {
+  it('the output holds no marker (RF-1)', async () => {
     const { factory } = fakeBoard('hello');
     const conn = new SerialConnection(profile, log as never, factory);
     await conn.open();
@@ -74,13 +77,13 @@ describe('SerialConnection.exec', () => {
     expect(res.stdout).not.toContain('__DBC');
   });
 
-  it('输出超过 64 KB 也认得回来 —— 旧的「绝对下标 + 裁剪」会在这里永久失效', async () => {
-    // 这条对应 `docs/11-计划1评审报告.md` R-02：
-    // 原来用 transcript 的**绝对下标**认领 marker，而 transcript 会被裁剪，
-    // 于是大输出之后**这条连接上的 exec 通道永久死亡**
-    // （每条命令都挂满 30 秒、返回空输出）。
+  it('an output beyond 64 KB is still claimed back — the old "absolute index plus clipping" would fail there for good', async () => {
+    // This case corresponds to the measurement on a real board:
+    // The marker used to be claimed by the **absolute index** of the transcript, and the transcript is clipped,
+    // so after a large output **the exec channel of that connection died for good**
+    // (every command hung for 30 seconds and returned an empty output).
     //
-    // 现在的做法是「每次 exec 用自己的缓冲」，没有下标这回事。
+    // The way it works now is "every exec has its own buffer", there is no index at all.
     const big = 'x'.repeat(100 * 1024);
     const { factory } = fakeBoard(big);
     const conn = new SerialConnection(profile, log as never, factory);
@@ -90,10 +93,10 @@ describe('SerialConnection.exec', () => {
     expect(res.stdout.length).toBe(big.length);
   });
 
-  it('交互会话开着时，exec 被拒 —— 一根线上不能同时有两次往返（事实 S1）', async () => {
-    // 原来这把锁只挡 exec↔exec：会话开着的时候，
-    // 任何一次 exec 都会把命令**追加在用户没打完的输入后面**
-    // （板端 shell 拿到的是 `ls -l /tmpuptime; echo marker`）。
+  it('while an interactive session is open, exec is refused — one line cannot carry two round trips at a time (fact S1)', async () => {
+    // The lock used to stop only exec against exec: while a session was open,
+    // every exec **appended the command after the input the operator had not finished**
+    // (the shell on the board received `ls -l /tmpuptime; echo marker`).
     const { factory } = fakeBoard('hi');
     const conn = new SerialConnection(profile, log as never, factory);
     await conn.open();
@@ -101,12 +104,12 @@ describe('SerialConnection.exec', () => {
     const session = await conn.openSession();
     await expect(conn.exec('uptime')).rejects.toMatchObject({ code: 'CONN_BUSY' });
 
-    // 会话关掉之后，线又空出来了
+    // Once the session is closed the line is free again
     session.close();
     await expect(conn.exec('uptime')).resolves.toMatchObject({ exitCode: 0 });
   });
 
-  it('端口被占用时报 PORT_BUSY 并指出是哪个端口（RF-5）', async () => {
+  it('when the port is busy it reports PORT_BUSY and names the port (RF-5)', async () => {
     const factory: SerialPortFactory = async () => {
       throw Object.assign(new Error('Resource busy'), { code: 'EBUSY' });
     };
@@ -115,8 +118,8 @@ describe('SerialConnection.exec', () => {
     await expect(conn.open()).rejects.toMatchObject({ code: 'PORT_BUSY' });
   });
 
-  it('同一连接上并发两次 exec 被拒（契约 §1.2.1 往返互斥）', async () => {
-    // 假板子不回话 → 第一个 exec 会一直等到超时，占着这条线
+  it('two concurrent exec calls on one connection are refused (the round trips are mutually exclusive, contract §1.2.1)', async () => {
+    // The fake board does not answer → the first exec waits until the timeout and holds the line
     const factory: SerialPortFactory = async () => ({
       write() { /* 什么都不回 */ },
       onData() { /* no-op */ },
@@ -127,29 +130,29 @@ describe('SerialConnection.exec', () => {
     await conn.open();
 
     const first = conn.exec('uptime', { timeoutMs: 200 });
-    // 第二个命令不能插进来——两个 marker 的回包会在同一份 transcript 里交错，
-    // 互相认领对方的输出
+    // The second command may not come in — the answers of two markers would interleave in the same transcript
+    // and claim the output of each other
     await expect(conn.exec('uname', { timeoutMs: 200 })).rejects.toMatchObject({
-      // 「被拒」与「真的超时」不同码：UI 要能分开说
+      // "refused" and "really timed out" are different codes: the interface has to tell them apart
       code: 'CONN_BUSY',
     });
     await first;
   });
 
-  it('中文写出去是 UTF-8 字节，不被截断（RF-2）', async () => {
+  it('a Chinese character written out is UTF-8 bytes and is not truncated (RF-2)', async () => {
     const { factory, sent } = fakeBoard();
     const conn = new SerialConnection(profile, log as never, factory);
     await conn.open();
     await conn.exec('echo 中文');
-    // 写出去的是「命令行 + marker」的 UTF-8 字节
+    // What is written out is the UTF-8 bytes of the command line plus the marker
     const bytes = Buffer.from(sent[0], 'utf8');
     expect(bytes.toString('utf8')).toContain('中文');
-    // 且不是被截断的半个字符（U+FFFD）
+    // and not half a truncated character (U+FFFD)
     expect(bytes.toString('utf8')).not.toContain('\uFFFD');
   });
 
-  it('超时时返回 124 且 timedOut 为 true（事实 S5）', async () => {
-    // 假板子不回话 → 只能靠超时
+  it('on a timeout it returns 124 and timedOut is true (fact S5)', async () => {
+    // The fake board does not answer → only the timeout can help
     const factory: SerialPortFactory = async () => ({
       write() { /* 什么都不回 */ },
       onData() { /* no-op */ },

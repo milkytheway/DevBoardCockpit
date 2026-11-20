@@ -13,31 +13,38 @@ import {
 } from '../../../src/shared/layout';
 
 /**
- * 布局的**落盘**（core 轨的部分）。
+ * The **writing of the layout** (the part of the core track).
  *
- * ── 它是什么 ──
+ * What it is:
  *
- * 「主区摆了哪些卡、每张多大」是**宿主的账**：
- * 契约 §七说「绑定发生处：**布局层**：布局单元记录 `(cardId, connectionId)`」。
- * 卡片不知道自己在哪，页面也不该自己记（刷新就没了）。
+ * "Which cards are in the main area and how large they are" is **the ledger of
+ * the host**: the contract says in §7 "where the binding happens: **the layout
+ * layer**: a layout cell records `(cardId, connectionId)`". The card does
+ * not know where it is, and the page may not keep that on its own (it is gone
+ * after a reload).
  *
- * ── 键是 `(cardId, connectionId)` ──
+ * The key is `(cardId, connectionId)`:
  *
- * 契约 §7.8：一张卡可以在多条连接上各有一个实例 → 每个实例**各占一格**。
- * 所以只按 `cardId` 记会撞车（两张卡挤进同一格）。
+ * Contract §7.8: one card may have an instance on several connections → every
+ * instance **takes a cell of its own**. Recording only by `cardId` would
+ * clash (two cards in the same cell).
  *
- * ── v3：一个布局，没有视图 ──
+ * v3: one layout, no views:
  *
- * 主区默认是空的，你从卡片目录里点哪张才摆进来。
- * 旧文件照样读得出来（v1 直接用；v2 取**当前视图**那份——
- * **其余视图的布局会丢**，因为「视图」已经退场了）✓。
+ * The main area is empty by default, and you place a card by clicking it in
+ * the card directory. The old files can still be read (v1 is used directly;
+ * v2 takes the one of the **"current view"** — **the layout of the other views
+ * is lost**, because the "view" has left the stage).
  *
- * ── 为什么落盘要「坏了也不抛」 ──
+ * Why writing it has to survive a broken file:
  *
- * 布局文件在用户目录里，可能被写了一半、被人手改坏。
- * **一个文件坏了不该让应用起不来**——那等于用户的布局问题变成了应用的问题。
- * → 读不出来就当空布局（用户重新摆一次），并把坏文件原样留着（不覆盖它，
- * 免得把用户的现场毁掉）。
+ * The layout file lives in the user directory and may have been written half
+ * or broken by hand. **One broken file may not keep the application from
+ * starting** — that would turn a problem of the layout of the user into a
+ * problem of the application. → If it cannot be read it counts as an empty
+ * layout (the operator places the cards again), and the broken file is left
+ * as it is (it is not overwritten, so that the scene of the user is not
+ * destroyed).
  */
 function scene(): { file: string; cleanup: () => void } {
   const base = mkdtempSync(join(tmpdir(), 'card-layout-'));
@@ -56,8 +63,8 @@ const UNIT: LayoutUnit = {
   h: 2,
 };
 
-describe('布局存储', () => {
-  it('**没有布局文件 → 空布局**（主区空的，你摆）', () => {
+describe('the layout store', () => {
+  it('**no layout file → an empty layout** (the main area is empty, you place the cards)', () => {
     const { file, cleanup } = scene();
     try {
       const store = new LayoutStore({ file, now: () => 1000 });
@@ -70,13 +77,13 @@ describe('布局存储', () => {
     }
   });
 
-  it('**set 之后 get 等值**（落盘与读回一致）', () => {
+  it('**after a set, get returns the same value** (what was written and what is read back agree)', () => {
     const { file, cleanup } = scene();
     try {
       const store = new LayoutStore({ file, now: () => 1000 });
       store.set({ version: 3, units: [UNIT], density: 'comfortable', updatedAt: 1000 });
       expect(store.get().units).toEqual([UNIT]);
-      // **重新开一个 store**（模拟重启）→ 还在
+      // **A new store is opened** (it simulates a restart) → it is still there
       const again = new LayoutStore({ file, now: () => 2000 });
       expect(again.get().units).toEqual([UNIT]);
     } finally {
@@ -84,7 +91,7 @@ describe('布局存储', () => {
     }
   });
 
-  it('**位置会被记下来**（拖过就不是默认位置了）', () => {
+  it('**the position is recorded** (after a drag it is not the default position any more)', () => {
     const { file, cleanup } = scene();
     try {
       const store = new LayoutStore({ file, now: () => 1000 });
@@ -95,10 +102,10 @@ describe('布局存储', () => {
     }
   });
 
-  it('**布局文件坏了 → 返回空而且不抛**（不能因为一个文件让应用起不来）', () => {
+  it('**a broken layout file → it returns empty and does not throw** (one file may not keep the application from starting)', () => {
     const { file, cleanup } = scene();
     try {
-      writeFileSync(file, '{ 这不是 JSON', 'utf8');
+      writeFileSync(file, '{ this is not JSON', 'utf8');
       const store = new LayoutStore({ file, now: () => 1000 });
       expect(store.get().units).toEqual([]);
     } finally {
@@ -106,7 +113,7 @@ describe('布局存储', () => {
     }
   });
 
-  it('**密度存得住**（全局的，放设置页改）', () => {
+  it('**the density is stored** (it is global, it is changed on the settings page)', () => {
     const { file, cleanup } = scene();
     try {
       const store = new LayoutStore({ file, now: () => 1000 });
@@ -118,8 +125,8 @@ describe('布局存储', () => {
   });
 });
 
-describe('布局形状的版本迁移', () => {
-  it('**v1 旧文件读得出来**（`{units, updatedAt}`）', () => {
+describe('the version migration of the layout shape', () => {
+  it('**an old v1 file can be read** (`{units, updatedAt}`)', () => {
     const { file, cleanup } = scene();
     try {
       writeFileSync(file, JSON.stringify({ units: [UNIT], updatedAt: 1000 }), 'utf8');
@@ -131,7 +138,7 @@ describe('布局形状的版本迁移', () => {
     }
   });
 
-  it('**v2 多视图文件读得出来**（取「当前视图」那份；其余视图的布局不保留）', () => {
+  it('**a v2 file with several views can be read** (the one of the "current view" is taken; the layout of the other views is not kept)', () => {
     const { file, cleanup } = scene();
     try {
       writeFileSync(
@@ -154,17 +161,17 @@ describe('布局形状的版本迁移', () => {
       );
       const state = new LayoutStore({ file, now: () => 2000 }).get();
       expect(state.version).toBe(3);
-      // **当前视图那份**（debug）→ 不是 overview 那份
+      // **The one of the current view** (debug) → not the one of overview
       expect(state.units).toHaveLength(1);
       expect(state.units[0]).toMatchObject({ cardId: 'debug-card', x: 6, y: 3 });
-      // 密度也跟着当前视图来
+      // The density follows the current view as well
       expect(state.density).toBe('compact');
     } finally {
       cleanup();
     }
   });
 
-  it('**坏字段回默认、不抛**（坏 units / 坏 density / 坏 updatedAt）', () => {
+  it('**a broken field falls back to the default and does not throw** (broken units / broken density / broken updatedAt)', () => {
     const { file, cleanup } = scene();
     try {
       writeFileSync(
@@ -187,8 +194,8 @@ describe('布局形状的版本迁移', () => {
   });
 });
 
-describe('布局形状的纯函数', () => {
-  it('**defaultUnit 用卡片自报的尺寸**（缺省 3×2）', () => {
+describe('the pure functions of the layout shape', () => {
+  it('**defaultUnit takes the size the card reports itself** (the default is 3×2)', () => {
     expect(defaultUnit('cpu-usage', null, { w: 4, h: 3 })).toMatchObject({ w: 4, h: 3 });
     expect(defaultUnit('cpu-usage', 'board-a')).toMatchObject({
       w: 3,
@@ -197,7 +204,7 @@ describe('布局形状的纯函数', () => {
     });
   });
 
-  it('**withUnits / withDensity 不改原来的**', () => {
+  it('**withUnits / withDensity do not change the original**', () => {
     const base = emptyLayout(1);
     const next = withUnits(base, [UNIT]);
     expect(next.units).toEqual([UNIT]);
@@ -206,7 +213,7 @@ describe('布局形状的纯函数', () => {
     expect(base.density).toBe('comfortable');
   });
 
-  it('**normalizeLayout 收形状**（只留形状对的单元）', () => {
+  it('**normalizeLayout narrows the shape** (it keeps only the cells whose shape is right)', () => {
     const state = normalizeLayout({
       version: 3,
       units: [

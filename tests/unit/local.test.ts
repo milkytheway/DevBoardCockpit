@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { localCapabilities, LocalConnection } from '../../src/main/hal/local';
 
 describe('localCapabilities', () => {
-  it('本机一切都有', () => {
+  it('everything is available on the host machine', () => {
     expect(localCapabilities()).toEqual({ exec: true, pty: true, files: true, exitCode: true });
   });
 });
 
 describe('LocalConnection.exec', () => {
-  it('在本机跑一条命令并拿到输出', async () => {
+  it('a command runs on the host machine and gives its output', async () => {
     const conn = new LocalConnection(
       { id: 'l', label: 'l', transport: 'local', options: {} },
       { write: () => {}, close: () => {}, filePath: 'x' } as never,
@@ -24,14 +24,14 @@ describe('LocalConnection.exec', () => {
 });
 
 /**
- * 本机传输的列举与上传下载。
+ * The listing and the upload and download of the local transfer.
  *
- * 之前这个文件只有 exec 的两条用例——**`list`/`pull`/`push` 一条都没测**，
- * 于是「上传的远端目标是目录」这件事没人验：
- * `copyFile(src, '/')` → ENOENT，**本机目标的上传功能不可用**。
- * （`docs/13-计划1复评报告.md` S-05）
+ * Earlier this file only had the two cases of the exec — **not a single one of
+ * `list`/`pull`/`push` was tested**, so nobody verified that "the remote
+ * target of an upload is a directory": `copyFile(src, '/')` → ENOENT, and
+ * **the upload to the host target did not work**.
  */
-describe('LocalConnection 的文件传输', () => {
+describe('the file transfer of the LocalConnection', () => {
   const log = { write: () => {}, close: () => {}, filePath: 'x' } as never;
   const profile = { id: 'l', label: 'l', transport: 'local', options: {} } as const;
 
@@ -39,7 +39,7 @@ describe('LocalConnection 的文件传输', () => {
     return mkdtempSync(join(tmpdir(), 'dbc-local-'));
   }
 
-  it('list 列出目录内容，路径是宿主真实路径', async () => {
+  it('list gives the content of the directory, the paths are the real paths of the host', async () => {
     const dir = tempDir();
     try {
       writeFileSync(join(dir, 'a.txt'), 'hello');
@@ -47,7 +47,7 @@ describe('LocalConnection 的文件传输', () => {
       await conn.open();
       const entries = await conn.list(dir);
       expect(entries.map((e) => e.name)).toEqual(['a.txt']);
-      // 路径必须是宿主上真的能用的路径
+      // The path has to be a path that really works on the host
       expect(entries[0].path).toBe(join(dir, 'a.txt'));
       expect(entries[0].sizeBytes).toBe(5);
       expect(entries[0].isDirectory).toBe(false);
@@ -56,7 +56,7 @@ describe('LocalConnection 的文件传输', () => {
     }
   });
 
-  it('push 的远端目标是**目录** —— 要补上 basename', async () => {
+  it('the remote target of push is a **directory** — the basename has to be added', async () => {
     const dir = tempDir();
     const sub = join(dir, 'sub');
     try {
@@ -66,7 +66,7 @@ describe('LocalConnection 的文件传输', () => {
       const conn = new LocalConnection(profile, log);
       await conn.open();
       await conn.push(src, sub);
-      // 落在「目录/源文件名」，而不是把目录当文件名（那样会 ENOENT）
+      // It lands in "directory/name of the source" instead of taking the directory for the file name (that would be ENOENT)
       expect(existsSync(join(sub, 'src.txt'))).toBe(true);
       expect(readFileSync(join(sub, 'src.txt'), 'utf8')).toBe('data');
     } finally {
@@ -74,7 +74,7 @@ describe('LocalConnection 的文件传输', () => {
     }
   });
 
-  it('pull 把远端文件取到本地', async () => {
+  it('pull takes the remote file to the local machine', async () => {
     const dir = tempDir();
     try {
       const src = join(dir, 'src.txt');

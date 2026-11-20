@@ -2,19 +2,24 @@ import { describe, it, expect, vi } from 'vitest';
 import { sshCapabilities, sshArgs, SshConnection } from '../../src/main/hal/ssh';
 
 describe('sshCapabilities', () => {
-  it('SSH 有真 pty、能传文件', () => {
+  it('SSH has a real pty and can transfer files', () => {
     expect(sshCapabilities()).toEqual({ exec: true, pty: true, files: true, exitCode: true });
   });
 });
 
-describe('Connection.capabilities() 报的是哪一份能力位', () => {
-  it('是 profile 感知的，不是传输常量', () => {
-    // **曾经这里报的是传输常量**（ssh → pty 永远 true），
-    // 而 UI 侧的 `connections:list` 报的是 profile 感知的 `capabilitiesFor(profile)`
-    // ——**两个来源互相矛盾**：用户把 profile 的 pty 改成 false，
-    // UI 报 false、连接对象报 true。
-    // `terminal/manager.ts` 早就发现了这个矛盾（它绕过连接对象、直接调
-    // `capabilitiesFor`），但矛盾本身没被消掉——现在连接对象也调同一个函数。
+describe('which set of capability bits Connection.capabilities() reports', () => {
+  it('it is profile-aware, not a constant of the transport', () => {
+    // **This used to report the constants of the transport** (ssh → pty is always
+// true),
+    // while the `connections:list` of the UI reports the profile-aware
+// `capabilitiesFor(profile)` —
+    // **the two sources contradicted each other**: with the pty of the profile set
+// to false,
+    // the UI reported false while the connection object reported true.
+    // `terminal/manager.ts` had found the contradiction long ago (it bypasses the
+// connection object and calls
+    // `capabilitiesFor` directly), but the contradiction itself was never removed —
+// now the connection object calls the same function.
     const conn = new SshConnection(
       { id: 's', label: 's', transport: 'ssh', options: { host: 'h', port: 22, pty: false } },
       fakeLog,
@@ -22,7 +27,7 @@ describe('Connection.capabilities() 报的是哪一份能力位', () => {
     expect(conn.capabilities().pty).toBe(false);
   });
 
-  it('profile 没写 pty 时就是传输默认值', () => {
+  it('when the profile says nothing about the pty, the default of the transport applies', () => {
     const conn = new SshConnection(
       { id: 's', label: 's', transport: 'ssh', options: { host: 'h', port: 22 } },
       fakeLog,
@@ -32,7 +37,7 @@ describe('Connection.capabilities() 报的是哪一份能力位', () => {
 });
 
 describe('sshArgs', () => {
-  it('拼出 host / port / username', () => {
+  it('it assembles host / port / username', () => {
     const args = sshArgs({
       id: 's', label: 's', transport: 'ssh',
       options: { host: '192.168.100.10', port: 22, username: 'alientek' },
@@ -40,15 +45,15 @@ describe('sshArgs', () => {
     expect(args).toEqual({ host: '192.168.100.10', port: 22, username: 'alientek' });
   });
 
-  it('缺 host 时报错（事实 H1：连不上要说清是哪个主机）', () => {
+  it('a missing host is an error (fact H1: when the connection fails, it has to name the host)', () => {
     expect(() => sshArgs({ id: 's', label: 's', transport: 'ssh', options: {} }))
       .toThrow(/host/);
   });
 });
 
 describe('SshConnection.openSession', () => {
-  it('openSession 拿到的是 shell 通道而不是 client（ssh2 的 shell() 在回调里给通道）', async () => {
-    // 假 client：connect 触发 ready，shell() 回调给出通道
+  it('openSession returns the shell channel, not the client (the shell() of ssh2 gives the channel in its callback)', async () => {
+    // A fake client: connect triggers ready, shell() gives the channel in its callback
     const fakeChannel = { write: vi.fn(), setWindow: vi.fn(), close: vi.fn() };
     const listeners: Record<string, () => void> = {};
     const fakeClient = {
@@ -56,7 +61,7 @@ describe('SshConnection.openSession', () => {
       off() { return this; },
       on() { return this; },
       connect() {
-        // 下一拍触发 ready，模拟异步握手
+        // The next tick triggers ready, it simulates the asynchronous handshake
         setTimeout(() => listeners['ready']?.(), 0);
         return this;
       },
@@ -65,8 +70,10 @@ describe('SshConnection.openSession', () => {
         _opts: unknown,
         cb: (err: Error | undefined, ch: unknown) => void,
       ) {
-        // **异步**回调：ssh2 的 shell() 要等一次往返才给通道。
-        // 假 client 若同步回调，就把「同步拿通道」的 bug 盖住了。
+        // An **asynchronous** callback: the shell() of ssh2 needs one round trip before
+// it gives the channel.
+        // A fake client that called back synchronously would hide the bug of "taking
+// the channel synchronously".
         setTimeout(() => cb(undefined, fakeChannel), 0);
         return this;
       },
@@ -90,10 +97,11 @@ describe('SshConnection.openSession', () => {
 });
 
 /**
- * 假的 ssh2 事件通道。
+ * A fake ssh2 event channel.
  *
- * 只按**行为**建模：能挂监听、能吐事件。
- * 替身直接返回「契约期待的那个答案」会把协议形状的 bug 盖住（AGENTS §3）。
+ * It is modelled by **behaviour** only: it can carry listeners and it can
+ * emit events. A stand-in that returns "the answer the contract expects"
+ * would hide the bugs in the shape of the protocol (AGENTS §3).
  */
 class FakeEmitter {
   private readonly handlers = new Map<string, ((...args: unknown[]) => void)[]>();
@@ -110,12 +118,12 @@ class FakeEmitter {
   }
 }
 
-/** 假的 exec 流：stdout 走自己，stderr 另有一条 */
+/** A fake exec stream: stdout has its own, stderr has another one */
 class FakeExecStream extends FakeEmitter {
   readonly stderr = new FakeEmitter();
 }
 
-/** 假的交互通道 */
+/** A fake interactive channel */
 class FakeChannel extends FakeEmitter {
   readonly write = vi.fn();
   readonly setWindow = vi.fn();
@@ -123,37 +131,37 @@ class FakeChannel extends FakeEmitter {
 }
 
 interface FakeClientOptions {
-  /** exec 回包的 stdout 分片（按 chunk 切，用来测跨 chunk 解码） */
+  /** The fragments of stdout of an exec answer (cut by chunk, to test the decoding across chunks) */
   stdoutChunks?: Buffer[];
-  /** exec 回包的 stderr 分片 */
+  /** The fragments of stderr of an exec answer */
   stderrChunks?: Buffer[];
-  /** sftp readdir 的回包 */
+  /** The answer of an sftp readdir */
   readdir?: { err?: Error; list?: unknown[] };
-  /** exec 的远端**不主动关通道**——用来测超时路径 */
+  /** The remote side of exec does **not** close the channel — it is used to test the timeout path */
   execNeverCloses?: boolean;
 }
 
 interface FakeClientHandle {
   client: unknown;
-  /** exec 被调用过的命令（= 跑了远端命令） */
+  /** The commands exec was called with (= a remote command was run) */
   execCalls: string[];
-  /** readdir 被调用过的路径（= 走了 sftp 通道） */
+  /** The paths readdir was called with (= the sftp channel was used) */
   readdirCalls: string[];
-  /** 交互会话的通道 */
+  /** The channel of the interactive session */
   channel: FakeChannel;
-  /** sftp 通道有没有被 end 掉 */
+  /** Whether the sftp channel was ended */
   sftpEnded: () => boolean;
-  /** 整个 client 被 end 掉了几次——**超时不该拆连接** */
+  /** How often the whole client was ended — **a timeout may not tear down the connection** */
   endCalls: () => number;
 }
 
 /**
- * 假的 ssh2 client。
+ * A fake ssh2 client.
  *
- * **exec / shell / sftp 的回调全是异步的**（setTimeout）——
- * ssh2 的这三个入口都要等一次往返才给结果。
- * 假 client 若同步回调，就把真实时序的 bug 盖住了
- * （见上面 openSession 那条测试里的注释）。
+ * **The callbacks of exec / shell / sftp are all asynchronous** (setTimeout):
+ * all three entry points of ssh2 need one round trip before they give a
+ * result. A fake client that called back synchronously would hide the bugs of
+ * the real timing (see the comment in the openSession test above).
  */
 function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
   const execCalls: string[] = [];
@@ -196,7 +204,8 @@ function makeFakeClient(opts: FakeClientOptions = {}): FakeClientHandle {
       setTimeout(() => {
         const stream = new FakeExecStream();
         cb(undefined, stream);
-        // 数据与 close 也在**下一拍**：真实的流不会在回调里同步吐数据
+        // The data and the close also arrive on the **next tick**: a real stream does
+// not produce data synchronously inside a callback
         setTimeout(() => {
           for (const chunk of opts.stdoutChunks ?? []) stream.emit('data', chunk);
           for (const chunk of opts.stderrChunks ?? []) stream.stderr.emit('data', chunk);
@@ -241,7 +250,7 @@ function makeConn(handle: FakeClientHandle): SshConnection {
 }
 
 describe('SshConnection.list', () => {
-  it('list 走 sftp 的 readdir，不跑远端的 ls', async () => {
+  it('list uses the readdir of sftp and does not run ls on the remote side', async () => {
     const handle = makeFakeClient({
       readdir: {
         list: [
@@ -263,10 +272,10 @@ describe('SshConnection.list', () => {
 
     const entries = await conn.list('/root');
 
-    // 走的是 sftp 通道，不是远端命令
+    // It uses the sftp channel, not a remote command
     expect(handle.readdirCalls).toEqual(['/root']);
     expect(handle.execCalls).toEqual([]);
-    // sftp 用完要关（pull / push 也是这么做的）
+    // The sftp channel has to be closed after use (pull / push do the same)
     expect(handle.sftpEnded()).toBe(true);
 
     expect(entries).toEqual([
@@ -287,7 +296,7 @@ describe('SshConnection.list', () => {
     ]);
   });
 
-  it('目录的 sizeBytes 是 null，不是 4096（事实 G2：读不到的东西不是 0）', async () => {
+  it('the sizeBytes of a directory is null, not 4096 (fact G2: a thing that cannot be read is not 0)', async () => {
     const handle = makeFakeClient({
       readdir: {
         list: [
@@ -309,7 +318,7 @@ describe('SshConnection.list', () => {
     expect(entry.sizeBytes).not.toBe(4096);
   });
 
-  it('拿不到 mode 时退回看 longname 的首字符', async () => {
+  it('when the mode is not available it falls back to the first character of the longname', async () => {
     const handle = makeFakeClient({
       readdir: {
         list: [
@@ -337,7 +346,7 @@ describe('SshConnection.list', () => {
     expect(entries[1].sizeBytes).toBe(12);
   });
 
-  it('mtime 为 0 时 modifiedAt 是 null，不是 1970 年', async () => {
+  it('when the mtime is 0, modifiedAt is null, not the year 1970', async () => {
     const handle = makeFakeClient({
       readdir: {
         list: [
@@ -357,7 +366,7 @@ describe('SshConnection.list', () => {
     expect(entry.modifiedAt).toBeNull();
   });
 
-  it('readdir 出错时报 FILE_TRANSFER_FAILED，并带上 remotePath', async () => {
+  it('when readdir fails it reports FILE_TRANSFER_FAILED and carries the remotePath', async () => {
     const handle = makeFakeClient({
       readdir: { err: new Error('No such file') },
     });
@@ -370,7 +379,7 @@ describe('SshConnection.list', () => {
     });
   });
 
-  it('remotePath 末尾的斜杠不重复拼进条目路径', async () => {
+  it('a trailing slash of the remotePath is not joined twice into the path of the entry', async () => {
     const handle = makeFakeClient({
       readdir: {
         list: [
@@ -391,10 +400,12 @@ describe('SshConnection.list', () => {
   });
 });
 
-describe('SSH 输出解码（约束 G15 / 风险 RF-3）', () => {
-  it('exec 的 stdout 跨 chunk 拆开的中文字符不被拆坏', async () => {
-    // '中' = E4 B8 AD：前两字节落在第一个 chunk，第三字节落在第二个 chunk。
-    // 逐 chunk 独立解码会得到两个 U+FFFD，合法内容被静默损坏。
+describe('the decoding of the SSH output (constraint G15 / risk RF-3)', () => {
+  it('a multi-byte character of the stdout of exec, split across chunks, is not corrupted', async () => {
+    null
+// into the second.
+    // Decoding every chunk on its own yields two U+FFFD, and valid content is
+// silently corrupted.
     const bytes = Buffer.from('中文', 'utf8');
     const handle = makeFakeClient({
       stdoutChunks: [bytes.subarray(0, 2), bytes.subarray(2)],
@@ -411,7 +422,7 @@ describe('SSH 输出解码（约束 G15 / 风险 RF-3）', () => {
     expect(result.stderr).not.toContain('�');
   });
 
-  it('会话通道跨 chunk 拆开的中文字符不被拆坏', async () => {
+  it('a multi-byte character of the session channel, split across chunks, is not corrupted', async () => {
     const handle = makeFakeClient();
     const conn = makeConn(handle);
     await conn.open();
@@ -431,11 +442,13 @@ describe('SSH 输出解码（约束 G15 / 风险 RF-3）', () => {
   });
 });
 
-describe('SshConnection.exec 的超时路径', () => {
-  it('超时只关那一条通道，不拆整条连接', async () => {
-    // 原来超时调的是 `this.client.end()`——那会把该 client 上**所有通道**
-    // 一起关掉：用户正用着的交互终端当场断掉，
-    // 而连接已经死了却仍被当成「已打开」。
+describe('the timeout path of SshConnection.exec', () => {
+  it('a timeout closes only that one channel, it does not tear down the whole connection', async () => {
+    // The timeout used to call `this.client.end()` — that would close **every
+// channel** of that client
+    // at once: the interactive terminal the operator is using would break
+// immediately,
+    // while the connection is already dead but still treated as "open".
     const handle = makeFakeClient({ execNeverCloses: true });
     const conn = makeConn(handle);
     await conn.open();
@@ -444,20 +457,22 @@ describe('SshConnection.exec 的超时路径', () => {
 
     expect(result.timedOut).toBe(true);
     expect(result.exitCode).toBe(124);
-    // 连接不该被拆
+    // The connection may not be torn down
     expect(handle.endCalls()).toBe(0);
   });
 
-  it('远端不关通道时，Promise 也要自己结算（不能永久挂起）', async () => {
+  it('when the remote side does not close the channel, the promise still settles on its own (it may not hang forever)', async () => {
     const handle = makeFakeClient({ execNeverCloses: true });
     const conn = makeConn(handle);
     await conn.open();
 
-    // 若没有独立的超时结算路径，这个 Promise 永不 settle，
-    // 调用方永久挂起——这里用超时兜底保证测试不会挂死。
+    // Without a separate path that settles it on timeout, this promise never
+// settles,
+    // and the caller hangs forever — a timeout is used here as a floor so that the
+// test cannot hang.
     const result = await Promise.race([
       conn.exec('sleep 100', { timeoutMs: 50 }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('挂住了')), 2000)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('it hung')), 2000)),
     ]);
     expect(result.timedOut).toBe(true);
   });

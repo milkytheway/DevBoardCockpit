@@ -2,58 +2,62 @@ import { describe, it, expect } from 'vitest';
 import { permissionCovers, requiresSatisfied } from '../../../src/main/cards/permissions';
 
 /**
- * 卡片的权限集。
+ * The permission set of a card.
  *
- * ── 契约 §2.2 的一句话 ──
+ * One sentence of contract §2.2:
  *
- * > `requires` 里的每一项，必须被 `permissions` 里的**某一项**覆盖。
+ * > Every item of `requires` has to be covered by **one** item of
+ * > `permissions`.
  *
- * **注意是「覆盖」不是「相等」**——这让卡片既能声明精确需求，
- * 又能申请一个更宽的读权限（反过来不成立）。
+ * **Note that it is "covered" and not "equal"** — that lets a card state an
+ * exact need and ask for a wider read permission as well (the other way round
+ * does not hold).
  */
-describe('卡片的读权限覆盖', () => {
-  it('通配模式能覆盖具体的 tag（契约 §2.2 的例子）', () => {
+describe('the coverage of the read permissions of a card', () => {
+  it('a wildcard pattern covers a concrete tag (the example of contract §2.2)', () => {
     expect(permissionCovers({ read: ['cpu.core.*.usage'], write: [] }, 'cpu.core.3.usage')).toBe(
       true,
     );
   });
 
-  it('反过来不成立：具体的权限覆盖不了通配', () => {
+  it('the other way round does not hold: a concrete permission does not cover a wildcard', () => {
     expect(permissionCovers({ read: ['cpu.core.3.usage'], write: [] }, 'cpu.core.*.usage')).toBe(
       false,
     );
   });
 
-  it('不相关的 tag 覆盖不了', () => {
+  it('an unrelated tag is not covered', () => {
     expect(permissionCovers({ read: ['cpu.usage'], write: [] }, 'mem.usage')).toBe(false);
   });
 
-  it('段数不同就是覆盖不了（cpu.core.*.usage 盖不住 cpu.usage）', () => {
+  it('a different number of segments means it is not covered (cpu.core.*.usage does not cover cpu.usage)', () => {
     expect(permissionCovers({ read: ['cpu.core.*.usage'], write: [] }, 'cpu.usage')).toBe(false);
   });
 });
 
-describe('requires 与 permissions 的关系', () => {
-  it('每一项都被覆盖 → 满足', () => {
+describe('the relation between requires and permissions', () => {
+  it('every item is covered → it is satisfied', () => {
     expect(
       requiresSatisfied(['cpu.core.3.usage'], { read: ['cpu.core.*.usage'], write: [] }),
     ).toBe(true);
   });
 
-  it('有一项没被覆盖 → 不满足', () => {
+  it('one item is not covered → it is not satisfied', () => {
     expect(requiresSatisfied(['mem.usage'], { read: ['cpu.core.*.usage'], write: [] })).toBe(false);
   });
 
-  it('空的 requires 恒满足', () => {
+  it('an empty requires is always satisfied', () => {
     expect(requiresSatisfied([], { read: [], write: [] })).toBe(true);
   });
 });
 
 /**
- * **「有效权限 = 声明」** ✓（契约 §2.4 ✓ · **ADR-D46** ✓）。
+ * **"the effective permission is the declaration"** (contract §2.4).
  *
- * → **不再有第二份「谁授过」** ✓（**同一件事记两遍** ✗ —— **迟早对不上** ✗）。
- * → **板型包说了算** ✓：**板上能做什么由板型包声明** ✓；
- *   **这张卡能做什么由它的 manifest 声明** ✓ —— **会话层守着** ✓
- *   （**声明之外的一律 denied** ✓ —— 见 `tests/unit/cards/session.test.ts` ✓）。
+ * → **There is no second "who granted it" any more** (**recording the same
+ *   thing twice** — **it will not match eventually**).
+ * → **The board pack decides**: **what the board can do is declared by the
+ *   board pack**; **what this card can do is declared by its manifest** — and
+ *   **the session layer guards it** (**everything outside the declaration is
+ *   denied**, see `tests/unit/cards/session.test.ts`).
  */

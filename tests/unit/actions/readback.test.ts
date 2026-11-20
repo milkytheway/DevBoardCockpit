@@ -3,15 +3,17 @@ import { runReadback, type ReadbackDeps } from '../../../src/main/actions/readba
 import type { TagReading } from '../../../src/shared/tag-reading';
 
 /**
- * 回读的五种形式 —— 契约 `docs/spec/02-board-pack.md` §4.4。
+ * The five forms of readback — contract `docs/spec/02-board-pack.md` §4.4.
  *
- * ── 为什么回读是强制的 ──
+ * Why the readback is mandatory, in the words of the contract §5.2: "The
+ * readback is mandatory. After the action has run, the runtime takes a value
+ * according to the `readback` and returns it as the result of the action. A
+ * card **must** render the returned value and may not update itself
+ * optimistically."
  *
- * 契约 §5.2：「**回读是强制的**。运行时在动作执行后按 `readback` 取值，
- * 把这个值作为动作结果返回。卡片**必须**用返回值渲染，不能自己乐观更新。」
- *
- * → **没回读 = 不知道板子有没有真的进入目标状态**，
- * 而驾驶舱显示「已生效」却其实没生效，是这个产品最不能有的那种错。
+ * Without a readback there is no way to know whether the board really entered
+ * the intended state. A cockpit that shows "applied" when nothing happened is
+ * the one kind of error this product must never produce.
  */
 function deps(overrides: Partial<ReadbackDeps> = {}): ReadbackDeps {
   return {
@@ -35,8 +37,8 @@ function reading(overrides: Partial<TagReading> = {}): TagReading {
   };
 }
 
-describe('回读 · 形式 1（tag，默认形式）', () => {
-  it('值符合 → ok + verified + 值', async () => {
+describe('readback · form 1 (tag, the default form)', () => {
+  it('the value matches → ok + verified + the value', async () => {
     const result = await runReadback(
       { tag: 'system.load', expect: '1' },
       { raw: {}, encoded: {} },
@@ -47,7 +49,7 @@ describe('回读 · 形式 1（tag，默认形式）', () => {
     expect(result.value).toBe(1);
   });
 
-  it('值不符 → 不是 ok，且说清「期望什么、实际什么」', async () => {
+  it('the value does not match → not ok, and it states what was expected and what was actual', async () => {
     const result = await runReadback(
       { tag: 'system.load', expect: '1' },
       { raw: {}, encoded: {} },
@@ -59,7 +61,7 @@ describe('回读 · 形式 1（tag，默认形式）', () => {
     expect(result.actual).toBe(0);
   });
 
-  it('读不到那个 tag → not_found（不是「不符」）', async () => {
+  it('the tag cannot be read → not_found (not a mismatch)', async () => {
     const result = await runReadback(
       { tag: 'system.load', expect: '1' },
       { raw: {}, encoded: {} },
@@ -69,7 +71,7 @@ describe('回读 · 形式 1（tag，默认形式）', () => {
     expect(result.reason).toBe('not_found');
   });
 
-  it('tag 本身是 unavailable → 也不能算「确认生效」', async () => {
+  it('the tag itself is unavailable → it still does not count as confirmed', async () => {
     const result = await runReadback(
       { tag: 'system.load', expect: '1' },
       { raw: {}, encoded: {} },
@@ -79,8 +81,8 @@ describe('回读 · 形式 1（tag，默认形式）', () => {
   });
 });
 
-describe('回读 · 形式 2（file_equals）', () => {
-  it('相等 → ok', async () => {
+describe('readback · form 2 (file_equals)', () => {
+  it('equal → ok', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '128' },
       { raw: {}, encoded: {} },
@@ -90,7 +92,7 @@ describe('回读 · 形式 2（file_equals）', () => {
     expect(result.verified).toBe(true);
   });
 
-  it('不等 → mismatch', async () => {
+  it('not equal → mismatch', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '128' },
       { raw: {}, encoded: {} },
@@ -100,7 +102,7 @@ describe('回读 · 形式 2（file_equals）', () => {
     expect(result.reason).toBe('readback_mismatch');
   });
 
-  it('带 tolerance：差 1 在容差内 → 算符合', async () => {
+  it('with a tolerance: a difference of 1 is inside it → counts as a match', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '128', tolerance: 1 },
       { raw: {}, encoded: {} },
@@ -109,7 +111,7 @@ describe('回读 · 形式 2（file_equals）', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('带 tolerance：差 2 超容差 → 不符', async () => {
+  it('with a tolerance: a difference of 2 exceeds it → mismatch', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '128', tolerance: 1 },
       { raw: {}, encoded: {} },
@@ -118,7 +120,7 @@ describe('回读 · 形式 2（file_equals）', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('读不到那个文件 → not_found', async () => {
+  it('the file cannot be read → not_found', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '128' },
       { raw: {}, encoded: {} },
@@ -129,8 +131,8 @@ describe('回读 · 形式 2（file_equals）', () => {
   });
 });
 
-describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
-  it('command_ok：**动作自己那条命令**返回 0 → ok（**不跑第二条命令**）', async () => {
+describe('readback · form 3 (command_ok) and form 4 (verify)', () => {
+  it('command_ok: **the command of the action itself** returns 0 → ok (**no second command is run**)', async () => {
     let executed = 0;
     const result = await runReadback(
       { kind: 'command_ok' },
@@ -148,7 +150,7 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(executed).toBe(0);
   });
 
-  it('command_ok：动作那条命令返回非 0 → mismatch', async () => {
+  it('command_ok: the command of the action returns non-zero → mismatch', async () => {
     const result = await runReadback(
       { kind: 'command_ok' },
       { raw: {}, encoded: {} },
@@ -159,7 +161,7 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.reason).toBe('readback_mismatch');
   });
 
-  it('**没有退出码的连接**（串口）上，command_ok 被拒绝', async () => {
+  it('on a **connection without an exit code** (serial), command_ok is rejected', async () => {
     const result = await runReadback(
       { kind: 'command_ok' },
       { raw: {}, encoded: {} },
@@ -170,10 +172,10 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.reason).toBe('unsupported_transport');
   });
 
-  it('**动作那条命令被取消了** → 理由是 cancelled（**不是「不符」** ✓）', async () => {
-    // ⚠️ 取消的退出码是 `null` ✓（不是 0、也不是 124 ✓）——
-    // → 不看 `cancelled` 标志的话，它会掉进「返回非 0」那一档 ✗
-    // → 报「回读不符」是**撒谎** ✗（人叫停 ≠ 板子不听话 ✓）
+  it('**the command of the action was cancelled** → the reason is cancelled (**not a mismatch**)', async () => {
+    // The exit code of a cancelled command is `null` (neither 0 nor 124).
+    // Without the `cancelled` flag it would fall into the "returned non-zero" branch.
+    // Reporting a readback mismatch would be a lie: the operator stopped it, the board did not disobey.
     const result = await runReadback(
       { kind: 'command_ok' },
       { raw: {}, encoded: {} },
@@ -184,7 +186,7 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.reason).toBe('cancelled');
   });
 
-  it('verify：命令成功 → ok', async () => {
+  it('verify: the command succeeds → ok', async () => {
     const result = await runReadback(
       { kind: 'verify', command: 'test -e /tmp/marker', timeout_ms: 500 },
       { raw: {}, encoded: {} },
@@ -193,7 +195,7 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('verify：命令一直不成功 → 超时（不是「不符」）', async () => {
+  it('verify: the command never succeeds → timeout (not a mismatch)', async () => {
     const result = await runReadback(
       { kind: 'verify', command: 'test -e /tmp/marker', timeout_ms: 30 },
       { raw: {}, encoded: {} },
@@ -206,7 +208,7 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
     expect(result.reason).toBe('timeout');
   });
 
-  it('**没有退出码的连接**上，verify 也被拒绝', async () => {
+  it('on a **connection without an exit code**, verify is rejected as well', async () => {
     const result = await runReadback(
       { kind: 'verify', command: 'test -e /tmp/marker' },
       { raw: {}, encoded: {} },
@@ -217,10 +219,10 @@ describe('回读 · 形式 3（command_ok）与形式 4（verify）', () => {
   });
 });
 
-describe('回读 · 形式 5（none）', () => {
-  it('ok: true 但 **verified: false**（不是失败，也不是「什么都没说」）', async () => {
+describe('readback · form 5 (none)', () => {
+  it('ok: true but **verified: false** (neither a failure nor "nothing was said")', async () => {
     const result = await runReadback(
-      { kind: 'none', consequence: '点亮板载 LED 约 1 秒' },
+      { kind: 'none', consequence: 'lights the on-board LED for about 1 second' },
       { raw: {}, encoded: {} },
       deps(),
     );
@@ -230,8 +232,8 @@ describe('回读 · 形式 5（none）', () => {
   });
 });
 
-describe('回读 · 参数替换（expect 可以写参数名）', () => {
-  it('expect 里的 {value} 用这次调用的**原始值**（不是 shell 片段）', async () => {
+describe('readback · parameter substitution (expect may name an argument)', () => {
+  it('{value} in expect uses the **original value** of this call (not the shell fragment)', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '{value}' },
       { raw: { value: '128' }, encoded: { value: "'128'" } },
@@ -240,7 +242,7 @@ describe('回读 · 参数替换（expect 可以写参数名）', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('expect 里的 {value} 换出来的值与文件不符 → mismatch', async () => {
+  it('the value substituted for {value} in expect does not match the file → mismatch', async () => {
     const result = await runReadback(
       { kind: 'file_equals', path: '/sys/backlight', expect: '{value}' },
       { raw: { value: '128' }, encoded: { value: "'128'" } },

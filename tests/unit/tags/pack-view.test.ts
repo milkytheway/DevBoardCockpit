@@ -3,33 +3,38 @@ import { packView, type PackView } from '../../../src/main/tags/pack-view';
 import type { BoardPack } from '../../../src/main/tags/schema';
 
 /**
- * **板型包的脱敏只读投影**（契约 `spec/04` §2.1 / §2.4 ✓ · ADR-D40 ✓）。
+ * The **redacted read-only projection of a board pack** (contract `spec/04`
+ * §2.1 / §2.4).
  *
- * ── 为什么要有这一层 ──
+ * Why this layer exists:
  *
- * `TagRuntime.pack` 是**私有的** ✓ —— 而 MCP 的读侧工具要看到它 ✓
- * （`list_data_sources` / `describe_tag` / `list_tags` ✓）。
+ * `TagRuntime.pack` is **private**, and the read-side tools of MCP have to
+ * see it (`list_data_sources` / `describe_tag` / `list_tags`).
  *
- * → **但不能把原始 args 直接给 agent** ✓：
- * `exec_regex` 的 args 里有 **`command`** ✓（一条要跑在板子上的裸命令 ✓），
- * `script` 的 args 里有 **`path`（宿主文件系统上的路径）**与 **`interpreter`** ✓
- * → 那两个拼起来就是「宿主上有什么、在哪」+「一条命令」✗
- * → **正是契约 §1.3「不准有裸 send_command」要防的那件事** ✓。
+ * → **But the raw args may not be handed to an agent**: the args of
+ *   `exec_regex` hold a **`command`** (a bare command that has to run on
+ *   the board) and the args of `script` hold a **`path` (a path on the file
+ *   system of the host)** and the **`interpreter`** — together that is "what
+ *   the host has and where" plus "a command", which is exactly what the
+ *   contract §1.3, "no bare send_command", is there to prevent.
  *
- * ── 放行表按 `(kind, 参数名)` 判定 ──
+ * The table of what is let through is decided by `(kind, name of the
+ * parameter)`:
  *
- * **不是**按参数名单独判定 ✓ —— 因为 `path` 在 `file_read` 里是**板上路径**（可给 ✓），
- * 在 `script` 里是**宿主路径**（不可给 ✓）。
+ * **Not** by the name of the parameter alone — `path` is a **path on the
+ * board** in `file_read` (it may be given) and a **path on the host** in
+ * `script` (it may not).
  *
- * → 这张表**逐 kind 写死** ✓（契约 v5 §2.4 的那张 ✓）✓
- * → **不在表里的参数一律不给** ✓（封闭表，不是「先给再筛」✓）。
+ * → The table is **written out for every kind** and **a parameter that is not
+ *   in the table is never given** (a closed table, not "give it and filter
+ *   afterwards").
  */
 
 const PACK: BoardPack = {
   apiVersion: 'devboard/v1',
   kind: 'BoardPack',
   id: 'demo-pack',
-  name: '演示板型包',
+  name: 'demo board pack',
   version: '1.0.0',
   requires: { transports: ['adb'], capabilities: ['shell', 'exec'] },
   poll_groups: [
@@ -90,48 +95,48 @@ const PACK: BoardPack = {
   actions: [],
 };
 
-describe('板型包的脱敏投影', () => {
-  it('**包的身份与轮询组都在** ✓（agent 要知道「这是什么板」）', () => {
+describe('the redacted projection of a board pack', () => {
+  it('**the identity of the pack and its poll groups are there** (the agent has to know "what kind of board is this")', () => {
     const view = packView(PACK)!;
     expect(view.id).toBe('demo-pack');
-    expect(view.name).toBe('演示板型包');
+    expect(view.name).toBe('demo board pack');
     expect(view.version).toBe('1.0.0');
     expect(view.poll_groups.map((g) => g.id)).toEqual(['fast', 'slow']);
     expect(view.poll_groups[0]?.interval_ms).toBe(1000);
     expect(view.poll_groups[1]?.interval_ms).toBe(30000);
   });
 
-  it('**reader 的 provides 是具体 tag 模式** ✓（agent 要知道它提供什么）', () => {
+  it('**the provides of a reader are the concrete tag patterns** (the agent has to know what it offers)', () => {
     const view = packView(PACK)!;
     const cpu = view.readers.find((r) => r.id === 'cpu');
     expect(cpu?.provides).toEqual(['cpu.usage']);
     expect(cpu?.kind).toBe('proc_stat');
   });
 
-  it('**`exec_regex` 的 `command` 一个字都不给** ✓（裸命令不能漏给 agent）', () => {
+  it('**not one character of the `command` of `exec_regex` is given** (a bare command may not leak to the agent)', () => {
     const view = packView(PACK)!;
     const uptime = view.readers.find((r) => r.id === 'uptime');
     expect(uptime).toBeTruthy();
     const dumped = JSON.stringify(uptime);
     expect(dumped).not.toContain('cat /proc/uptime');
     expect(dumped).not.toContain('command');
-    // **但正则与格式要给** ✓（那不是命令 ✓）
+    // **But the pattern and the format are given** (those are not a command)
     expect(uptime?.args['pattern']).toBe('^([0-9.]+)');
     expect(uptime?.args['format']).toBe('float');
   });
 
-  it('**`script` 的宿主路径与解释器都不给** ✓（泄漏本机目录结构）', () => {
+  it('**neither the host path nor the interpreter of `script` is given** (it would leak the directory structure of the host)', () => {
     const view = packView(PACK)!;
     const scripted = view.readers.find((r) => r.id === 'scripted');
     expect(scripted).toBeTruthy();
     const dumped = JSON.stringify(scripted);
     expect(dumped).not.toContain('scripts/status.sh');
     expect(dumped).not.toContain('/bin/sh');
-    // **`script` 的 args 恒为空** ✓
+    // **The args of `script` are always empty**
     expect(scripted?.args).toEqual({});
   });
 
-  it('**板上的路径要给** ✓（契约说「哪个文件」✓ —— `file_read` / `meminfo` / `proc_stat`）', () => {
+  it('**the paths on the board are given** (the contract says "which file" — `file_read` / `meminfo` / `proc_stat`)', () => {
     const view = packView(PACK)!;
     expect(view.readers.find((r) => r.id === 'load')?.args['path']).toBe('/proc/loadavg');
     expect(view.readers.find((r) => r.id === 'mem')?.args['path']).toBe('/proc/meminfo');
@@ -139,19 +144,19 @@ describe('板型包的脱敏投影', () => {
     expect(view.readers.find((r) => r.id === 'cpu')?.args['cpuinfo_path']).toBe('/proc/cpuinfo');
   });
 
-  it('**`thermal_zone` 的 `type_map` 要给** ✓（那是归并表 —— agent 要知道 temp.soc 是怎么归并的）', () => {
+  it('**the `type_map` of `thermal_zone` is given** (it is the merging table — the agent has to know how temp.soc is merged)', () => {
     const view = packView(PACK)!;
     const temp = view.readers.find((r) => r.id === 'temp');
     expect(temp?.args['type_map']).toEqual({ 'soc-thermal': 'soc' });
     expect(temp?.args['glob']).toBe('/sys/class/thermal/*');
   });
 
-  it('**`devfreq_load` 的 `measure` 要给** ✓（那是单位语义的一部分）', () => {
+  it('**the `measure` of `devfreq_load` is given** (it is part of the meaning of the unit)', () => {
     const view = packView(PACK)!;
     expect(view.readers.find((r) => r.id === 'df')?.args['measure']).toBe('utilization');
   });
 
-  it('**`custom` 里的 reader 也要在** ✓（否则 custom.* 的量全都是 null）', () => {
+  it('**the readers of `custom` are there as well** (otherwise every quantity of `custom.*` would be null)', () => {
     const withCustom: BoardPack = {
       ...PACK,
       custom: [
@@ -167,18 +172,18 @@ describe('板型包的脱敏投影', () => {
     expect(view.readers.map((r) => r.id)).toContain('priv');
   });
 
-  it('**没有包就是 `null`** ✓（不猜 ✓）', () => {
+  it('**no pack is `null`** (it does not guess)', () => {
     expect(packView(undefined)).toBeNull();
   });
 
-  it('**放行表是封闭的** ✓ —— 表里没有的参数一律不给 ✓', () => {
+  it('**the table of what is let through is closed** — a parameter that is not in the table is never given', () => {
     const withUnknown: BoardPack = {
       ...PACK,
       readers: [
         {
           id: 'weird',
           kind: 'file_read',
-          // **参数名不在放行表里** ✓
+          // **The name of the parameter is not in the table of what is let through**
           args: { path: '/a', secret: 'x' } as never,
           provides: [{ tag: 'custom.demo-pack.weird', sample: 'value' }],
         },
@@ -191,7 +196,7 @@ describe('板型包的脱敏投影', () => {
   });
 });
 
-/** 类型导出检查（编译期 ✓） */
+/** The check of the exported types (at compile time) */
 export type { PackView as _PackView };
 const _typeCheck: PackView | null = null;
 void _typeCheck;

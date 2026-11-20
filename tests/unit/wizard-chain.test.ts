@@ -3,32 +3,35 @@ import { describeWizard, wizardStepOf, type WizardState } from '../../src/main/w
 import type { ProbeReaderReport } from '../../src/main/tags/probe';
 
 /**
- * **接板向导那条链** ✓ —— 2026-11-19 加 ✓。
+ * The chain of the board wizard, added on 2026-11-19.
  *
- * ── 用户只参与一步 ✓（`docs/探索/02` §二 ✓）──
+ * The operator takes part in one step only:
  *
  * ```
- * 人：选 COM 口 + 波特率          ← 【整个向导里，人唯一必须做的事】
+ * operator: pick the COM port + the baud rate   ← 【the one thing the
+ *                                                    operator must do in the
+ *                                                    whole wizard】
  *         ↓
- * 向导：用这条连接跑一条命令        ← 「第一个真相」
+ * wizard: run one command over that connection  ← "the first truth"
  *         ↓
- *      板子回了 → 真相成立 ✓
+ *      the board answered → the truth holds
  * ```
  *
- * → **其余全自动** ✓（§二.2 ✓）→
- * **逐个试通用元操作** ✓ → **实例化出初版包** ✓ → **落盘** ✓。
+ * → **Everything else is automatic** → the generic meta operations are tried
+ *   one by one → a first pack is instantiated → it is written to disk.
  *
- * ── ⚠️ **「没回话」与「连接失败」是两件事** ✓（§二.3 ✓）──
+ * → **"No answer" and "the connection failed" are two different things**:
  *
- * → 报告要说「**板子没说话**」✓ —— **不是「连接失败」** ✓
- * → **这两个是不同的故障** ✓ → **修法完全不同** ✓。
+ * → the report has to say "**the board did not speak**" and **not "the
+ *   connection failed"**; **these are different faults** and they need
+ *   different fixes.
  */
 function report(readerId: string, ok: boolean, problems: string[] = []): ProbeReaderReport {
   return { readerId, kind: 'file_read', tags: [], problems, ok };
 }
 
-describe('向导 · **人只参与一步** ✓', () => {
-  it('**第一步只问「串口参数」** ✓（**不自动枚举** ✓ —— 用户已定 ✓）', () => {
+describe('the wizard · **the operator takes part in one step only**', () => {
+  it('**the first step asks only for the serial parameters** (**it does not enumerate them** — the operator has decided)', () => {
     const state: WizardState = {
       step: 'choose-serial',
       serial: { port: 'COM3', baudrate: 1500000 },
@@ -36,7 +39,7 @@ describe('向导 · **人只参与一步** ✓', () => {
     expect(wizardStepOf(state)).toBe('choose-serial');
   });
 
-  it('**波特率要人给** ✓（**不试** ✓ —— `docs/探索/02` §一·1.2 ① ✓）', () => {
+  it('**the baud rate comes from the operator** (**it is not tried**)', () => {
     const state: WizardState = {
       step: 'choose-serial',
       serial: { port: 'COM3', baudrate: 1500000 },
@@ -45,70 +48,70 @@ describe('向导 · **人只参与一步** ✓', () => {
   });
 });
 
-describe('向导 · **「没回话」≠「连接失败」** ✓', () => {
-  it('**端口打不开 → 说端口的事** ✓', () => {
+describe('the wizard · **"no answer" is not "the connection failed"**', () => {
+  it('**the port cannot be opened → it talks about the port**', () => {
     const r = describeWizard({
       step: 'first-truth',
-      firstTruth: { ok: false, kind: 'port-unopenable', detail: 'COM3 打不开' },
+      firstTruth: { ok: false, kind: 'port-unopenable', detail: 'COM3 cannot be opened' },
     });
     expect(r.kind).toBe('port-unopenable');
     expect(r.message).toContain('COM3');
   });
 
-  it('**打开但没回话 → 说「板子没说话」** ✓（**不是「连接失败」** ✓）', () => {
+  it('**it opens but there is no answer → it says "the board did not speak"** (**not "the connection failed"**)', () => {
     const r = describeWizard({
       step: 'first-truth',
-      firstTruth: { ok: false, kind: 'no-reply', detail: '连上了但命令没有回包' },
+      firstTruth: { ok: false, kind: 'no-reply', detail: 'it connected but the command got no answer' },
     });
     expect(r.kind).toBe('no-reply');
     expect(r.message).toContain('said nothing');
     expect(r.message).not.toContain('connection failed');
   });
 
-  it('**没回话要说清最常见的原因** ✓（**串口被别的程序占着** ✓ —— `docs/02` 事实 ✓）', () => {
+  it('**no answer has to name the most common cause** (**the serial port is held by another program** — see the facts in `docs/02-device-facts.md`)', () => {
     const r = describeWizard({
       step: 'first-truth',
-      firstTruth: { ok: false, kind: 'no-reply', detail: '连上了但命令没有回包' },
+      firstTruth: { ok: false, kind: 'no-reply', detail: 'it connected but the command got no answer' },
     });
-    expect(r.hints.length, '要给出下一步查什么 ✓').toBeGreaterThan(0);
+    expect(r.hints.length, 'it has to say what to check next').toBeGreaterThan(0);
   });
 
-  it('**第一个真相成立 → 下一步是「试通用元操作」** ✓', () => {
+  it('**the first truth holds → the next step is "try the generic meta operations"**', () => {
     const r = describeWizard({
       step: 'first-truth',
-      firstTruth: { ok: true, kind: 'ok', detail: '板子回了' },
+      firstTruth: { ok: true, kind: 'ok', detail: 'the board answered' },
     });
     expect(r.next).toBe('probe-generic');
   });
 });
 
-describe('向导 · **试出来的绿/红 = 真相表** ✓', () => {
-  it('**绿的说「有」· 红的说「没有」** ✓', () => {
+describe('the wizard · **the green and red that were found = the table of truths**', () => {
+  it('**the green one says "it is there" · the red one says "it is not there"**', () => {
     const r = describeWizard({
       step: 'probe-generic',
-      firstTruth: { ok: true, kind: 'ok', detail: '板子回了' },
-      outcomes: [report('cpu', true), report('led', false, ['路径不对'])],
+      firstTruth: { ok: true, kind: 'ok', detail: 'the board answered' },
+      outcomes: [report('cpu', true), report('led', false, ['the path is wrong'])],
     });
     expect(r.kind).toBe('ok');
     expect(r.summary?.green).toEqual(['cpu']);
     expect(r.summary?.red.map((x) => x.readerId)).toEqual(['led']);
   });
 
-  it('**「红的」要给出原因** ✓（**「这板没有」也是事实** ✓）', () => {
+  it('**a red one has to give its reason** (**"this board does not have it" is a fact as well**)', () => {
     const r = describeWizard({
       step: 'probe-generic',
-      firstTruth: { ok: true, kind: 'ok', detail: '板子回了' },
-      outcomes: [report('led', false, ['路径不对', '没这个目录'])],
+      firstTruth: { ok: true, kind: 'ok', detail: 'the board answered' },
+      outcomes: [report('led', false, ['the path is wrong', 'there is no such directory'])],
     });
-    expect(r.summary?.red[0]?.detail).toContain('路径不对');
+    expect(r.summary?.red[0]?.detail).toContain('the path is wrong');
   });
 
-  it('**全红 → 那不是「reader 的问题」** ✓（**是连接没通** ✓ —— `probeHint` 同款 ✓）', () => {
+  it('**all red → that is not "the reader has a problem"** (**the connection is not open** — the same as `probeHint`)', () => {
     const r = describeWizard({
       step: 'probe-generic',
-      firstTruth: { ok: true, kind: 'ok', detail: '板子回了' },
+      firstTruth: { ok: true, kind: 'ok', detail: 'the board answered' },
       outcomes: [report('cpu', false), report('mem', false)],
     });
-    expect(r.kind, '一个数都没出来 → 连接本身的问题 ✓').toBe('connection-dead');
+    expect(r.kind, 'not a single number came out → it is a problem of the connection itself').toBe('connection-dead');
   });
 });

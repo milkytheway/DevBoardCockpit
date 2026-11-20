@@ -4,18 +4,19 @@ import type { BoardPack } from '../../src/main/tags/schema';
 import type { ExecResult } from '../../src/main/hal/connection';
 
 /**
- * 探针的**整条流程**（用假的连接）。
+ * The **whole flow of the probe** (with a fake connection).
  *
- * 探针要做的两件事：
- * 1. 每个组采**两轮**（`proc_stat` 的占用率是两次采样做差，首读是 pending）；
- * 2. 逐 reader 判定「不多、不少、状态都是 ok」。
+ * The two things the probe has to do:
+ * 1. sample every group **twice** (the usage of `proc_stat` is the
+ *    difference of two samples, the first reading is pending);
+ * 2. judge reader by reader: "no more, no less, and every status is ok".
  */
 
 const PACK: BoardPack = {
   apiVersion: 'devboard/v1',
   kind: 'BoardPack',
   id: 'tiny',
-  name: '最小包',
+  name: 'minimal pack',
   version: '1.0.0',
   requires: { transports: ['adb'], capabilities: ['exec'] },
   poll_groups: [{ id: 'fast', interval_ms: 1000, readers: ['cpu', 'gpu'] }],
@@ -46,14 +47,14 @@ const STAT_SECOND = `cpu  160 0 60 1200 0 0 0 0 0 0
 cpu0 160 0 60 1200 0 0 0 0 0 0`;
 const CPUINFO = 'processor\t: 0\nCPU part\t: 0xd05';
 
-/** 假的连接：按协议吐出带 marker 的输出 */
+/** A fake connection: it emits the output with markers according to the protocol */
 class FakeConnection {
   calls = 0;
-  /** 每个 key 调过几次（决定取数组里的第几个） */
+  /** How often each key was called (that decides which entry of the array is taken) */
   private readonly counters = new Map<string, number>();
   constructor(private readonly bodies: Record<string, string | null | (string | null)[]>) {}
 
-  /** 这一轮该回什么 */
+  /** What this round has to answer */
   private bodyFor(key: string): string | null | undefined {
     const spec = this.bodies[key];
     if (Array.isArray(spec)) {
@@ -79,8 +80,8 @@ class FakeConnection {
   }
 }
 
-describe('probePack · 整条流程', () => {
-  it('全绿', async () => {
+describe('probePack · the whole flow', () => {
+  it('all green', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
       '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',
@@ -90,7 +91,7 @@ describe('probePack · 整条流程', () => {
     expect(report.readers.map((r) => r.readerId)).toEqual(['cpu', 'gpu']);
   });
 
-  it('**每个组采两轮**（proc_stat 要两次采样才有值）', async () => {
+  it('**every group is sampled twice** (proc_stat needs two samples before it has a value)', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
       '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',
@@ -99,7 +100,7 @@ describe('probePack · 整条流程', () => {
     expect(conn.calls).toBe(2);
   });
 
-  it('只采一轮 → cpu 是 pending → **不绿**', async () => {
+  it('one round only → the cpu is pending → **it is not green**', async () => {
     const conn = new FakeConnection({
       '/proc/stat': `${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`,
       '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',
@@ -110,18 +111,18 @@ describe('probePack · 整条流程', () => {
     expect(cpu.problems.join('\n')).toContain('pending');
   });
 
-  it('**两轮之间留一个间隔**（否则窗口长度为 0，算不出占用率）', async () => {
+  it('**there is a gap between the two rounds** (otherwise the window has a length of 0 and the usage cannot be computed)', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
       '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',
     });
     const started = Date.now();
     await probePack(PACK, conn, { gapMs: 60 });
-    // 至少隔了 60ms——**sleep 保证的是「至少」**，所以这条断言不会飘
+    // At least 60ms have passed — **a sleep guarantees "at least"**, so this assertion does not drift
     expect(Date.now() - started).toBeGreaterThanOrEqual(60);
   });
 
-  it('某个 reader 读不到 → **它红，别的照常**', async () => {
+  it('a reader cannot be read → **it is red, the others go on**', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
       '/sys/class/devfreq/fb000000.gpu/load': null,
@@ -134,7 +135,7 @@ describe('probePack · 整条流程', () => {
     expect(cpu.ok).toBe(true);
   });
 
-  it('报告里带上包里声明的 tag 与值', async () => {
+  it('the report carries the tags the pack declares and their values', async () => {
     const conn = new FakeConnection({
       '/proc/stat': [`${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`, `${STAT_SECOND}\n--- cpuinfo ---\n${CPUINFO}`],
       '/sys/class/devfreq/fb000000.gpu/load': '37@300000000Hz',

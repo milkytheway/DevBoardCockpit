@@ -3,92 +3,98 @@ import { join } from 'node:path';
 import { sdkDocs, SDK_TOPICS, setSdkCardsDir } from '../../../src/main/mcp/sdk-docs';
 
 /**
- * **SDK 活文档**（契约 `spec/04` §2.3 的 `get_card_sdk_docs` ✓ · ADR-D40 ✓）。
+ * The live SDK documentation (contract `spec/04` §2.3, `get_card_sdk_docs`).
  *
- * ── 为什么必须是「从活代码生成」──
+ * Why it has to be **generated from the live code**:
  *
- * **手抄的静态文本会漂** ✓ —— API 加一个方法它不会自己更新 ✓
- * → agent 照着写会调一个**不存在的 API** ✗ → 卡片一调就报「方法不存在」✗
- * → **而没人查得出是哪边错了** ✗（那就跟 API 注册表自己漂了一样 ✗）。
+ * **Hand-copied static text drifts** — when the API gains a method the text
+ * does not update itself, so an agent writes against an **API that does not
+ * exist** and the card reports "no such method" on the first call, and
+ * **nobody can tell which side is wrong**. That is the same drift as in the
+ * API registry itself.
  *
- * → **形状取自代码** ✓（注册表 ✓ · 封闭 schema 白名单 ✓）
- * → **语义取自契约** ✓（字段是什么意思 ✓ —— 代码里没有那个 ✓）。
+ * The **shape** comes from the code (the registry, the whitelist of the closed
+ * schema) and the **meaning** comes from the contract (what a field means —
+ * the code does not hold that).
  */
-/** **真卡目录** ✓ —— `examples` 主题列的是**真卡** ✓（编的会与实际不符 ✓） */
+/** **the real card directory** — the `examples` topic lists **real cards** (invented ones would not match reality) */
 const CARDS_DIR = join(__dirname, '../../../cards');
 
-describe('MCP · SDK 活文档', () => {
+describe('MCP · the live SDK documentation', () => {
   beforeAll(() => {
     setSdkCardsDir(CARDS_DIR);
   });
 
-  it('**四个主题都在** ✓（契约 §2.3 列的那四个 ✓）', () => {
+  it('**all four topics are there** (the four listed in contract §2.3)', () => {
     expect(SDK_TOPICS).toEqual(['manifest', 'api', 'examples', 'layout']);
   });
 
-  it('**省略 topic → 返回全部** ✓（契约 §2.3 ✓）', () => {
+  it('**the topic is omitted → everything is returned** (contract §2.3)', () => {
     const docs = sdkDocs(undefined);
     expect(docs.topics).toEqual(['manifest', 'api', 'examples', 'layout']);
-    // **content 是一个字符串** ✓（agent 把它当提示词的一部分读 ✓）
+    // **content is a string** (the agent reads it as part of a prompt)
     expect(typeof docs.content).toBe('string');
     expect(docs.content.length).toBeGreaterThan(0);
   });
 
-  it('**指定一个主题 → 只给那一个** ✓', () => {
+  it('**one topic is named → only that one is returned**', () => {
     const docs = sdkDocs('api');
     expect(docs.topics).toEqual(['api']);
     expect(docs.content).toContain('tags.get');
-    // **别的主题不进** ✓
+    // **no other topic is included**
     expect(docs.content).not.toContain('min_board_pack');
   });
 
-  it('**`api` 主题列的是「本 build 实际有的方法」** ✓（**没实现的就不列** ✓）', () => {
+  it('**the `api` topic lists the methods this build actually has** (**a method that is not implemented is not listed**)', () => {
     const docs = sdkDocs('api');
     expect(docs.content).toContain('tags.get');
     expect(docs.content).toContain('actions.invoke');
     expect(docs.content).toContain('workflows.run');
     expect(docs.content).toContain('storage.set');
-    // **`notify` 没实现** ✓ → **不列** ✓（列了 = 卡片以为通知发出去了 ✓）
+    // **`notify` is not implemented** → **it is not listed** (listing it would mean
+// the card believes the notification went out)
     expect(docs.content).not.toContain('cockpit.notify');
   });
 
-  it('**每个方法都有一句说明** ✓（**光有方法名不够** ✓ —— agent 不知道它什么时候用 ✓）', () => {
+  it('**every method carries a sentence of explanation** (**the name alone is not enough** — the agent does not know when to use it)', () => {
     const docs = sdkDocs('api');
-    // **`tags.get` 的说明** ✓
+    // **the explanation of `tags.get`**
     expect(docs.content).toMatch(/tags\.get[\s\S]{0,200}?Read/);
   });
 
-  it('**`manifest` 主题给出封闭 schema 的字段表** ✓（**从代码取** ✓）', () => {
+  it('**the `manifest` topic gives the field table of the closed schema** (**taken from the code**)', () => {
     const docs = sdkDocs('manifest');
     expect(docs.content).toContain('permissions');
     expect(docs.content).toContain('entry');
     expect(docs.content).toContain('apiVersion');
-    // **未知字段会报错** ✓ → 文档里要说清** ✓
+    // **an unknown field is an error** → the documentation has to say so
     expect(docs.content).toContain('Unknown fields');
   });
 
-  it('**`layout` 主题用契约的词** ✓（`cards` / `card_id` ✓ —— 不是实现的 `units` / `cardId` ✓）', () => {
+  it('**the `layout` topic uses the words of the contract** (`cards` / `card_id`, not the `units` / `cardId` of the implementation)', () => {
     const docs = sdkDocs('layout');
     expect(docs.content).toContain('card_id');
     expect(docs.content).toContain('cards');
   });
 
-  it('**`examples` 主题给出内置卡的清单** ✓（**真卡** ✓ —— 不是编的 ✓）', () => {
+  it('**the `examples` topic lists the built-in cards** (**real cards**, not invented ones)', () => {
     const docs = sdkDocs('examples');
     expect(docs.content).toContain('cpu-usage');
-    // **显示它的读权限** ✓（agent 照着改 manifest 时要知道能读什么 ✓）
+    // **it shows the read permissions** (an agent editing the manifest has to know
+// what it may read)
     expect(docs.content).toContain('permissions.read');
-    // **读权限是真的** ✓（**不是编的** ✓ —— 真卡读的是 `cpu.usage` ✓）
+    // **the read permissions are real** (**not invented** — a real card reads
+// `cpu.usage`)
     expect(docs.content).toContain('cpu.usage');
   });
 
-  it('**不认识的主题 → 空内容** ✓（**不猜** ✓）', () => {
+  it('**an unknown topic → empty content** (**it does not guess**)', () => {
     const docs = sdkDocs('nope' as never);
     expect(docs.topics).toEqual([]);
     expect(docs.content).toBe('');
   });
 
-  it('**每个响应都带 apiVersion** ✓（契约 §四 ✓）', () => {
+  it('**every response carries apiVersion** (contract §4)', () => {
     expect(sdkDocs('api')['apiVersion']).toBe('devboard/v1');
   });
 });

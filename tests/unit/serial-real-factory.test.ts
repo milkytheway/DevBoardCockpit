@@ -1,21 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 
 /**
- * 真实工厂的行为。
+ * The behaviour of the real factory.
  *
- * 整支评审的 C1：串口端口从未打开（`autoOpen:false` 且从不 `open()`），
- * 用户第一次按键就崩主进程。修完之后**没有测试守着**——
- * 因为所有测试都用注入的假工厂，真实工厂的「开端口」那一步从没被覆盖。
- * 把 `await port.open()` 删掉，整个套件仍然全绿。
+ * The C1 of the whole review: the serial port was never opened
+ * (`autoOpen:false` and never an `open()`), so the first key press of the
+ * operator took the main process down. After the fix **no test guarded it**,
+ * because every test uses an injected fake factory and the step "the real
+ * factory opens the port" was never covered. Deleting `await port.open()`
+ * left the whole suite green.
  *
- * 这个测试锁住那一步。
+ * This test locks that step in.
  */
-describe('真实串口工厂', () => {
-  it('打开端口：调用 serialport 的 open()', async () => {
+describe('the real serial factory', () => {
+  it('opening the port: it calls the open() of serialport', async () => {
     const open = vi.fn(async () => undefined);
     const close = vi.fn(async () => undefined);
 
-    // mock serialport 模块
+    // The serialport module is mocked
     vi.doMock('serialport', () => ({
       SerialPort: class {
         isOpen = true;
@@ -41,7 +43,7 @@ describe('真实串口工厂', () => {
     vi.resetModules();
   });
 
-  it('打开失败时错误冒出去（不吞）', async () => {
+  it('when the open fails the error comes out (it is not swallowed)', async () => {
     vi.doMock('serialport', () => ({
       SerialPort: class {
         isOpen = false;

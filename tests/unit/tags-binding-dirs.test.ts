@@ -5,27 +5,34 @@ import { join } from 'node:path';
 import { resolvePack, listPacksIn } from '../../src/main/tags/binding';
 
 /**
- * **板型包的两个目录**（内置 + 用户）✓ —— 2026-11-19 加 ✓。
+ * **The two directories of the board packs** (built-in + user) — added on
+ * 2026-11-19.
  *
- * ── 为什么这条要加（**它是一个已经存在、没人提的洞** ✓）──
+ * Why this had to be added (**it is a hole that already existed and that
+ * nobody mentioned**):
  *
- * → **现状**：运行时**只读一个目录** ✓ —— `src/main/index.ts:210` ✓
- *   `packsDir: join(app.getAppPath(), 'profiles', 'boards')` ✓
- *   → **永远是 asar 里那个** ✓ → **用户数据目录里的板型包没有任何人读** ✗。
- * → **后果**：**向导实例化出来的包落地即废** ✗（向导产物的存在前提 ✓）。
- * → 而且这**不只是向导的事** ✓ —— **现在**用户自己往用户数据目录放一份包 ✓
- *   **运行时也读不到** ✓ → **一个已经存在、没人提的洞** ✓。
+ * → **The state of things**: the runtime **reads only one directory** —
+ *   `src/main/index.ts:210`, `packsDir: join(app.getAppPath(), 'profiles',
+ *   'boards')` — and that is **always the one inside the asar**, so **nobody
+ *   reads the board packs in the user data directory**.
+ * → **The consequence**: **the pack the wizard instantiates is dead on
+ *   arrival** (and its existence is the premise of the product of the wizard).
+ * → And this is **not only a matter of the wizard**: **today** the operator
+ *   could put a pack into the user data directory and **the runtime still
+ *   would not read it** — a hole that already existed and that nobody
+ *   mentioned.
  *
- * ── 规矩照谁（**三套合并逻辑，挑最干净的那套** ✓）──
+ * Which rule to follow (**of the three merging logics, the cleanest one**):
  *
- * | 东西 | 合并方式 | 出处 |
+ * | Thing | How it is merged | Source |
  * |---|---|---|
- * | **连接 profile** | ✅ **先内置，后用户 —— 同 id 时用户覆盖内置** ✓ | `profiles/loader.ts` ✓ |
- * | **流程包** | ✅ **后扫的覆盖先扫的** ✓（用户目录放后面 ✓） | `workflows/registry.ts` ✓ |
- * | **卡片** | ✅ `roots: CardRoot[]` ✓（内置在前 ✓ · 用户在后 ✓） | `cards/wiring.ts` ✓ |
- * | **板型包** | ⚠️ **只有内置** ✗ —— **本条要补上** ✓ | —— |
+ * | **the connection profiles** | the built-in one first, the user one after — with the same id the user one overrides | `profiles/loader.ts` |
+ * | **the workflow packs** | the one scanned later overrides the one scanned before (the user directory comes after) | `workflows/registry.ts` |
+ * | **the cards** | `roots: CardRoot[]` (the built-in one first, the user one after) | `cards/wiring.ts` |
+ * | **the board packs** | only the built-in one — **this is what has to be added** | —— |
  *
- * → **照 `profiles/loader.ts` 那套写** ✓ —— 它最干净 ✓（一个 `Map` + 一个 `collect` ✓）。
+ * → **It is written like `profiles/loader.ts`** — that one is the cleanest
+ *   (one `Map` and one `collect`).
  */
 function packYaml(id: string, models: string[], extra = ''): string {
   return [
@@ -50,7 +57,7 @@ function packYaml(id: string, models: string[], extra = ''): string {
   ].join('\n');
 }
 
-/** 造一个装着几个包的临时目录 */
+/** Builds a temporary directory with a few packs in it */
 function makePacksDir(packs: { dir: string; id: string; models: string[]; extra?: string }[]): string {
   const root = mkdtempSync(join(tmpdir(), 'packs2-'));
   for (const p of packs) {
@@ -61,7 +68,7 @@ function makePacksDir(packs: { dir: string; id: string; models: string[]; extra?
   return root;
 }
 
-/** 一个假的连接 */
+/** A fake connection */
 function fakeConnection(stdout = '') {
   return {
     exec: async () => ({
@@ -74,8 +81,8 @@ function fakeConnection(stdout = '') {
   };
 }
 
-describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）', () => {
-  it('**用户目录里的包能被指名取到** ✓（**向导产物落地即用的前提** ✓）', async () => {
+describe('the board packs · **the built-in and the user directory** (added on 2026-11-19)', () => {
+  it('**a pack in the user directory can be fetched by name** (**the premise of a product of the wizard that is usable right away**)', async () => {
     const builtin = makePacksDir([{ dir: 'rk3588-atk', id: 'rk3588-atk', models: ['ATK'] }]);
     const user = makePacksDir([{ dir: 'atk-01', id: 'atk-01', models: ['ATK'] }]);
     try {
@@ -85,7 +92,7 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
         packsDir: builtin,
         userPacksDir: user,
       });
-      expect(binding.source, '指名取用户目录里的包 ✓').toBe('profile');
+      expect(binding.source, 'naming a pack of the user directory').toBe('profile');
       expect(binding.pack?.id).toBe('atk-01');
     } finally {
       rmSync(builtin, { recursive: true, force: true });
@@ -93,8 +100,8 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
     }
   });
 
-  it('**用户目录里的包能被自动识别到** ✓（**读型号那条路** ✓）', async () => {
-    // **内置那份不匹配这个型号** ✓ —— 否则两个都命中 → **不猜** ✓（那是契约 §十 ✓）
+  it('**a pack in the user directory is found by the automatic recognition as well** (**the route that reads the model**)', async () => {
+    // **The built-in one does not match this model** — otherwise both would hit → **it does not guess** (that is contract §10)
     const builtin = makePacksDir([{ dir: 'rk3588-atk', id: 'rk3588-atk', models: ['OTHER-BOARD'] }]);
     const user = makePacksDir([{ dir: 'atk-01', id: 'atk-01', models: ['ATK-01'] }]);
     try {
@@ -112,19 +119,19 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
     }
   });
 
-  it('**同 id 时用户覆盖内置** ✓（与 `profiles/loader.ts` 同款 ✓）', async () => {
+  it('**with the same id the user one overrides the built-in one** (the same as in `profiles/loader.ts`)', async () => {
     const builtin = makePacksDir([{ dir: 'dup', id: 'dup', models: ['DUP'] }]);
     const user = makePacksDir([{ dir: 'dup', id: 'dup', models: ['DUP'] }]);
     try {
       const list = listPacksIn([builtin, user]);
-      expect(list.filter((p) => p.id === 'dup').length, '**同 id 只留一个** ✓').toBe(1);
+      expect(list.filter((p) => p.id === 'dup').length, '**with the same id only one is kept**').toBe(1);
     } finally {
       rmSync(builtin, { recursive: true, force: true });
       rmSync(user, { recursive: true, force: true });
     }
   });
 
-  it('**不写 match 的包不参与自动识别** ✓（**通用包就是这样** ✓）', async () => {
+  it('**a pack without a match does not take part in the automatic recognition** (**the generic pack is like that**)', async () => {
     const builtin = makePacksDir([{ dir: 'generic-linux', id: 'generic-linux', models: [] }]);
     try {
       const binding = await resolvePack({
@@ -132,13 +139,13 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
         boardPackId: null,
         packsDir: builtin,
       });
-      expect(binding.source, '没有 match → 不该被自动认领 ✓').toBe('none');
+      expect(binding.source, 'no match → it may not be claimed automatically').toBe('none');
     } finally {
       rmSync(builtin, { recursive: true, force: true });
     }
   });
 
-  it('**指名不存在的包 → 说清楚** ✓（**不猜** ✓）', async () => {
+  it('**naming a pack that does not exist → it says so** (**it does not guess**)', async () => {
     const builtin = makePacksDir([{ dir: 'rk3588-atk', id: 'rk3588-atk', models: ['ATK'] }]);
     try {
       const binding = await resolvePack({
@@ -153,7 +160,7 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
     }
   });
 
-  it('**用户目录不存在 → 不影响内置包** ✓（**第一次运行时就是这样** ✓）', async () => {
+  it('**the user directory does not exist → the built-in packs are unaffected** (**that is how it is on the first run**)', async () => {
     const builtin = makePacksDir([{ dir: 'rk3588-atk', id: 'rk3588-atk', models: ['ATK'] }]);
     try {
       const binding = await resolvePack({
@@ -169,7 +176,7 @@ describe('板型包 · **内置 + 用户两个目录**（2026-11-19 加 ✓）',
     }
   });
 
-  it('**坏包不拖垮其余** ✓（**一个写坏的包只跳过一个** ✓ —— 与 profile 加载器同款 ✓）', () => {
+  it('**a broken pack does not drag the others down** (**one broken pack only skips one** — the same as the loader of the profiles)', () => {
     const builtin = makePacksDir([{ dir: 'good', id: 'good', models: ['G'] }]);
     const broken = join(builtin, 'broken');
     mkdirSync(broken, { recursive: true });

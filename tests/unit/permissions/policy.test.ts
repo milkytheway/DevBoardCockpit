@@ -9,82 +9,82 @@ import {
 } from '../../../src/main/permissions/policy';
 
 /**
- * **统一权限区**（设置页的那张表 ✓ · ADR-D47 ✓）。
+ * The unified permission area (the table of the settings page).
  *
- * ── 四条判据 ──
+ * Four criteria:
  *
- * | # | 判据 | 为什么 |
+ * | # | Criterion | Why |
  * |---|---|---|
- * | 1 | **卡片写板子：默认禁止** ✓ | **这堵住 C2** ✓ —— **宿主分不出「人点了按钮」与「卡片自己调的」** ✗ → **默认不给** ✓ |
- * | 2 | **卡片触发流程：默认允许** ✓ | **流程包存在即说明** ✓ —— 「编译上板」那张卡**点一下就执行** ✓ |
- * | 3 | **agent：默认允许** ✓ | —— **别把它也关了** ✗ |
- * | 4 | **危险的动作：默认禁止** ✓（**两个执行者都是** ✓） | **「开启权限默认知道危险性」** ✓ —— **打开它就是那一下知情** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓） |
+ * | 1 | **a card writing to the board: forbidden by default** | **this blocks C2** — the **host cannot tell "the operator pressed a button" from "the card called it itself"**, so it is **not given by default** |
+ * | 2 | **a card triggering a workflow: allowed by default** | **the existence of a workflow pack is the statement** — the card "compile and flash" **runs on a single click** |
+ * | 3 | **an agent: allowed by default** | — **do not turn that off as well** |
+ * | 4 | **a dangerous action: forbidden by default** (for both executors) | **"turning a permission on means the danger is known"** — turning it on is the assent (changed on 2026-11-16) |
  */
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), 'perm-')), 'permissions.json');
 }
 
 const OPS: readonly PermissionOperation[] = [
-  { op: 'action:backlight.set', label: '设置背光亮度', kind: 'action' },
-  { op: 'action:system.reboot', label: '重启板子', kind: 'action' },
-  { op: 'workflow:hello-kernel.build-run', label: '编译内核模块', kind: 'workflow' },
-  { op: 'host:install_card', label: '装卡', kind: 'host' },
+  { op: 'action:backlight.set', label: 'set the backlight brightness', kind: 'action' },
+  { op: 'action:system.reboot', label: 'reboot the board', kind: 'action' },
+  { op: 'workflow:hello-kernel.build-run', label: 'compile the kernel module', kind: 'workflow' },
+  { op: 'host:install_card', label: 'install a card', kind: 'host' },
 ];
 
-describe('统一权限区', () => {
-  it('**卡片写板子：默认禁止** ✓（**C2 就堵在这里** ✓）', () => {
+describe('the unified permission area', () => {
+  it('**a card writing to the board: forbidden by default** (C2 is blocked here)', () => {
     const store = new PermissionStore(tmpFile());
     expect(store.allows('card', 'action:backlight.set')).toBe(false);
     expect(store.allows('card', 'action:system.reboot')).toBe(false);
   });
 
-  it('**卡片触发流程：默认允许** ✓（**闸就是这行开关** ✓）', () => {
+  it('**a card triggering a workflow: allowed by default** (the gate is this switch)', () => {
     const store = new PermissionStore(tmpFile());
     expect(store.allows('card', 'workflow:hello-kernel.build-run')).toBe(true);
   });
 
-  it('**agent：默认允许** ✓（**它另有人点头** ✓）', () => {
+  it('**an agent: allowed by default** (it has the assent of the operator in a different way)', () => {
     const store = new PermissionStore(tmpFile());
     expect(store.allows('agent', 'action:backlight.set')).toBe(true);
     expect(store.allows('agent', 'action:system.reboot')).toBe(true);
   });
 
-  it('**宿主操作：默认允许** ✓', () => {
+  it('**a host operation: allowed by default**', () => {
     const store = new PermissionStore(tmpFile());
     expect(store.allows('card', 'host:install_card')).toBe(true);
   });
 
-  it('**人可以在设置里打开** ✓（**一次** ✓ · **不再有弹窗** ✓）', () => {
+  it('**the operator can turn it on in the settings** (once — there is no popup any more)', () => {
     const store = new PermissionStore(tmpFile());
     store.set('card', 'action:backlight.set', true);
     expect(store.allows('card', 'action:backlight.set')).toBe(true);
-    // **别的动作不受影响** ✓（**一行一个开关** ✓）
+    // **The other actions are not affected** (one switch per row)
     expect(store.allows('card', 'action:system.reboot')).toBe(false);
   });
 
-  it('**关掉也存得住** ✓（**重启还在** ✓ —— **机器专属的授权状态** ✓）', () => {
+  it('**it is stored even when it is turned off** (it survives a restart — a state of authorisation that belongs to the machine)', () => {
     const file = tmpFile();
     const store = new PermissionStore(file);
     store.set('card', 'action:system.reboot', true);
     store.set('agent', 'action:system.reboot', false);
-    // **重开一遍** ✓
+    // **Opened again**
     const again = new PermissionStore(file);
     expect(again.allows('card', 'action:system.reboot')).toBe(true);
     expect(again.allows('agent', 'action:system.reboot')).toBe(false);
   });
 
-  it('**账坏了就用默认** ✓（**默认里卡片写板子是禁止** ✓ —— 安全的那一边 ✓）', () => {
+  it('**a broken ledger falls back to the defaults** (the defaults forbid a card from writing to the board — the safe side)', () => {
     const file = tmpFile();
     const store = new PermissionStore(file);
     store.set('card', 'action:backlight.set', true);
-    // **把账写坏** ✓
-    writeFileSync(file, '{ 这不是 json', 'utf8');
+    // **The ledger is broken on purpose**
+    writeFileSync(file, '{ this is not json', 'utf8');
     const again = new PermissionStore(file);
     expect(again.allows('card', 'action:backlight.set')).toBe(false);
     expect(again.allows('card', 'workflow:x')).toBe(true);
   });
 
-  it('**设置页那张表：显式的与默认的合成** ✓', () => {
+  it('**the table of the settings page: the explicit merged with the default**', () => {
     const store = new PermissionStore(tmpFile());
     store.set('card', 'action:backlight.set', true);
     const rows = store.rows(OPS);
@@ -92,61 +92,64 @@ describe('统一权限区', () => {
     const row = rows.find((r) => r.op === 'action:backlight.set');
     expect(row?.card).toBe(true);
     expect(row?.agent).toBe(true);
-    // **没设过的还是默认** ✓
+    // **What was never set is still the default**
     const other = rows.find((r) => r.op === 'action:system.reboot');
     expect(other?.card).toBe(false);
   });
 
-  it('**默认表本身是自洽的** ✓（**改一处就红** ✓）', () => {
+  it('**the default table is self-consistent** (changing one entry makes it fail)', () => {
     expect(defaultAllowed('card', 'action:x')).toBe(false);
     expect(defaultAllowed('card', 'workflow:x')).toBe(true);
     expect(defaultAllowed('card', 'host:x')).toBe(true);
     expect(defaultAllowed('agent', 'action:x')).toBe(true);
   });
 
-  it('**危险的动作：默认禁止** ✓（**两个执行者都是** ✓ —— 「**开启权限默认知道危险性**」✓）', () => {
-    // **危险的动作默认关** ✓（**打开它就是那一下知情** ✓ —— ADR-D48 ✓）
+  it('**a dangerous action: forbidden by default** (for both executors — "turning a permission on means the danger is known")', () => {
+    // **A dangerous action is off by default** (turning it on is the assent)
     expect(defaultAllowed('card', 'action:x', true)).toBe(false);
     expect(defaultAllowed('agent', 'action:x', true)).toBe(false);
-    // **不危险的还是照旧** ✓（**这条不许被误伤** ✓）
+    // **A harmless action behaves as before** (this one may not be caught by mistake)
     expect(defaultAllowed('card', 'action:x', false)).toBe(false);
     expect(defaultAllowed('agent', 'action:x', false)).toBe(true);
   });
 
-  it('**危险等级从操作表里读** ✓（`setKnown` 记下等级 ✓ —— `allows` 靠它判 ✓）', () => {
+  it('**the danger level is read from the table of operations** (`setKnown` records the level, `allows` decides by it)', () => {
     const store = new PermissionStore(tmpFile());
     store.setKnown([
-      { op: 'action:backlight.set', label: '设置背光亮度', kind: 'action', danger: 'reversible' },
-      { op: 'action:system.reboot', label: '重启板子', kind: 'action', danger: 'destructive' },
-      { op: 'workflow:build', label: '编译', kind: 'workflow' },
+      { op: 'action:backlight.set', label: 'set the backlight brightness', kind: 'action', danger: 'reversible' },
+      { op: 'action:system.reboot', label: 'reboot the board', kind: 'action', danger: 'destructive' },
+      { op: 'workflow:build', label: 'compile', kind: 'workflow' },
     ]);
-    // **危险的动作：两个执行者都默认关** ✓
+    // **A dangerous action: both executors are off by default**
     expect(store.allows('card', 'action:system.reboot')).toBe(false);
     expect(store.allows('agent', 'action:system.reboot')).toBe(false);
-    // **不危险的动作照旧** ✓（**agent 默认开** ✓）
+    // **A harmless action behaves as before** (an agent is on by default)
     expect(store.allows('agent', 'action:backlight.set')).toBe(true);
-    // **流程不按危险等级判** ✓（**流程靠「存在即说明」** ✓）
+    // **A workflow is not judged by the danger level** (a workflow relies on "its
+// existence is the statement")
     expect(store.allows('card', 'workflow:build')).toBe(true);
-    // **危险等级问得出来** ✓（**设置页要写着** ✓）
+    // **The danger level can be asked for** (the settings page has to state it)
     expect(store.dangerOf('action:system.reboot')).toBe('destructive');
     expect(store.dangerOf('action:backlight.set')).toBe('reversible');
     expect(store.dangerOf('workflow:build')).toBeUndefined();
   });
 
-  it('**人把危险动作打开 → 它就开** ✓（**那一下就是知情** ✓ —— **不再有弹窗** ✓）', () => {
+  it('**the operator turns a dangerous action on → it is on** (that moment is the assent — there is no popup any more)', () => {
     const store = new PermissionStore(tmpFile());
     store.setKnown([
-      { op: 'action:system.reboot', label: '重启板子', kind: 'action', danger: 'destructive' },
+      { op: 'action:system.reboot', label: 'reboot the board', kind: 'action', danger: 'destructive' },
     ]);
     expect(store.allows('agent', 'action:system.reboot')).toBe(false);
-    // **人在设置里打开** ✓ → **显式的优先于默认** ✓
+    // **The operator turns it on in the settings** → **the explicit wins over the
+// default**
     store.set('agent', 'action:system.reboot', true);
     expect(store.allows('agent', 'action:system.reboot')).toBe(true);
-    // **卡片那边仍然是关** ✓（**两个执行者分开记** ✓）
+    // **On the side of the card it is still off** (the two executors are recorded
+// apart)
     expect(store.allows('card', 'action:system.reboot')).toBe(false);
   });
 
-  it('**账是 JSON** ✓（**人看得懂** ✓）', () => {
+  it('**the ledger is JSON** (a person can read it)', () => {
     const file = tmpFile();
     const store = new PermissionStore(file);
     store.set('card', 'action:x', true);

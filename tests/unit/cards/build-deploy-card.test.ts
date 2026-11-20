@@ -5,48 +5,50 @@ import { parseManifest } from '../../../src/main/cards/manifest';
 import { validateCard } from '../../../src/main/cards/validate';
 
 /**
- * **「编译上板」那张卡**（产品自带 ✓）。
+ * The card "compile and flash" (it comes with the product).
  *
- * ── 为什么它要有守卫 ──
+ * Why it needs guards:
  *
- * → 内置卡是**产品的一部分** ✓ —— 它坏了，用户第一次打开应用就看到一张坏卡 ✗。
- * → 而且这张卡**要跑流程** ✓ —— **流程能在用户机器上执行命令** ✗
- *   → **它的 manifest 写错了 = 授权面写错了** ✗ → **必须守住** ✓。
+ * → A built-in card is **part of the product** — if it is broken, the operator
+ *   sees a broken card the first time the application is opened.
+ * → And this card **runs workflows**, and **a workflow can execute commands on
+ *   the machine of the operator**, so **a wrong manifest means a wrong
+ *   authorisation surface** → **it has to be guarded**.
  *
- * ── 它守什么 ──
+ * What it guards:
  *
- * | # | 规矩 | 为什么 |
+ * | # | Rule | Why |
  * |---|---|---|
- * | 1 | **manifest 解析得过** ✓ | 封闭 schema ✓ —— 拼错的字段不能静默忽略 ✓ |
- * | 2 | **校验规则全过** ✓ | 规则 3（requires ⊆ permissions ✓）· 规则 14（流程 id 精确 ✓） |
- * | 3 | **脚本在独立文件里** ✓ | 契约 §6.1 的 `script-src 'self'` ✓ —— 内联脚本会被 CSP 挡掉 ✓ |
- * | 4 | **样式只用 `--cockpit-*`** ✓ | 换皮才成立 ✓ |
- * | 5 | **它声明的流程就是那三条编译/上传/运行流程** ✓ | **不多不少** ✓ —— 多一条 = 授权面变大 ✗ |
+ * | 1 | **the manifest parses** | closed schema — a misspelled field cannot be silently ignored |
+ * | 2 | **every validation rule passes** | rule 3 (requires ⊆ permissions) · rule 14 (the workflow id is exact) |
+ * | 3 | **the script is in a separate file** | the `script-src 'self'` of contract §6.1 — an inline script is stopped by the CSP |
+ * | 4 | **the styles use only `--cockpit-*`** | otherwise reskinning does not hold |
+ * | 5 | **the workflows it declares are exactly the three compile / upload / run workflows** | **no more and no less** — one more means a bigger authorisation surface |
  */
 const REPO_ROOT = resolve(__dirname, '../../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'build-deploy');
 
-/** 这张卡**要**的流程（**精确 id** ✓ —— 契约 `spec/03` 规则 14 ✓） */
+/** The workflows this card **needs** (**the exact ids** — contract `spec/03`, rule 14) */
 const WANTED = [
   'hello-kernel.compile',
   'hello-kernel.upload',
   'hello-kernel.load',
 ];
 
-describe('「编译上板」那张卡', () => {
-  it('**在 `cards/` 下**（契约 §八 的位置，也就是内置根）', () => {
+describe('the card "compile and flash"', () => {
+  it('**it is under `cards/`** (the location of contract §8, the built-in root)', () => {
     expect(existsSync(join(CARD_DIR, 'manifest.json'))).toBe(true);
     expect(existsSync(join(CARD_DIR, 'index.html'))).toBe(true);
   });
 
-  it('manifest **解析得过**（封闭 schema：拼错的字段不能静默忽略）', () => {
+  it('the manifest **parses** (closed schema: a misspelled field cannot be silently ignored)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/build-deploy');
     expect(manifest.id).toBe('build-deploy');
     expect(manifest.entry).toBe('index.html');
   });
 
-  it('**校验规则全过**（离线：规则 14 是「未验证」不是错）', () => {
+  it('**every validation rule passes** (offline: rule 14 is "not verified", not an error)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/build-deploy');
     const result = validateCard(manifest, {
@@ -59,35 +61,35 @@ describe('「编译上板」那张卡', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('**声明的流程就是那三条编译/上传/运行流程** ✓（**不多不少** ✓）', () => {
+  it('**the workflows it declares are exactly the three compile / upload / run workflows** (**no more and no less**)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/build-deploy');
     expect(manifest.permissions.workflows).toEqual(WANTED);
-    // **requires ⊆ permissions** ✓（规则 3 ✓）—— 愿望不得超出授权 ✓
+    // **requires ⊆ permissions** (rule 3) — a wish may not go beyond the authorisation
     expect(manifest.requires?.workflows).toEqual(WANTED);
   });
 
-  it('**它不要写权限** ✓（**它只触发流程** ✓ —— 动作走 `actions.invoke` ✓）', () => {
+  it('**it asks for no write permission** (**it only triggers a workflow** — the action goes through `actions.invoke`)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/build-deploy');
     expect(manifest.permissions.write).toEqual([]);
     expect(manifest.permissions.read).toEqual([]);
   });
 
-  it('**脚本在独立文件里**（契约 §6.1 的 script-src 只许同源，不许内联脚本）', () => {
+  it('**the script is in a separate file** (the script-src of contract §6.1 allows the same origin only, no inline script)', () => {
     const html = readFileSync(join(CARD_DIR, 'index.html'), 'utf8');
     expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/);
     expect(html).toContain('src="./card.js"');
   });
 
-  it('**样式只用 `--cockpit-*` 变量**（不硬编码颜色，换皮才成立）', () => {
+  it('**the styles use only the `--cockpit-*` variables** (no hard-coded colour, otherwise reskinning does not hold)', () => {
     const css = readFileSync(join(CARD_DIR, 'style.css'), 'utf8');
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(css).not.toMatch(/rgba?\(/);
     expect(css).toContain('--cockpit-');
   });
 
-  it('**它真的调流程 API** ✓（**不是一张空壳** ✓）', () => {
+  it('**it really calls the workflow API** (**it is not an empty shell**)', () => {
     const js = readFileSync(join(CARD_DIR, 'card.js'), 'utf8');
     expect(js).toContain('workflows.list');
     expect(js).toContain('workflows.run');

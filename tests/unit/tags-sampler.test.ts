@@ -5,18 +5,20 @@ import type { BoardPack } from '../../src/main/tags/schema';
 import type { ExecResult } from '../../src/main/hal/connection';
 
 /**
- * 采样器 —— 把前六个任务串起来：
- * **取数 → 分段 → 逐 reader 解析 → sample 绑成 tag → 入 store**。
+ * The sampler — it strings the first tasks together:
+ * **collect → segment → parse reader by reader → bind the sample to a tag →
+ * put it into the store**.
  *
- * 用**假的连接**：它按协议吐出带 marker 的输出，
- * 于是整条链路（除了真的跟板子说话）都能测。
+ * It uses a **fake connection** that emits the output with markers according
+ * to the protocol, so the whole chain (except the talking to the board) can
+ * be tested.
  */
 
 const PACK: BoardPack = {
   apiVersion: 'devboard/v1',
   kind: 'BoardPack',
   id: 'tiny',
-  name: '最小包',
+  name: 'minimal pack',
   version: '1.0.0',
   requires: { transports: ['adb'], capabilities: ['exec'] },
   poll_groups: [
@@ -51,7 +53,7 @@ const PACK: BoardPack = {
   actions: [],
 };
 
-/** 一次完整的 proc_stat 输出（两次采样用） */
+/** A complete proc_stat output (for two samples) */
 const STAT_FIRST = `cpu  100 0 50 1000 0 0 0 0 0 0
 cpu0 100 0 50 1000 0 0 0 0 0 0`;
 const STAT_SECOND = `cpu  160 0 60 1200 0 0 0 0 0 0
@@ -59,37 +61,41 @@ cpu0 160 0 60 1200 0 0 0 0 0 0`;
 const CPUINFO = 'processor\t: 0\nCPU part\t: 0xd05';
 
 /**
- * 假的连接：按协议吐出带 marker 的输出。
+ * A fake connection: it emits the output with markers according to the
+ * protocol.
  *
- * **它靠取数片段认读者**——片段里有哪个路径，就是哪个 reader。
- * （marker 是随机的，测试没法提前知道，只能从命令里反推。）
+ * **It recognises the reader by the data snippet** — whichever path is in the
+ * snippet is the reader. (The markers are random, the test cannot know them
+ * in advance and can only derive them from the command.)
  */
 class FakeConnection {
   readonly commands: string[] = [];
   /**
-   * 取数片段里的哪个路径 → 回什么。
+   * Which path of the data snippet → what it answers.
    *
-   * `null` = 这一段没跑起来；
-   * **一串**（数组）= 第一次调用给第一个、第二次给第二个——
-   * `proc_stat` 需要**两次采样**做差，测试要的就是这个。
+   * `null` = this section did not run;
+   * **a list** (an array) = the first call gets the first entry, the second
+   * call the second — `proc_stat` needs **two samples** for the difference,
+   * and that is what the test wants.
    */
   bodies: Record<string, string | null | (string | null)[]> = {
     '/proc/stat': '',
     '/sys/class/devfreq/fb000000.gpu/load': '0@300000000Hz',
     '/proc/meminfo': 'MemTotal:        8107744 kB\nMemAvailable:    7655500 kB',
   };
-  /** 整个往返失败 */
+  /** The whole round trip fails */
   failWith: Error | null = null;
   /**
-   * 要把「结束标记」吞掉的片段关键字。
+   * The keyword of the snippet that swallows the "end marker".
    *
-   * 模拟「板子只回了一半」：开始标记到了，结束标记没到。
+   * It simulates "the board only answered half": the start marker arrived,
+   * the end marker did not.
    */
   truncate: string[] = [];
-  /** 每个 key 调过几次（决定取数组里的第几个） */
+  /** How often each key was called (that decides which entry of the array is taken) */
   private readonly counters = new Map<string, number>();
 
-  /** 这一轮该回什么 */
+  /** What this round has to answer */
   private bodyFor(key: string): string | null | undefined {
     const spec = this.bodies[key];
     if (Array.isArray(spec)) {
@@ -104,7 +110,7 @@ class FakeConnection {
     this.commands.push(command);
     if (this.failWith) throw this.failWith;
 
-    // 从命令里把「marker + 片段」对抠出来
+    // The pair of "marker + snippet" is cut out of the command
     const re = /echo '(__DBCGS_[0-9a-f]+__)';([\s\S]*?); echo '(__DBCGE_[0-9a-f]+__)'/g;
     const parts: string[] = [];
     for (const m of command.matchAll(re)) {
@@ -112,7 +118,7 @@ class FakeConnection {
       const key = Object.keys(this.bodies).find((k) => fragment.includes(k));
       const body = key === undefined ? '' : this.bodyFor(key);
       if (body === null || body === undefined) continue;
-      // 截断：只发开始标记，**不发结束标记**
+      // Truncated: only the start marker is sent, **the end marker is not**
       const truncated = key !== undefined && this.truncate.some((k) => fragment.includes(k));
       if (truncated) {
         parts.push(m[1]!, body);
@@ -124,8 +130,8 @@ class FakeConnection {
   }
 }
 
-describe('采样器', () => {
-  it('采一次组，store 里出现该组 reader 提供的全部 tag', async () => {
+describe('the sampler', () => {
+  it('sampling a group once puts every tag its readers offer into the store', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     const sampler = new TagSampler(PACK, conn, store);
@@ -136,7 +142,7 @@ describe('采样器', () => {
     expect(store.get('gpu.usage')!.value).toBe(0);
   });
 
-  it('**sample 绑成 tag**：core.0.usage → cpu.core.0.usage', async () => {
+  it('**a sample is bound to a tag**: core.0.usage → cpu.core.0.usage', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/proc/stat'] = [
@@ -150,11 +156,11 @@ describe('采样器', () => {
 
     expect(store.get('cpu.usage')).toBeDefined();
     expect(store.get('cpu.core.0.usage')).toBeDefined();
-    // **不是** `cpu.core.*.usage` —— 通配段要被具体值替掉
+    // **not** `cpu.core.*.usage` — the wildcard segment is replaced by a concrete value
     expect(store.get('cpu.core.*.usage')).toBeUndefined();
   });
 
-  it('绑不上的 sample **不绑**（不多绑一个 tag）', async () => {
+  it('a sample that cannot be bound is **not bound** (no extra tag is bound)', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/proc/stat'] = `${STAT_FIRST}\n--- cpuinfo ---\n${CPUINFO}`;
@@ -163,11 +169,11 @@ describe('采样器', () => {
     await sampler.sampleGroup('fast');
     await sampler.sampleGroup('fast');
 
-    // gpu 只提供 duty → 只有 gpu.usage，没有 gpu.freq_hz
+    // The gpu offers only duty → there is gpu.usage, there is no gpu.freq_hz
     expect(store.get('gpu.freq_hz')).toBeUndefined();
   });
 
-  it('某个 reader 解析失败 → **只有它自己的 tag** 报 error，别的照常', async () => {
+  it('when a reader fails to parse → **only its own tags** report an error, the others go on', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/sys/class/devfreq/fb000000.gpu/load'] = 'not a number';
@@ -175,30 +181,30 @@ describe('采样器', () => {
 
     await sampler.sampleGroup('fast');
 
-    // 「读出来了但坏了」= error（契约 §2.1.1），不是 unavailable
+    // "it was read but it is broken" = error (contract §2.1.1), not unavailable
     expect(store.get('gpu.usage')!.status).toBe('error');
     expect(store.get('gpu.usage')!.value).toBeNull();
     expect(store.get('gpu.usage')!.reason).toBe('parse_error');
-    // gpu 的失败**不影响** cpu 那一组
+    // The failure of the gpu **does not affect** the group of the cpu
     expect(store.get('cpu.usage')).toBeDefined();
   });
 
-  it('往返失败 → 该组**全部** tag 报 error（还没成功过时，没有旧值可保留）', async () => {
+  it('the round trip fails → **every** tag of the group reports an error (it has never succeeded, so there is no old value to keep)', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
-    conn.failWith = new Error('传输断了');
+    conn.failWith = new Error('the transport broke');
     const sampler = new TagSampler(PACK, conn, store);
 
     await sampler.sampleGroup('fast');
 
-    // 从没成功过 → error（契约 §2.1：「pending → error = 采样过程本身失败」）
+    // It never succeeded → error (contract §2.1: "pending → error = the sampling itself failed")
     expect(store.get('gpu.usage')!.status).toBe('error');
     expect(store.get('cpu.usage')!.status).toBe('error');
   });
 
-  it('**刷新失败但之前成功过** → 报 stale 并**保留旧值**（契约 §2.1）', async () => {
-    // 「ok → stale = 本次刷新失败，但保留上一次的值」——
-    // 一次 ADB 抖动不该让面板上的仪表整片消失。
+  it('**the refresh fails although it succeeded before** → it reports stale and **keeps the old value** (contract §2.1)', async () => {
+    // "ok → stale = this refresh failed, but the value of the last time is kept" —
+    // one hiccup of ADB may not make the gauges of the panel disappear.
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/proc/stat'] = [
@@ -212,8 +218,8 @@ describe('采样器', () => {
     expect(store.get('cpu.usage')!.status).toBe('ok');
     const good = store.get('cpu.usage')!.value;
 
-    // 接下来这次往返断了
-    conn.failWith = new Error('传输断了');
+    // The next round trip breaks
+    conn.failWith = new Error('the transport broke');
     await sampler.sampleGroup('fast');
 
     const after = store.get('cpu.usage')!;
@@ -221,14 +227,14 @@ describe('采样器', () => {
     expect(after.value).toBe(good);
   });
 
-  it('**通配 tag 的实例在刷新失败时 → 标 stale** ✓（C27 ✓ —— 契约 §2.3：「刷新停了 → stale」✓）', async () => {
-    // ── 这一条在防什么 ──
+  it('**the instances of a wildcard tag are marked stale when the refresh fails** (C27 — contract §2.3: "the refresh stopped → stale")', async () => {
+    // — what this case defends against —
     //
-    // 一个 `cpu` reader 整个挂了 → **通配实例**（`cpu.core.0.usage` ✓）
-    // 之前**不会被标 stale** ✓ → 读数还是 `ok` + 旧值 ✓
-    // → **依赖它的卡片不会被判 degraded** ✓ → **陈旧数据被当成新的** ✓
+    // A whole `cpu` reader fails → **the wildcard instances** (`cpu.core.0.usage`)
+    // used to **not be marked stale** → the reading stayed `ok` with the old value
+    // → **the cards that depend on it are not judged degraded** → **stale data is taken for new**
     //
-    // → 修法：**标「已经读到过的那些实例」** ✓（**不猜** ✓ —— 用读过的 ✓）
+    // → the fix: **mark "the instances that were already read"** (**it does not guess** — it uses the ones it read)
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/proc/stat'] = [
@@ -239,35 +245,35 @@ describe('采样器', () => {
 
     await sampler.sampleGroup('fast');
     await sampler.sampleGroup('fast');
-    // **通配实例已经存在** ✓（它是具体的 tag ✓）
+    // **The wildcard instances are already there** (they are concrete tags)
     expect(store.get('cpu.core.0.usage')!.status).toBe('ok');
     const good = store.get('cpu.core.0.usage')!.value;
 
-    // 接下来这次往返断了
-    conn.failWith = new Error('传输断了');
+    // The next round trip breaks
+    conn.failWith = new Error('the transport broke');
     await sampler.sampleGroup('fast');
 
     const after = store.get('cpu.core.0.usage')!;
     expect(after.status).toBe('stale');
-    // **旧值保留** ✓（契约 §2.1 ✓ —— 一次抖动不该让仪表整片消失 ✓）
+    // **The old value is kept** (contract §2.1 — one hiccup may not make the gauges disappear)
     expect(after.value).toBe(good);
   });
 
-  it('**首读就失败 → 通配实例一个都没有** ✓（**不猜** ✓ —— 不编一个出来 ✓）', async () => {
+  it('**the first read already fails → not a single wildcard instance** (**it does not guess** — it does not invent one)', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
-    conn.failWith = new Error('传输断了');
+    conn.failWith = new Error('the transport broke');
     const sampler = new TagSampler(PACK, conn, store);
 
     await sampler.sampleGroup('fast');
 
-    // **没有编造任何具体实例** ✓
+    // **Not a single concrete instance was invented**
     expect(store.get('cpu.core.0.usage')).toBeUndefined();
-    // **不带通配符的那个照常报** ✓
+    // **The one without a wildcard reports as usual**
     expect(store.get('cpu.usage')!.status).toBe('error');
   });
 
-  it('**超时**归一到 reason=timeout（事实 G1：统一 124）', async () => {
+  it('a **timeout** is normalised to reason=timeout (fact G1: the uniform 124)', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.failWith = new Error('timeout');
@@ -278,7 +284,7 @@ describe('采样器', () => {
     expect(store.get('gpu.usage')!.reason).toBe('timeout');
   });
 
-  it('proc_stat **首读是 pending**，第二次才有值', async () => {
+  it('the first reading of proc_stat **is pending**, only the second one has a value', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.bodies['/proc/stat'] = [
@@ -297,7 +303,7 @@ describe('采样器', () => {
     expect(store.get('cpu.usage')!.value).toBeCloseTo((70 / 270) * 100, 8);
   });
 
-  it('reader 缺 provides → 它产出的 sample **不出现在 store 里**', async () => {
+  it('a reader without provides → the samples it produces **do not appear in the store**', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     const pack: BoardPack = {
@@ -311,7 +317,7 @@ describe('采样器', () => {
     expect(store.get('gpu.usage')).toBeUndefined();
   });
 
-  it('采别的组只影响那个组的 reader', async () => {
+  it('sampling another group affects only the readers of that group', async () => {
     const store = new TagStore();
     const conn = new FakeConnection();
     const sampler = new TagSampler(PACK, conn, store);
@@ -323,9 +329,9 @@ describe('采样器', () => {
     expect(store.get('gpu.usage')).toBeUndefined();
   });
 
-  it('**script 没有远端路径** → 如实报「没推上去」，不生成注定失败的命令', async () => {
-    // 脚本住在宿主上，要先推到板子的 /tmp 才跑得起来（契约 §3.3）。
-    // 运行时还没推 → **不生成那条注定失败的命令**。
+  it('**a script has no remote path** → it reports honestly that nothing was pushed, it does not build a command that is bound to fail', async () => {
+    // The script lives on the host, it has to be pushed to the /tmp of the board before it can run (contract §3.3).
+    // The runtime has not pushed it → **the command that is bound to fail is not generated**.
     const pack: BoardPack = {
       ...PACK,
       poll_groups: [
@@ -355,13 +361,13 @@ describe('采样器', () => {
 
     expect(store.get('custom.tiny.fps')!.status).toBe('unavailable');
     expect(store.get('custom.tiny.fps')!.detail).toContain('remote_path');
-    // **命令里不该有那条注定失败的脚本调用**
+    // **The command may not hold that script call that is bound to fail**
     expect(conn.commands.join('\n')).not.toContain('pipeline_status.sh');
   });
 
-  it('**截断**的那段（没收到结束标记）→ 报 error，**不发布半截数据**', async () => {
-    // 「板子只回了一半」——把 `format: integer` 的 1000 截成 100
-    // 当正常值发布，那是**假数**（事实 G2 的同一条道理）。
+  it('the **truncated** section (the end marker never arrived) → it reports an error and **publishes no half data**', async () => {
+    // "The board only answered half" — the 1000 of `format: integer` is cut to 100
+    // Publishing it as a normal value would be a **false number** (the same argument as fact G2).
     const store = new TagStore();
     const conn = new FakeConnection();
     conn.truncate = ['gpu/load'];
@@ -373,11 +379,11 @@ describe('采样器', () => {
     expect(gpu.status).toBe('error');
     expect(gpu.value).toBeNull();
     expect(gpu.detail).toContain('halfway');
-    // 别的 reader 照常
+    // The other readers go on as usual
     expect(store.get('cpu.usage')).toBeDefined();
   });
 
-  it('不认识的组**报错**，不是静默什么都不做', async () => {
+  it('an unknown group **reports an error**, it does not silently do nothing', async () => {
     const sampler = new TagSampler(PACK, new FakeConnection(), new TagStore());
     await expect(sampler.sampleGroup('nosuch')).rejects.toThrow(/nosuch/);
   });

@@ -9,12 +9,12 @@ describe('paths', () => {
     else process.env.LOCALAPPDATA = prev;
   });
 
-  it('用户数据目录挂在 LOCALAPPDATA 下（Windows）', () => {
+  it('the user data directory hangs under LOCALAPPDATA (Windows)', () => {
     process.env.LOCALAPPDATA = 'C:\\Users\\T\\AppData\\Local';
     expect(userDataDir()).toBe(join('C:\\Users\\T\\AppData\\Local', 'DevBoardCockpit'));
   });
 
-  it('profiles 与 logs 都在用户数据目录下', () => {
+  it('the profiles and the logs are both in the user data directory', () => {
     expect(userProfilesDir().endsWith(join('profiles', 'targets'))).toBe(true);
     expect(logDir().endsWith('logs')).toBe(true);
   });

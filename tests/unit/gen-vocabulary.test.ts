@@ -9,31 +9,34 @@ import {
 } from '../../scripts/gen-vocabulary';
 
 /**
- * 词表生成器的黄金向量测试。
+ * The golden vector test of the generator of the vocabulary.
  *
- * `docs/spec/data/tag-vocabulary.yaml` 是核心词表的**唯一权威**
- * （`docs/spec/01-tag-contract.md` §一）。三份东西必须逐条一致：
- *   1. YAML（权威）
- *   2. `docs/spec/01` 里的 Markdown 表格（渲染结果）
- *   3. 实现层生成的 TS（`src/shared/generated/tag-vocabulary.generated.ts`）
+ * `docs/spec/data/tag-vocabulary.yaml` is the **only authority** of the core
+ * vocabulary (`docs/spec/01-tag-contract.md` §1). Three things have to
+ * agree entry by entry:
+ *   1. the YAML (the authority)
+ *   2. the Markdown table in `docs/spec/01` (the rendered result)
+ *   3. the TypeScript that the implementation layer generates
+ *      (`src/shared/generated/tag-vocabulary.generated.ts`)
  *
- * `docs/04-架构设计.md` §4.3 把它叫「语义不漂移的唯一硬判据」，
- * `AGENTS.md` 把它叫「对拍是硬判据」。**判据必须能自动跑**，
- * 否则它只是一句口号。
+ * The architecture document calls it "the one hard criterion against which
+ * the semantics do not drift" and `AGENTS.md` calls it "the cross-check is a
+ * hard criterion". **A criterion has to be able to run by itself**, otherwise
+ * it is only a slogan.
  */
 
 const VOCAB_PATH = join(process.cwd(), 'docs/spec/data/tag-vocabulary.yaml');
 const DOC_PATH = join(process.cwd(), 'docs/spec/01-tag-contract.md');
 
-describe('词表生成器', () => {
+describe('the generator of the vocabulary', () => {
   const vocab = loadVocabulary(VOCAB_PATH);
 
-  it('从 YAML 读出全部条目', () => {
+  it('every entry is read out of the YAML', () => {
     expect(vocab.length).toBeGreaterThan(0);
     expect(vocab[0].pattern).toBe('cpu.usage');
   });
 
-  it('生成的 Markdown 表格与文档里那张表逐条一致', () => {
+  it('the generated Markdown table agrees with the table of the document entry by entry', () => {
     const doc = readFileSync(DOC_PATH, 'utf8');
     const fromDoc = parseMarkdownTable(doc);
     const fromYaml = vocab.map((e) => ({
@@ -48,7 +51,7 @@ describe('词表生成器', () => {
     expect(fromDoc).toEqual(fromYaml);
   });
 
-  it('生成的 TypeScript 覆盖全部条目，字段齐全', () => {
+  it('the generated TypeScript covers every entry and has all the fields', () => {
     const ts = renderTypeScript(vocab);
     for (const e of vocab) {
       expect(ts).toContain(`'${e.pattern}'`);
@@ -57,21 +60,21 @@ describe('词表生成器', () => {
     expect(ts).toContain('export type CoreTagName');
   });
 
-  it('类型受限于契约允许的五种', () => {
+  it('the type is limited to the five the contract allows', () => {
     const allowed = new Set(['number', 'string', 'boolean', 'enum']);
     for (const e of vocab) {
       expect(allowed.has(e.type)).toBe(true);
     }
   });
 
-  it('v1 状态只有两种', () => {
+  it('there are only two states of v1', () => {
     const allowed = new Set(['required', 'reserved']);
     for (const e of vocab) {
       expect(allowed.has(e.v1)).toBe(true);
     }
   });
 
-  it('渲染的表格头与文档一致', () => {
+  it('the rendered table head agrees with the document', () => {
     const doc = readFileSync(DOC_PATH, 'utf8');
     const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
     expect(doc).toContain(header);

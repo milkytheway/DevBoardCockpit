@@ -8,23 +8,26 @@ import { parseManifest, type CardManifest } from '../../../src/main/cards/manife
 import { validateCard, type CardIssue } from '../../../src/main/cards/validate';
 
 /**
- * 卡片的目录发现与注册表。
+ * The discovery of card directories and the registry.
  *
- * ── 双根与「用户优先」 ──
+ * Two roots, and the user comes first:
  *
- * 卡片有两个根：内置目录（产品自带的）与用户目录（人自己放的）。
- * **同一个 id 两边都有 → 用户目录赢**——用户能**改**内置卡，
- * 这是「卡片即文件」的前提（改文件即生效）。
+ * A card has two roots: the built-in directory (shipped with the product) and
+ * the user directory (put there by the operator). **The same id on both sides
+ * → the user directory wins**, so that the operator can **change** a built-in
+ * card; that is the premise of "a card is a file" (edit the file and it takes
+ * effect).
  *
- * ── 「不合法就保留上一版」 ──
+ * "An invalid manifest keeps the previous version":
  *
- * agent 写卡写到一半，manifest 可能是坏的。
- * 这时候**不能把卡片从工作台上撤走**——它上一版还是好的，
- * 撤走 = 用户眼睁睁看着自己刚做的仪表消失。
- * → 保留上一版，把问题**记下来**显示出来。
+ * An agent may write half a card and leave a broken manifest. The card must
+ * **not be withdrawn from the workbench** then — its previous version is still
+ * good, and withdrawing it means the operator watches the instrument they just
+ * built disappear. Therefore the previous version is kept and the problem is
+ * **recorded** and shown.
  */
 
-/** 造一张卡的目录（只写 manifest.json） */
+/** Creates the directory of a card (it writes only manifest.json) */
 function makeCard(root: string, cardId: string, manifest?: Record<string, unknown>): string {
   const dir = join(root, cardId);
   mkdirSync(dir, { recursive: true });
@@ -63,7 +66,7 @@ function tempRoots(): { roots: CardRoot[]; cleanup: () => void } {
   };
 }
 
-/** 注册表用的两个依赖（真解析器 + 真校验器） */
+/** The two dependencies of the registry (the real parser and the real validator) */
 function deps() {
   return {
     loadManifest: (dir: string): CardManifest => {
@@ -83,8 +86,8 @@ function deps() {
   };
 }
 
-describe('卡片目录的双根查找', () => {
-  it('同一个 id 两边都有 → **用户目录赢**', () => {
+describe('the lookup of a card directory over the two roots', () => {
+  it('the same id on both sides → **the user directory wins**', () => {
     const { roots, cleanup } = tempRoots();
     try {
       makeCard(roots[0].dir, 'cpu-usage');
@@ -96,7 +99,7 @@ describe('卡片目录的双根查找', () => {
     }
   });
 
-  it('只有内置根有 → 用内置的', () => {
+  it('only the built-in root has it → the built-in one is used', () => {
     const { roots, cleanup } = tempRoots();
     try {
       makeCard(roots[0].dir, 'target-switcher');
@@ -106,7 +109,7 @@ describe('卡片目录的双根查找', () => {
     }
   });
 
-  it('找不到 → null（**不猜**）', () => {
+  it('not found → null (**it does not guess**)', () => {
     const { roots, cleanup } = tempRoots();
     try {
       expect(findCardDir(roots, 'nope')).toBeNull();
@@ -115,7 +118,7 @@ describe('卡片目录的双根查找', () => {
     }
   });
 
-  it('目录里没有 manifest.json → **跳过**，不算一张卡', () => {
+  it('the directory has no manifest.json → **it is skipped**, it is not a card', () => {
     const { roots, cleanup } = tempRoots();
     try {
       mkdirSync(join(roots[1].dir, 'not-a-card'), { recursive: true });
@@ -128,18 +131,18 @@ describe('卡片目录的双根查找', () => {
   });
 });
 
-describe('卡片注册表', () => {
-  it('刷新：发现卡片；manifest 不合法就**保留上一版**并记下问题', () => {
+describe('the card registry', () => {
+  it('a refresh: it discovers the cards; an invalid manifest keeps **the previous version** and the problem is recorded', () => {
     const { roots, cleanup } = tempRoots();
     try {
       const dir = makeCard(roots[1].dir, 'cpu-usage');
       const registry = new CardRegistry({ roots, ...deps() });
 
-      // 第一遍：好的
+      // The first pass: it is valid
       expect(registry.refresh().map((c) => c.cardId)).toEqual(['cpu-usage']);
       expect(registry.cards()[0]?.issues).toEqual([]);
 
-      // 第二遍：agent 把 manifest 写坏了（apiVersion 不认识 → 规则 1）
+      // The second pass: the agent has broken the manifest (an unknown apiVersion → rule 1)
       writeFileSync(
         join(dir, 'manifest.json'),
         JSON.stringify({
@@ -155,9 +158,9 @@ describe('卡片注册表', () => {
       );
       const cards = registry.refresh();
       expect(cards).toHaveLength(1);
-      // **上一版还在**（不是把卡片撤走）
+      // **the previous version is still there** (the card is not withdrawn)
       expect(cards[0]?.manifest.apiVersion).toBe('devboard/v1');
-      // 问题被记下来了
+      // The problem was recorded
       expect(cards[0]?.issues.length).toBeGreaterThan(0);
       expect(cards[0]?.issues.some((i) => i.rule === 1)).toBe(true);
     } finally {
@@ -165,7 +168,7 @@ describe('卡片注册表', () => {
     }
   });
 
-  it('**改了卡片文件 → 实例 id 变了**（所以 iframe 会重载 = 「改文件即热更新」）', () => {
+  it('**the card file was changed → the instance id changed** (so the iframe reloads, which is the hot reload of "edit the file and it takes effect")', () => {
     const { roots, cleanup } = tempRoots();
     try {
       const dir = makeCard(roots[1].dir, 'cpu-usage');
@@ -174,23 +177,24 @@ describe('卡片注册表', () => {
       registry.refresh();
 
       const before = registry.instanceFor('cpu-usage', 'board-adb');
-      // 内容没变 → 同一个实例
+      // The content did not change → the same instance
       registry.refresh();
       expect(registry.instanceFor('cpu-usage', 'board-adb').instanceId).toBe(before.instanceId);
 
-      // **改一个字** → 内容指纹变了 → 实例 id 必须变
+      // **One character was changed** → the fingerprint of the content changed → the
+// instance id has to change
       writeFileSync(join(dir, 'card.js'), 'export const x = 2;', 'utf8');
       registry.refresh();
       const after = registry.instanceFor('cpu-usage', 'board-adb');
       expect(after.instanceId).not.toBe(before.instanceId);
-      // URL 也跟着变 → 浏览器不会拿旧的缓存
+      // The URL changes as well → the browser does not use the old cache
       expect(after.url).not.toBe(before.url);
     } finally {
       cleanup();
     }
   });
 
-  it('实例：同一个 (卡片, 连接) 永远同一个 instanceId', () => {
+  it('an instance: the same (card, connection) always has the same instanceId', () => {
     const { roots, cleanup } = tempRoots();
     try {
       makeCard(roots[1].dir, 'cpu-usage');
@@ -201,7 +205,8 @@ describe('卡片注册表', () => {
       const b = registry.instanceFor('cpu-usage', 'board-adb');
       expect(b.instanceId).toBe(a.instanceId);
 
-      // 不同连接 → 不同实例（契约 §7.8：连接上下文在 iframe 创建时注入）
+      // A different connection → a different instance (contract §7.8: the connection
+// context is injected when the iframe is created)
       const c = registry.instanceFor('cpu-usage', 'board-serial');
       expect(c.instanceId).not.toBe(a.instanceId);
     } finally {
@@ -209,7 +214,7 @@ describe('卡片注册表', () => {
     }
   });
 
-  it('实例的 URL 形如 cockpit://card/<uuid>/index.html', () => {
+  it('the URL of an instance has the form cockpit://card/<uuid>/index.html', () => {
     const { roots, cleanup } = tempRoots();
     try {
       makeCard(roots[1].dir, 'cpu-usage');
@@ -222,7 +227,7 @@ describe('卡片注册表', () => {
     }
   });
 
-  it('没装的卡 → dirOf 是 null（不猜）', () => {
+  it('a card that is not installed → dirOf is null (it does not guess)', () => {
     const { roots, cleanup } = tempRoots();
     try {
       const registry = new CardRegistry({ roots, ...deps() });
@@ -233,7 +238,7 @@ describe('卡片注册表', () => {
     }
   });
 
-  it('**实例 → 卡片**能反查（协议处理器靠它找到卡片目录）', () => {
+  it('**instance → card** can be looked up the other way (the protocol handler needs it to find the card directory)', () => {
     const { roots, cleanup } = tempRoots();
     try {
       makeCard(roots[1].dir, 'cpu-usage');
@@ -244,7 +249,7 @@ describe('卡片注册表', () => {
       expect(registry.cardOfInstance(instanceId)).toBe('cpu-usage');
       expect(registry.dirOfInstance(instanceId)).toBe(join(roots[1].dir, 'cpu-usage'));
       expect(registry.entryOfInstance(instanceId)).toBe('index.html');
-      // 没登记过的实例 → null（不猜）
+      // An instance that was never registered → null (it does not guess)
       expect(registry.cardOfInstance('nope')).toBeNull();
       expect(registry.dirOfInstance('nope')).toBeNull();
     } finally {

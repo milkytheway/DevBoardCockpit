@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { TerminalManager } from '../../src/main/terminal/manager';
 
 /**
- * 假连接：记录写往远端的数据，并保留会话的数据回调，
- * 这样测试能区分「写给远端」与「回显给用户」两条路。
+ * A fake connection: it records the data written to the remote side and keeps
+ * the data callback of the session, so that the test can tell "written to the
+ * remote side" from "echoed to the user" apart.
  */
 const fakeConn = (caps: { pty: boolean }) => {
   const written: string[] = [];
@@ -24,16 +25,17 @@ const fakeConn = (caps: { pty: boolean }) => {
   return {
     conn, written,
     emit: (chunk: string) => dataCb?.(chunk),
-    /** 模拟「远端自己退出了」 */
+    /** Simulates "the remote side exited on its own" */
     exit: (code: number | null) => exitCb?.(code),
   };
 };
 
 /**
- * 假日志：**记下调用顺序**。
+ * A fake log: it **records the order of the calls**.
  *
- * 之前的假日志只有一堆 `vi.fn()`，把「一次会话到底落几个文件、
- * 事件行的先后顺序」全遮住了——第三轮审计的两条缺陷都藏在这儿。
+ * The earlier fake log was nothing but a pile of `vi.fn()`, which hid "how
+ * many files does one session write and in which order the event lines
+ * come" — two defects of the third audit were hiding in there.
  */
 function fakeLog() {
   const events: string[] = [];
@@ -49,15 +51,18 @@ function fakeLog() {
 }
 
 /**
- * 造一个 manager。
+ * Builds a manager.
  *
- * profile 的 `pty` **由假连接的能力位推导**——这样每个用例想测 pty 还是 pipe
- * 只要改 `fakeConn({ pty })` 一处。
+ * The `pty` of the profile is **derived from the capability bits of the fake
+ * connection** — so every case that wants to test the pty or the pipe mode
+ * only has to change `fakeConn({ pty })` in one place.
  *
- * 注意：**运行时的终端模式由 profile 决定**（第三轮复评 S-03）：
- * 原来 manager 读的是 `connection.capabilities().pty`（传输的常量），
- * 于是 profile 里的 `pty` 改不动运行时，而 UI 侧读的是 profile ——
- * **两个能力位来源互相矛盾**。
+ * Note: **the terminal mode of the runtime is decided by the profile** (the
+ * third re-review, S-03). The manager used to read
+ * `connection.capabilities().pty` (a constant of the transport), so the
+ * `pty` of the profile could not change the runtime, while the interface
+ * reads the profile — **the two sources of the capability bits contradicted
+ * each other**.
  */
 const mgrWith = (conn: unknown, log?: ReturnType<typeof fakeLog>) => {
   const pty = (conn as { capabilities: () => { pty: boolean } }).capabilities().pty;
@@ -71,7 +76,7 @@ const mgrWith = (conn: unknown, log?: ReturnType<typeof fakeLog>) => {
 };
 
 describe('TerminalManager', () => {
-  it('pty 模式：写入的数据原样转交给远端', async () => {
+  it('the pty mode: the written data is handed to the remote side as it is', async () => {
     const { conn, written } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
@@ -79,9 +84,9 @@ describe('TerminalManager', () => {
     expect(written).toEqual(['ls\r']);
   });
 
-  it('pipe 模式：回车发给远端的是 LF —— 远端 shell 只认 LF', async () => {
-    // 这条是真机实测出来的（`docs/11-计划1评审报告.md` R-01）：
-    // pipe 模式下 `'\r'` 原样发过去，busybox 的 shell 永远等不到行尾。
+  it('the pipe mode: the return key sends an LF to the remote side — the remote shell only accepts LF', async () => {
+    // This one was measured on a real board:
+    // in the pipe mode the '\r' is sent as it is and the shell of busybox never sees the end of a line.
     const { conn, written } = fakeConn({ pty: false });
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
@@ -89,7 +94,7 @@ describe('TerminalManager', () => {
     expect(written).toEqual(['ls\n']);
   });
 
-  it('pipe 模式：打字过程中不发给远端，回车才把整行发过去', async () => {
+  it('the pipe mode: while typing nothing is sent to the remote side, the return key sends the whole line', async () => {
     const { conn, written } = fakeConn({ pty: false });
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
@@ -99,7 +104,7 @@ describe('TerminalManager', () => {
     expect(written).toEqual(['ls\n']);
   });
 
-  it('多字节输入原样透传，不截断不替换（RF-2）', async () => {
+  it('a multi-byte input is passed through as it is, neither truncated nor replaced (RF-2)', async () => {
     const { conn, written } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
@@ -107,18 +112,18 @@ describe('TerminalManager', () => {
     expect(written.join('')).toContain('中文abc');
   });
 
-  it('pipe 模式下宿主自己回显给用户（adb 无 PTY 时板子不回显）', async () => {
+  it('in the pipe mode the host echoes to the user itself (with adb and no PTY the board does not echo)', async () => {
     const { conn } = fakeConn({ pty: false });
     const mgr = mgrWith(conn);
     const seen: string[] = [];
     mgr.onData((_id, chunk) => seen.push(chunk));
     const { sessionId } = await mgr.open('p1');
     mgr.write(sessionId, 'ls\r');
-    // 回显走数据通道，用户才看得到自己打的字
+    // The echo goes through the data channel, otherwise the operator does not see what they type
     expect(seen.join('')).toContain('ls');
   });
 
-  it('pty 模式不额外回显（远端自己回显）', async () => {
+  it('the pty mode does not echo additionally (the remote side echoes itself)', async () => {
     const { conn } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const seen: string[] = [];
@@ -128,7 +133,7 @@ describe('TerminalManager', () => {
     expect(seen).toEqual([]);
   });
 
-  it('会话的输出转发给订阅者', async () => {
+  it('the output of the session is forwarded to the subscribers', async () => {
     const { conn, emit } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const seen: string[] = [];
@@ -139,19 +144,19 @@ describe('TerminalManager', () => {
     expect(sessionId).toBeTruthy();
   });
 
-  it('打开不存在的 profile 报 TERM_NOT_FOUND', async () => {
+  it('opening a profile that does not exist reports TERM_NOT_FOUND', async () => {
     const { conn } = fakeConn({ pty: false });
     const mgr = mgrWith(conn);
     await expect(mgr.open('nope')).rejects.toMatchObject({ code: 'TERM_NOT_FOUND' });
   });
 });
 
-describe('TerminalManager 的会话退出', () => {
-  it('远端自己退出时上报 exit —— 界面不能留着死终端', async () => {
-    // 原来 Session 基类没有退出钩子，
-    // 用户在 SSH 里敲了 `exit` 之后界面还留着标签页，
-    // 继续打字写进一个已经死了的通道——
-    // 「板子掉线了但界面不知道」，与「驾驶舱而非遥控器」直接冲突。
+describe('the exit of a session in the TerminalManager', () => {
+  it('when the remote side exits on its own it reports an exit — the interface may not keep a dead terminal', async () => {
+    // The Session base class had no exit hook,
+    // so after the operator typed `exit` in the SSH session the interface still kept the tab,
+    // and the next keystrokes went into a channel that was already dead —
+    // "the board dropped off and the interface does not know", which contradicts "a cockpit, not a remote control" directly.
     const { conn, exit } = fakeConn({ pty: true });
     const mgr = mgrWith(conn);
     const seen: Array<number | null> = [];
@@ -159,19 +164,19 @@ describe('TerminalManager 的会话退出', () => {
 
     const { sessionId } = await mgr.open('p1');
     exit(0);
-    // 收尾是异步的（要等连接真的关掉），所以等一拍
+    // The finishing is asynchronous (it waits for the connection to be closed), so wait a tick
     await new Promise((r) => setTimeout(r, 10));
 
     expect(seen).toEqual([0]);
-    // 会话已经被收掉
+    // The session has already been torn down
     expect(() => mgr.write(sessionId, 'x')).toThrow();
   });
 });
 
-describe('TerminalManager 的 pipe 模式提示符', () => {
-  it('会话开起来时画一次 profile 里的提示符', async () => {
-    // profile 的 `options.prompt` 是「pipe 模式下宿主要画的提示符」。
-    // 没有它，ADB 终端打开就是一片空白，用户不知道该输入什么。
+describe('the prompt of the pipe mode in the TerminalManager', () => {
+  it('when the session opens, the prompt of the profile is drawn once', async () => {
+    // The `options.prompt` of the profile is "the prompt the host draws in the pipe mode".
+    // Without it the ADB terminal opens blank and the operator does not know what to type.
     const { conn } = fakeConn({ pty: false });
     const mgr = new TerminalManager({
       listProfiles: () => [
@@ -186,7 +191,7 @@ describe('TerminalManager 的 pipe 模式提示符', () => {
     expect(seen.join('')).toContain('root@board$ ');
   });
 
-  it('pty 模式不画提示符 —— 远端自己有', async () => {
+  it('the pty mode draws no prompt — the remote side has one', async () => {
     const { conn } = fakeConn({ pty: true });
     const mgr = new TerminalManager({
       listProfiles: () => [
@@ -202,11 +207,11 @@ describe('TerminalManager 的 pipe 模式提示符', () => {
   });
 });
 
-describe('第三轮审计补的用例', () => {
-  it('一次会话只落一份日志 —— 连接与会话共用同一个', async () => {
-    // 之前连接自己造一份、会话又造一份，两份 label 一样 →
-    // **一次会话两个文件**，输入与输出分居两处，
-    // 而连接那份永远没有收尾行。
+describe('the cases added by the third audit', () => {
+  it('one session writes one log — the connection and the session share it', async () => {
+    // Earlier the connection built one and the session built another, with the same label →
+    // **one session, two files**, the input and the output in different places,
+    // and the one of the connection never had a closing line.
     const { conn } = fakeConn({ pty: true });
     const created: unknown[] = [];
     const mgr = new TerminalManager({
@@ -219,13 +224,13 @@ describe('第三轮审计补的用例', () => {
     });
 
     const { sessionId } = await mgr.open('p1');
-    // 连接拿到的日志与 manager 写输出用的是同一份
+    // The log the connection got is the same one the manager writes the output to
     expect(created).toHaveLength(1);
     expect(created[0]).toBeTruthy();
     expect(sessionId).toBeTruthy();
   });
 
-  it('关会话要等连接真的关掉 —— 不然「关标签 → 马上重开」会撞 PORT_BUSY', async () => {
+  it('closing the session waits for the connection to be closed — otherwise "close the tab and reopen it at once" runs into PORT_BUSY', async () => {
     let closed = false;
     const { conn } = fakeConn({ pty: true });
     (conn as unknown as { close: () => Promise<void> }).close = async () => {
@@ -238,8 +243,8 @@ describe('第三轮审计补的用例', () => {
     expect(closed).toBe(true);
   });
 
-  it('收尾顺序与黄金样本一致：disconnected → stream-ended → closed', async () => {
-    // 样本：--- disconnected --- → --- stream-ended --- → === session closed ===
+  it('the order of the closing events matches the golden sample: disconnected → stream-ended → closed', async () => {
+    // the sample: --- disconnected --- → --- stream-ended --- → === session closed ===
     const { conn, exit } = fakeConn({ pty: true });
     const log = fakeLog();
     const mgr = mgrWith(conn, log);
@@ -253,12 +258,12 @@ describe('第三轮审计补的用例', () => {
     expect(order.indexOf('stream-ended')).toBeLessThan(order.indexOf('close'));
   });
 
-  it('连接失败也要收尾日志 —— 不能留一个没有收尾行的半截', async () => {
+  it('a failed connection also writes the closing log — it may not leave a half without the closing line', async () => {
     const log = fakeLog();
     const mgr = new TerminalManager({
       listProfiles: () => [{ id: 'p1', label: 'p1', transport: 'serial', options: {} }],
       createConnection: () => {
-        throw new Error('连不上');
+        throw new Error('cannot be reached');
       },
       createLog: () => log.log as never,
     });
@@ -267,15 +272,15 @@ describe('第三轮审计补的用例', () => {
   });
 });
 
-describe('第三轮复评补的用例', () => {
-  it('终端模式由 profile 的 pty 决定 —— 运行时与 UI 侧必须是同一个来源', async () => {
-    // `connection.capabilities().pty` 是**传输的常量**，看都不看 profile；
-    // 而 UI 侧的 `connections:list` 用的是 profile 感知的 `capabilitiesFor`。
-    // 两个来源互相矛盾 → 用户改 profile 的 pty，界面说 false、运行时仍按 true 走，
-    // 于是宿主不做行编辑也不回显，**用户打的字一个都看不见**。
+describe('the cases added by the third re-review', () => {
+  it('the terminal mode is decided by the pty of the profile — the runtime and the interface have to take it from the same source', async () => {
+    // `connection.capabilities().pty` is **a constant of the transport** and it does not even look at the profile;
+    // the `connections:list` of the interface uses the profile-aware `capabilitiesFor`.
+    // The two sources contradict each other → the operator changes the pty of the profile, the interface says false and the runtime still behaves as true,
+    // so the host does neither the line editing nor the echo, and **not a single character the operator types is visible**.
     //
-    // 这条测试故意让**假连接报 pty: true**，而 profile 说 false：
-    // 运行时必须听 profile 的。
+    // This case deliberately lets the **fake connection report pty: true** while the profile says false:
+    // the runtime has to obey the profile.
     const { conn, written } = fakeConn({ pty: true });
     const mgr = new TerminalManager({
       listProfiles: () => [
@@ -287,7 +292,7 @@ describe('第三轮复评补的用例', () => {
 
     const { sessionId } = await mgr.open('p1');
     mgr.write(sessionId, 'ls\r');
-    // pipe 模式：回车发的是 LF（不是原样的 \r）
+    // The pipe mode: the return key sends an LF (not the raw \r)
     expect(written).toEqual(['ls\n']);
   });
 });

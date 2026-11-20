@@ -2,23 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { PipeInput, LineEditor, decodeActions, displayWidth } from '../../src/main/terminal/line-editor';
 
 /**
- * 管道模式的行编辑。
+ * The line editor of the pipe mode.
  *
- * ── 这组用例的规格来源是旧工程 ──
+ * The cases below marked as the specification of the old project were
+ * **ported one by one** from
+ * `DevBoardConsole/tests/test_console_input.py` and `test_keymap.py`, the
+ * tests of an implementation that the old project **ran on a real board**;
+ * they are the standard for the behaviour "the pipe mode has to do its own
+ * line editing". The rest was added by this project (the protocol of the
+ * sending side).
  *
- * `DevBoardConsole/tests/test_console_input.py` 与 `test_keymap.py`
- * 是**旧工程在真板上跑过的实现**的测试——
- * 它们就是「pipe 模式要自己做行编辑」这块行为的标准。
- *
- * 下面标了「旧工程规格」的几条，是**逐条移植**过来的断言；
- * 其余是本工程自己加的（发送侧的协议）。
- *
- * 为什么要有这块东西：pipe 模式下远端**没有行规程**——
- * `'\r'` 原样发过去，busybox 的 shell 永远等不到行尾
- * （`docs/11-计划1评审报告.md` R-01 的真机实测）。
+ * Why this exists: in the pipe mode the remote side has **no line
+ * discipline** — the `'\r'` is sent as it is and the shell of busybox never
+ * sees the end of a line. That was measured on a real board.
  */
 
-/** 敲一段文字（逐字符送进去，与真实按键一致） */
+/** Types a piece of text (character by character, like the real keys) */
 function type(input: PipeInput, text: string): { toRemote: string; echo: string } {
   let toRemote = '';
   let echo = '';
@@ -30,16 +29,17 @@ function type(input: PipeInput, text: string): { toRemote: string; echo: string 
   return { toRemote, echo };
 }
 
-describe('行编辑状态（旧工程规格）', () => {
-  it('插入的字符留在行里，光标跟着走', () => {
+describe('the state of the line editor (the specification of the old project)', () => {
+  it('the inserted character stays in the line and the cursor follows', () => {
     const ed = new LineEditor();
     ed.insert('ls -la');
     expect(ed.text).toBe('ls -la');
     expect(ed.cursor).toBe(6);
   });
 
-  it('光标能在行里移动，插入落在光标处', () => {
-    // 旧工程规格："ls -la" 退一格再插 X → "ls -lXa"
+  it('the cursor can move inside the line and the insertion lands at the cursor', () => {
+    // The specification of the old project: "ls -la" moves back one column and
+// inserts X → "ls -lXa"
     const ed = new LineEditor();
     ed.insert('ls -la');
     ed.moveLeft();
@@ -48,8 +48,9 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.cursor).toBe(6);
   });
 
-  it('退格删掉光标前那个字符', () => {
-    // 旧工程规格："abc" 退一格再退格 → "ac"
+  it('backspace removes the character in front of the cursor', () => {
+    // The specification of the old project: "abc" moves back one column and
+// backspaces → "ac"
     const ed = new LineEditor();
     ed.insert('abc');
     ed.moveLeft();
@@ -57,8 +58,9 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.text).toBe('ac');
   });
 
-  it('Delete 删掉光标处那个字符', () => {
-    // 旧工程规格："abc" 回到行首再 Delete → "bc"
+  it('Delete removes the character at the cursor', () => {
+    // The specification of the old project: "abc" goes to the start of the line
+// and then Delete → "bc"
     const ed = new LineEditor();
     ed.insert('abc');
     ed.moveHome();
@@ -66,8 +68,9 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.text).toBe('bc');
   });
 
-  it('历史能回来', () => {
-    // 旧工程规格：提交 first、second，上键先到 second 再到 first
+  it('the history can be recalled', () => {
+    // The specification of the old project: submit first, second, the up arrow
+// reaches second first and then first
     const ed = new LineEditor();
     ed.insert('first');
     ed.commit();
@@ -81,8 +84,8 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.text).toBe('second');
   });
 
-  it('走过历史末尾就清空行', () => {
-    // 旧工程规格
+  it('going past the end of the history clears the line', () => {
+    // The specification of the old project
     const ed = new LineEditor();
     ed.insert('first');
     ed.commit();
@@ -91,16 +94,18 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.text).toBe('');
   });
 
-  it('Ctrl+W 删掉一个词', () => {
-    // 旧工程规格："cat file.txt" → "cat "（词前的空格一起删）
+  it('Ctrl+W removes one word', () => {
+    // The specification of the old project: "cat file.txt" → "cat " (the space in
+// front of the word goes with it)
     const ed = new LineEditor();
     ed.insert('cat file.txt');
     ed.killWord();
     expect(ed.text).toBe('cat ');
   });
 
-  it('Ctrl+U 删掉光标之前的（后面的留着）', () => {
-    // 旧工程规格："prefix command" 光标在第 2 个字符后 → "efix command"
+  it('Ctrl+U removes what is in front of the cursor (what is behind stays)', () => {
+    // The specification of the old project: "prefix command" with the cursor after
+// the second character → "efix command"
     const ed = new LineEditor();
     ed.insert('prefix command');
     ed.moveHome();
@@ -110,8 +115,8 @@ describe('行编辑状态（旧工程规格）', () => {
     expect(ed.text).toBe('efix command');
   });
 
-  it('kill ring 能贴回来', () => {
-    // 旧工程规格
+  it('the kill ring can be pasted back', () => {
+    // The specification of the old project
     const ed = new LineEditor();
     ed.insert('word');
     ed.killWord();
@@ -121,8 +126,8 @@ describe('行编辑状态（旧工程规格）', () => {
   });
 });
 
-describe('字节流解成动作', () => {
-  it('认出终端按键的字节', () => {
+describe('the decoding of a byte stream into actions', () => {
+  it('it recognises the bytes of the terminal keys', () => {
     expect(decodeActions('\r')).toEqual(['commit']);
     expect(decodeActions('\x7f')).toEqual(['backspace']);
     expect(decodeActions('\x1b[D')).toEqual(['left']);
@@ -139,52 +144,55 @@ describe('字节流解成动作', () => {
     expect(decodeActions('\x03')).toEqual(['interrupt']);
   });
 
-  it('方向键这类转义序列不会被当成字符插进行里', () => {
+  it('an escape sequence such as an arrow key is not inserted into the line as characters', () => {
     expect(decodeActions('\x1b[A')).not.toContain('insert');
   });
 });
 
-describe('pipe 模式发往远端的协议', () => {
-  it('回车把整行连同 LF 发给远端 —— 远端 shell 只认 LF', () => {
-    // 这条对应 docs/11 R-01 的真机实测：
-    // pipe 模式下 '\r' 原样发过去，busybox 的 shell 永远等不到行尾。
+describe('the protocol of the pipe mode towards the remote side', () => {
+  it('the return key sends the whole line with the LF to the remote side — the remote shell only accepts LF', () => {
+    // This case corresponds to the measurement on a real board:
+    // in the pipe mode the '\r' is sent as it is and the shell of busybox never
+// sees the end of a line.
     const input = new PipeInput();
     type(input, 'ls');
     const r = input.input('\r');
     expect(r.toRemote).toBe('ls\n');
   });
 
-  it('打字过程中不发给远端（整行缓存在本地，退格才退得掉）', () => {
+  it('while typing nothing is sent to the remote side (the whole line is buffered locally, and only then can the backspace take something back)', () => {
     const input = new PipeInput();
     const r = type(input, 'ls');
-    // 远端什么都没收到 —— 管道里没有行规程，发出去的字收不回来
+    // The remote side received nothing — there is no line discipline in a pipe, and
+// what was sent cannot be taken back
     expect(r.toRemote).toBe('');
   });
 
-  it('退格真的从发出去的那行里消失', () => {
+  it('the backspace really removes it from the line that was sent', () => {
     const input = new PipeInput();
     type(input, 'ls');
     input.input('\x7f');
     expect(input.input('\r').toRemote).toBe('l\n');
   });
 
-  it('提示符在下一条命令开始时才画 —— 输出不会被下一个提示符挤到后面', () => {
-    // 提交时如果就把下一个提示符画出来，远端的输出（**再走一次往返才回来**）
-    // 会落在那个提示符**后面**——读起来像是它的输出。
+  it('the prompt is drawn only when the next command begins — the output is not pushed behind the next prompt', () => {
+    // If the next prompt were drawn at the moment of the submission, the output of
+// the remote side (**which needs another round trip**)
+    // would land **behind** that prompt and read as its output.
     const input = new PipeInput('root@board$ ');
     type(input, 'ls');
     const r = input.input('\r');
-    // 提交只换行
+    // The submission only moves to the next line
     expect(r.echo).toBe('\r\n');
     expect(r.toRemote).toBe('ls\n');
 
-    // 用户开始打下一条命令，提示符跟着出来
+    // The operator starts to type the next command, the prompt comes with it
     const r2 = input.input('x');
     expect(r2.echo.startsWith('root@board$ ')).toBe(true);
     expect(r2.echo).toContain('x');
   });
 
-  it('Ctrl+C 打断远端并清行', () => {
+  it('Ctrl+C interrupts the remote side and clears the line', () => {
     const input = new PipeInput();
     type(input, 'sleep 100');
     const r = input.input('\x03');
@@ -192,35 +200,35 @@ describe('pipe 模式发往远端的协议', () => {
     expect(r.echo).toContain('^C');
   });
 
-  it('粘贴一段多行文本：每行都以 LF 结束', () => {
+  it('pasting a piece of multi-line text: every line ends with an LF', () => {
     const input = new PipeInput();
     const r = input.input('a\r\nb\r\n');
     expect(r.toRemote).toBe('a\nb\n');
   });
 
-  it('光标移到行中间再插入，插入落在光标处', () => {
+  it('the cursor moves into the middle of the line and the insertion lands at the cursor', () => {
     const input = new PipeInput();
     type(input, 'ls -la');
-    input.input('\x1b[D'); // 左移一格
+    input.input('\x1b[D'); // One column to the left
     const r = input.input('X');
     expect(input.editor.text).toBe('ls -lXa');
     expect(input.editor.cursor).toBe(6);
-    // 重画用的是 ANSI 光标移动 + 擦行
+    // The redraw uses an ANSI cursor movement and the erase of the line
     expect(r.echo).toContain('\x1b[');
   });
 
-  it('历史：上箭头调出上一条命令', () => {
+  it('the history: the up arrow recalls the previous command', () => {
     const input = new PipeInput();
     type(input, 'first');
     input.input('\r');
     type(input, 'second');
     input.input('\r');
-    input.input('\x1b[A'); // 上箭头
+    input.input('\x1b[A'); // The up arrow
     expect(input.editor.text).toBe('second');
     expect(input.input('\r').toRemote).toBe('second\n');
   });
 
-  it('Ctrl+W 删掉一个词（连词前的空格）', () => {
+  it('Ctrl+W removes one word (with the space in front of it)', () => {
     const input = new PipeInput();
     type(input, 'cat file.txt');
     input.input('\x17');
@@ -228,49 +236,55 @@ describe('pipe 模式发往远端的协议', () => {
   });
 });
 
-describe('第三轮审计补的用例', () => {
-  it('重画不得越过提示符 —— 提示符被擦掉就等于没提示符', () => {
-    // 提示符与输入在同一行上，所以重画只能退到**文本区起点**，
-    // 退过头（退到提示符之前）再擦行，就把提示符本身擦掉了。
+describe('the cases added by the third audit', () => {
+  it('the redraw may not go past the prompt — a prompt that was erased is no prompt', () => {
+    // The prompt and the input are on the same line, so the redraw may only go
+// back to the **start of the text area**,
+    // going back too far (in front of the prompt) and erasing the line would erase
+// the prompt itself.
     const input = new PipeInput('root@ATK-DLRK3588');
     const r = input.input('l');
-    // 第一个字：光标就在文本区起点，一个字都不用退
+    // The first character: the cursor is at the start of the text area, not a
+// single column has to be taken back
     expect(r.echo).not.toContain('\x1b[17D');
     expect(r.echo).not.toContain('\x1b[15D');
-    // 第二个字：退 1 列（一个字符），不是退到行首
+    // The second character: one column (one character) is taken back, not the whole
+// way to the start of the line
     const r2 = input.input('s');
     expect(r2.echo).toContain('\x1b[1D');
     expect(r2.echo).not.toContain('\x1b[16D');
   });
 
-  it('Ctrl+C 要清掉这一行 —— 用例名承诺了「清行」', () => {
+  it('Ctrl+C has to clear the line — the name of the case promises a "clear line"', () => {
     const input = new PipeInput();
     input.input('sleep 100');
     input.input('\x03');
     expect(input.editor.text).toBe('');
-    // 清完之后重新输入，回车发出去的是新命令，不是两段拼起来的
+    // After the line was cleared and typed again, the return key sends the new
+// command, not two pieces joined together
     input.input('ls');
     expect(input.input('\r').toRemote).toBe('ls\n');
   });
 
-  it('Ctrl+L 是清屏（旧工程 keymap 的规格：Clear the screen）', () => {
+  it('Ctrl+L clears the screen (the specification of the keymap of the old project: Clear the screen)', () => {
     const input = new PipeInput();
     input.input('ls');
     const r = input.input('\x0c');
-    // 清屏 + 光标归位 + 提示符重画
+    // Clear the screen + move the cursor home + draw the prompt again
     expect(r.echo).toContain('\x1b[2J');
     expect(r.echo).toContain('\x1b[H');
   });
 
-  it('列宽按显示宽度算 —— 一个汉字占两列', () => {
+  it('the column is counted by the display width — one Chinese character takes two columns', () => {
     expect(displayWidth('中')).toBe(2);
     expect(displayWidth('abc')).toBe(3);
     expect(displayWidth('中文abc')).toBe(7);
 
     const input = new PipeInput();
-    input.input('中'); // 一个汉字 = 两列
+    input.input('中'); // One Chinese character = two columns
     const r = input.input('文');
-    // 退 2 列（显示宽度），不是退 1（UTF-16 长度）
+    // Two columns are taken back (the display width), not one (the length in
+// UTF-16)
     expect(r.echo).toContain('\x1b[2D');
   });
 });

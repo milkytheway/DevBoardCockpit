@@ -2,23 +2,26 @@ import { describe, it, expect, vi } from 'vitest';
 import { SerialConnection, type SerialPortFactory } from '../../src/main/hal/serial';
 
 /**
- * 串口 exec 超时的**失败形态**。
+ * The **shape of the failure** of a serial exec that times out.
  *
- * ── 为什么这条要单独测 ──
+ * Why it is a test of its own:
  *
- * 真机上真踩过（2026-11-13）：宿主上计划 1 验收留下的 `serial-server.py`
- * **独占打开了 COM3**，回包被它吃掉——
- * **板子是活的、串口是通的，但应用自己的 exec 永远收不到**。
+ * It was really hit on a real board (2026-11-13): the `serial-server.py`
+ * that the acceptance of plan 1 had left on the host **opened COM3
+ * exclusively** and ate the answers — **the board was alive and the serial
+ * line worked, but the exec of the application never got an answer**.
  *
- * 这时应用看到的只有「超时」——而「超时」的第一嫌疑应该是
- * 「**回包被别的程序吃了**」，不是「板子慢」。
+ * The application only sees a "timeout" then — and the first suspect of a
+ * timeout should be "**the answers were eaten by another program**", not "the
+ * board is slow".
  *
- * **判据是「消息里有没有可执行的下一步」，不是「消息好不好听」。**
+ * **The criterion is "does the message carry a next step that can be
+ * executed", not "does the message sound good".**
  */
 
 const log = { write: vi.fn(), close: vi.fn(), filePath: 'x' };
 
-/** 一个「开了口但永远不回话」的串口 —— 模拟回包被别的程序吃掉 */
+/** A serial port that opens but never answers — it simulates the answers being eaten by another program */
 function silentPort(): SerialPortFactory {
   return async () => ({
     write() {
@@ -49,22 +52,22 @@ function makeConnection(port: string): SerialConnection {
   );
 }
 
-describe('串口 exec 超时 → 说清楚「下一步查什么」', () => {
-  it('超时的结果里带一条提示，**包含端口名**', async () => {
+describe('a serial exec times out → it says what to check next', () => {
+  it('the result of the timeout carries a hint, **and it names the port**', async () => {
     const conn = makeConnection('COM7');
     await conn.open();
 
     const result = await conn.exec('echo hello', { timeoutMs: 30 });
 
     expect(result.timedOut).toBe(true);
-    // **统一 124 这条约定不许改**（事实 G1）
+    // **The convention of the uniform 124 may not change** (fact G1)
     expect(result.exitCode).toBe(124);
     expect(result.hint).toBeTruthy();
     expect(result.hint).toContain('swallowed');
     expect(result.hint).toContain('COM7');
   });
 
-  it('提示里点名**串口独占**这个坑（真机上真踩过）', async () => {
+  it('the hint names the pitfall of the **exclusive serial port** (it was really hit on a real board)', async () => {
     const conn = makeConnection('COM3');
     await conn.open();
 

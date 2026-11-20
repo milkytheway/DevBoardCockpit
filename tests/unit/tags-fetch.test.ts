@@ -2,44 +2,48 @@ import { describe, it, expect } from 'vitest';
 import { buildGroupCommand, splitSections } from '../../src/main/tags/fetch';
 
 /**
- * poll group 的合成与分段。
+ * The composition and the segmentation of a poll group.
  *
- * 契约 `docs/spec/02-board-pack.md` §1.2：
- * **一个 poll group = 一次往返**。同组的所有 reader 合成一条 shell 命令，
- * 一次取回，每个 reader 的输出用 **marker** 隔开。
+ * Contract `docs/spec/02-board-pack.md` §1.2: **one poll group = one round
+ * trip**. All the readers of the group compose one shell command, it is
+ * fetched in one go, and the output of every reader is separated by a
+ * **marker**.
  *
- * ── 为什么要有 marker ──
+ * Why there are markers:
  *
- * 因为「一次往返」意味着**一份输出里混着好几个 reader 的数据**。
- * 不隔开的话，A 的数据会被算成 B 的——
- * **监控面板上两个数悄悄互换，比没有监控更难查。**
+ * "One round trip" means that **one output holds the data of several
+ * readers**. Without the separation the data of A would be counted as the
+ * data of B, and **two numbers swapping on the monitor panel are harder to
+ * find than no monitor at all.**
  *
- * ── 协议 ──
+ * The protocol:
  *
- * 每个 reader 有**一对** marker（开始 / 结束）：
+ * Every reader has **a pair** of markers (start / end):
  *
  * ```
  * echo '<S1>'; <frag1>; echo '<E1>'; echo '<S2>'; <frag2>; echo '<E2>'
  * ```
  *
- * 输出：
+ * The output:
  *
  * ```
  * S1
- * <frag1 的输出>
+ * <the output of frag1>
  * E1
  * S2
- * <frag2 的输出>
+ * <the output of frag2>
  * E2
  * ```
  *
- * **用一对而不是一个**：只用一个 marker 的话，
- * 下一个 reader 的 marker 出现在上一个 reader 的输出里就会切错（RF-4）。
- * 用一对之后，**扫描从上一段的结束处往后找**——
- * 落在上一段输出里的「下一个开始标记」自然被跳过。
+ * **A pair and not a single marker**: with a single marker the marker of the
+ * next reader appearing inside the output of the previous one would split it
+ * in the wrong place (RF-4). With a pair **the scan starts behind the end of
+ * the previous section**, so a "next start marker" that fell into the output
+ * of the previous section is simply skipped.
  *
- * **marker 必须是随机的**：128 位十六进制——
- * 读者输出里出现它的概率约等于零。
+ * **The markers have to be random**: 128 bits of hexadecimal — the
+ * probability that one of them appears in the output of a reader is
+ * practically zero.
  */
 
 const readers = [
@@ -48,8 +52,8 @@ const readers = [
   { id: 'npu', fragment: 'cat -- /sys/kernel/debug/rknpu/load' },
 ];
 
-describe('buildGroupCommand · 合成一条命令', () => {
-  it('每个 reader 都有自己的一对 marker', () => {
+describe('buildGroupCommand · it composes one command', () => {
+  it('every reader has its own pair of markers', () => {
     const group = buildGroupCommand(readers);
     expect(group.markers).toHaveLength(3);
     for (const m of group.markers) {
@@ -59,13 +63,13 @@ describe('buildGroupCommand · 合成一条命令', () => {
     }
   });
 
-  it('不同 reader 的 marker 互不相同', () => {
+  it('the markers of different readers differ from each other', () => {
     const group = buildGroupCommand(readers);
     const all = group.markers.flatMap((m) => [m.start, m.end]);
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it('命令里含每个 reader 的取数片段与 marker', () => {
+  it('the command holds the data snippet and the markers of every reader', () => {
     const group = buildGroupCommand(readers);
     for (const r of readers) {
       expect(group.command).toContain(r.fragment);
@@ -76,12 +80,12 @@ describe('buildGroupCommand · 合成一条命令', () => {
     }
   });
 
-  it('**命令是一行**（串口一次往返只能是一行命令，事实 S6）', () => {
+  it('**the command is one line** (one round trip over a serial port can only carry one command, fact S6)', () => {
     const group = buildGroupCommand(readers);
     expect(group.command.includes('\n')).toBe(false);
   });
 
-  it('两次合成产出的 marker 不一样（每次往返都必须唯一）', () => {
+  it('the markers of two compositions differ (every round trip has to be unique)', () => {
     const a = buildGroupCommand(readers);
     const b = buildGroupCommand(readers);
     const aAll = a.markers.flatMap((m) => [m.start, m.end]);
@@ -90,8 +94,8 @@ describe('buildGroupCommand · 合成一条命令', () => {
   });
 });
 
-describe('splitSections · 按 marker 分段', () => {
-  /** 按协议拼一份输出 */
+describe('splitSections · it segments by the markers', () => {
+  /** Composes an output according to the protocol */
   function outputOf(group: ReturnType<typeof buildGroupCommand>, bodies: (string | null)[]): string {
     const parts: string[] = [];
     group.markers.forEach((m, i) => {
@@ -104,7 +108,7 @@ describe('splitSections · 按 marker 分段', () => {
     return parts.join('\n');
   }
 
-  it('每个 reader 拿到自己那段', () => {
+  it('every reader gets its own section', () => {
     const group = buildGroupCommand(readers);
     const output = outputOf(group, ['STAT', 'GPU', 'NPU']);
     const sections = splitSections(output, group.markers);
@@ -113,7 +117,7 @@ describe('splitSections · 按 marker 分段', () => {
     expect(sections.get('npu')).toEqual({ text: 'NPU', complete: true });
   });
 
-  it('空 section 是**空串**，不是 null（null 是「marker 没出现」）', () => {
+  it('an empty section is an **empty string**, not null (null means "the marker never appeared")', () => {
     const group = buildGroupCommand(readers);
     const output = outputOf(group, ['STAT', '', 'NPU']);
     const sections = splitSections(output, group.markers);
@@ -121,17 +125,18 @@ describe('splitSections · 按 marker 分段', () => {
     expect(sections.get('cpu')?.text).toBe('STAT');
   });
 
-  it('marker 没出现 → null（这一段没跑起来）', () => {
+  it('the marker never appeared → null (this section did not run)', () => {
     const group = buildGroupCommand(readers);
     const output = outputOf(group, ['STAT', null, 'NPU']);
     const sections = splitSections(output, group.markers);
     expect(sections.get('gpu')).toBeNull();
     expect(sections.get('cpu')?.text).toBe('STAT');
-    // 缺的**不是**最后一个时，后面的照样切得出来
+    // When the missing one is **not** the last, the following ones are split out
+// as well
     expect(sections.get('npu')?.text).toBe('NPU');
   });
 
-  it('输出里一个字都没有 → 全是 null', () => {
+  it('not a single byte in the output → everything is null', () => {
     const group = buildGroupCommand(readers);
     const sections = splitSections('', group.markers);
     for (const id of ['cpu', 'gpu', 'npu']) {
@@ -139,10 +144,13 @@ describe('splitSections · 按 marker 分段', () => {
     }
   });
 
-  it('**有 start 没有 end** → 不吞掉后面 reader 的数据，且标记为不完整', () => {
-    // 「板子只回了一半」：中间那段的结束标记没到。
-    // **旧行为**：这一段一直取到输出末尾 → 把后面 reader 的数据全吞进来，
-    // 而后面那几段反而报「没读到」——**数据被算到了别的 reader 名下**。
+  it('**a start without an end** → it does not swallow the data of the following readers and it is marked incomplete', () => {
+    // "The board only answered half": the end marker of the section in the middle
+// never arrived.
+    // **The old behaviour**: the section was taken to the end of the output → it
+// swallowed the data of all the following readers,
+    // while the following sections reported "not read" — **the data was counted
+// under another reader**.
     const group = buildGroupCommand(readers);
     const [cpu, gpu, npu] = group.markers;
     const output = [
@@ -156,15 +164,16 @@ describe('splitSections · 按 marker 分段', () => {
       npu!.end,
     ].join('\n');
     const sections = splitSections(output, group.markers);
-    // cpu 拿到了**自己的**那段（不含 gpu 的数据），但**标记为不完整**
+    // cpu got **its own** section (without the data of gpu), but it is **marked
+// incomplete**
     expect(sections.get('cpu')?.text).toBe('STAT');
     expect(sections.get('cpu')?.complete).toBe(false);
-    // 后面那几段**照样**切得出来
+    // The following sections are split out **as well**
     expect(sections.get('gpu')?.text).toBe('GPU');
     expect(sections.get('npu')?.text).toBe('NPU');
   });
 
-  it('**最后一段被截断** → 标记为不完整', () => {
+  it('**the last section is truncated** → it is marked incomplete', () => {
     const group = buildGroupCommand(readers);
     const [cpu, gpu, npu] = group.markers;
     const output = [
@@ -183,19 +192,19 @@ describe('splitSections · 按 marker 分段', () => {
     expect(sections.get('gpu')?.complete).toBe(true);
   });
 
-  it('**上一段的输出里含下一段的开始标记，也不切错**（RF-4）', () => {
+  it('**the output of one section contains the start marker of the next one and the split is still right** (RF-4)', () => {
     const group = buildGroupCommand(readers);
     const stray = group.markers[1]!.start;
     const output = outputOf(group, [`STAT${stray}GHOST`, 'GPU', 'NPU']);
     const sections = splitSections(output, group.markers);
-    // cpu 拿到的是**它自己的完整内容**（含那个幽灵标记）
+    // The cpu got **its own complete content** (including that ghost marker)
     expect(sections.get('cpu')?.text).toBe(`STAT${stray}GHOST`);
-    // gpu 拿到的还是它自己的那段——**没有混进 cpu 的数据**
+    // The gpu still got its own section — **no data of the cpu mixed into it**
     expect(sections.get('gpu')?.text).toBe('GPU');
     expect(sections.get('npu')?.text).toBe('NPU');
   });
 
-  it('最后一段没有换行结尾也切得出来', () => {
+  it('the last section is split out even without a trailing newline', () => {
     const group = buildGroupCommand(readers);
     const m = group.markers;
     const output = `${m[0]!.start}\nA\n${m[0]!.end}\n${m[1]!.start}\nB\n${m[1]!.end}`;
@@ -205,7 +214,7 @@ describe('splitSections · 按 marker 分段', () => {
     expect(sections.get('npu')).toBeNull();
   });
 
-  it('reader 的顺序按给定的顺序，不按 marker 的字典序', () => {
+  it('the order of the readers is the given one, not the lexicographic order of the markers', () => {
     const group = buildGroupCommand([
       { id: 'z', fragment: 'cat z' },
       { id: 'a', fragment: 'cat a' },

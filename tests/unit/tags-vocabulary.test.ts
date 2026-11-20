@@ -10,53 +10,58 @@ import {
 } from '../../src/main/tags/vocabulary';
 
 /**
- * 能力词表与 tag 模式匹配。
+ * The capability vocabulary and the pattern matching of a tag.
  *
- * **两个词表是两个轴**（契约 §10.3，ADR-D24）：
- * - 板级 `{shell, exec, stream, files}` —— 「这块板能做什么」
- * - 连接级 `{exec, pty, files, exitCode}` —— 「**这条连接**能做什么」
+ * **The two vocabularies are two axes** (contract §10.3):
+ * - board level `{shell, exec, stream, files}` — "what this board can do"
+ * - connection level `{exec, pty, files, exitCode}` — "what **this connection**
+ *   can do"
  *
- * 板级词表里**有** `stream`（那是真实的板级能力），
- * 但**已实现能力集里没有**它（Stream 契约还没写，声明了也给不出来）——
- * 这正是规则 25 与规则 26 的分工。
+ * The board-level vocabulary **has** `stream` (that is a real board-level
+ * capability), but the **set of implemented capabilities does not have it**
+ * (the contract of Stream is not written yet, so it cannot be offered even if
+ * it is declared) — that is exactly the division of labour between rule 25
+ * and rule 26.
  */
 
-describe('板级能力词表（规则 25 的数据）', () => {
-  it('封闭词表恰好是这四个', () => {
+describe('the board-level capability vocabulary (the data of rule 25)', () => {
+  it('the closed vocabulary is exactly these four', () => {
     expect([...BOARD_CAPABILITIES]).toEqual(['shell', 'exec', 'stream', 'files']);
   });
 
-  it('stream 在词表里（它是真实的板级能力）', () => {
+  it('stream is in the vocabulary (it is a real board-level capability)', () => {
     expect(isBoardCapability('stream')).toBe(true);
   });
 
-  it('未知值不在词表里', () => {
+  it('an unknown value is not in the vocabulary', () => {
     expect(isBoardCapability('shellh')).toBe(false);
     expect(isBoardCapability('SHELL')).toBe(false);
     expect(isBoardCapability('')).toBe(false);
   });
 });
 
-describe('已实现能力集（规则 26 的数据）', () => {
-  it('恰好是 shell / exec / files', () => {
+describe('the set of implemented capabilities (the data of rule 26)', () => {
+  it('exactly shell / exec / files', () => {
     expect([...IMPLEMENTED_CAPABILITIES]).toEqual(['shell', 'exec', 'files']);
   });
 
-  it('stream 不在已实现集里——声明了也给不出来', () => {
+  it('stream is not in the implemented set — it cannot be offered even if it is declared', () => {
     expect(isImplementedCapability('stream')).toBe(false);
   });
 
-  it('已实现集是板级词表的子集', () => {
+  it('the implemented set is a subset of the board-level vocabulary', () => {
     for (const c of IMPLEMENTED_CAPABILITIES) {
       expect(isBoardCapability(c)).toBe(true);
     }
   });
 
-  it('**规则 26 读的是一张表，不是硬编码的 if (stream)**', () => {
-    // 这条断言守的是「将来 Stream 落地时，改的是表不是规则」。
-    // 换句话说：已实现集与词表的关系是**集合关系**，不是某几个硬编码的名字。
-    // `new Set<string>`：`Set<"shell"|"exec"|"files">.has(c)` 在
-    // TS 里是**严格**的（c 可能是 "stream"）——不加泛型参数就编译不过。
+  it('**rule 26 reads a table, it is not a hard-coded if (stream)**', () => {
+    // This assertion guards "when Stream lands, the table changes, not the rule".
+    // In other words: the relation between the implemented set and the vocabulary
+// is a **relation of sets**, not a few hard-coded names.
+    // `new Set<string>`: `Set<"shell"|"exec"|"files">.has(c)` is
+    // **strict** in TypeScript (c may be "stream") — without the type parameter it
+// does not even compile.
     const implemented = new Set<string>(IMPLEMENTED_CAPABILITIES);
     for (const c of BOARD_CAPABILITIES) {
       expect(isImplementedCapability(c)).toBe(implemented.has(c));
@@ -64,74 +69,75 @@ describe('已实现能力集（规则 26 的数据）', () => {
   });
 });
 
-describe('matchTagPattern · tag 的模式匹配', () => {
-  it('通配段对上具体段', () => {
+describe('matchTagPattern · the pattern matching of a tag', () => {
+  it('a wildcard segment matches a concrete one', () => {
     expect(matchTagPattern('cpu.core.*.usage', 'cpu.core.3.usage')).toBe(true);
   });
 
-  it('字面段必须逐位对上', () => {
+  it('a literal segment has to match position by position', () => {
     expect(matchTagPattern('cpu.core.*.usage', 'cpu.core.3.cluster')).toBe(false);
   });
 
-  it('段数不同就不匹配', () => {
+  it('a different number of segments does not match', () => {
     expect(matchTagPattern('cpu.core.*.usage', 'cpu.usage')).toBe(false);
     expect(matchTagPattern('cpu.usage', 'cpu.usage.x')).toBe(false);
   });
 
-  it('完全相等就匹配', () => {
+  it('an exact equality matches', () => {
     expect(matchTagPattern('cpu.usage', 'cpu.usage')).toBe(true);
   });
 
-  it('通配段不能匹配空段', () => {
+  it('a wildcard segment may not match an empty one', () => {
     expect(matchTagPattern('cpu.core.*.usage', 'cpu.core..usage')).toBe(false);
   });
 
-  it('一个 * 只吃一段，不吃多段', () => {
+  it('one * takes one segment, not several', () => {
     expect(matchTagPattern('cpu.*.usage', 'cpu.core.3.usage')).toBe(false);
     expect(matchTagPattern('cpu.*.usage', 'cpu.3.usage')).toBe(true);
   });
 
-  it('sample 侧用的是同一套函数（规则 7 的前提）', () => {
-    // `core.*.usage` 是 **sample** 命名空间，`cpu.core.*.usage` 是 **tag** 命名空间
-    // ——两个命名空间，但**模式规则一样**。
+  it('the sample side uses the same function (the premise of rule 7)', () => {
+    // `core.*.usage` is a **sample** namespace, `cpu.core.*.usage` is a **tag**
+// namespace
+    // — two namespaces, but **the rule of the pattern is the same**.
     expect(matchTagPattern('core.*.usage', 'core.3.usage')).toBe(true);
     expect(matchTagPattern('core.*.usage', 'core.3.cluster')).toBe(false);
   });
 });
 
-describe('isCoreTag · 核心词表里的 tag（规则 1 的数据）', () => {
-  it('词表里的确切名字', () => {
+describe('isCoreTag · a tag of the core vocabulary (the data of rule 1)', () => {
+  it('the exact name of the vocabulary', () => {
     expect(isCoreTag('cpu.usage')).toBe(true);
     expect(isCoreTag('mem.total_bytes')).toBe(true);
   });
 
-  it('词表里的模式展开出来的名字', () => {
+  it('a name expanded from a pattern of the vocabulary', () => {
     expect(isCoreTag('cpu.core.3.usage')).toBe(true);
   });
 
-  it('不在词表里的名字', () => {
+  it('a name that is not in the vocabulary', () => {
     expect(isCoreTag('cpu.temperature')).toBe(false);
   });
 
-  it('custom 命名空间**不是**核心词表', () => {
+  it('the custom namespace is **not** the core vocabulary', () => {
     expect(isCoreTag('custom.rk3588-atk.npu.duty')).toBe(false);
   });
 });
 
-describe('isCustomTag · custom 命名空间（规则 1）', () => {
-  it('属于本包的 custom 命名空间', () => {
+describe('isCustomTag · the custom namespace (rule 1)', () => {
+  it('it belongs to the custom namespace of this pack', () => {
     expect(isCustomTag('custom.rk3588-atk.npu.duty', 'rk3588-atk')).toBe(true);
   });
 
-  it('属于**别的**包的 custom 命名空间', () => {
+  it('it belongs to the custom namespace of **another** pack', () => {
     expect(isCustomTag('custom.rk3568.npu.duty', 'rk3588-atk')).toBe(false);
   });
 
-  it('核心词表里的名字不是 custom', () => {
+  it('a name of the core vocabulary is not custom', () => {
     expect(isCustomTag('cpu.usage', 'rk3588-atk')).toBe(false);
   });
 
-  it('不带 custom 前缀的不算', () => {
+  it('one without the custom prefix does not count', () => {
     expect(isCustomTag('rk3588-atk.npu.duty', 'rk3588-atk')).toBe(false);
   });
 });

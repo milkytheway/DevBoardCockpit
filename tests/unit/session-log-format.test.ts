@@ -5,28 +5,32 @@ import { join } from 'node:path';
 import { SessionLog, formatTimestamp, stripAnsi } from '../../src/main/logging/session-log';
 
 /**
- * 日志格式的**黄金向量测试**。
+ * The **golden vector test** of the log format.
  *
- * `fixtures/session-log/serial-session.log` 是真机样本（AGENTS.md §5：fixtures 是黄金向量，
- * 样本只增不改）。格式契约写在 `docs/02` 事实 G4：时间戳前缀、剥 ANSI、事件行。
+ * `fixtures/session-log/serial-session.log` is a sample of a real board
+ * (AGENTS.md §5: the fixtures are golden vectors and a sample is only added,
+ * never changed). The contract of the format is written down in
+ * `docs/02-device-facts.md`, fact G4: the timestamp prefix, the stripping of
+ * ANSI, the event lines.
  *
- * ── 之前这个文件是假的对拍 ──
+ * Before, this file was a cross-check in name only:
  *
- * 它只断言**样本文件自己长什么样**，**从来没有让实现去跑一遍样本**——
- * 于是实现换成什么样它都绿。
- * 这正是 `docs/11-计划1评审报告.md` R-56 说的：
- * 「8 份 fixture 只有 1 份被测试读，而那 1 份读的还是样本自己」。
+ * It only asserted **what the sample file looks like** and **never let the
+ * implementation run over the sample**, so it stayed green whatever the
+ * implementation became.
  *
- * 现在的做法：**把样本喂给实现，比对实现的输出**。
- * 实现复现不出样本的形状，这条测试就红。
+ * The way it works now: **the sample is fed to the implementation and the
+ * output of the implementation is compared**. If the implementation cannot
+ * reproduce the shape of the sample, this test fails.
  *
- * 样本的出处是旧工程的 `DevBoardConsole/devboard_console/core/session_log.py`——
- * 所以格式的权威是那份实现，不是猜的。
+ * The sample comes from `DevBoardConsole/devboard_console/core/session_log.py`
+ * of the old project, so the authority of the format is that implementation
+ * and not a guess.
  */
 const SAMPLE = join(process.cwd(), 'fixtures/session-log/serial-session.log');
 const sample = readFileSync(SAMPLE, 'utf8');
 
-/** 样本的每一行：带时间戳前缀的解析成 {stamp, body}，收尾那行没有前缀 */
+/** Every line of the sample: the ones with a timestamp prefix are parsed into {stamp, body}, the closing line has no prefix */
 function parseSample(): Array<{ stamp: string | null; body: string }> {
   return sample
     .split(/\r?\n/)
@@ -37,19 +41,21 @@ function parseSample(): Array<{ stamp: string | null; body: string }> {
     });
 }
 
-/** 去掉时间戳前缀，只留内容 */
+/** Removes the timestamp prefix and keeps the content */
 function bodies(lines: string[]): string[] {
   return lines.map((l) => l.replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\] /, ''));
 }
 
 /**
- * 归一化事件行里的绝对时刻。
+ * Normalises the absolute times in the event lines.
  *
- * 样本是 2026-11-12 02:15 录的，收尾是 02:20（会话跑了五分钟）；
- * 实现的时钟是注入的固定值。**时刻本来就该不一样**——要比的是形状。
+ * The sample was recorded on 2026-11-12 at 02:15 and closes at 02:20 (the
+ * session ran for five minutes), while the clock of the implementation is an
+ * injected fixed value. **The times are supposed to differ** — what is
+ * compared is the shape.
  */
 function normalizeTimes(lines: string[]): string[] {
-  return lines.map((l) => l.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '<时刻>'));
+  return lines.map((l) => l.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '<timestamp>'));
 }
 
 let dir: string;
@@ -58,33 +64,33 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 const FIXED = () => new Date(2026, 10, 12, 2, 15, 7, 54);
 
-describe('会话日志格式与黄金样本同构', () => {
-  it('样本本身符合 [HH:mm:ss.SSS] 前缀（收尾那一行除外）', () => {
+describe('the format of the session log is isomorphic with the golden sample', () => {
+  it('the sample itself carries the [HH:mm:ss.SSS] prefix (except for the closing line)', () => {
     const parsed = parseSample();
     const stamped = parsed.filter((p) => p.stamp !== null);
     expect(stamped.length).toBeGreaterThan(10);
-    // 最后一行是收尾，没有前缀
+    // The last line is the closing one and has no prefix
     expect(parsed[parsed.length - 1].stamp).toBeNull();
   });
 
-  it('样本里没有 ANSI 码（事实 G4：ANSI 要剥掉）', () => {
+  it('the sample holds no ANSI codes (fact G4: ANSI has to be stripped)', () => {
     expect(sample).not.toContain('\x1b[');
     expect(stripAnsi(sample)).toBe(sample);
   });
 
-  it('formatTimestamp 产出与样本同形的时间戳', () => {
+  it('formatTimestamp produces a timestamp of the same shape as the sample', () => {
     expect(formatTimestamp(new Date(2026, 10, 12, 2, 15, 7, 54))).toBe('02:15:07.054');
   });
 
-  it('样本含事件行（会话开/关、连接、断流）', () => {
+  it('the sample holds event lines (the session opens and closes, the connection, the broken stream)', () => {
     expect(sample).toContain('=== session opened');
     expect(sample).toContain('--- connected');
     expect(sample).toContain('--- disconnected');
     expect(sample).toContain('=== session closed');
   });
 
-  // ── 下面这条才是真的对拍 ──
-  it('实现能把样本喂进去、写出同样形状的日志', () => {
+  // — the case below is the real cross-check —
+  it('the implementation can be fed with the sample and writes a log of the same shape', () => {
     const parsed = parseSample();
 
     const log = new SessionLog({
@@ -94,26 +100,31 @@ describe('会话日志格式与黄金样本同构', () => {
       now: FIXED,
     });
 
-    // 样本的第一行是「session opened」——实现自己在构造时写了一行，
-    // 所以这里从第二行开始喂。
+    // The first line of the sample is "session opened" — the implementation writes
+// a line itself when it is constructed,
+    // so the feeding starts at the second line here.
     const feed = parsed.slice(1).filter((p) => p.stamp !== null);
     for (const p of feed) log.write(p.body);
     log.close();
 
     const out = readFileSync(log.filePath, 'utf8').split(/\r?\n/).filter((l) => l.length > 0);
 
-    // 1) 行数一致：样本 N 行 → 实现 N 行（多一行是实现自己写的开场行，
-    //    正好抵掉样本里的开场行）
+    // 1) The number of lines agrees: N lines in the sample → N lines in the
+// implementation (the extra line is the opening line the implementation writes
+// itself,
+    //    which cancels the opening line of the sample)
     expect(out.length).toBe(parsed.length);
 
-    // 2) **逐行内容一致**（时间戳不同，比内容）
+    // 2) **The content of every line agrees** (the timestamps differ, the content
+// is compared)
     const expected = normalizeTimes(parsed.map((p) => p.body));
     const actual = normalizeTimes(bodies(out));
     for (let i = 0; i < expected.length; i += 1) {
       expect(actual[i]).toBe(expected[i]);
     }
 
-    // 3) **时间戳的位置也要一致**：除了最后一行，每行都有前缀
+    // 3) **The position of the timestamps agrees as well**: except for the last
+// line, every line has a prefix
     for (const line of out.slice(0, -1)) {
       expect(line).toMatch(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\] /);
     }
@@ -121,35 +132,36 @@ describe('会话日志格式与黄金样本同构', () => {
   });
 });
 
-describe('会话日志的逐行与剥码', () => {
-  it('多行 chunk 每一行都加时间戳 —— 远端一次回包常常是好几行', () => {
+describe('the line by line handling and the stripping of codes in the session log', () => {
+  it('every line of a multi-line chunk gets a timestamp — one answer of the remote side is often several lines', () => {
     const log = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: FIXED });
     log.write('line1\nline2\nline3');
     log.close();
     const lines = readFileSync(log.filePath, 'utf8').split('\n').filter(Boolean);
-    // 一行是开场行，三行是刚写的
+    // One line is the opening line, three lines are the ones just written
     const written = lines.slice(1, 4);
     expect(written).toHaveLength(3);
     for (const l of written) expect(l).toMatch(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\] /);
     expect(written[1]).toContain('line2');
   });
 
-  it('剥掉 ESC[?25l（隐藏光标）与 OSC 序列 —— 旧实现漏了这两种', () => {
+  it('it strips ESC[?25l (the hidden cursor) and the OSC sequences — the old implementation missed those two', () => {
     expect(stripAnsi('\x1b[?25lhidden\x1b[?25h')).toBe('hidden');
     expect(stripAnsi('\x1b]0;title\x07text')).toBe('text');
     expect(stripAnsi('\x1b[32mgreen\x1b[0m')).toBe('green');
   });
 
-  it('CR 归一成 LF —— 串口控制台的行尾是 CR', () => {
+  it('a CR is normalised to an LF — the line ending of a serial console is CR', () => {
     const log = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: FIXED });
     log.write('a\rb\r\nc');
     log.close();
     const lines = readFileSync(log.filePath, 'utf8').split('\n').filter(Boolean);
-    // 第 0 行是开场行，末尾是收尾行；中间三行才是刚写的
+    // The line 0 is the opening line and the last one is the closing line; only
+// the three in between were just written
     expect(lines.slice(1, 4).map((l) => l.replace(/^\[[^\]]+\] /, ''))).toEqual(['a', 'b', 'c']);
   });
 
-  it('事件行是 --- kind --- 的形状', () => {
+  it('an event line has the shape --- kind ---', () => {
     const log = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: FIXED });
     log.writeEvent('connected', '板子 · 串口');
     log.writeEvent('disconnected');
@@ -159,7 +171,7 @@ describe('会话日志的逐行与剥码', () => {
     expect(text).toContain('--- disconnected ---');
   });
 
-  it('开场行与收尾行同构旧工程', () => {
+  it('the opening line and the closing line are isomorphic with the old project', () => {
     const log = new SessionLog({ label: '板子 · 串口', transport: 'serial', dataDir: dir, now: FIXED });
     log.close();
     const lines = readFileSync(log.filePath, 'utf8').split('\n').filter(Boolean);
@@ -167,7 +179,7 @@ describe('会话日志的逐行与剥码', () => {
     expect(lines[lines.length - 1]).toBe('=== session closed 2026-11-12 02:15:07 ===');
   });
 
-  it('同一秒开两个会话不许撞名 —— 撞了第二个会追加到第一个的日志里', () => {
+  it('two sessions opened in the same second may not share a name — otherwise the second is appended to the log of the first', () => {
     const a = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: FIXED });
     const b = new SessionLog({ label: 't', transport: 'serial', dataDir: dir, now: FIXED });
     expect(b.filePath).not.toBe(a.filePath);

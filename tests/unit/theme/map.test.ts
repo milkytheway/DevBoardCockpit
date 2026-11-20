@@ -7,18 +7,22 @@ import { baseStyleBlock } from '../../../src/shared/theme/base-css';
 import { echartsTheme } from '../../../src/shared/theme/echarts-theme';
 
 /**
- * 主题的**三层**：种子 → 映射 → 别名。
+ * The **three layers** of the theme: the seed → the mapping → the aliases.
  *
- * ── 这一组测试守的是「换皮」这件事本身 ──
+ * What this group of tests guards is the reskinning itself:
  *
- * 1. **契约里的 15 个别名一个都不能少**——卡片要靠它们活着。
- * 2. **对比度**：色值改错，**肉眼看不出来**（尤其浅色下的橙色）。
- *    所以判据是算出来的，不是看出来的。
- * 3. **基础样式里不许有色值**——有就意味着「第二份真相」。
- * 4. **生成的 CSS 与种子一致**——两份真相的另一种形态。
+ * 1. **Not one of the 15 aliases of the contract may be missing** — the cards
+ *    live on them.
+ * 2. **The contrast**: a wrong colour value **cannot be seen by eye** (the
+ *    orange in the light skin especially). The criterion is therefore
+ *    computed, not looked at.
+ * 3. **No colour value in the base styles** — one would mean "a second
+ *    source of truth".
+ * 4. **The generated CSS agrees with the seed** — another shape of two
+ *    sources of truth.
  */
 
-/** WCAG 相对亮度与对比度 */
+/** The relative luminance and the contrast of WCAG */
 function luminance(hex: string): number {
   const n = parseInt(hex.replace('#', ''), 16);
   const channel = (c: number): number => {
@@ -38,30 +42,30 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** 承载正文的面（面板底）——**从 token 取**，不写死色值 */
+/** The surface that carries the body text (the panel background) — **taken from the tokens**, no hard-coded colour */
 const SURFACE = {
   dark: aliasVars('dark')['--cockpit-surface'] as string,
   light: aliasVars('light')['--cockpit-surface'] as string,
 };
 
-describe('主题 · 别名层', () => {
-  it('**契约里的 15 个别名一个都不能少**', () => {
+describe('the theme · the alias layer', () => {
+  it('**not one of the 15 aliases of the contract may be missing**', () => {
     expect(CONTRACT_ALIASES).toHaveLength(15);
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
       for (const alias of CONTRACT_ALIASES) {
-        expect(vars[alias.name], `${skin} 缺 ${alias.name}`).toBeDefined();
+        expect(vars[alias.name], `${skin} is missing ${alias.name}`).toBeDefined();
       }
     }
   });
 
-  it('两套皮肤**都**提供全部别名（契约：两套皮肤都必须给全）', () => {
+  it('both skins provide **all** the aliases (the contract: both skins have to provide all of them)', () => {
     const dark = Object.keys(aliasVars('dark')).sort();
     const light = Object.keys(aliasVars('light')).sort();
     expect(light).toEqual(dark);
   });
 
-  it('文字与语义色在面板底上 **≥ 4.5:1**（两套皮肤都算）', () => {
+  it('the text and the semantic colours reach **≥ 4.5:1** on the panel background (for both skins)', () => {
     const textish = [
       '--cockpit-text',
       '--cockpit-text-dim',
@@ -76,21 +80,21 @@ describe('主题 · 别名层', () => {
       const vars = aliasVars(skin);
       for (const name of textish) {
         const ratio = contrast(vars[name] as string, SURFACE[skin]);
-        expect(ratio, `${skin} 的 ${name} 只有 ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        expect(ratio, `the ${name} of ${skin} is only ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
 
-  it('**可聚焦控件的边框 ≥ 3:1**', () => {
+  it('**the border of a focusable control reaches ≥ 3:1**', () => {
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
       const ratio = contrast(vars['--cockpit-border-strong'] as string, SURFACE[skin]);
-      expect(ratio, `${skin} 的 border-strong 只有 ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      expect(ratio, `the border-strong of ${skin} is only ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('`unavailable` 在两套皮肤上都不是「能看但看不出」的灰', () => {
-    // 它承载「这块板不提供这个能力」——读不到就等于说成了「正常」
+  it('`unavailable` is on both skins not a grey that can be read but not recognised', () => {
+    // It carries "this board does not provide that capability" — not being able to read it must not end up being said as "normal"
     for (const skin of ['dark', 'light'] as const) {
       const vars = aliasVars(skin);
       const ratio = contrast(vars['--cockpit-unavailable'] as string, SURFACE[skin]);
@@ -99,14 +103,14 @@ describe('主题 · 别名层', () => {
   });
 });
 
-describe('主题 · 基础样式（宿主注入给卡片的那套）', () => {
-  it('**一个色值都没有**（只有 var(--cockpit-*)）', () => {
+describe('the theme · the base styles (the ones the host injects into the card)', () => {
+  it('**not a single colour value** (only var(--cockpit-*))', () => {
     const css = baseStyleBlock();
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(css).not.toMatch(/\brgba?\(/);
   });
 
-  it('五态都有对应的类（卡片作者只要选类名）', () => {
+  it('every one of the five states has a class (the author of the card only picks a class name)', () => {
     const css = baseStyleBlock();
     for (const cls of [
       '.cockpit-value',
@@ -119,13 +123,13 @@ describe('主题 · 基础样式（宿主注入给卡片的那套）', () => {
     }
   });
 
-  it('`prefers-reduced-motion` 被照顾到了', () => {
+  it('`prefers-reduced-motion` is taken into account', () => {
     expect(baseStyleBlock()).toContain('prefers-reduced-motion');
   });
 });
 
-describe('主题 · ECharts 主题由 token 派生', () => {
-  it('序列色就是别名层的那七个', () => {
+describe('the theme · the ECharts theme is derived from the tokens', () => {
+  it('the colours of the series are the seven of the alias layer', () => {
     const vars = aliasVars('dark');
     const theme = echartsTheme('dark');
     expect(theme['color']).toEqual([
@@ -139,23 +143,23 @@ describe('主题 · ECharts 主题由 token 派生', () => {
     ]);
   });
 
-  it('两套皮肤的图表主题**不一样**（否则「统一皮肤」是假的）', () => {
+  it('the chart theme of the two skins is **different** (otherwise "one skin for everything" would be false)', () => {
     expect(JSON.stringify(echartsTheme('dark'))).not.toBe(JSON.stringify(echartsTheme('light')));
   });
 });
 
-describe('主题 · 生成产物与种子一致', () => {
-  it('生成的 CSS 与种子对得上（`gen:theme:check` 守的就是这个）', () => {
+describe('the theme · the generated artefact agrees with the seed', () => {
+  it('the generated CSS agrees with the seed (that is what `gen:theme:check` guards)', () => {
     const file = join(process.cwd(), 'src', 'renderer', 'theme', 'tokens.generated.css');
     if (!existsSync(file)) {
-      // 还没生成 → 跑一下生成器（测试自己保证产物存在）
+      // Not generated yet → run the generator (the test makes sure the artefact exists)
       expect(allThemesCss().length).toBeGreaterThan(0);
       return;
     }
     expect(readFileSync(file, 'utf8')).toBe(allThemesCss());
   });
 
-  it('两套皮肤的 CSS 都带（浅色挂在 data-theme 选择器上）', () => {
+  it('the CSS of both skins is included (the light one hangs on the data-theme selector)', () => {
     const css = allThemesCss();
     expect(css).toContain(":root {");
     expect(css).toContain("[data-theme='light'] {");

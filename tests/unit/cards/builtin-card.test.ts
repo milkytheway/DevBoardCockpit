@@ -5,41 +5,46 @@ import { parseManifest } from '../../../src/main/cards/manifest';
 import { validateCard } from '../../../src/main/cards/validate';
 
 /**
- * **内置的第一张卡**（产品自带的那张）。
+ * The **first built-in card** (the one that comes with the product).
  *
- * ── 它为什么有守卫 ──
+ * Why it has guards:
  *
- * 契约 §八 说卡片目录的形状是 `cards/<卡片 id>/…`，
- * 而宿主的**内置根**就是 `join(app.getAppPath(), 'cards')`
- * —— 开发与打包时，`app.getAppPath()` 就是**仓库/应用根**。
+ * Contract §8 says that the shape of the card directory is `cards/<card
+ * id>/…`, and the **built-in root** of the host is `join(app.getAppPath(),
+ * 'cards')` — during the development and in the package `app.getAppPath()`
+ * is the **root of the repository / of the application**.
  *
- * → 所以这张卡必须放在 **`cards/cpu-usage/`**（不是 `fixtures/`——
- * 那是黄金测试向量，不是产品资产）。
+ * → Therefore this card has to be in **`cards/cpu-usage/`** (and not in
+ *   `fixtures/` — that holds the golden test vectors, not the assets of the
+ *   product).
  *
- * ── 为什么「它自己过不了校验」是问题 ──
+ * Why "it does not pass its own validation" would be a problem:
  *
- * 内置卡是**产品的一部分**：它坏了，用户第一次打开应用就看到一张坏卡。
- * 而且它**不会**被用户目录里的同名卡覆盖（用户目录优先，但用户得先自己放一张）。
+ * A built-in card is **part of the product**: if it is broken, the operator
+ * sees a broken card the first time the application is opened. And it is
+ * **not** overridden by a card of the same name in the user directory (the user
+ * directory wins, but the operator has to put one there first).
  *
- * → 所以要有守卫：这张卡必须**解析得过、13 条校验全过**。
+ * → Therefore there have to be guards: this card has to **parse and pass all
+ *   13 validations**.
  */
 const REPO_ROOT = resolve(__dirname, '../../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'cpu-usage');
 
-describe('内置的第一张卡', () => {
-  it('**在 `cards/` 下**（契约 §八 的位置，也就是内置根）', () => {
+describe('the first built-in card', () => {
+  it('**it is under `cards/`** (the location of contract §8, the built-in root)', () => {
     expect(existsSync(join(CARD_DIR, 'manifest.json'))).toBe(true);
     expect(existsSync(join(CARD_DIR, 'index.html'))).toBe(true);
   });
 
-  it('manifest **解析得过**（封闭 schema：拼错的字段不能静默忽略）', () => {
+  it('the manifest **parses** (closed schema: a misspelled field cannot be silently ignored)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/cpu-usage');
     expect(manifest.id).toBe('cpu-usage');
     expect(manifest.entry).toBe('index.html');
   });
 
-  it('**13 条校验全过**（离线：规则 5 是「未验证」不是错）', () => {
+  it('**all 13 validations pass** (offline: rule 5 is "not verified", not an error)', () => {
     const raw = JSON.parse(readFileSync(join(CARD_DIR, 'manifest.json'), 'utf8')) as unknown;
     const manifest = parseManifest(raw, 'cards/cpu-usage');
     const result = validateCard(manifest, {
@@ -52,15 +57,15 @@ describe('内置的第一张卡', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('**脚本在独立文件里**（契约 §6.1 的 script-src 只许同源，不许内联脚本）', () => {
+  it('**the script is in a separate file** (the script-src of contract §6.1 allows the same origin only, no inline script)', () => {
     const html = readFileSync(join(CARD_DIR, 'index.html'), 'utf8');
     expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/);
     expect(html).toContain('src="./card.js"');
   });
 
-  it('**样式只用 `--cockpit-*` 变量**（不硬编码颜色，换皮才成立）', () => {
+  it('**the styles use only the `--cockpit-*` variables** (no hard-coded colour, otherwise reskinning does not hold)', () => {
     const css = readFileSync(join(CARD_DIR, 'style.css'), 'utf8');
-    // 十六进制颜色 / rgb() 都不该有
+    // Neither a hexadecimal colour nor rgb() may be there
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(css).not.toMatch(/rgba?\(/);
     expect(css).toContain('--cockpit-');

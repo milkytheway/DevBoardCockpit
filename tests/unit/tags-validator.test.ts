@@ -4,29 +4,30 @@ import { parseBoardPack } from '../../src/main/tags/pack';
 import type { ActionDef, BoardPack, ReaderDef } from '../../src/main/tags/schema';
 
 /**
- * 31 条校验规则。
+ * The 31 validation rules.
  *
- * ── 测法：每个合成包**只违反一条规则** ──
+ * Method: every synthetic pack violates **exactly one rule**.
  *
- * 「红得对原因」比「红」更重要：一个同时违反三条规则的合成包，
- * 只能证明「校验器报错了」，**证明不了「规则 N 被实现了」**。
- * 所以每条规则都断言：**恰好一条 error，且规则号就是 N**。
+ * Failing for the right reason matters more than failing at all: a pack that
+ * violates three rules at once only proves that the validator complained, not
+ * that rule N is implemented. Each rule therefore asserts exactly one error,
+ * and that its rule number is N.
  *
- * 真实包保真，合成包保规则覆盖（`docs/16` §3.7）。
+ * The real packs stay faithful; the synthetic packs cover the rules.
  */
 
 /**
- * 一个**合法**的最小包。每条规则的用例都从它改出来。
+ * A **valid** minimal pack. Every rule case is derived from it.
  *
- * 它的 cpu reader 绑两个 tag（`cpu.usage` 与 `cpu.core.*.usage`），
- * 因为规则 2/7 要用「模式」那一侧。
+ * Its cpu reader binds two tags (`cpu.usage` and `cpu.core.*.usage`), because
+ * rules 2 and 7 need the pattern side.
  */
 function basePack(): BoardPack {
   return {
     apiVersion: 'devboard/v1',
     kind: 'BoardPack',
     id: 'tiny',
-    name: '最小包',
+    name: 'minimal pack',
     version: '1.0.0',
     requires: { transports: ['adb'], capabilities: ['exec'], min_contract: 'devboard/v1' },
     poll_groups: [{ id: 'fast', interval_ms: 1000, readers: ['cpu'] }],
@@ -46,55 +47,55 @@ function basePack(): BoardPack {
   };
 }
 
-/** 把一个 reader 加进某个组 */
+/** Adds a reader to a group */
 function addReader(pack: BoardPack, reader: ReaderDef, group = 'fast'): BoardPack {
   pack.readers.push(reader);
   pack.poll_groups.find((g) => g.id === group)!.readers.push(reader.id);
   return pack;
 }
 
-/** 加一个动作 */
+/** Adds an action */
 function addAction(pack: BoardPack, action: ActionDef): BoardPack {
   pack.actions.push(action);
   return pack;
 }
 
-/** 只报 error */
+/** Errors only */
 function errors(issues: ValidationIssue[]): ValidationIssue[] {
   return issues.filter((i) => i.severity === 'error');
 }
 
-/** 断言：恰好一条 error，规则号是 n */
+/** Asserts: exactly one error, whose rule number is n */
 function expectOnlyRule(pack: BoardPack, n: number): void {
   const errs = errors(validatePack(pack));
   const ofRule = errs.filter((i) => i.rule === n);
   expect(
     ofRule.length,
-    `规则 ${n} 应该报一条 error，实际报了 ${ofRule.length} 条；全部 error：${JSON.stringify(
+    `rule ${n} should report one error, but it reported ${ofRule.length}; all errors: ${JSON.stringify(
       errs.map((e) => `${e.rule}@${e.path}`),
     )}`,
   ).toBe(1);
   expect(
     errs.length,
-    `这个合成包应该**只**违反规则 ${n}，实际还报了：${JSON.stringify(
+    `this synthetic pack should violate **only** rule ${n}, but it also reported: ${JSON.stringify(
       errs.filter((e) => e.rule !== n).map((e) => `${e.rule}@${e.path}: ${e.message}`),
     )}`,
   ).toBe(1);
 }
 
-/** 一个走形式 1（读一个 tag）的回读。**不写 `kind`**——契约 §4.4 就是这么说的 */
+/** A readback that follows form 1 (reads one tag). **No `kind`** — the contract §4.4 says so */
 function tagReadback(tag: string): ActionDef['readback'] {
   return { tag };
 }
 
-describe('基准包', () => {
-  it('合法包零 error', () => {
+describe('baseline pack', () => {
+  it('a valid pack reports no error', () => {
     expect(errors(validatePack(basePack()))).toEqual([]);
   });
 });
 
-describe('规则 1 · tag 必须落在核心词表或 custom.<本包 id>. 下', () => {
-  it('不在词表里的 tag 报错', () => {
+describe('rule 1 · a tag must be in the core vocabulary or under custom.<pack id>.', () => {
+  it('a tag outside the vocabulary is reported', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -104,7 +105,7 @@ describe('规则 1 · tag 必须落在核心词表或 custom.<本包 id>. 下', 
     expectOnlyRule(pack, 1);
   });
 
-  it('别的包的 custom 命名空间不算', () => {
+  it('the custom namespace of another pack does not count', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -114,7 +115,7 @@ describe('规则 1 · tag 必须落在核心词表或 custom.<本包 id>. 下', 
     expectOnlyRule(pack, 1);
   });
 
-  it('本包的 custom 命名空间合法', () => {
+  it('the custom namespace of this pack is valid', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -125,8 +126,8 @@ describe('规则 1 · tag 必须落在核心词表或 custom.<本包 id>. 下', 
   });
 });
 
-describe('规则 2 · 两个 reader 的 tag 模式不得重叠', () => {
-  it('两个 reader 提供同一个 tag 报错', () => {
+describe('rule 2 · the tag patterns of two readers must not overlap', () => {
+  it('two readers offering the same tag is reported', () => {
     const pack = addReader(basePack(), {
       id: 'cpu2',
       kind: 'proc_stat',
@@ -136,7 +137,7 @@ describe('规则 2 · 两个 reader 的 tag 模式不得重叠', () => {
     expectOnlyRule(pack, 2);
   });
 
-  it('模式重叠也报错（cpu.core.*.usage 与 cpu.core.3.usage）', () => {
+  it('overlapping patterns are reported as well (cpu.core.*.usage against cpu.core.3.usage)', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -147,41 +148,41 @@ describe('规则 2 · 两个 reader 的 tag 模式不得重叠', () => {
   });
 });
 
-describe('规则 3 · devfreq_load 的 duty_cycle 不得绑到任何 *.usage', () => {
-  it('duty_cycle 绑 gpu.usage 报错', () => {
+describe('rule 3 · the duty_cycle of devfreq_load must not be bound to any *.usage', () => {
+  it('binding duty_cycle to gpu.usage is reported', () => {
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
       args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'duty_cycle' },
       provides: [{ tag: 'gpu.usage', sample: 'duty' }],
     });
-    // **规则 3 与 4 同时报**：两条都是真的——
-    // 3 说「duty 是占空比，不能叫 usage」，4 说「叫 usage 必须声明 utilization」。
+    // **Rules 3 and 4 are reported together**: both are true —
+    // 3 says a duty is a duty cycle and may not be called a usage, 4 says a usage must declare utilization.
     const errs = errors(validatePack(pack));
     expect(errs.filter((e) => e.rule === 3)).toHaveLength(1);
     expect(errs.filter((e) => e.rule === 4)).toHaveLength(1);
   });
 });
 
-describe('规则 4 · 绑到 *.usage 必须声明 measure: utilization', () => {
-  it('**measure 拼错了**也要报（utilzation 不是 utilization）', () => {
-    // 契约规则 4 的判据是「**等于 utilization**」，不是「非空」。
-    // 拼错的 measure 一路放行 = **占空比被发布成利用率**——
-    // 那是这个工程最在意的那类 bug（假数比 0 更坏）。
+describe('rule 4 · a binding to *.usage must declare measure: utilization', () => {
+  it('a **misspelled measure** is reported as well (utilzation is not utilization)', () => {
+    // The criterion of rule 4 in the contract is "**equal to utilization**", not "not empty".
+    // Letting a misspelled measure through means a **duty cycle is published as a utilisation figure** —
+    // that is the class of bug this project cares about most (a false number is worse than a zero).
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
       args: { path: '/sys/class/devfreq/fb000000.gpu/load', measure: 'utilzation' },
       provides: [{ tag: 'gpu.usage', sample: 'duty' }],
     });
-    // 规则 4（值不是 utilization）与规则 8（取值不在 enum 清单里）**都报**——
-    // 两条都是真的，且各自指向不同的修法。
+    // Rule 4 (the value is not utilization) and rule 8 (the value is not in the enum list) are **both reported** —
+    // both are true, and each points at a different fix.
     const errs = errors(validatePack(pack));
     expect(errs.filter((e) => e.rule === 4)).toHaveLength(1);
     expect(errs.filter((e) => e.rule === 8)).toHaveLength(1);
   });
 
-  it('measure 是 duty_cycle 但绑的不是 duty → 也报规则 4', () => {
+  it('measure is duty_cycle but the binding is not a duty → rule 4 is reported as well', () => {
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
@@ -192,8 +193,8 @@ describe('规则 4 · 绑到 *.usage 必须声明 measure: utilization', () => {
   });
 });
 
-describe('规则 4 · 绑到 *.usage 却没有声明 measure', () => {
-  it('duty_cycle 绑到 custom 名字不算（那是规则 3 管的事）', () => {
+describe('rule 4 · a binding to *.usage without a declared measure', () => {
+  it('binding duty_cycle to a custom name does not count (that is what rule 3 covers)', () => {
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
@@ -203,7 +204,7 @@ describe('规则 4 · 绑到 *.usage 却没有声明 measure', () => {
     expect(errors(validatePack(pack))).toEqual([]);
   });
 
-  it('没声明 measure 就绑 *.usage 报错', () => {
+  it('binding *.usage without a declared measure is reported', () => {
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
@@ -214,16 +215,16 @@ describe('规则 4 · 绑到 *.usage 却没有声明 measure', () => {
   });
 });
 
-describe('规则 5 · proc_stat 必须把 usage 绑到 cpu.usage', () => {
-  it('绑到别的 tag 报错', () => {
+describe('rule 5 · proc_stat must bind usage to cpu.usage', () => {
+  it('binding to another tag is reported', () => {
     const pack = basePack();
     pack.readers[0].provides = [{ tag: 'cpu.core.0.usage', sample: 'core.0.usage' }];
     expectOnlyRule(pack, 5);
   });
 });
 
-describe('规则 6 · provides[].sample 必须是该 kind 能产出的 sample', () => {
-  it('不存在的 sample 报错', () => {
+describe('rule 6 · provides[].sample must be a sample the kind can produce', () => {
+  it('a sample that does not exist is reported', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -233,7 +234,7 @@ describe('规则 6 · provides[].sample 必须是该 kind 能产出的 sample', 
     expectOnlyRule(pack, 6);
   });
 
-  it('kind 本身不存在也报错', () => {
+  it('a kind that does not exist is reported as well', () => {
     const pack = addReader(basePack(), {
       id: 'x',
       kind: 'nosuchkind',
@@ -244,8 +245,8 @@ describe('规则 6 · provides[].sample 必须是该 kind 能产出的 sample', 
   });
 });
 
-describe('规则 7 · tag 与 sample 的 * 数量必须一致', () => {
-  it('数量不一致报错', () => {
+describe('rule 7 · the number of * in the tag and in the sample must agree', () => {
+  it('a mismatch in the counts is reported', () => {
     const pack = addReader(basePack(), {
       id: 'mem',
       kind: 'meminfo',
@@ -256,8 +257,8 @@ describe('规则 7 · tag 与 sample 的 * 数量必须一致', () => {
   });
 });
 
-describe('规则 8 · reader 声明的参数必须在 kind 的 schema 里存在', () => {
-  it('拼错的参数名报错', () => {
+describe('rule 8 · a parameter declared by the reader must exist in the schema of the kind', () => {
+  it('a misspelled parameter name is reported', () => {
     const pack = basePack();
     pack.readers[0].args = {
       stat_path: '/proc/stat',
@@ -268,10 +269,10 @@ describe('规则 8 · reader 声明的参数必须在 kind 的 schema 里存在'
   });
 });
 
-describe('规则 8 · 参数的取值也要合 kind 的 schema', () => {
-  it('**enum 的取值不在清单里**要报错（measure 拼错、format 拼错）', () => {
-    // 「measure 不是可选的」的另一半：**它只能是那两个值之一**。
-    // 拼错的值一路放行 = 占空比被发布成利用率。
+describe('rule 8 · the value of a parameter must also fit the schema of the kind', () => {
+  it('an **enum value that is not in the list** is reported (a misspelled measure, a misspelled format)', () => {
+    // The other half of "measure is not optional": **it may only be one of the two values**.
+    // Letting a misspelled value through means a duty cycle is published as a utilisation figure.
     const pack = addReader(basePack(), {
       id: 'gpu',
       kind: 'devfreq_load',
@@ -281,7 +282,7 @@ describe('规则 8 · 参数的取值也要合 kind 的 schema', () => {
     expectOnlyRule(pack, 8);
   });
 
-  it('file_read 的 format 拼错也报错', () => {
+  it('a misspelled format in file_read is reported as well', () => {
     const pack = addReader(basePack(), {
       id: 'fr',
       kind: 'file_read',
@@ -292,15 +293,15 @@ describe('规则 8 · 参数的取值也要合 kind 的 schema', () => {
   });
 });
 
-describe('规则 9 · 必填参数不能缺', () => {
-  it('缺必填参数报错', () => {
+describe('rule 9 · a required parameter may not be missing', () => {
+  it('a missing required parameter is reported', () => {
     const pack = basePack();
     pack.readers[0].args = { stat_path: '/proc/stat' };
     const errs = errors(validatePack(pack));
     expect(errs.some((e) => e.rule === 9)).toBe(true);
   });
 
-  it('oneOf 参数一个都不给报错（file_read 的 path/glob）', () => {
+  it('none of the oneOf parameters is given is reported (path/glob of file_read)', () => {
     const pack = addReader(basePack(), {
       id: 'fr',
       kind: 'file_read',
@@ -312,8 +313,8 @@ describe('规则 9 · 必填参数不能缺', () => {
   });
 });
 
-describe('规则 10 · 未知顶层字段报错（由加载器执行）', () => {
-  it('加载器拦下未知顶层字段', () => {
+describe('rule 10 · an unknown top-level field is reported (enforced by the loader)', () => {
+  it('the loader stops an unknown top-level field', () => {
     const yaml = `
 apiVersion: devboard/v1
 kind: BoardPack
@@ -334,22 +335,22 @@ actions: []
   });
 });
 
-describe('规则 11 · match.models 非空；match.mode 只能是 exact/substring', () => {
-  it('models 空报错', () => {
+describe('rule 11 · match.models must not be empty; match.mode may only be exact or substring', () => {
+  it('empty models is reported', () => {
     const pack = basePack();
     pack.match = { mode: 'exact', models: [] };
     expectOnlyRule(pack, 11);
   });
 
-  it('mode 非法报错', () => {
+  it('an invalid mode is reported', () => {
     const pack = basePack();
     pack.match = { mode: 'fuzzy', models: ['X'] };
     expectOnlyRule(pack, 11);
   });
 });
 
-describe('规则 12 · action 的 readback.tag 必须是本包提供的 tag', () => {
-  it('指向不存在的 tag 报错', () => {
+describe('rule 12 · the readback.tag of an action must be a tag this pack offers', () => {
+  it('pointing at a tag that does not exist is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -359,7 +360,7 @@ describe('规则 12 · action 的 readback.tag 必须是本包提供的 tag', ()
     expectOnlyRule(pack, 12);
   });
 
-  it('指向本包提供的 tag 是合法的', () => {
+  it('pointing at a tag this pack offers is valid', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -370,8 +371,8 @@ describe('规则 12 · action 的 readback.tag 必须是本包提供的 tag', ()
   });
 });
 
-describe('规则 13 · 命令与回读里的 {param} 都必须声明', () => {
-  it('命令里的占位没声明报错', () => {
+describe('rule 13 · every {param} in a command and in a readback must be declared', () => {
+  it('an undeclared placeholder in a command is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -382,8 +383,8 @@ describe('规则 13 · 命令与回读里的 {param} 都必须声明', () => {
   });
 });
 
-describe('规则 14 · 声明了但没用的参数是死参数', () => {
-  it('死参数报错', () => {
+describe('rule 14 · a parameter that is declared but never used is dead', () => {
+  it('a dead parameter is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -395,8 +396,8 @@ describe('规则 14 · 声明了但没用的参数是死参数', () => {
   });
 });
 
-describe('规则 15 · destructive 的回读形式不得是 command_ok / none', () => {
-  it('用 command_ok 报错', () => {
+describe('rule 15 · the readback form of a destructive action may not be command_ok or none', () => {
+  it('using command_ok is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'destructive',
@@ -406,17 +407,17 @@ describe('规则 15 · destructive 的回读形式不得是 command_ok / none', 
     expectOnlyRule(pack, 15);
   });
 
-  it('用 none 报错', () => {
+  it('using none is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'destructive',
       command: 'echo 1',
-      readback: { kind: 'none', consequence: '什么也不做' },
+      readback: { kind: 'none', consequence: 'does nothing' },
     });
     expectOnlyRule(pack, 15);
   });
 
-  it('用 verify 是合法的', () => {
+  it('using verify is valid', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'destructive',
@@ -427,8 +428,8 @@ describe('规则 15 · destructive 的回读形式不得是 command_ok / none', 
   });
 });
 
-describe('规则 16 · 命中危险地板的命令必须声明为 destructive', () => {
-  it('reboot 声明成 reversible 报错', () => {
+describe('rule 16 · a command that hits the danger floor must be declared destructive', () => {
+  it('declaring reboot as reversible is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -438,7 +439,7 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('dd 写块设备报错', () => {
+  it('dd writing to a block device is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -448,7 +449,7 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('rm -rf / 报错', () => {
+  it('rm -rf / is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -458,7 +459,7 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('mkfs.ext4 报错（它是 mkfs 的同义写法）', () => {
+  it('mkfs.ext4 is reported (it is another spelling of mkfs)', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -468,10 +469,10 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('**erase_cache 这类无害写法不命中**（前缀匹配会制造假阳性）', () => {
-    // ADR-D27 的第五条：契约没给 erase/burn 前缀例句，
-    // 而 `erase_cache` / `burn_count` 是**无害**的常见名——
-    // 把它们判成 destructive 是**假阳性**，不是堵洞。
+  it('a **harmless spelling such as erase_cache does not match** (prefix matching would manufacture false positives)', () => {
+    // The contract gives no examples of an erase/burn prefix, while `erase_cache`
+    // and `burn_count` are **harmless** common names; calling them destructive
+    // would be a **false positive**, not the closing of a hole.
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -481,9 +482,9 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expect(errors(validatePack(pack))).toEqual([]);
   });
 
-  it('**绝对路径也命中**（/sbin/reboot）', () => {
-    // 契约 §5.2.1 写的是「词元相等」，但真实的调用几乎都带绝对路径——
-    // 只按字面实现，地板在真实写法上是空的。
+  it('an **absolute path matches as well** (/sbin/reboot)', () => {
+    // The contract §5.2.1 says "the tokens must be equal", but real invocations almost
+    // always carry an absolute path; a literal implementation leaves the floor empty against real usage.
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -493,7 +494,7 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('**rm -rf /* 也命中**（glob 展开后就是根目录）', () => {
+  it('**rm -rf /* matches as well** (after the glob expands it is the root directory)', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -503,7 +504,7 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
     expectOnlyRule(pack, 16);
   });
 
-  it('upgrade_status.sh **不**命中 upgrade（词元相等）', () => {
+  it('upgrade_status.sh does **not** match upgrade (the tokens must be equal)', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -514,30 +515,30 @@ describe('规则 16 · 命中危险地板的命令必须声明为 destructive', 
   });
 });
 
-describe('规则 17 · 每个 reader 必须属于恰好一个 poll group', () => {
-  it('不在任何组里报错', () => {
+describe('rule 17 · every reader must belong to exactly one poll group', () => {
+  it('belonging to no group is reported', () => {
     const pack = basePack();
     pack.poll_groups[0].readers = [];
     expectOnlyRule(pack, 17);
   });
 
-  it('进了两个组报错', () => {
+  it('belonging to two groups is reported', () => {
     const pack = basePack();
     pack.poll_groups.push({ id: 'slow', interval_ms: 2000, readers: ['cpu'] });
     expectOnlyRule(pack, 17);
   });
 });
 
-describe('规则 18 · poll group 的 interval_ms 不低于 200', () => {
-  it('间隔太小报错', () => {
+describe('rule 18 · the interval_ms of a poll group may not be below 200', () => {
+  it('an interval that is too small is reported', () => {
     const pack = basePack();
     pack.poll_groups[0].interval_ms = 100;
     expectOnlyRule(pack, 18);
   });
 });
 
-describe('规则 19 · exec_regex / script 存在时打印警告', () => {
-  it('exec_regex 产出 warning（不是 error）', () => {
+describe('rule 19 · the presence of exec_regex or script produces a warning', () => {
+  it('exec_regex produces a warning (not an error)', () => {
     const pack = addReader(basePack(), {
       id: 'up',
       kind: 'exec_regex',
@@ -551,8 +552,8 @@ describe('规则 19 · exec_regex / script 存在时打印警告', () => {
   });
 });
 
-describe('规则 28 · reader 的取数命令不许命中危险地板', () => {
-  it('**exec_regex 的命令命中地板 → 报错** ✓（**板型包直接生效** ✓ —— **这里必须拦住** ✓）', () => {
+describe('rule 28 · the command a reader uses to collect data may not hit the danger floor', () => {
+  it('**a command of exec_regex that hits the floor is reported** (the board pack takes effect directly — this has to be stopped here)', () => {
     const pack = addReader(basePack(), {
       id: 'wipe',
       kind: 'exec_regex',
@@ -562,7 +563,7 @@ describe('规则 28 · reader 的取数命令不许命中危险地板', () => {
     expectOnlyRule(pack, 28);
   });
 
-  it('**命令不危险 → 不报** ✓（**逃生门还得能用** ✓）', () => {
+  it('**a harmless command is not reported** (the escape hatch has to remain usable)', () => {
     const pack = addReader(basePack(), {
       id: 'up',
       kind: 'exec_regex',
@@ -573,8 +574,8 @@ describe('规则 28 · reader 的取数命令不许命中危险地板', () => {
   });
 });
 
-describe('规则 29 · reader 的参数值不许含 shell 元字符', () => {
-  it('**值里有 `;` → 报错** ✓（**那会拼出第二条命令** ✓）', () => {
+describe('rule 29 · the argument values of a reader may not contain shell metacharacters', () => {
+  it('a **`;` inside a value is reported** (it would concatenate a second command)', () => {
     const pack = addReader(basePack(), {
       id: 'x',
       kind: 'file_read',
@@ -584,7 +585,7 @@ describe('规则 29 · reader 的参数值不许含 shell 元字符', () => {
     expectOnlyRule(pack, 29);
   });
 
-  it('**`exec_regex` 的 command 与 pattern 豁免** ✓（**它不是路径** ✓）', () => {
+  it('**the command and the pattern of `exec_regex` are exempt** (they are not paths)', () => {
     const pack = addReader(basePack(), {
       id: 'up',
       kind: 'exec_regex',
@@ -595,8 +596,8 @@ describe('规则 29 · reader 的参数值不许含 shell 元字符', () => {
   });
 });
 
-describe('规则 30 · exec_regex 的命令不许是「解释器包装」', () => {
-  it('**`bash -c ...` → 报错** ✓（**包装起来就绕过了地板** ✓）', () => {
+describe('rule 30 · the command of exec_regex may not be an interpreter wrapper', () => {
+  it('**`bash -c ...` is reported** (the wrapper bypasses the floor)', () => {
     const pack = addReader(basePack(), {
       id: 'wipe',
       kind: 'exec_regex',
@@ -606,7 +607,7 @@ describe('规则 30 · exec_regex 的命令不许是「解释器包装」', () =
     expectOnlyRule(pack, 30);
   });
 
-  it('**普通的只读命令 → 放行** ✓', () => {
+  it('**an ordinary read-only command is let through**', () => {
     const pack = addReader(basePack(), {
       id: 'up',
       kind: 'exec_regex',
@@ -617,8 +618,8 @@ describe('规则 30 · exec_regex 的命令不许是「解释器包装」', () =
   });
 });
 
-describe('规则 31 · 板型包里不许用 script kind', () => {
-  it('**用了 script → 报错** ✓（**它执行的是正文** ✓ —— **地板看不见** ✓）', () => {
+describe('rule 31 · the script kind may not be used in a board pack', () => {
+  it('**using script is reported** (it executes a body, and the floor cannot see it)', () => {
     const pack = addReader(basePack(), {
       id: 'sc',
       kind: 'script',
@@ -629,8 +630,8 @@ describe('规则 31 · 板型包里不许用 script kind', () => {
   });
 });
 
-describe('规则 20 · params 的 type 封闭；enum 要非空 values；string 要 maxLength', () => {
-  it('type 非法报错', () => {
+describe('rule 20 · the type of a param is a closed set; an enum needs non-empty values; a string needs maxLength', () => {
+  it('an invalid type is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -641,7 +642,7 @@ describe('规则 20 · params 的 type 封闭；enum 要非空 values；string �
     expectOnlyRule(pack, 20);
   });
 
-  it('enum 没有 values 报错', () => {
+  it('an enum without values is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -652,7 +653,7 @@ describe('规则 20 · params 的 type 封闭；enum 要非空 values；string �
     expectOnlyRule(pack, 20);
   });
 
-  it('string 没有 maxLength 报错', () => {
+  it('a string without maxLength is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -664,8 +665,8 @@ describe('规则 20 · params 的 type 封闭；enum 要非空 values；string �
   });
 });
 
-describe('规则 21 · command 模板里的占位不得自带引号', () => {
-  it('占位自带引号报错', () => {
+describe('rule 21 · a placeholder in a command template may not carry its own quotes', () => {
+  it('a placeholder that carries quotes is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -677,8 +678,8 @@ describe('规则 21 · command 模板里的占位不得自带引号', () => {
   });
 });
 
-describe('规则 22 · guard 必须是 params 声明域的子集', () => {
-  it('guard 超出 params 的域报错', () => {
+describe('rule 22 · a guard must be a subset of the range declared by the params', () => {
+  it('a guard outside the range of the params is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -691,8 +692,8 @@ describe('规则 22 · guard 必须是 params 声明域的子集', () => {
   });
 });
 
-describe('规则 23 · readback.kind 属于封闭枚举', () => {
-  it('未知的 kind 报错', () => {
+describe('rule 23 · readback.kind belongs to a closed enumeration', () => {
+  it('an unknown kind is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -703,40 +704,40 @@ describe('规则 23 · readback.kind 属于封闭枚举', () => {
   });
 });
 
-describe('规则 24 · danger_floor_version 必须是已知版本', () => {
-  it('未知版本报错', () => {
+describe('rule 24 · danger_floor_version must be a known version', () => {
+  it('an unknown version is reported', () => {
     const pack = basePack();
     pack.danger_floor_version = 2;
     expectOnlyRule(pack, 24);
   });
 
-  it('版本 1 合法', () => {
+  it('version 1 is valid', () => {
     const pack = basePack();
     pack.danger_floor_version = 1;
     expect(errors(validatePack(pack))).toEqual([]);
   });
 });
 
-describe('规则 25 · requires.capabilities 的值必须属于封闭词表', () => {
-  it('未知的能力名报错', () => {
+describe('rule 25 · a value of requires.capabilities must belong to a closed vocabulary', () => {
+  it('an unknown capability name is reported', () => {
     const pack = basePack();
     pack.requires.capabilities = ['shellh'];
     expectOnlyRule(pack, 25);
   });
 });
 
-describe('规则 26 · requires.capabilities 的值必须属于已实现能力集', () => {
-  it('声明 stream 报错（Stream 契约还没写，给不出来）', () => {
+describe('rule 26 · a value of requires.capabilities must belong to the set of implemented capabilities', () => {
+  it('declaring stream is reported (the Stream contract is not written yet, so it cannot be offered)', () => {
     const pack = basePack();
     pack.requires.capabilities = ['exec', 'stream'];
     expectOnlyRule(pack, 26);
   });
 });
 
-describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 consequence', () => {
-  it('没有 readback 报错（**destructive 也不例外**）', () => {
-    // 这一条**覆盖**了「destructive 也要有回读」——
-    // 所以它报的是规则 27 而不是规则 15（规则 15 管的是**形式不对**）。
+describe('rule 27 · every action must have a readback; none must carry a non-empty consequence', () => {
+  it('a missing readback is reported (**destructive is no exception**)', () => {
+    // This one **overrides** "destructive needs a readback as well", so it reports
+    // rule 27 and not rule 15 (rule 15 covers a **wrong form**).
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'destructive',
@@ -745,7 +746,7 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
     expectOnlyRule(pack, 27);
   });
 
-  it('reversible 也没有 readback 同样报错', () => {
+  it('a missing readback is reported for reversible as well', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -754,7 +755,7 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
     expectOnlyRule(pack, 27);
   });
 
-  it('none 没有 consequence 报错', () => {
+  it('a none without a consequence is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -764,7 +765,7 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
     expectOnlyRule(pack, 27);
   });
 
-  it('none 的 consequence 是空串报错', () => {
+  it('a none whose consequence is an empty string is reported', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
@@ -774,23 +775,23 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
     expectOnlyRule(pack, 27);
   });
 
-  it('none 带非空 consequence 是合法的（reversible）', () => {
+  it('a none with a non-empty consequence is valid (reversible)', () => {
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
       command: 'echo 1',
-      readback: { kind: 'none', consequence: '点亮板载 LED 约 1 秒' },
+      readback: { kind: 'none', consequence: 'lights the on-board LED for about 1 second' },
     });
     expect(errors(validatePack(pack))).toEqual([]);
   });
 
-  it('**用 none 的动作要逐个记一条 warning**（ADR-D25 决策 6）', () => {
-    // 「这个可见性就是主要防线」——没有 warning，这道防线就没装。
+  it('**an action that uses none records one warning for each of them**', () => {
+    // "This visibility is the main line of defence" — without the warning, the defence is not in place.
     const pack = addAction(basePack(), {
       id: 'a',
       danger: 'reversible',
       command: 'echo 1',
-      readback: { kind: 'none', consequence: '点亮板载 LED 约 1 秒' },
+      readback: { kind: 'none', consequence: 'lights the on-board LED for about 1 second' },
     });
     const issues = validatePack(pack);
     const warns = issues.filter((i) => i.severity === 'warning');
@@ -798,8 +799,8 @@ describe('规则 27 · 每个 action 必须有 readback；none 必须带非空 c
   });
 });
 
-describe('校验真实包', () => {
-  it('rk3588-atk 零 error', async () => {
+describe('validating a real pack', () => {
+  it('rk3588-atk reports no error', async () => {
     const { loadBoardPack } = await import('../../src/main/tags/pack');
     const { join } = await import('node:path');
     const pack = loadBoardPack(join(__dirname, '../../profiles/boards/rk3588-atk'));

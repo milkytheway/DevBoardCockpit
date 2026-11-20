@@ -5,13 +5,14 @@ import { join } from 'node:path';
 import { ActionAudit, formatAuditRow, type AuditRow } from '../../../src/main/actions/audit';
 
 /**
- * 动作审计 —— 契约 `docs/spec/02-board-pack.md` §5.4。
+ * Action audit — contract `docs/spec/02-board-pack.md` §5.4.
  *
- * > 「每次动作执行记一行：时间、卡片 id、动作 id、参数、结果、回读值。
- * > ……追加写、每行 flush、时间戳前缀。」
+ * The contract requires one row per action execution: timestamp, card id,
+ * action id, params, result, readback value. Rows are appended, flushed one by
+ * one, and prefixed with a timestamp.
  *
- * **它是「板子怎么变成这样的」的答案**——
- * 没有它，一次「板子怎么变成这样的」就只能靠猜。
+ * The audit row is the answer to "how did the board get into this state".
+ * Without it, the same question can only be answered by guesswork.
  */
 const ROW: AuditRow = {
   at: 1_700_000_000_000,
@@ -21,11 +22,11 @@ const ROW: AuditRow = {
   ok: true,
   verified: true,
   value: 128,
-  detail: '已确认',
+  detail: 'confirmed',
 };
 
-describe('审计 · 一行的形状', () => {
-  it('时间、actor、动作、参数、结果、回读值都在', () => {
+describe('audit · shape of one row', () => {
+  it('timestamp, actor, action, params, result and readback value are all present', () => {
     const line = formatAuditRow(ROW);
     expect(line).toContain('action=backlight.set');
     expect(line).toContain('actor=card:abc');
@@ -35,25 +36,25 @@ describe('审计 · 一行的形状', () => {
     expect(line).toContain('value=128');
   });
 
-  it('**参数里的换行不能撑成两行**（一行一个动作）', () => {
+  it('a newline inside the params must not split the row in two (one action per row)', () => {
     const line = formatAuditRow({ ...ROW, params: { text: 'a\nb' } });
     expect(line.includes('\n')).toBe(false);
     expect(line).toContain('\\n');
   });
 
-  it('没值的时候不留空字段', () => {
+  it('no empty fields are emitted when there is no value', () => {
     const line = formatAuditRow({ at: ROW.at, actor: 'x', actionId: 'y', params: {}, ok: false, verified: false });
     expect(line.includes('value=')).toBe(false);
   });
 });
 
-describe('审计 · 落盘', () => {
+describe('audit · writing to disk', () => {
   const dirs: string[] = [];
   afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
-  it('追加写：每次一行', () => {
+  it('append mode: one row per action', () => {
     const dir = mkdtempSync(join(tmpdir(), 'audit-'));
     dirs.push(dir);
     const file = join(dir, 'audit.log');
@@ -66,7 +67,7 @@ describe('审计 · 落盘', () => {
     expect(lines[1]).toContain('action=second');
   });
 
-  it('目录不存在时会建出来', () => {
+  it('the directory is created when it does not exist', () => {
     const dir = mkdtempSync(join(tmpdir(), 'audit-'));
     dirs.push(dir);
     const file = join(dir, 'logs', '2026-11-15', 'audit.log');

@@ -4,67 +4,69 @@ import { FAKE_PROFILE_ID } from '../../src/main/hal/fake/profile';
 import type { ConnectionProfile } from '../../src/main/profiles/schema';
 
 /**
- * 假设备的**接线规则**（纯函数，所以能单测）。
+ * The **rules of the wiring** of the fake device (pure functions, so they can
+ * be unit tested).
  *
- * ── 为什么规则要单独成文件 ──
+ * Why the rules are a file of their own:
  *
- * `main/index.ts` 引了 Electron，**单测进不去**——
- * 而这几条恰恰是「静默失效」的重灾区：
- * 假设备没载入成功时，profile 还在列表里，
- * 而连接回落成了**真本机连接**（Windows 上就是开发者自己的 cmd.exe）：
- * 列表里写着「假板子 · 合成数据」，打开却是自己的机器。
+ * `main/index.ts` pulls in Electron and **a unit test cannot get in** — and
+ * these rules are exactly where the "silent failure" happens: when the fake
+ * device did not load, the profile is still in the list while the connection
+ * falls back to a **real local connection** (on Windows that is the cmd.exe of
+ * the developer): the list says "fake board · synthetic data" and opening it
+ * gives the developer their own machine.
  *
- * → 规则抽成纯函数，**判据能单测**。
+ * → The rules are pure functions, so **the criteria can be unit tested**.
  */
 
 const REAL: ConnectionProfile = {
   id: 'board-adb',
-  label: '真板子',
+  label: 'the real board',
   transport: 'adb',
   board_pack: 'rk3588-atk',
   options: {},
 };
 
-describe('假设备 · 接线规则', () => {
-  it('开关关着 → 不列假 profile', () => {
+describe('the fake device · the rules of the wiring', () => {
+  it('the switch is off → the fake profile is not listed', () => {
     expect(profilesWithFake([REAL], 'off', true)).toEqual([REAL]);
   });
 
-  it('开着 → 假 profile 排第一个（调试时看到的一定是它）', () => {
+  it('it is on → the fake profile comes first (during the debugging it is what you see)', () => {
     const out = profilesWithFake([REAL], 'on', true);
     expect(out[0]?.id).toBe(FAKE_PROFILE_ID);
     expect(out).toHaveLength(2);
   });
 
-  it('only → 只有假 profile', () => {
+  it('only → only the fake profile', () => {
     const out = profilesWithFake([REAL], 'only', true);
     expect(out).toHaveLength(1);
     expect(out[0]?.id).toBe(FAKE_PROFILE_ID);
   });
 
-  it('假设备没载入成功 → 就不列它（列了会拿真的本机连接顶替）', () => {
+  it('the fake device did not load → it is not listed (listing it would let a real local connection take its place)', () => {
     expect(profilesWithFake([REAL], 'on', false)).toEqual([REAL]);
     expect(profilesWithFake([REAL], 'only', false)).toEqual([REAL]);
   });
 
-  it('**多个角色**（`COCKPIT_FAKE_PROFILES=build,target`）→ 每个都走假设备', () => {
+  it('**several roles** (`COCKPIT_FAKE_PROFILES=build,target`) → each of them goes to the fake device', () => {
     const env = { COCKPIT_FAKE_PROFILES: 'build,target' } as NodeJS.ProcessEnv;
     const out = profilesWithFake([REAL], 'only', true, env);
     expect(out.map((p) => p.id)).toEqual(['build', 'target']);
     expect(fakeRouteFor('build', 'on', true, env)).toBe('fake');
     expect(fakeRouteFor('target', 'on', true, env)).toBe('fake');
-    // **不在名单里的 → 还是真 profile** ✓
+    // **One that is not in the list → it is still a real profile**
     expect(fakeRouteFor('board-adb', 'on', true, env)).toBe('not-fake');
   });
 
-  it('角色名单**没给** → 默认只有 `fake-board`（行为与从前一样 ✓）', () => {
+  it('the list of roles is **not given** → by default only `fake-board` (the behaviour is the one of before)', () => {
     expect(fakeRouteFor('build', 'on', true, {} as NodeJS.ProcessEnv)).toBe('not-fake');
     expect(fakeRouteFor(FAKE_PROFILE_ID, 'on', true, {} as NodeJS.ProcessEnv)).toBe('fake');
   });
 
-  it('路由：载入成功才走假设备；没载入成功就**拒绝**，绝不回落成真连接', () => {
+  it('the routing: the fake device is only used when it loaded, and when it did not load it is **refused**, it never falls back to a real connection', () => {
     expect(fakeRouteFor(FAKE_PROFILE_ID, 'on', true)).toBe('fake');
-    // **'refuse' 而不是 'not-fake'** —— 后者会掉进真的传输里
+    // **'refuse' and not 'not-fake'** — the latter would fall through to the real transport
     expect(fakeRouteFor(FAKE_PROFILE_ID, 'on', false)).toBe('refuse');
     expect(fakeRouteFor('board-adb', 'on', true)).toBe('not-fake');
     expect(fakeRouteFor('board-adb', 'off', true)).toBe('not-fake');

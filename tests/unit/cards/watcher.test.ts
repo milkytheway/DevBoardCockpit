@@ -5,20 +5,25 @@ import { join } from 'node:path';
 import { watchCardRoots } from '../../../src/main/cards/watcher';
 
 /**
- * 卡片目录的热插拔监听。
+ * The hot-plug watcher of the card directory.
  *
- * ── 这两条曾经真的错着 ──
+ * These two were once genuinely wrong:
  *
- * ① **用户根目录不存在时直接不监听**——
- *    第一次跑应用时 `%LOCALAPPDATA%\DevBoardCockpit\cards` **还不存在**
- *    → 用户（或 agent）把卡放进去 → **应用永远不知道** → 卡片区永远是空的，
- *    除非重启。**「卡片即文件」最常见的那一步是坏的。**
+ * ① **When the user root did not exist it was simply not watched** — on the
+ *   first run of the application
+ *   `%LOCALAPPDATA%\DevBoardCockpit\cards` **does not exist yet**, so the
+ *   operator (or the agent) puts a card in → **the application never learns
+ *   about it** → the card area stays empty until the application is
+ *   restarted. **The most common step of "a card is a file" was broken.**
  *
- * ② **启动之后才装进来的卡，它的目录没被监听**——
- *    监听只在启动时挂一遍；之后新出现的卡目录**只被根目录的事件带出来一次**，
- *    再改它的文件就**不会**触发刷新 → 「改文件即生效」对它无效。
+ * ② **The directory of a card that was installed after the startup was not
+ *   watched** — the watcher was only attached once at the startup, and a card
+ *   directory that appeared later **was only brought up once by an event of
+ *   the root**, so changing a file in it **did not trigger a refresh** → "edit
+ *   the file and it takes effect" did not hold for it.
  *
- * 两条都是 **e2e 跑起来才暴露的**（单元测试覆盖不到「目录在不在」这件事）。
+ * Both of them were **only exposed by the end-to-end tests** (the unit tests
+ * cannot cover "does the directory exist").
  */
 function scene(): { base: string; root: string; cleanup: () => void } {
   const base = mkdtempSync(join(tmpdir(), 'card-watch-'));
@@ -29,7 +34,7 @@ function scene(): { base: string; root: string; cleanup: () => void } {
   };
 }
 
-/** 等到条件成立（监听有 200ms 去抖，所以要等） */
+/** Waits until the condition holds (the watcher has a debounce of 200ms, so it has to be waited for) */
 async function waitFor(cond: () => boolean, ms = 5000): Promise<boolean> {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -39,8 +44,8 @@ async function waitFor(cond: () => boolean, ms = 5000): Promise<boolean> {
   return cond();
 }
 
-describe('卡片目录监听', () => {
-  it('**用户根目录不存在 → 建出来**（「卡片即文件」要先有个地方放卡）', () => {
+describe('the watcher of the card directory', () => {
+  it('**the user root is created when it does not exist** ("a card is a file" needs a place to put the cards)', () => {
     const { root, cleanup } = scene();
     try {
       const stop = watchCardRoots([{ dir: root, kind: 'user' }], () => undefined);
@@ -54,7 +59,7 @@ describe('卡片目录监听', () => {
     }
   });
 
-  it('**根目录不存在时放进去的卡，也会被发现**（第一次装卡不能要重启）', async () => {
+  it('**a card that was put in while the root did not exist is found as well** (the first installation may not ask for a restart)', async () => {
     const { root, cleanup } = scene();
     try {
       let changed = 0;
@@ -73,7 +78,7 @@ describe('卡片目录监听', () => {
     }
   });
 
-  it('**启动之后才装进来的卡，它的目录也要被监听**（改文件即生效）', async () => {
+  it('**the directory of a card that was installed after the startup is watched as well** (edit the file and it takes effect)', async () => {
     const { base, root, cleanup } = scene();
     try {
       mkdirSync(root, { recursive: true });
@@ -82,14 +87,14 @@ describe('卡片目录监听', () => {
         changed += 1;
       });
       try {
-        // 装一张卡
+        // It installs a card
         mkdirSync(join(root, 'c1'), { recursive: true });
         writeFileSync(join(root, 'c1', 'manifest.json'), '{}', 'utf8');
         expect(await waitFor(() => changed > 0)).toBe(true);
-        // 等监听重新挂上之后，改**卡里的文件**
+        // After the watcher is attached again, a **file inside the card** is changed
         await new Promise((r) => setTimeout(r, 400));
         const before = changed;
-        writeFileSync(join(root, 'c1', 'card.js'), '// 改一个字', 'utf8');
+        writeFileSync(join(root, 'c1', 'card.js'), '// one character changed', 'utf8');
         expect(await waitFor(() => changed > before)).toBe(true);
         expect(base).toBeTruthy();
       } finally {
@@ -100,7 +105,7 @@ describe('卡片目录监听', () => {
     }
   });
 
-  it('内置根目录**不建**（那是应用安装目录，只读）', () => {
+  it('the built-in root is **not created** (that is the installation directory of the application, it is read-only)', () => {
     const { base, root, cleanup } = scene();
     try {
       const builtin = join(base, 'app', 'cards');

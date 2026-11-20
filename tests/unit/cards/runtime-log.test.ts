@@ -2,35 +2,38 @@ import { describe, it, expect } from 'vitest';
 import { CardRuntimeLog } from '../../../src/main/cards/runtime-log';
 
 /**
- * 卡片的运行时日志。
+ * The runtime log of the card.
  *
- * ── 最要紧的一条：CSP 违规要归到**对的那张卡** ──
+ * The most important one: a CSP violation has to be filed under **the right
+ * card**:
  *
- * 契约 §6.1 承诺「agent 能看到『这张卡试图联网』」。
- * 但违规带来的是**实例 id**（`cockpit://card/<实例 id>/…`），
- * 而日志是**按卡片 id** 存的（`get_card_runtime_log(cardId)`）——
- * 所以中间必须有「实例 → 卡片」的对应。
+ * Contract §6.1 promises that "the agent can see "this card tried to reach
+ * the network"". But a violation carries an **instance id**
+ * (`cockpit://card/<instance id>/…`) while the log is stored **per card id**
+ * (`get_card_runtime_log(cardId)`) — so there has to be a mapping from the
+ * instance to the card in between.
  *
- * **归不出来就不记**：挂错卡的日志比没有日志更糟
- * （它会让 agent 去查一张**没做错事**的卡）。
+ * **What cannot be filed is not recorded**: a log under the wrong card is worse
+ * than no log (it sends the agent to inspect a card that **did nothing
+ * wrong**).
  */
-describe('卡片运行时日志', () => {
-  it('追加与读取（按时间顺序）', () => {
+describe('the runtime log of the card', () => {
+  it('appending and reading (in the order of the time)', () => {
     const log = new CardRuntimeLog({ now: () => 1000 });
-    log.append('cpu-usage', { source: 'card', level: 'info', message: '第一句' });
-    log.append('cpu-usage', { source: 'host', level: 'warn', message: '第二句' });
+    log.append('cpu-usage', { source: 'card', level: 'info', message: 'the first line' });
+    log.append('cpu-usage', { source: 'host', level: 'warn', message: 'the second line' });
     const entries = log.read('cpu-usage');
-    expect(entries.map((e) => e.message)).toEqual(['第一句', '第二句']);
+    expect(entries.map((e) => e.message)).toEqual(['the first line', 'the second line']);
     expect(entries[0]?.at).toBe(1000);
   });
 
-  it('卡之间互不可见', () => {
+  it('the cards cannot see each other', () => {
     const log = new CardRuntimeLog();
-    log.append('card-a', { source: 'card', level: 'info', message: 'A 的事' });
+    log.append('card-a', { source: 'card', level: 'info', message: 'the matter of A' });
     expect(log.read('card-b')).toEqual([]);
   });
 
-  it('CSP 违规归到**对的那张卡**', () => {
+  it('a CSP violation is filed under **the right card**', () => {
     const log = new CardRuntimeLog();
     log.bind('inst-1', 'cpu-usage');
     const cardId = log.attributeCspViolation({
@@ -45,7 +48,7 @@ describe('卡片运行时日志', () => {
     expect(entries[0]?.message).toMatch(/example\.com/);
   });
 
-  it('**归不出来就不记**（不认识的实例 / 不是卡片的地址）', () => {
+  it('**what cannot be filed is not recorded** (an unknown instance / an address that is not a card)', () => {
     const log = new CardRuntimeLog();
     log.bind('inst-1', 'cpu-usage');
     expect(log.attributeCspViolation({ message: 'x', sourceUrl: 'cockpit://card/inst-9/x.js' })).toBeNull();
@@ -53,13 +56,13 @@ describe('卡片运行时日志', () => {
     expect(log.read('cpu-usage')).toEqual([]);
   });
 
-  it('条目数有上限（超出丢最旧的）', () => {
+  it('the number of entries has a limit (beyond it the oldest is dropped)', () => {
     const log = new CardRuntimeLog({ limitPerCard: 3 });
     for (let i = 0; i < 5; i += 1) {
-      log.append('cpu-usage', { source: 'card', level: 'info', message: `第 ${i} 条` });
+      log.append('cpu-usage', { source: 'card', level: 'info', message: `entry ${i}` });
     }
     const entries = log.read('cpu-usage');
     expect(entries).toHaveLength(3);
-    expect(entries[0]?.message).toBe('第 2 条');
+    expect(entries[0]?.message).toBe('entry 2');
   });
 });

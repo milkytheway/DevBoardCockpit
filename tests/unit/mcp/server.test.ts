@@ -10,22 +10,26 @@ import type { ConnectionProfile } from '../../../src/main/profiles/schema';
 import type { Connection, ExecResult } from '../../../src/main/hal/connection';
 
 /**
- * **MCP 的 JSON-RPC 层与流程工具**（契约 `spec/04` §2.4 / §7.1 ✓）。
+ * The JSON-RPC layer of MCP and the workflow tools (contract `spec/04` §2.4 /
+ * §7.1).
  *
- * ── 协议照 MCP 官方规范（2025-06-18）──
+ * The protocol follows the official MCP specification (2025-06-18):
  *
- * - `initialize` → 回 `protocolVersion` / `capabilities` / `serverInfo` ✓；
- * - `notifications/initialized` → **202 空体** ✓（规范 §「Sending Messages」第 4 条 ✓）；
- * - `tools/list` → 工具清单 ✓（带 `inputSchema` ✓）；
- * - `tools/call` → 调工具 ✓；
- * - 未知方法 → JSON-RPC error `-32601` ✓。
+ * - `initialize` → returns `protocolVersion` / `capabilities` / `serverInfo`;
+ * - `notifications/initialized` → **202 with an empty body** (specification,
+ *   "Sending Messages", item 4);
+ * - `tools/list` → the tool list (with `inputSchema`);
+ * - `tools/call` → calls a tool;
+ * - an unknown method → the JSON-RPC error `-32601`.
  *
- * ── 工具那一侧的边界（契约 §2.4 明写 ✓）──
+ * The boundary on the tool side (spelled out in contract §2.4):
  *
- * - `list_workflows` **只给 id / name / 输入声明** ✓ —— **不给拓扑** ✓
- *   （哪个角色连哪台机器 → 那是未授权方不该看到的 ✗）；
- * - `workflow_status` 是**缩减投影** ✓（`03` §7.7 ✓）—— **不是**原样搬过去 ✓；
- * - **没有「递一次确认请求」那个工具了** ✓（**2026-11-16 砍完** ✓ · ADR-D48 ✓）。
+ * - `list_workflows` **returns only the id, the name and the input
+ *   declarations** — **not the topology** (which role connects to which
+ *   machine is not something an unauthorised party may see);
+ * - `workflow_status` is a **reduced projection** (`03` §7.7), not a copy of
+ *   the whole thing;
+ * - **the tool that passed on a confirmation request is gone**.
  */
 
 let dir: string;
@@ -35,13 +39,13 @@ let registry: WorkflowRegistry;
 const PACK_YAML = `apiVersion: devboard/v1
 kind: Workflow
 id: demo.run
-name: 演示流程
+name: demo workflow
 version: 1.0.0
 inputs:
   project: { type: string, required: true, maxLength: 50 }
 roles:
   build:
-    purpose: 客机
+    purpose: the guest
     profile: guest
 steps:
   - id: hello
@@ -58,7 +62,7 @@ beforeEach(() => {
 
   const profile: ConnectionProfile = {
     id: 'guest',
-    label: '客机',
+    label: 'the guest',
     transport: 'ssh',
     options: { host: '10.0.0.2' },
   };
@@ -79,7 +83,7 @@ beforeEach(() => {
     push: async () => undefined,
     list: async () => [],
     openSession: async () => {
-      throw new Error('不开会话');
+      throw new Error('no session');
     },
   } as unknown as Connection;
 
@@ -106,7 +110,7 @@ function server(): McpServer {
   return new McpServer({ workflows: service });
 }
 
-/** 发一个 JSON-RPC 请求 */
+/** Sends a JSON-RPC request */
 function call(method: string, params?: unknown): Promise<Record<string, unknown>> {
   return server().handle({
     jsonrpc: '2.0',
@@ -117,7 +121,7 @@ function call(method: string, params?: unknown): Promise<Record<string, unknown>
 }
 
 
-/** **带宿主依赖的 server** ✓（读侧工具要有 host 才列 ✓） */
+/** **a server with the host dependencies** (the read-side tools need a host to be listed) */
 function serverWithHost(): McpServer {
   return new McpServer({
     workflows: service,
@@ -129,7 +133,7 @@ function serverWithHost(): McpServer {
       profiles: () => [],
       capabilities: () => ({ exec: true, pty: false, files: true, exitCode: true }),
       connected: () => false,
-      // **当前运行时那条连接** ✓（**没有就是 `null`** ✓）
+      // **the connection of the current runtime** (**null when there is none**)
       currentProfileId: () => null,
       cards: () => [],
       cardDir: () => null,
@@ -148,7 +152,7 @@ function serverWithHost(): McpServer {
 }
 
 describe('MCP · initialize', () => {
-  it('**回 protocolVersion / capabilities / serverInfo** ✓', async () => {
+  it('**it returns protocolVersion / capabilities / serverInfo**', async () => {
     const res = await call('initialize', { protocolVersion: '2025-06-18' });
     const result = res['result'] as Record<string, unknown>;
     expect(result['protocolVersion']).toBe('2025-06-18');
@@ -156,21 +160,21 @@ describe('MCP · initialize', () => {
     expect((result['serverInfo'] as Record<string, unknown>)['name']).toBeTruthy();
   });
 
-  it('**声明 tools 能力** ✓（规范：提供工具的 server **MUST** 声明 ✓）', async () => {
+  it('**the tools capability is declared** (the specification: a server that offers tools **MUST** declare it)', async () => {
     const res = await call('initialize', { protocolVersion: '2025-06-18' });
     const caps = (res['result'] as Record<string, unknown>)['capabilities'] as Record<string, unknown>;
     expect(caps['tools']).toBeTruthy();
   });
 
-  it('**客户端要一个我们不支持的版本 → 回我们自己支持的** ✓（规范 §「Version Negotiation」✓）', async () => {
+  it('**the client asks for a version we do not support → we return the one we do** (specification, "Version Negotiation")', async () => {
     const res = await call('initialize', { protocolVersion: '1999-01-01' });
     const result = res['result'] as Record<string, unknown>;
     expect(result['protocolVersion']).toBe('2025-06-18');
   });
 });
 
-describe('MCP · 通知（不发响应）', () => {
-  it('`notifications/initialized` → **返回 null**（HTTP 层给 202 空体 ✓）', async () => {
+describe('MCP · notifications (no response)', () => {
+  it('`notifications/initialized` → **it returns null** (the HTTP layer answers 202 with an empty body)', async () => {
     const res = await server().handle({
       jsonrpc: '2.0',
       method: 'notifications/initialized',
@@ -180,7 +184,7 @@ describe('MCP · 通知（不发响应）', () => {
 });
 
 describe('MCP · tools/list', () => {
-  it('**清单里有那三个流程工具** ✓（**`confirm_workflow` 没了** ✓ —— ADR-D48 ✓）', async () => {
+  it('**the list contains the three workflow tools** (**`confirm_workflow` is gone**)', async () => {
     const res = await call('tools/list');
     const tools = (res['result'] as Record<string, unknown>)['tools'] as {
       name: string;
@@ -190,11 +194,12 @@ describe('MCP · tools/list', () => {
     expect(names).toContain('list_workflows');
     expect(names).toContain('run_workflow');
     expect(names).toContain('workflow_status');
-    // **「递一次确认请求」那个工具没了** ✓（**不再有「问人」这一档** ✓）
+    // **the tool that passed on a confirmation request is gone** (there is no
+// "ask the operator" outcome any more)
     expect(names).not.toContain('confirm_workflow');
   });
 
-  it('**工具清单是 19 个** ✓（**21 → 19** ✓ —— **两个「问人」的工具没了** ✓）', async () => {
+  it('**the tool list has 19 entries** (21 → 19 — the two tools that asked the operator are gone)', async () => {
     const res = await serverWithHost().handle({
       jsonrpc: '2.0',
       id: 1,
@@ -202,32 +207,32 @@ describe('MCP · tools/list', () => {
     });
     const tools = (res?.['result'] as Record<string, unknown>)['tools'] as { name: string }[];
     expect(tools).toHaveLength(19);
-    // **那两个「问人」的工具没了** ✓
+    // **the two tools that asked the operator are gone**
     const names = tools.map((t) => t.name);
     expect(names).not.toContain('confirm_action');
     expect(names).not.toContain('confirm_workflow');
   });
 
-  it('**每个工具带 inputSchema** ✓（agent 要靠它填参数 ✓）', async () => {
+  it('**every tool carries an inputSchema** (an agent needs it to fill the arguments)', async () => {
     const res = await call('tools/list');
     const tools = (res['result'] as Record<string, unknown>)['tools'] as {
       name: string;
       inputSchema?: unknown;
     }[];
     for (const tool of tools) {
-      expect(tool.inputSchema, `${tool.name} 没有 inputSchema`).toBeTruthy();
+      expect(tool.inputSchema, `${tool.name} has no inputSchema`).toBeTruthy();
     }
   });
 
-  it('**没有「取消流程」的工具** ✓（契约 §2.4：停不停是人的判断 ✓）', async () => {
+  it('**there is no tool that cancels a workflow** (contract §2.4: whether to stop is the judgement of the operator)', async () => {
     const res = await call('tools/list');
     const tools = (res['result'] as Record<string, unknown>)['tools'] as { name: string }[];
     expect(tools.map((t) => t.name)).not.toContain('cancel_workflow');
   });
 });
 
-describe('MCP · 未知方法', () => {
-  it('**-32601（方法不存在）** ✓', async () => {
+describe('MCP · unknown method', () => {
+  it('**-32601 (the method does not exist)**', async () => {
     const res = await call('nope/nope');
     const err = res['error'] as { code: number; message: string };
     expect(err.code).toBe(-32601);
@@ -235,13 +240,13 @@ describe('MCP · 未知方法', () => {
 });
 
 describe('MCP · get_card_sdk_docs', () => {
-  it('**在 `tools/list` 里** ✓（契约 §2.3 ✓）', async () => {
+  it('**it is in `tools/list`** (contract §2.3)', async () => {
     const res = await call('tools/list');
     const tools = (res['result'] as Record<string, unknown>)['tools'] as { name: string }[];
     expect(tools.map((t) => t.name)).toContain('get_card_sdk_docs');
   });
 
-  it('**调得通** ✓ —— 且**内容来自活代码** ✓', async () => {
+  it('**it can be called** — and **the content comes from the live code**', async () => {
     const svc = serverWithHost();
     const res = (await svc.callTool('get_card_sdk_docs', { topic: 'api' })) as {
       apiVersion: string;
@@ -250,16 +255,16 @@ describe('MCP · get_card_sdk_docs', () => {
     };
     expect(res.apiVersion).toBe('devboard/v1');
     expect(res.topics).toEqual(['api']);
-    // **方法名来自 API 注册表** ✓（不是手抄的 ✓）
+    // **The name of the method comes from the API registry** (it is not copied by hand)
     expect(res.content).toContain('tags.get');
   });
 });
 
-describe('MCP · 三个流程工具', () => {
-  it('**每个响应都带 apiVersion** ✓（契约 §四：版本字段在每个响应里都带上 ✓）', async () => {
+describe('MCP · the three workflow tools', () => {
+  it('**every response carries apiVersion** (contract §4: the version field is on every response)', async () => {
     const svc = server();
     const list = (await svc.callTool('list_workflows', {})) as unknown[];
-    // **列表也要带** ✓ —— 契约说的是「每个响应」✓
+    // **The list carries it as well** — the contract says "every response"
     expect((list[0] as Record<string, unknown>)['apiVersion']).toBe('devboard/v1');
 
     const started = (await svc.callTool('run_workflow', {
@@ -274,20 +279,20 @@ describe('MCP · 三个流程工具', () => {
     expect(status['apiVersion']).toBe('devboard/v1');
   });
 
-  it('`list_workflows` → **只给 id / name / 输入声明**（**不给拓扑** ✓）', async () => {
+  it('`list_workflows` → **it returns only the id, the name and the input declarations** (**not the topology**)', async () => {
     const res = await server().callTool('list_workflows', {});
     const list = res as { id: string; name: string; inputs: Record<string, unknown> }[];
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe('demo.run');
-    expect(list[0]?.name).toBe('演示流程');
+    expect(list[0]?.name).toBe('demo workflow');
     expect(list[0]?.inputs['project']).toBeTruthy();
-    // **不许露出角色/机器** ✓（契约 §2.4 明写 ✓ —— 那是**拓扑** ✓）
+    // **The roles and the machines may not show** (the contract says that in §2.4 — that is the **topology**)
     const dumped = JSON.stringify(list);
     expect(dumped).not.toContain('build');
     expect(dumped).not.toContain('guest');
     expect(dumped).not.toContain('ubuntu-ssh');
-    // **键就只有契约说的那几个** ✓（契约 §2.4：`[{ id, name, inputs }]` ✓）
-    // → 多一个键就是多漏一样东西 ✓（`version` / `approved` / 拓扑 ✓ 都不该有 ✓）
+    // **The keys are only the ones the contract names** (contract §2.4: `[{ id, name, inputs }]`)
+    // → one key more is one thing leaked more (`version` / `approved` / the topology may not be there)
     expect(Object.keys(list[0] as Record<string, unknown>).sort()).toEqual([
       'apiVersion',
       'id',
@@ -296,7 +301,7 @@ describe('MCP · 三个流程工具', () => {
     ]);
   });
 
-  it('`run_workflow` → **返回 run_id** ✓', async () => {
+  it('`run_workflow` → **it returns a run_id**', async () => {
     const res = await server().callTool('run_workflow', {
       id: 'demo.run',
       inputs: { project: 'x' },
@@ -304,7 +309,7 @@ describe('MCP · 三个流程工具', () => {
     expect((res as { run_id: string }).run_id).toMatch(/^wf-/);
   });
 
-  it('`run_workflow` 跑一个**没有这个包**的流程 → **失败**（不是偷偷跑起来 ✓）', async () => {
+  it('`run_workflow` runs a workflow **without such a pack** → **it fails** (it does not quietly run anyway)', async () => {
     const res = await server().callTool('run_workflow', {
       id: 'nobody.run',
       inputs: {},
@@ -314,7 +319,7 @@ describe('MCP · 三个流程工具', () => {
     expect(out.reason).toBeTruthy();
   });
 
-  it('`workflow_status` → **缩减投影**（**不给 outputs / inputs / role** ✓）', async () => {
+  it('`workflow_status` → **a reduced projection** (**no outputs / inputs / role**)', async () => {
     const svc = server();
     const started = (await svc.callTool('run_workflow', {
       id: 'demo.run',
@@ -326,7 +331,7 @@ describe('MCP · 三个流程工具', () => {
     expect(status['state']).toBeTruthy();
     expect(status['stages']).toBeTruthy();
     const dumped = JSON.stringify(status);
-    // **这些是宿主侧的东西** ✓（契约 §2.4：明细留给宿主与 agent ✓）
+    // **These belong to the host side** (contract §2.4: the details stay with the host and the agent)
     expect(dumped).not.toContain('outputs');
     expect(dumped).not.toContain('inputs');
     expect(dumped).not.toContain('"role"');
