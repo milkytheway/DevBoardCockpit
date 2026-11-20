@@ -5,27 +5,31 @@ import '@xterm/xterm/css/xterm.css';
 import { readXtermTheme, type XtermTheme } from '../shell/theme';
 
 /**
- * 一个终端面板。
+ * A terminal panel.
  *
- * xterm 自己算字符宽度（含中文与 emoji 的宽字符），
- * **不要自己算列宽**——那是终端渲染里最容易出错的地方。
- * 尺寸变化交给 FitAddon，宿主只需把行列数报回去。
+ * xterm measures the character width itself (including the wide characters of
+ * CJK text and emoji), so **do not compute the column count** — that is the
+ * easiest thing to get wrong in terminal rendering.
+ * The FitAddon handles resizing; the host only reports the row and column
+ * counts back.
  *
- * 颜色全部走 `--cockpit-*` token：
- * 换主题 = 换一套变量值 = 所有卡片跟着变，不用重写任何卡片。
+ * Every colour comes from a `--cockpit-*` token:
+ * changing the theme = changing a set of variable values = every card follows,
+ * without rewriting a single card.
  */
 
 export interface TerminalViewProps {
   sessionId: string;
-  /** 用户按键或粘贴 → 交给宿主转发给远端 */
+  /** The user types or pastes → the host forwards it to the far end */
   onWrite: (data: string) => void;
-  /** 尺寸变化时把行列数报给宿主 */
+  /** On a resize, the row and column counts are reported to the host */
   onResize?: (cols: number, rows: number) => void;
   /**
-   * 订阅远端输出。
+   * Subscribes to the output of the far end.
    *
-   * **传回调，不传累积串。** 传累积串的话，每来一个 chunk 就得把从第一个字符起
-   * 的全部内容再写一遍——屏幕上是重复的文本，不是板子说的话。
+   * **It is a callback, not an accumulated string.** With an accumulated
+   * string, every chunk means rewriting everything from the first character —
+   * the screen would show repeated text instead of what the board said.
    */
   subscribe?: (cb: (chunk: string) => void) => () => void;
   /**
@@ -52,11 +56,11 @@ export interface TerminalViewProps {
 }
 
 /**
- * 读一个 CSS 变量的**解析后**的值。
+ * Reads the **resolved** value of a CSS variable.
  *
- * xterm 是用 canvas 画的，canvas 不认 `var(--x)`——
- * 直接把 token 名传给 xterm 会静默失效（终端落在默认色上）。
- * 所以这里用 getComputedStyle 取实际颜色。
+ * xterm draws on a canvas, and a canvas does not understand `var(--x)` —
+ * handing xterm the token name fails silently and the terminal falls back to
+ * the default colours. So the real colour is read with getComputedStyle.
  */
 function readToken(name: string, fallback: string): string {
   if (typeof window === 'undefined' || !window.getComputedStyle) return fallback;

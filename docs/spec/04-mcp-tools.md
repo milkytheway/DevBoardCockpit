@@ -1,56 +1,56 @@
-> **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
-> 契约层为**权威文档**。**迁入后经 `0244852` 修订过**，2026-11-12 的评审又做了一轮修订
-> ——逐节来源见 `00-overview.md` §一之二。实现方式见仓库根目录的 `README.md`。
-# MCP 工具集
+> Source and revisions: this document was migrated from the predecessor project `DevBoardConsole\docs\spec\` (2026-11-12, Codex, commit `c24b084`).
+> The contract layer is the authoritative documentation. It was revised by `0244852` after the migration, and the review of 2026-11-12 revised it once more
+> — see `00-overview.md` section 1.2 for the per-section provenance. For the implementation see `README.md` at the repository root.
+# The MCP Tool Set
 
-> GUI 实现 MCP server。宿主 AI 通过它感知软件现状、读板子状态、写卡片、自测。
-> 这是「AI ↔ GUI」的契约，和「卡片 ↔ 板子」的 tag 契约对称。
-
----
-
-## 一、总原则
-
-### 1.1 能力是动态出现的
-
-**不能靠静态文档。** 摄像头是插上的，驱动是后来装的，board pack 是运行时加载的，卡片是 agent 刚写的。
-
-所以 MCP 的第一组工具全是「列举」，不是「查询文档」：
-
-```
-list_connections  →  现在连着什么
-list_data_sources →  现在有什么数据可读
-list_capabilities →  现在能做什么
-```
-
-静态文档（`get_card_sdk_docs`）只作为**写卡时的语法参考**，不作为现状来源。
-
-### 1.2 agent 自测的眼睛
-
-一个 agent 写完一张卡，如果不能立刻看到「这张卡跑起来对不对」，它就只能在盲写。
-
-所以 MCP 必须提供：
-
-- `validate_card(path)` —— 静态校验，写完立刻能查
-- `get_card_runtime_log(cardId)` —— 运行时日志，卡跑起来能看错
-
-这两条合起来，就是 agent 的「眼睛」。没有它们，「做一张卡从半天变一轮对话」不成立。
-
-### 1.3 不准有裸 send_command
-
-`execute_action` **取代**裸命令执行。agent 只能触发**已声明的动作**，不能发任意命令。
-
-理由是安全 + 语义两条：
-
-- 安全：动作带危险分级、参数范围、审计。
-- 语义：`backlight.set` 比一串 shell 更有意义，而且它的回读是定义好的。
-
-如果 agent 需要一个还没声明的动作，它应该**写一个 board pack 扩展**，而不是发裸命令。
+> The GUI implements the MCP server. The host AI uses it to perceive the current state of the software, to read the state of a board, to write cards and to test itself.
+> This is the contract of "AI ↔ GUI" and it is symmetric to the tag contract of "card ↔ board".
 
 ---
 
-## 二、工具清单
+## 1. General principles
 
-### 2.1 感知现状
+### 1.1 Capabilities appear dynamically
+
+Static documentation cannot work. A camera is plugged in, a driver is installed later, a board pack is loaded at runtime, a card has just been written by an agent.
+
+The first group of MCP tools is therefore all about listing, not about querying documentation:
+
+```
+list_connections  →  what is connected right now
+list_data_sources →  what can be read right now
+list_capabilities →  what can be done right now
+```
+
+The static documentation (`get_card_sdk_docs`) is only a syntax reference for authoring cards, never a source of the current state.
+
+### 1.2 The eyes of the agent self-test
+
+When an agent has written a card and cannot immediately see whether that card behaves correctly, it is writing blind.
+
+MCP therefore has to provide:
+
+- `validate_card(path)` — static validation, available the moment the card is written
+- `get_card_runtime_log(cardId)` — the runtime log, so that the errors of a running card can be seen
+
+Together those two are the eyes of the agent. Without them "making a card takes half a day" cannot become "one round of conversation".
+
+### 1.3 No raw send_command
+
+`execute_action` replaces raw command execution. An agent may only trigger declared actions, it cannot send arbitrary commands.
+
+There are two reasons, safety and semantics:
+
+- Safety: an action carries a danger grading, a parameter range and an audit trail.
+- Semantics: `backlight.set` says more than a shell string, and its readback is defined.
+
+If an agent needs an action that has not been declared yet, it should write a board pack extension instead of sending a raw command.
+
+---
+
+## 2. The tool list
+
+### 2.1 Perceiving the current state
 
 #### `list_connections()`
 
@@ -58,30 +58,30 @@ list_capabilities →  现在能做什么
 → [{ id, label, transport, board_pack, device_key, current, connected, capabilities }]
 ```
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| **`device_key`** | **这块板的标识** ✓（`02` §10.2 ✓）—— **同一块板的多条连接给同一个值** ✓ |
-| **`current`** | **它是当前运行时那条连接吗** ✓（**与 `connected` 的两条判据分开** ✓ —— 开着终端会话的那条**也算 `connected`** ✓，但**不是**运行时那条 ✓） |
+| `device_key` | The identity of this board ✓ (`02` section 10.2 ✓) — several connections to the same board give the same value ✓ |
+| `current` | Whether it is the connection the current runtime uses ✓ (a criterion of its own, separate from `connected` ✓ — a connection with an open terminal session also counts as `connected` ✓, but it is not the one the runtime uses ✓) |
 
-`board_pack` 是当前这块板绑定的**板型包 id**；**没绑就是 `null`**。
+`board_pack` is the id of the board pack bound to the current board; when nothing is bound it is `null`.
 
-> **只给 id，不给版本** ✓：版本是**包自己的属性**——同 id 的包可以有好几个版本，
-> 那不是「这条连接」的属性。版本在 `list_data_sources` 里给（那里本来就在讲包）。
+> Only the id, never the version ✓: the version is an attribute of the pack itself — several versions can share one id,
+> and that is not an attribute of this connection. The version is given by `list_data_sources` (which is about packs anyway).
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `id` / `label` / `transport` | 连接 **profile** 的身份（**不是**某条活连接） |
-| `board_pack` | 绑定的板型包 id，或 `null` |
-| `connected` | **这条 profile 现在有活着的连接吗**（布尔） |
-| `capabilities` | **连接级**能力位：`exec` / `pty` / `files` / `exitCode`（`spec/02` §10.3 的**连接级**那一套，**不是**板级词表） |
+| `id` / `label` / `transport` | The identity of the connection profile (not of some live connection) |
+| `board_pack` | The id of the bound board pack, or `null` |
+| `connected` | Whether this profile has a live connection right now (boolean) |
+| `capabilities` | The connection-level capability bits: `exec` / `pty` / `files` / `exitCode` (the connection-level set of `spec/02` section 10.3, not the board-level vocabulary) |
 
-**`connected` 的判据**（两条**都要满足**才算「连着」）：
+The criteria for `connected` (both have to hold for the connection to count as up):
 
-1. 它是**当前 tag 运行时那条连接**，**且**运行时状态是 `running`；
-   —— **光看「运行时记着这个 profile」不够**：连不上或已停下时那条记录仍在。
-2. **或**它**开着终端会话**。
+1. It is the connection of the current tag runtime and the runtime state is `running`;
+   — knowing only that the runtime remembers this profile is not enough: the record survives a failed connection or a stopped runtime.
+2. Or it has an open terminal session.
 
-> **「有 profileId」≠「连着」** ✓。
+> Having a profileId is not the same as being connected ✓.
 
 #### `list_data_sources()`
 
@@ -90,33 +90,33 @@ list_capabilities →  现在能做什么
      provides: ["cpu.usage", ...], status }]
 ```
 
-`status` 是 reader 本身的状态，取值与 tag 状态**同一套**：`ok` / `stale` /
-`unavailable` / `error` / `pending`。
+`status` is the state of the reader itself and it uses the same set of values as the tag states: `ok` / `stale` /
+`unavailable` / `error` / `pending`.
 
-注意这返回的是 **reader 粒度**，不是 tag 粒度——因为「哪些 tag 可读」这个问题的答案天然按 reader 组织（一个 reader 挂了，它提供的 tag 全挂）。
+Note that this is reader granularity, not tag granularity — the answer to "which tags are readable" is organised by reader by nature (when a reader goes down, every tag it provides goes down with it).
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `id` | **reader 的 id**（数据源就是 reader 粒度） |
-| `board` | **当前板型包的 id**（不是连接 id） |
-| `poll_group` | 这个 reader 所在的轮询组 id |
-| `kind` | reader 的 kind（`proc_stat` / `file_read` / …） |
-| `interval_ms` | 它所在**轮询组**的周期（reader 自己没有周期） |
-| `provides` | 这个 reader 提供的 **tag 具体名**（**展开后的**——包里写的是模式，见下） |
-| `status` | reader 自身状态（映射表见下） |
+| `id` | The id of the reader (a data source is at reader granularity) |
+| `board` | The id of the current board pack (not a connection id) |
+| `poll_group` | The id of the poll group this reader belongs to |
+| `kind` | The kind of the reader (`proc_stat` / `file_read` / …) |
+| `interval_ms` | The period of the poll group it belongs to (a reader has no period of its own) |
+| `provides` | The concrete tag names this reader provides (expanded — the pack holds patterns, see below) |
+| `status` | The state of the reader itself (the mapping table is below) |
 
-> **`provides` 给具体名** ✓：包里写的是 `cpu.core.*.usage`（**模式**），
-> 而 agent 要写卡片 → 卡片要填**具体 tag 名**。模式另由 `describe_tag` 的语义承担。
+> `provides` gives concrete names ✓: the pack holds `cpu.core.*.usage` (a pattern),
+> and an agent has to write a card → the card needs concrete tag names. The pattern itself is carried by the semantics of `describe_tag`.
 
-**reader 的 `status` 是映射表**（不是「取最差」）：
+The `status` of a reader is a mapping table (not "the worst of them"):
 
-| 情形 | `status` |
+| Case | `status` |
 |---|---|
-| 它的 tag **一个都不在**读数里 | `pending` |
-| 有 tag，且**全部** `unavailable` | `unavailable` |
-| 有 tag，且**存在** `error` | `error` |
-| 有 tag，且**存在** `stale`（没有 error） | `stale` |
-| 全部 `ok` | `ok` |
+| Not one of its tags is in the readings | `pending` |
+| It has tags and all of them are `unavailable` | `unavailable` |
+| It has tags and at least one of them is `error` | `error` |
+| It has tags and at least one of them is `stale` (no error) | `stale` |
+| All of them are `ok` | `ok` |
 
 #### `list_capabilities()`
 
@@ -124,14 +124,14 @@ list_capabilities →  现在能做什么
 → { transports: [...], features: ["cards", "mcp", "layout_share", "record"] }
 ```
 
-工作台自己有什么。给 agent 判断「这个功能有没有」。
+What the workbench itself offers. It lets an agent tell whether a feature exists.
 
-| 字段 | 取值域 |
+| Field | Domain |
 |---|---|
-| `transports` | **连接级**能力的封闭词表：`exec` / `pty` / `files` / `exitCode`（`spec/02` §10.3 的**连接级**那一套）——**不是**板级词表 |
-| `features` | 工作台自己的能力位，**封闭**：`cards` / `mcp` / `layout_share` / `record` |
+| `transports` | The closed vocabulary of the connection-level capabilities: `exec` / `pty` / `files` / `exitCode` (the connection-level set of `spec/02` section 10.3) — not the board-level vocabulary |
+| `features` | The capability bits of the workbench itself, closed: `cards` / `mcp` / `layout_share` / `record` |
 
-> **加值要改契约** ✓（封闭词表 ✓）。
+> Adding a value is a contract change ✓ (it is a closed vocabulary ✓).
 
 #### `list_tags(board?)`
 
@@ -139,32 +139,32 @@ list_capabilities →  现在能做什么
 → [{ name, type, unit, range, status, value, board, source_reader }]
 ```
 
-**当前实际可读**的 tag，含实时状态。这是 agent 写卡时最该先调的一个。
+The tags that are actually readable right now, with their live state. This is the first tool an agent should call when writing a card.
 
-区别于 `list_data_sources`：
+The difference from `list_data_sources`:
 
-- `list_data_sources` 问「有哪些数据源」
-- `list_tags` 问「有哪些具体的量，现在什么值」
+- `list_data_sources` asks which data sources exist
+- `list_tags` asks which concrete quantities exist and what their value is now
 
-agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直接告诉 agent 有哪些 tag 名可用。
+When an agent writes a CPU card the first call is `list_tags()`, because it tells the agent directly which tag names are available.
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `name` | tag 名 |
-| `type` | **核心词表**里的类型（`number` / `string` / `boolean` / `enum`）；**没有词表条目就是 `null`** |
-| `unit` | 单位——**没有词表条目是 `'-'`**（无量纲），**不是 `null`** |
-| `range` | **核心词表**里的取值域：**二元数组** `[min,max]` **或字符串**（如 `"开放枚举"` / `"≥0"`）；没有词表条目是 `null` |
-| `status` / `value` | 当前读数（五态，原样） |
-| `board` | 当前板型包的 id |
-| `source_reader` | 这个 tag 是**哪个 reader** 提供的 |
+| `name` | The tag name |
+| `type` | The type in the core vocabulary (`number` / `string` / `boolean` / `enum`); without a vocabulary entry it is `null` |
+| `unit` | The unit — without a vocabulary entry it is `'-'` (dimensionless), not `null` |
+| `range` | The range in the core vocabulary: a two-element array `[min,max]` or a string (such as `"open enumeration"` / `"≥0"`); without a vocabulary entry it is `null` |
+| `status` / `value` | The current reading (the five states, verbatim) |
+| `board` | The id of the current board pack |
+| `source_reader` | The reader that provides this tag |
 
-**`source_reader` 怎么算**：拿 tag 名去匹配各 reader 的 `provides` 模式
-（**含 `custom` 里的 reader**——否则 `custom.*` 的量全都是 `null`）。
-**一个 tag 至多匹配一个 reader**——板型包规则 2 保证 reader 的 tag 模式不重叠，
-不合规的包运行时根本不加载。**匹配不上就是 `null`**（不猜）。
+How `source_reader` is computed: the tag name is matched against the `provides` patterns of every reader
+(the readers in `custom` are included — otherwise every quantity of `custom.*` would be `null`).
+A tag matches at most one reader — board pack rule 2 guarantees that the tag patterns of the readers do not overlap,
+and a pack that does not comply is not loaded at all. When nothing matches it is `null` (never a guess).
 
-> `board` 这个字段与 `list_connections` 的 `board_pack` **不是一回事** ✓：
-> 前者是**当前生效的那块板的包 id**，后者是**这条连接绑的包 id**。
+> The field `board` is not the same thing as `board_pack` of `list_connections` ✓:
+> the first is the pack id of the board that is in effect, the second is the pack id bound to this connection.
 
 #### `describe_tag(name)`
 
@@ -173,16 +173,16 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
     source: { reader, kind, args_summary }, history: [...] }
 ```
 
-`semantics` 是 tag 契约里的语义描述原文。**这是防误用的关键**——agent 看到 `npu.usage` 就该知道它是「各 NPU 核占用率的最大值」，而不是任何模糊的「NPU 负载」。
+`semantics` is the verbatim semantic description of the tag contract. This is the key against misuse — when an agent sees `npu.usage` it has to know that it is "the maximum of the utilisation of the NPU cores" and not some vague "NPU load".
 
-> `semantics` 是**词表原文**（**含 Markdown 强调标记**——agent 按纯文本读 ✓）；
-> 没有词表条目（`custom.*` 的私有量）是 `null`。
+> `semantics` is the vocabulary text verbatim (it contains Markdown emphasis markers — an agent reads it as plain text ✓);
+> without a vocabulary entry (a private quantity of `custom.*`) it is `null`.
 
-`source.args_summary` 让 agent 知道这个量是怎么来的（哪个文件、什么 kind），但**不暴露**具体命令（避免 agent 学着去发裸命令）。
+`source.args_summary` tells the agent where this quantity comes from (which file, which kind) but it does not expose the concrete command (so that the agent does not learn to send raw commands).
 
-**放行表按 `(kind, 参数名)` 判定**——**不按参数名单独判定**：
+The allow list is decided by the pair (kind, parameter name) — never by the parameter name alone:
 
-| kind | 给 agent 的参数 | 挡掉的 |
+| kind | Parameters given to the agent | Blocked |
 |---|---|---|
 | `proc_stat` | `stat_path`, `cpuinfo_path` | — |
 | `meminfo` | `path` | — |
@@ -190,19 +190,19 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 | `rknpu_load` | `path` | — |
 | `thermal_zone` | `glob`, `type_map` | — |
 | `file_read` | `path`, `glob`, `format`, `strip_trailing_null` | — |
-| `exec_regex` | `pattern`, `format` | **`command`** |
-| ⛔ `script` | **（空）** | ~~`path`, `interpreter`, `format`~~ **（已封存** ✓ · 规则 31 ✓）** |
+| `exec_regex` | `pattern`, `format` | `command` |
+| ⛔ `script` | (empty) | ~~`path`, `interpreter`, `format`~~ (sealed ✓ · rule 31 ✓) |
 
-> **为什么不能按参数名单独筛**：`path` 在 `file_read` 是**板上路径**（可给），
-> 在 `script` 是**宿主文件系统上的路径**（不可给——泄漏本机目录结构，
-> 且 `interpreter + path` 拼起来就是一条命令）。
-> **不在表里的参数一律不给**（封闭表，不是「先给再筛」）。
+> Why the parameters cannot be filtered by name alone: `path` in `file_read` is a path on the board (it may be given),
+> in `script` it is a path on the host file system (it may not — it leaks the directory structure of the machine,
+> and `interpreter + path` is a command once it is concatenated).
+> A parameter that is not in the table is never given (the table is closed, it is not "give everything and then filter").
 >
-> ⚠️ **`script` 已封存** ✓（`02` 规则 31 ✓ · §三.3 ✓）→ **上表那一行永远不会命中** ✓
-> —— **留着是因为封闭表要完整** ✓，**不是它还能用** ✓。
+> ⚠️ `script` is sealed ✓ (`02` rule 31 ✓ · section 3.3 ✓) → the row above can never be hit ✓
+> — it is kept because a closed table has to be complete ✓, not because it still works ✓.
 
-**`history`** = 最近的样本，形状与 `sample_tag` 完全一致：`[{ value, unit, status, at }]`。
-`at` 是**本次采样完成的时刻**（毫秒 UTC）。
+`history` = the most recent samples, with exactly the same shape as `sample_tag`: `[{ value, unit, status, at }]`.
+`at` is the moment this sample completed (milliseconds, UTC).
 
 #### `sample_tag(name, n)`
 
@@ -210,23 +210,23 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 → [{ value, unit, status, at }, ...]
 ```
 
-取最近 n 个样本。给 agent 判断「这个量是稳定的还是抖动的」，以及「刷新周期实际是多少」。
+The n most recent samples. It lets an agent judge whether a quantity is stable or jittery, and what the real refresh period is.
 
-| 项 | 语义 |
+| Item | Semantics |
 |---|---|
-| `n` | 最近 **n** 个样本（**不是最近 n 秒**） |
-| **先采一次** | **先定向采一次** `name` 所在的轮询组（**一次往返**），**再**从样本缓冲里取最近 n 个 |
-| `n` 大于已有的样本数 | **有多少给多少**（不补） |
+| `n` | The n most recent samples (not the last n seconds) |
+| One sample first | Take one targeted sample of the poll group that holds `name` (one round trip) and only then take the n most recent samples from the buffer |
+| `n` is larger than the number of samples available | Give as many as there are (no padding) |
 | `n ≤ 0` | `invalid_params` |
-| 这个 tag 从来没被读过 | **空数组**（不是 `null`） |
+| This tag has never been read | An empty array (not `null`) |
 
-> **为什么要先采一次**：不采的话，agent 拿到的是**冻结的旧样本**（连接断了就永远不更新）——
-> 那它判断的「抖动」是**过去**的抖动。
-> **代价是一次往返**——agent 可以拿这个工具当「刷新一次」用。
+> Why one sample is taken first: without it the agent receives frozen old samples (they never update once the connection is down) —
+> and the jitter it judges is the jitter of the past.
+> The cost is one round trip — an agent can use this tool as a manual refresh.
 
 ---
 
-### 2.2 查已有卡片
+### 2.2 Inspecting the installed cards
 
 #### `list_cards()`
 
@@ -241,45 +241,45 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
      degraded, missing_tags, unreadable_tags }]
 ```
 
-`degraded` / `missing_tags` 让 agent 知道这张卡在当前板上是不是残的。
+`degraded` and `missing_tags` tell the agent whether this card is incomplete on the current board.
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `id` | **卡片 id = 卡片目录名**——宿主侧一切按它索引（`uninstall_card` / `get_card_runtime_log` / 布局都用它） |
-| `manifest_id` | manifest 里声明的 id（**可以与目录名不同**——所以要两个字段**） |
-| `name` / `version` | manifest 的 |
-| `path` | 卡片目录的**绝对路径** |
-| `installed_at` | **卡片目录的最后修改时刻**（毫秒 UTC）——**不是「人点装上的时刻」** |
-| `status` | `ok` / `degraded` / `invalid`（封闭） |
-| `degraded` | 这张卡在当前板上**是不是残的**（布尔） |
-| `missing_tags` | 这张卡要的、**当前板型包根本没有**的 tag |
-| `unreadable_tags` | 声明了、包也提供了、但**现在读不出来**的 tag |
+| `id` | The card id = the name of the card directory — everything on the host indexes by it (`uninstall_card` / `get_card_runtime_log` / the layout all use it) |
+| `manifest_id` | The id declared in the manifest (it may differ from the directory name, which is why there are two fields) |
+| `name` / `version` | From the manifest |
+| `path` | The absolute path of the card directory |
+| `installed_at` | The last modification time of the card directory (milliseconds, UTC) — not the moment a human pressed install |
+| `status` | `ok` / `degraded` / `invalid` (closed) |
+| `degraded` | Whether this card is incomplete on the current board (boolean) |
+| `missing_tags` | The tags this card wants that the current board pack does not have at all |
+| `unreadable_tags` | The tags that are declared, that the pack also provides, but that cannot be read right now |
 
-> **`installed_at` 的免责** ✓：宿主**从没记过安装时间**——
-> 加一个字段要改所有卡的落盘流程，而 MCP 契约明写「不做文件 IO（除了 install_card 的复制）」。
-> → **用目录 mtime** ✓，并**明写它是什么** ✓——
-> **否则 agent 会拿它排序「最近装的卡」** ✗（那会错）✗。
+> What `installed_at` is exempt from ✓: the host has never recorded an installation time —
+> adding a field would change the persistence path of every card, and the MCP contract states explicitly that it does no file IO (except the copy of install_card).
+> → It uses the mtime of the directory ✓, and it states what it is ✓ —
+> otherwise an agent would sort by it to find "the most recently installed cards" ✗ (and that would be wrong) ✗.
 
-**`status` 的取值域**（封闭）：
+The domain of `status` (closed):
 
-| 值 | 含义 |
+| Value | Meaning |
 |---|---|
-| `ok` | manifest 合法，**且**它要的 tag 都可读 |
-| `degraded` | manifest 合法，**但**有 tag 读不到 |
-| `invalid` | **manifest 本身不合法** |
+| `ok` | The manifest is valid and all the tags it wants are readable |
+| `degraded` | The manifest is valid but some tags cannot be read |
+| `invalid` | The manifest itself is not valid |
 
-> **`invalid` 的卡仍然列出来** ✓——agent 要知道「我上次装的那张卡坏了」✓。
+> A card with `invalid` is still listed ✓ — the agent has to know that "the card I installed last time is broken" ✓.
 
-**「读不到」与「不存在」是两件事**（同 `spec/01` §2.1 的 `unavailable` vs `error`）：
+"Cannot be read" and "does not exist" are two different things (as in `spec/01` section 2.1, `unavailable` versus `error`):
 
-| 字段 | 判据 | 粒度 |
+| Field | Criterion | Granularity |
 |---|---|---|
-| `missing_tags` | 对 `permissions.read` 的**每个模式** P：当前板型包的所有 reader 的 provides 模式里**没有一个覆盖 P** → **P 整条记进去** | **模式级**（记模式本身，不展开） |
-| `unreadable_tags` | **该具体名在读数里存在**，**且**状态不是 `ok` | **具体名级**（只列读数里有的那些） |
+| `missing_tags` | For every pattern P of `permissions.read`: no provides pattern of any reader of the current board pack covers P → the whole of P is recorded | Pattern level (the pattern itself is recorded, not expanded) |
+| `unreadable_tags` | The concrete name exists in the readings and its state is not `ok` | Concrete name level (only those that are in the readings) |
 
-> **通配 tag 的实例在读数里缺席时，不得据此判定「缺失」**——
-> 采样器**按契约不猜具体实例名**。
-> `degraded` = `missing_tags` 非空 **或** `unreadable_tags` 非空。
+> When an instance of a wildcard tag is absent from the readings, that must not be taken as a "missing" verdict —
+> by contract the sampler never guesses concrete instance names.
+> `degraded` = `missing_tags` is not empty or `unreadable_tags` is not empty.
 
 #### `get_card_sdk_docs(topic?)`
 
@@ -287,29 +287,29 @@ agent 要写一张 CPU 卡，第一个该调的是 `list_tags()`，因为它直�
 → { apiVersion, topics: [...], content }
 ```
 
-写卡片时的语法参考：manifest 格式、可用 API、白名单方法、示例卡片。
+The syntax reference for authoring cards: the manifest format, the available APIs, the whitelisted methods, the example cards.
 
-`topic` 可选：`"manifest"` / `"api"` / `"examples"` / `"layout"`。省略则返回全部。
+`topic` is optional: `"manifest"` / `"api"` / `"examples"` / `"layout"`. When it is omitted everything is returned.
 
-**注意**：这是**语法**参考，不是**现状**参考。现状永远用 `list_*` 拿。
+Note: this is a reference to the syntax, not to the current state. The current state is always taken with `list_*`.
 
-**`content` 是一个字符串**（agent 把它当提示词的一部分读）。
+`content` is a single string (an agent reads it as part of a prompt).
 
-**从活代码与活数据生成**——**不是手抄的静态文本**（手抄的会漂：
-API 加一个方法它不会自己更新，agent 照着写会调一个不存在的 API）：
+It is generated from the live code and the live data, not hand-copied static text (a hand-copied text drifts:
+when the API gains a method it does not update itself, and an agent that follows it calls an API that does not exist):
 
-| topic | 来源 | 生成方式 | 限制 |
+| topic | Source | How it is generated | Limit |
 |---|---|---|---|
-| `manifest` | 卡片 manifest 的**封闭 schema 白名单表** | 字段名与必填性**从代码取**；**字段语义从 `03` §二取** | — |
-| `api` | 卡片 API 注册表 | 方法名 / 参数 / 权限维度从代码取；**每个方法补一句说明** | — |
-| `examples` | 内置卡目录 | manifest **+ 入口的 html/js** | 每张卡 ≤ 8 KB，超出截断并标注 |
-| `layout` | 布局的纯数据形状 | **按本契约的词写**（`cards` / `card_id`） | 不照抄实现层的内部字段名 |
+| `manifest` | The closed schema whitelist of the card manifest | The field names and their requiredness are taken from the code; the semantics of the fields are taken from section 2 of `03` | — |
+| `api` | The card API registry | The method names, the parameters and the permission dimensions are taken from the code; every method gets one sentence of explanation | — |
+| `examples` | The directory of the built-in cards | The manifest plus the html/js of the entry point | 8 KB per card, beyond that it is truncated and marked |
+| `layout` | The pure data shape of the layout | It uses the words of this contract (`cards` / `card_id`) | It does not copy the internal field names of the implementation layer |
 
-> **代码给形状，契约给语义** ✓。
+> The code gives the shape, the contract gives the semantics ✓.
 
 ---
 
-### 2.3 写卡片与自测
+### 2.3 Writing cards and self-testing
 
 #### `validate_card(path)`
 
@@ -318,21 +318,21 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
     resolved: { tags, actions, layout, missing_tags, missing_actions } }
 ```
 
-静态校验，**不安装**。校验规则见 `03-card-manifest.md` §九。
+Static validation, without installing. The validation rules are in section 9 of `03-card-manifest.md`.
 
-`resolved` 告诉 agent：这张卡实际会绑到哪些 tag 和动作，哪些会缺失。
+`resolved` tells the agent which tags and actions this card would actually bind to and which of them are missing.
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `resolved.tags` | 这张卡**要读、且当前板上可读**的 tag（**具体名**） |
-| `resolved.actions` | 这张卡**要写、且当前板型包里确实有**的动作 id |
-| `resolved.layout` | 解出来的格子尺寸（`w`/`h`/`min_w`/`min_h`）；**没有 layout 就是 `null`** |
-| `resolved.missing_tags` | 要读但**当前不可读**的 tag（口径同 `list_cards` 的 `missing_tags`） |
-| `resolved.missing_actions` | 要写但**当前板型包里没有**的动作 id |
+| `resolved.tags` | The tags this card wants to read and that are readable on the current board (concrete names) |
+| `resolved.actions` | The ids of the actions this card wants to write and that really exist in the current board pack |
+| `resolved.layout` | The cell size that was resolved (`w`/`h`/`min_w`/`min_h`); without a layout it is `null` |
+| `resolved.missing_tags` | The tags it wants to read but that are not readable right now (the same criterion as `missing_tags` of `list_cards`) |
+| `resolved.missing_actions` | The ids of the actions it wants to write but that the current board pack does not have |
 
-> **`resolved.tags` / `resolved.actions` 是「声明 ∩ 当前可用」**——
-> 不是**声明值**。agent 要知道的是「这张卡真能绑上什么」，
-> 而不是「它声称要什么」。
+> `resolved.tags` and `resolved.actions` are the intersection of the declaration and what is available right now —
+> not the declared values. What the agent needs to know is what this card can really bind to,
+> not what it claims to want.
 
 #### `get_card_runtime_log(cardId, since?)`
 
@@ -340,20 +340,20 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
 → [{ level, at, message, source }]
 ```
 
-卡片运行时的错误。`level` ∈ `error` / `warn` / `info`。
+The errors of the card runtime. `level` ∈ `error` / `warn` / `info`.
 
-卡片崩了、tag 读失败了、action 回读不匹配了，都在这里。
+A card that crashed, a tag that could not be read, an action whose readback does not match — all of it is here.
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `level` | `error` / `warn` / `info`（封闭） |
-| `at` | 毫秒 UTC |
-| `message` | 一句话 |
-| `source` | `card` / `host` / `csp`（封闭） |
-| `since`（参数） | 只给 `at >= since` 的（毫秒 UTC）；**缺省给全部** |
+| `level` | `error` / `warn` / `info` (closed) |
+| `at` | Milliseconds, UTC |
+| `message` | One sentence |
+| `source` | `card` / `host` / `csp` (closed) |
+| `since` (parameter) | Only the entries with `at >= since` (milliseconds, UTC); by default all of them |
 
-> **日志是运行时内存**（每卡最多 200 条）——**重启即失**。
-> `since` 的过滤在宿主侧做。
+> The log lives in the memory of the runtime (at most 200 entries per card) — it is lost on restart.
+> The filtering by `since` is done on the host side.
 
 #### `install_card(path)`
 
@@ -361,59 +361,59 @@ API 加一个方法它不会自己更新，agent 照着写会调一个不存在�
 → { ok: true, card_id, installed: true, degraded: bool, missing: [...] }
 ```
 
-把卡片目录放进卡片根目录，触发热重载。
+Copy the card directory into the card root and trigger the hot reload.
 
-**如果这张卡要写的动作板型包里没有**，`install_card` **不会**装上，而是返回：
+If an action this card wants to write is not in the board pack, `install_card` does not install it and returns:
 
 ```
 → { ok: false, reason: "invalid", card_id, installed: false,
-    detail: "板型包里没有这些动作：system.reboot" }
+    detail: "The board pack does not declare these actions: system.reboot" }
 ```
 
-> **2026-11-16 改**（**ADR-D46** ✓ · 用户原话：「**板子描述文件说了算**」✓）：
-> **装卡不再要「同意」** ✓ —— **有效权限 = 卡片的 manifest 声明** ✓（`03` §2.4 ✓）。
-> → **「要新的授权 → 不装」那道闸没有了** ✓（**同一件事不记两遍** ✓）。
-> → **它要写什么，manifest 里写着** ✓ —— **那是可查的事实** ✓。
+> Changed on 2026-11-16 (ADR-D46 ✓ · the user's own words: "the board description file has the final say" ✓):
+> Installing a card no longer requires "approval" ✓ — the effective permission is the declaration of the card's manifest ✓ (`03` section 2.4 ✓).
+> → The gate "new authorisation needed → not installed" is gone ✓ (the same thing is not recorded twice ✓).
+> → What it wants to write is written down in the manifest ✓ — that is a verifiable fact ✓.
 
-**两个返回形状**（封闭）：
+Two return shapes (closed):
 
-| 情形 | 返回 |
+| Case | Return |
 |---|---|
-| 装上了 | `{ ok: true, card_id, installed: true, degraded, missing }` |
-| 要写的动作板型包里没有 | `{ ok: false, reason: "invalid", card_id, installed: false, detail }` |
+| It was installed | `{ ok: true, card_id, installed: true, degraded, missing }` |
+| An action it wants to write is not in the board pack | `{ ok: false, reason: "invalid", card_id, installed: false, detail }` |
 
-`degraded` 与 `missing` 的口径**同 `list_cards`**（`missing` = 缺失的 tag 名清单）。
+`degraded` and `missing` follow the criterion of `list_cards` (`missing` is the list of the missing tag names).
 
-**这不会让 agent 的回路卡死。** 流程是：
+This does not deadlock the loop of the agent. The flow is:
 
-1. agent 调 `install_card` → 装上了（**或者**板型包里没有那个动作 → 报错 ✓）
-2. 装上的卡**按它的 manifest 声明**有权限 ✓（`03` §2.4 ✓ —— **没有第二道** ✓）
+1. The agent calls `install_card` → it is installed (or the board pack does not declare that action → an error ✓)
+2. The installed card has the permissions of its manifest declaration ✓ (`03` section 2.4 ✓ — there is no second gate ✓)
 
-> **2026-11-16 改**（**ADR-D46** ✓）：**原来的「GUI 弹确认框 → 逐个批准 → 重试」那一整套没有了** ✓
-> —— 用户原话：「**这个也要同意那个也要同意不累吗**」✓。
+> Changed on 2026-11-16 (ADR-D46 ✓): the whole "the GUI pops up a confirmation → approve one by one → retry" sequence is gone ✓
+> — the user's own words: "having to agree to this and having to agree to that, is that not tiring" ✓.
 
-**和文件监听的分工**：两条路都通，但作用不同。
+How this divides the work with the file watcher: both paths work, but they do different things.
 
-| | 用途 | 语义 |
+| | Purpose | Semantics |
 |---|---|---|
-| **直接写文件** | agent 改一张**已装**的卡 | 触发热重载。**manifest 的 `permissions.write` 变了 → 权限集跟着变** ✓（见 `03` §3.3 ✓） |
-| **`install_card`** | 装一张**新**卡，或从别处拷进来 | 等价于「复制目录 + 重载」，幂等：同一个 id 重复安装是**替换** |
+| Writing the files directly | The agent changes a card that is already installed | It triggers the hot reload. When the `permissions.write` of the manifest changes the permission set follows ✓ (see section 3.3 of `03` ✓) |
+| `install_card` | Installing a new card, or copying one in from elsewhere | Equivalent to "copy the directory and reload", idempotent: installing the same id again replaces it |
 
-如果 agent 用 `install_card` 装一张已经装过的、但 `permissions.write` 不同的卡，
-**直接替换** ✓（**权限跟着 manifest 走** ✓ —— **不需要再征求一次** ✓）。
+When an agent uses `install_card` for a card that is already installed but has a different `permissions.write`,
+it replaces it directly ✓ (the permissions follow the manifest ✓ — no second approval is needed ✓).
 
-**直接写文件这条路也要过同一道校验**：文件监听触发热重载时，
-运行时必须重新校验 manifest（§`03` §九 的 13 条）与重新计算权限集，
-不能因为「是文件监听触发的」就跳过。这就是两条路等价的具体含义。
+Writing the files directly has to pass the same validation: when the file watcher triggers the hot reload,
+the runtime has to validate the manifest again (the 13 rules of section 9 of `03`) and to recompute the permission set,
+it may not skip that because "it was triggered by the file watcher". That is what the equivalence of the two paths means.
 
-**agent 的标准回路**：
+The standard loop of the agent:
 
 ```
-validate_card(path) → 改 → validate_card(path) → install_card(path)
-    → get_card_runtime_log(cardId) → 看错 → 改 → install_card(path) → …
+validate_card(path) → edit → validate_card(path) → install_card(path)
+    → get_card_runtime_log(cardId) → read the errors → edit → install_card(path) → …
 ```
 
-`install_card` 是幂等的：同一个 id 重复安装是**替换**，不是新增。
+`install_card` is idempotent: installing the same id again replaces the card, it does not add a second one.
 
 #### `uninstall_card(cardId)`
 
@@ -421,21 +421,21 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → { ok }
 ```
 
-删掉用户卡片根下的那个目录。**内置卡删不掉**（`denied`——它在应用目录里）。
+It deletes the directory under the user card root. A built-in card cannot be deleted (`denied` — it lives in the application directory).
 
-| 情形 | `reason` |
+| Case | `reason` |
 |---|---|
-| 卡不存在 | `not_found` |
-| 是内置卡 | `denied` |
-| 删掉了 | 无（`ok: true`） |
+| The card does not exist | `not_found` |
+| It is a built-in card | `denied` |
+| It was deleted | none (`ok: true`) |
 
-**副作用**：删目录，**该卡的授权账一并清掉**——
-否则装回来就带着旧的授权（那不是「重新装」，那是「装回来」）。
-**卡片存储保留**（`03` §六·2）。
+Side effect: the directory is deleted and the grant ledger of that card is cleared as well —
+otherwise reinstalling it would bring the old grants back (that is not a fresh install, that is putting it back).
+The card storage is kept (`03` section 6.2).
 
 ---
 
-### 2.4 执行动作
+### 2.4 Executing actions
 
 #### `execute_action(actionId, params, dry_run, device_key?)`
 
@@ -448,7 +448,7 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
   }
 ```
 
-或失败时：
+or, on failure:
 
 ```
 → {
@@ -460,179 +460,179 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
   }
 ```
 
-**`cancelled` 是什么**（2026-11-15 新增，依据 **ADR-D36** ✓）：
-**这次执行被叫停了** ✓ —— 不是「跑失败了」✓。
-→ 它的退出码是 `null` ✓（**不是 0、也不是 124** ✓）；
-→ **不报 `readback_mismatch`** ✓（那是在说「板子不听话」✗ —— 人叫停 ≠ 板子不听话 ✓）；
-→ **超时与取消是两件事** ✓（`timeout` vs `cancelled` ✓ —— 事实 G1 ✓）。
+What `cancelled` means (added on 2026-11-15, following ADR-D36 ✓):
+this execution was stopped ✓ — it did not fail ✓.
+→ Its exit code is `null` ✓ (neither 0 nor 124 ✓);
+→ It does not report `readback_mismatch` ✓ (that would say "the board did not obey" ✗ — a human stopping it is not the same as the board not obeying ✓);
+→ A timeout and a cancellation are two different things ✓ (`timeout` versus `cancelled` ✓ — fact G1 ✓).
 
-**`verified` 字段**（2026-11-13 新增，依据 `docs/05` ADR-D25）：
+The `verified` field (added on 2026-11-13, following ADR-D25 of the implementation-layer decision record):
 
-| 值 | 含义 |
+| Value | Meaning |
 |---|---|
-| `true`（默认） | 动作执行了，**并且回读确认了**板子确实进入了目标状态 |
-| `false` | 动作执行了，**但没有回读**——这个动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5） |
+| `true` (the default) | The action was executed and the readback confirmed that the board really entered the target state |
+| `false` | The action was executed but there was no readback — the action declares `readback: {kind: none}` (`02` section 4.4.1, form 5) |
 
-**为什么不是一个 `reason` 码**：`reason` 是**失败**的原因。
-`verified: false` **不是失败**——命令确实执行了、效果也确实有（点 LED 亮了）。
-报 `ok: false` 是**另一种撒谎**；报 `ok: true` 什么都不说又是**把「没验证」藏起来**。
+Why it is not a `reason` code: `reason` is the reason for a failure.
+`verified: false` is not a failure — the command really ran and the effect was really there (the LED came on).
+Reporting `ok: false` would be a different kind of lie; reporting `ok: true` and saying nothing hides the fact that it was not verified.
 
-> **`unverified` 不在这张 `reason` 表里，也不在 `01` §2.1.1 的 tag `reason` 表里。**
-> 两张表是两回事：`01` 的 `reason` 是 **tag 读数**的原因码（`not_found` /
-> `device_absent` / …），本节的 `reason` 是**动作执行**的原因码。
-> **但「你问的那个东西不存在」两边同名同义**（都是 `not_found`）——
-> **不给 AI 两套要互相翻译的方言**（ADR-D27）。
-> **`unverified` 不是 tag 状态**——加进去会污染所有 tag 消费者。
+> `unverified` is in neither this `reason` table nor the tag `reason` table of section 2.1.1 of `01`.
+> The two tables are different things: the `reason` of `01` is the reason code of a tag reading (`not_found` /
+> `device_absent` / …), the `reason` of this section is the reason code of an action execution.
+> But "the thing you asked for does not exist" has the same name and the same meaning on both sides (both are `not_found`) —
+> the AI is not given two dialects that have to be translated into each other (ADR-D27).
+> `unverified` is not a tag state — adding it would pollute every consumer of tags.
 
-**UI 口径（写死）**：`verified: false` → 卡片**必须**显示「**已执行，未验证**」，
-**不得**显示成「已生效」。
-这与 `02` §4.1 已有的那句「命令已发出，未确认生效」是同一件事——
-**驾驶舱不能把没验证的东西显示成生效了。**
+The wording for the UI (fixed): `verified: false` → the card must show "executed, not verified",
+and it must not show it as "in effect".
+This is the same thing as the sentence "the command has been sent, the effect is not confirmed" in section 4.1 of `02` —
+a cockpit must not display something that was not verified as if it had taken effect.
 
-**参数**：
+Parameters:
 
-| 参数 | 含义 |
+| Parameter | Meaning |
 |---|---|
-| `actionId` | 板型包里声明的动作 id（不是卡片 id） |
-| `params` | 按动作声明的参数 |
-| `dry_run` | 只返回「将会执行什么」，不执行 |
+| `actionId` | The id of an action declared in the board pack (not a card id) |
+| `params` | The parameters according to the declaration of the action |
+| `dry_run` | It only returns what would be executed and executes nothing |
 
-**为什么要按动作 id 而不是卡片 id**：动作是板子的能力，卡片只是引用者。同一张卡可以调多个动作，同一个动作也可以被多张卡调。按动作 id 授权更精确（授权的是「改背光」这件事，不是「这张卡」）。
+Why the action id and not the card id: an action is a capability of the board, a card is only a referrer. The same card can call several actions and the same action can be called by several cards. Authorising by action id is more precise (what is authorised is "changing the backlight", not "this card").
 
-**行为**：
+Behaviour:
 
-0. **给了 `device_key` → 它必须是当前运行时那条连接的 `device_key`** ✓
-   → 否则 **`not_found`** ✓（detail 写清「没有这个设备：X」✓）。
-   → **绝不允许「忽略 `device_key` 然后打当前那块」** ✓ —— **那是「静默地做另一件事」** ✗。
-1. 查动作在当前板型包里存在吗 → 否则 `not_found`
-2. 查调用方的授权 → 否则 `denied`
-3. 校验参数（类型、范围、枚举）→ 否则 `invalid_params`
-4. **`dry_run: true` → 直接返回将要执行的命令 + 参数**（**不执行、不回读、不写审计**）
-   —— **它在第 5/6 步之前** ✓：否则 agent 永远拿不到 `destructive` 动作的预览 ✗
-5. 参数超出该动作的 `guard` 域 → **`denied`** ✓（**guard 是包作者划的界** ✓ —— **超出去就是不许可** ✓）
-6. **`danger: destructive` → 照做** ✓（**不再问人** ✓ —— **危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓ · `03` §2.4 ✓ · **ADR-D48** ✓）
-7. 执行 → 失败则 `failed`（命令非零退出）；串口上不支持依赖退出码的动作则 `unsupported_transport`
-8. 回读 → 不符则 `readback_mismatch`。
-   **若该动作声明的是 `readback: {kind: none}`（`02` §4.4.1 形式 5）→ 跳过回读，
-   返回 `ok: true` + `verified: false`**
-9. 写审计日志（用 `none` 的动作必须在审计里标出「未验证」，`02` §5.4）
+0. If a `device_key` is given it must be the `device_key` of the connection the current runtime uses ✓
+   → otherwise `not_found` ✓ (the detail states clearly "no such device: X" ✓).
+   It is never allowed to ignore the `device_key` and act on the current board instead ✓ — that is silently doing something else ✗.
+1. Check whether the action exists in the current board pack → otherwise `not_found`
+2. Check the authorisation of the caller → otherwise `denied`
+3. Validate the parameters (type, range, enumeration) → otherwise `invalid_params`
+4. With `dry_run: true` it returns the command that would be executed together with the parameters (no execution, no readback, no audit entry)
+   — it comes before steps 5 and 6 ✓: otherwise the agent would never get a preview of a `destructive` action ✗
+5. Parameters outside the `guard` domain of that action → `denied` ✓ (the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓)
+6. `danger: destructive` → do it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓ · ADR-D48 ✓)
+7. Execute → on failure `failed` (the command exited with a non-zero code); an action that depends on the exit code is not supported on a serial connection, then `unsupported_transport`
+8. Readback → on a mismatch `readback_mismatch`.
+   If the action declares `readback: {kind: none}` (`02` section 4.4.1, form 5) → the readback is skipped
+   and `ok: true` with `verified: false` is returned
+9. Write the audit log (an action that uses `none` has to be marked as "not verified" in the audit, `02` section 5.4)
 
-> **`dry_run` 不写审计** ✓：审计记的是「**每一次尝试**」——
-> 而 dry_run **连尝试都不是**（它是一次**预览**）→ 写进去会污染「谁动过板子」这本账 ✓。
+> `dry_run` writes no audit entry ✓: the audit records every attempt —
+> and a dry run is not even an attempt (it is a preview) → writing it would pollute the ledger of who touched the board ✓.
 
-**`not_found` 与 `denied` 的顺序**：先查存在性，再查授权。这样一个未授权的调用方能知道
-「这个动作存在」，但**不能知道它会做什么**——动作的 `command` 只在通过授权后才返回。
-这条顺序是有意的：它让「板子上有没有这个能力」是可发现的，而「这个能力怎么实现」不是。
+The order of `not_found` and `denied`: existence is checked before authorisation. An unauthorised caller therefore learns
+that the action exists but cannot learn what it does — the `command` of the action is only returned once the authorisation has passed.
+The order is deliberate: it makes "does the board have this capability" discoverable and "how is this capability implemented" not.
 
-**`dry_run` 返回的 `command` 是**编码后**的最终命令**（`02` §4.6），
-不是模板。这样 agent 在预览时看到的与实际执行的完全一致。
+The `command` returned by `dry_run` is the final command after encoding (`02` section 4.6),
+not a template. What the agent sees in the preview is therefore exactly what is executed.
 
-**`dry_run` 的返回形状**（`02` §5.3 的形状 **+ 本节 §四 的 `ok`** ✓）：
+The return shape of `dry_run` (the shape of section 5.3 of `02` plus the `ok` of section 4 of this document ✓):
 
 ```
 → { ok: true, dry_run: true, command: "...", readback_tag: "..." }
 ```
 
-`readback_tag` 是这个动作的回读要读哪个 tag；**回读不是「读 tag」形式时是 `null`** ✓。
+`readback_tag` is the tag the readback of this action reads; when the readback is not of the form "read a tag" it is `null` ✓.
 
-#### 2.4.1 agent 的授权
+#### 2.4.1 The authorisation of the agent
 
-**agent 不是卡片，它有一套自己的授权。**
+An agent is not a card, it has an authorisation of its own.
 
-卡片授权是「装卡时按动作问一次」，agent 授权是另一回事：agent 可以直接调任何动作，
-不需要先装一张卡。
+The authorisation of a card is "ask once per action when the card is installed"; the authorisation of an agent is a different thing: an agent can call any action directly,
+it does not have to install a card first.
 
-规则：
+Rules:
 
-| 档 | agent 怎么做 |
+| Tier | What the agent does |
 |---|---|
-| `reversible`，参数在 `guard` 域内 | agent 直接可以执行，**记审计日志** |
-| `reversible`，参数**超出** `guard` 域 | **`denied`** ✓（**guard 是包作者划的界** ✓ —— **超出去就是不许可** ✓） |
-| `destructive` | **照做** ✓（**不再问人** ✓ —— **危险等级只是信息** ✓ —— **闸在设置里的统一权限区** ✓ · `03` §2.4 ✓ · **ADR-D48** ✓） |
+| `reversible`, the parameters are inside the `guard` domain | The agent may execute it directly, and an audit entry is written |
+| `reversible`, the parameters are outside the `guard` domain | `denied` ✓ (the guard is the line the author of the pack drew ✓ — outside it is not permitted ✓) |
+| `destructive` | It does it ✓ (no question to a human any more ✓ — the danger level is only information ✓ — the gate is the unified permission area in the settings ✓ · `03` section 2.4 ✓ · ADR-D48 ✓) |
 
-> **2026-11-16 改**（**ADR-D48** ✓ · 用户原话：「**不要再问"命令危不危险"，
-> 一律都用权限，开启权限默认知道危险性**」✓）—— **原来 destructive 要人点头** ✓
-> → **现在不问了** ✓ → **危险的动作在设置里默认关** ✓（**打开它就是那一下知情** ✓）。
+> Changed on 2026-11-16 (ADR-D48 ✓ · the user's own words: "do not ask any more whether a command is dangerous,
+> use permissions for everything, turning a permission on already means knowing the danger" ✓) — a destructive action used to require a human nod ✓
+> → it is not asked any more ✓ → dangerous actions are off by default in the settings ✓ (turning one on is the informed consent for that one step ✓).
 
-**三条细则**：
+Three details:
 
-| # | 细则 |
+| # | Detail |
 |---|---|
-| 1 | agent 的授权集 = **当前板型包声明的全部动作** ✓（§2.4.2 ✓ · `02` §5.6 ✓）。**包写好就生效** ✓（**没有「人确认过这个包」那一层** ✓ —— 2026-11-16 改 ✓ · ADR-D46 ✓）—— **但它要过自己的校验器** ✓（`02` §七 **31 条规则** ✓） |
-| 2 | 参数域用**动作自己声明的 `guard`** ✓——**没有「人授过的更窄的域」** ✓（**那一层 2026-11-16 删了** ✓） |
-| 3 | **先查存在性、再查授权** ✓（上面的行为表 ✓）——动作的 `command` 只在通过授权后才返回 ✓ |
+| 1 | The authorisation set of the agent = all the actions declared by the current board pack ✓ (section 2.4.2 ✓ · `02` section 5.6 ✓). A pack takes effect as soon as it is written ✓ (there is no layer of "a human confirmed this pack" ✓ — changed on 2026-11-16 ✓ · ADR-D46 ✓) — but it has to pass its own validator ✓ (the 31 rules of section 7 of `02` ✓) |
+| 2 | The parameter domain is the `guard` declared by the action itself ✓ — there is no "narrower domain granted by a human" ✓ (that layer was removed on 2026-11-16 ✓) |
+| 3 | Existence is checked before authorisation ✓ (see the behaviour table above) — the `command` of the action is only returned once the authorisation has passed ✓ |
 
-> **`denied` 在 v1 几乎不会发生** ✓（除了「没有包」✓）→ **但它必须存在** ✓：
-> 它是**这个位置的护栏** ✓——将来若加「按连接/按用户的更窄授权」✓，这个理由码已经在那儿了 ✓。
-> **说清楚**：不要以为它一直在生效 ✗。
+> `denied` hardly ever happens in v1 ✓ (except when there is no pack ✓) → but it has to exist ✓:
+> it is the guard rail at this place ✓ — if a narrower authorisation per connection or per user is added later ✓, the reason code is already there ✓.
+> To be explicit: do not assume that it is in effect all the time ✗.
 
-**没有确认链了** ✓（**2026-11-16 砍掉** ✓ —— ADR-D48 ✓）。
+There is no confirmation chain any more ✓ (removed on 2026-11-16 ✓ — ADR-D48 ✓).
 
-→ **agent 调 `execute_action` → 直接执行** ✓（**destructive 也是** ✓）。
-→ **参数超出 `guard` → `denied`** ✓。
-→ **`confirm_action` / `confirm_workflow` 两个工具没了** ✓（**21 → 19** ✓）——
-  **确认凭据那一整套也没了** ✓（`ConfirmationStore` ✓ · `requestConfirmation` ✓ ·
-  `approveAndResume` ✓ · `confirm_id` ✓ · `workflow:confirm` ✓）。
+→ The agent calls `execute_action` → it is executed directly ✓ (a destructive action too ✓).
+→ Parameters outside the `guard` → `denied` ✓.
+→ The two tools `confirm_action` and `confirm_workflow` are gone ✓ (21 → 19 ✓) —
+  the whole confirmation credential machinery is gone with them ✓ (`ConfirmationStore` ✓ · `requestConfirmation` ✓ ·
+  `approveAndResume` ✓ · `confirm_id` ✓ · `workflow:confirm` ✓).
 
-**那 agent 怎么被管住** ✓：**设置里的统一权限区** ✓（`03` §2.4 ✓ · ADR-D47 ✓）——
-→ **每一条操作一行** ✓ · **两种执行者两个开关** ✓（**卡片** / **agent** ✓）
-→ **危险的动作默认关** ✓（**打开它就是那一下知情** ✓）
-→ **它就是那本账** ✓（**一个地方** ✓ —— 不再有第二份「谁授过」✓）。
+How the agent is held in check then ✓: by the unified permission area in the settings ✓ (`03` section 2.4 ✓ · ADR-D47 ✓) —
+→ one row per operation ✓ · two switches, one for each executor ✓ (card / agent ✓)
+→ dangerous actions are off by default ✓ (turning one on is the informed consent for that one step ✓)
+→ it is the ledger ✓ (one place ✓ — there is no second copy of "who granted what" any more ✓).
 
-**agent 不能做的事**：agent 不能改授权本身。它不能给自己提权，
-也不能修改任何卡片的授权。它只能执行已声明的动作。
+What the agent cannot do: the agent cannot change the authorisation itself. It cannot raise its own permissions,
+and it cannot change the authorisation of any card. It can only execute declared actions.
 
-#### 2.4.2 板型包的信任
+#### 2.4.2 Trust in the board pack
 
-**包一律生效** —— **写好就生效** ✓（**板子描述文件说了算** ✓）。
+Every pack takes effect — as soon as it is written ✓ (the board description file has the final say ✓).
 
-| 谁写的 | 能不能直接生效 |
+| Who wrote it | Does it take effect directly |
 |---|---|
-| 用户自己写的、内置的 | 能 |
-| agent 起草的 | **也能** ✓（**但它写的东西照样过校验** ✓ —— `02` §七 **31 条规则** ✓） |
+| The user wrote it, or it is built in | Yes |
+| An agent drafted it | Yes as well ✓ (but what it wrote still passes the validation ✓ — the 31 rules of section 7 of `02` ✓) |
 
-> **2026-11-16 改**（**ADR-D46** ✓ · 用户原话：「**板子描述文件说了算**」
-> 「**加一个板加啥就执行啥**」✓）—— **原来这里有一道「装包要人点头」** ✓。
+> Changed on 2026-11-16 (ADR-D46 ✓ · the user's own words: "the board description file has the final say",
+> "add a board and whatever is in it executes" ✓) — there used to be a gate here that required a human to approve the pack ✓.
 
-**替代它的那道门在包自己身上** ✓：
-- **reader 的取数命令过危险地板** ✓（`02` §七 **规则 28** ✓）——
-  这是 reader **唯一能越界的地方** ✓（它不是动作 ✓ —— 它不过执行器 ✓）；
-- **动作过危险地板与 `danger` 等级** ✓（`02` §5.2 ✓）——
-  **`danger` 只是信息** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓）→
-  **destructive 动作照做** ✓ → **闸在设置里的统一权限区** ✓（§2.4.1 ✓ · ADR-D47 ✓）；
-- **卡片的权限 = 它的 manifest 声明** ✓（`03` §2.4 ✓）——
-  **声明之外的一律 denied** ✓ —— **卡片说一套做一套是不行的** ✓。
+The gate that replaced it sits on the pack itself ✓:
+- The fetching command of a reader passes the danger floor ✓ (rule 28 of section 7 of `02` ✓) —
+  this is the only place where a reader can go out of bounds ✓ (it is not an action ✓ — it does not go through the executor ✓);
+- Actions pass the danger floor and the `danger` level ✓ (`02` section 5.2 ✓) —
+  `danger` is only information ✓ (changed on 2026-11-16 ✓ · ADR-D48 ✓) →
+  a destructive action is executed as it is ✓ → the gate is the unified permission area in the settings ✓ (section 2.4.1 ✓ · ADR-D47 ✓);
+- The permissions of a card are the declaration of its manifest ✓ (`03` section 2.4 ✓) —
+  everything outside the declaration is denied ✓ — a card cannot say one thing and do another ✓.
 
-**所以**：**卡片的创作面是 agent 的，设备的权限面也是 agent 起草的** ✓；
-**但两边都过同一套机器可查的规矩** ✓（**校验规则** ✓ + **危险地板** ✓）——
-**不再靠「每装一次都要人点头」** ✓。
+So: the authoring side of the cards belongs to the agent, and the permission side of the device is drafted by the agent as well ✓;
+but both sides pass the same set of rules that a machine can check ✓ (the validation rules ✓ + the danger floor ✓) —
+there is no more "a human has to nod for every installation" ✓.
 
-> **⚠️ 卡片那条路没有「人点过」这道确认** ✓（**2026-11-16 改** ✓ · ADR-D46 ✓）：
-> → **卡片按钮的点击**就是那一下人点 ✓（`03` §2.4 ✓）→ **destructive 动作在卡片那条路直接执行** ✓。
-> → **宿主分不出「人点了卡片上的按钮」与「卡片自己的 JS 调了同一个 API」** ✗
-> → **所以一张被 agent 装进来的、能写的卡，它自己也能触发那些动作** ✗
-> → **这是用户那句话的直接后果** ✓ —— **要更严就得加一道** ✓（**本契约暂时不写那道** ✓）。
+> ⚠️ The path through a card has no "a human pressed it" confirmation ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓):
+> → A click on a card button is that one human action ✓ (`03` section 2.4 ✓) → a destructive action runs directly on the card path ✓.
+> → The host cannot tell "a human pressed the button on the card" from "the JavaScript of the card called the same API" ✗
+> → So a writable card that an agent installed can trigger those actions itself ✗
+> → This is the direct consequence of what the user said ✓ — a stricter rule would need one more gate ✓ (this contract does not write that gate yet ✓).
 
-**为什么这样选**：这个产品的核心价值就是「AI 照着手册批量制造仪表和开关」。
-如果 agent 写的每一张**卡**、每一个**包**都要人批准，协作回路就断了——
-所以**卡片不审批**（`03` §3.3），**包也不审批** ✓（**2026-11-16 改** ✓ · ADR-D46 ✓）。
-区别还在于：卡片只能读 tag、调已声明的动作（受分级约束）；
-包能定义新的读数来源——**但它的取数命令今天过更严的机器检查** ✓
-（`02` §七 **规则 28–31** ✓ —— **shell 元字符 / 解释器包装 / `script` kind 都禁** ✓）。
+Why it was chosen this way: the core value of this product is "an AI manufactures instruments and switches in bulk from a manual".
+If every card and every pack that an agent writes had to be approved by a human, the collaboration loop would break —
+so cards are not approved (`03` section 3.3), and packs are not approved either ✓ (changed on 2026-11-16 ✓ · ADR-D46 ✓).
+The difference remains: a card can only read tags and call declared actions (under the constraints of the grading);
+a pack can define new sources of readings — but its fetching commands pass a stricter machine check today ✓
+(the rules 28–31 of section 7 of `02` ✓ — shell metacharacters, interpreter wrapping and the `script` kind are all forbidden ✓).
 
-**那危险等级怎么办**：**地板**（`02-board-pack.md` §5.2）✓ —— 但它**今天只在校验器里判** ✓
-（**2026-11-16 改** ✓ · ADR-D48 ✓：**运行期不再复查** ✓ → **命中地板的包加载不了** ✓）。
+What about the danger level then: the floor (`02-board-pack.md` section 5.2) ✓ — but today it is only judged in the validator ✓
+(changed on 2026-11-16 ✓ · ADR-D48 ✓: it is not checked again at runtime ✓ → a pack that hits the floor cannot be loaded ✓).
 
-包自己声明 `danger`，但有一张固定的操作模式表属于契约：
-`reboot`、`mkfs`、`dd` 到块设备、`flash`……这些命令**永远**按 `destructive` 处理，
-不管包怎么声明。
+A pack declares `danger` itself, but there is a fixed table of operation patterns that belongs to the contract:
+`reboot`, `mkfs`, `dd` to a block device, `flash`… these commands are always treated as `destructive`,
+no matter what the pack declares.
 
-所以 agent 确实被信任了，但它**不能自己把「重启板子」降级成可逆动作** ✓ ——
-**这条张力今天由机器机制解掉** ✓（**地板 + 权限区** ✓），
-**不再依赖「人点头」** ✓（**那层 2026-11-16 砍掉了** ✓）。
+So the agent is indeed trusted, but it cannot downgrade "reboot the board" to a reversible action by itself ✓ —
+this tension is resolved today by a machine mechanism ✓ (the floor + the permission area ✓),
+and it no longer depends on "a human nods" ✓ (that layer was removed on 2026-11-16 ✓).
 
-（这条张力是真实的：如果完全不管，agent 写一个 `danger: reversible` 的 reboot 动作，
-分档就没意义了。**地板 + 权限区**是让这两个意图同时成立的最小机制 ✓。）
+(This tension is real: if nothing were done about it, an agent could write a reboot action with `danger: reversible`
+and the grading would lose its meaning. The floor + the permission area is the smallest mechanism that lets both intentions hold at the same time ✓.)
 
 #### `list_workflows()`
 
@@ -640,10 +640,10 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → [{ id, name, inputs: { … } }]
 ```
 
-列**注册表里有的**流程 ✓（**不再有「用户批过的」那层** ✓ —— ADR-D48 ✓）。
+Lists the workflows that are in the registry ✓ (there is no longer a layer of "approved by the user" ✓ — ADR-D48 ✓).
 
-> **只给 id / name / 输入声明** ✓ —— **不给拓扑** ✓
-> （哪个角色连哪台机器、跑什么命令 → **那是未授权方不该看到的** ✗）。
+> Only the id, the name and the input declarations ✓ — never the topology ✓
+> (which role connects to which machine and which command it runs → that is not for an unauthorised party to see ✗).
 
 #### `run_workflow(id, inputs, dry_run)`
 
@@ -651,22 +651,22 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → { run_id: "wf-…" }
 ```
 
-跑一个流程。**立刻返回** ✓（编译是分钟级 ✓）→ 进度用 `workflow_status` 轮询 ✓。
+It runs a workflow. It returns immediately ✓ (the compilation takes minutes ✓) → the progress is polled with `workflow_status` ✓.
 
-**`dry_run: true` → 预览** ✓（**不跑** ✓）：
+With `dry_run: true` it is a preview ✓ (nothing runs ✓):
 
 ```
 → { ok: true, steps: [{ id, kind, role?, command?, action?, readback?, danger, timeout_ms? }] }
 ```
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| **跑什么** | **一步都不跑** ✓ —— 它是**预览** ✓ |
-| **写审计吗** | **不写** ✓ —— 审计记的是「每一次尝试」✓；**预览连尝试都不是** ✓ |
-| **有 `run_id` 吗** | **没有** ✓ —— 没有运行 → 没有运行 id ✓ |
-| **占位符** | **输入值按类型编码后替换** ✓（字符串带引号 ✓ —— 同 `02` §4.6 ✓）；**角色事实与输出槽留占位** ✓ —— **没连接、没跑，不知道** ✓ |
-| **危险等级** | 每步都要给 ✓（默认 `reversible` ✓）—— agent 要知道**哪一步会毁东西** ✓ |
-| **没有的流程** | **不给预览** ✓（`not_found` ✓）—— 预览会泄出「这个包会干什么」✓ —— **那是没授权方不该知道的** ✗ |
+| What runs | Not a single step ✓ — it is a preview ✓ |
+| Is an audit entry written | No ✓ — the audit records every attempt ✓; a preview is not even an attempt ✓ |
+| Is there a `run_id` | No ✓ — no run means no run id ✓ |
+| Placeholders | The input values are replaced after being encoded by type ✓ (strings are quoted ✓ — as in section 4.6 of `02` ✓); the role facts and the output slots keep their placeholders ✓ — not connected and not run means not known ✓ |
+| Danger level | Every step carries one ✓ (`reversible` by default ✓) — the agent has to know which step is destructive ✓ |
+| A workflow that does not exist | No preview ✓ (`not_found` ✓) — a preview would leak what the pack does ✓ — that is not for an unauthorised party to know ✗ |
 
 #### `workflow_status(run_id)`
 
@@ -676,19 +676,19 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
     stages: [ { stepId, kind, ok, verified, reason?, audit_id } ] }
 ```
 
-> **`current` = 当前这一步**（`05` §八·B ✓）：**正在跑** ✓；
-> 运行已结束 → `null` ✓。
-> → `at` = **那一步开始的时刻** ✓（界面据此算「已经用了多久」✓）。
-> → **`current` 是活快照**（会变 ✓），`stages` 是**只增不改** ✓（两者幂等性不同 ✓，`05` §八·B·B3 ✓）。
-> → **`current` 不给角色** ✓（不给拓扑 ✓）。
-> → **卡片侧看到的是一份缩减投影** ✓（`03` §7.7 ✓）—— **不是**这个形状原样搬过去 ✓。
+> `current` = the step that is running now (`05` section 8·B ✓): it is running ✓;
+> when the run has ended → `null` ✓.
+> → `at` = the moment that step started ✓ (the interface computes how long it has been running from it ✓).
+> → `current` is a live snapshot (it changes ✓), `stages` only grows ✓ (the two have a different idempotency ✓, `05` section 8·B·B3 ✓).
+> → `current` does not expose the roles ✓ (no topology ✓).
+> → The card side sees a reduced projection ✓ (`03` section 7.7 ✓) — it is not this shape copied over as it is ✓.
 
-#### 取消
+#### Cancellation
 
-**agent 没有取消流程的工具** ✓ —— **「停不停」是人的判断** ✓（`05` §八·A·A4 ✓）：
-「行不行」不给 agent ✓（§2.4.1 ✓），「停不停」也不给 ✓。
+The agent has no tool to cancel a workflow ✓ — whether to stop is a judgement of a human ✓ (`05` section 8·A·A4 ✓):
+"whether it is allowed" is not given to the agent ✓ (section 2.4.1 ✓), and "whether to stop" is not given either ✓.
 
-### 2.5 布局
+### 2.5 Layout
 
 #### `promote_card(cardId, connectionId?)`
 
@@ -696,29 +696,29 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → { ok, mode: "fullscreen" }
 ```
 
-把卡片提为全屏。交互上终端这类东西必须能独占（`htop` 在小卡里没法用），但契约上它仍是一张卡。
+It promotes a card to fullscreen. For the interaction a terminal of that kind has to be able to take over (`htop` is unusable in a small card), but as far as the contract is concerned it is still a card.
 
-**它改的是布局** ✓ —— **全屏是布局的一个状态** ✓（`promoted` ✓），不是一次性的渲染指令 ✓。
+What it changes is the layout ✓ — fullscreen is one state of the layout ✓ (`promoted` ✓), not a one-off rendering instruction ✓.
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| **记什么** | **只记「哪一格要全屏」** ✓（`{card_id, connection_id, x, y, w, h}` ✓ —— **它原来的位置与连接** ✓） |
-| **铺几行** | 「**铺满当前主区可视高度**」的格数——**由渲染层按视口算** ✓ |
-| **其它格** | **宿主不动它们** ✓ —— 「让开」也是**渲染层**的事 ✓ |
-| 连接 | `connectionId` 缺省 = 该卡**唯一**的实例；**多于一个时报错**（不猜） |
+| What is recorded | Only which cell has to be fullscreen ✓ (`{card_id, connection_id, x, y, w, h}` ✓ — its original position and connection ✓) |
+| How many rows it spans | The number of rows that fill the visible height of the current main area — computed by the renderer from the viewport ✓ |
+| The other cells | The host does not touch them ✓ — making room is a matter of the renderer as well ✓ |
+| Connection | `connectionId` omitted = the only instance of that card; more than one is an error (never a guess) |
 
-> **为什么「铺几行」由渲染层算** ✓：
-> **行高与视口高度只有 renderer 知道** ✓（`ROW_HEIGHT` 是渲染层的常量 ✓）→
-> **宿主算就是猜** ✗ → **宿主记「谁要全屏」✓，渲染层算「铺几行」✓** —— **两边都不猜** ✓。
+> Why the number of rows is computed by the renderer ✓:
+> only the renderer knows the row height and the height of the viewport ✓ (`ROW_HEIGHT` is a constant of the renderer ✓) →
+> the host computing it would be a guess ✗ → the host records "who wants fullscreen" ✓ and the renderer computes "how many rows" ✓ — neither side guesses ✓.
 >
-> **为什么「让开」也是渲染层的事** ✓：
-> 布局模型**没有「隐藏」这个概念** ✓（`LayoutUnit` 只有 6 个字段 ✓）→
-> 宿主擅自挪别人的格 = **毁用户的排布** ✗ → **宿主只记状态** ✓。
+> Why making room is a matter of the renderer as well ✓:
+> the layout model has no concept of "hidden" ✓ (`LayoutUnit` has only six fields ✓) →
+> the host moving somebody else's cell would destroy the arrangement of the user ✗ → the host only records the state ✓.
 >
-> **为什么用「改布局」而不是「新增一个 mode 字段」** ✓：
-> 新增 mode → 布局模型要长出第二套形状（格式版本要升 ✓ · 渲染器要改 ✓）；
-> 改布局**复用已有的那套** ✓（持久化 ✓ · 渲染 ✓）。
-> **代价**：全屏会**占掉用户的布局** ✓（要靠 `set_layout` 恢复 ✓）—— **明说这个代价** ✓。
+> Why "change the layout" and not "add a mode field" ✓:
+> a new mode would make the layout model grow a second shape (the format version has to be bumped ✓ · the renderer has to change ✓);
+> changing the layout reuses the existing one ✓ (persistence ✓ · rendering ✓).
+> The cost: fullscreen takes over the layout of the user ✓ (it has to be restored with `set_layout` ✓) — that cost is stated explicitly ✓.
 
 #### `set_layout(layout)`
 
@@ -726,17 +726,17 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → { ok, dropped: [...] }
 ```
 
-保存布局（**整份替换**——不是增量）。
+It saves the layout (a replacement of the whole thing, not an increment).
 
-**写之前先归一** ✓：
+It is normalised before it is written ✓:
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| `x` / `y` | 非负整数 |
+| `x` / `y` | Non-negative integers |
 | `w` | `1 ≤ w ≤ 12` |
 | `h` | `h ≥ 1` |
-| **重叠** | **不判**（交给渲染器） |
-| 越界的格子 | **整条丢掉** ✓，并在 `dropped[]` 里报它的 `card_id` ✓ |
+| Overlap | Not judged (left to the renderer) |
+| A cell out of bounds | The whole entry is dropped ✓ and its `card_id` is reported in `dropped[]` ✓ |
 
 #### `get_layout()`
 
@@ -744,175 +744,175 @@ validate_card(path) → 改 → validate_card(path) → install_card(path)
 → { cards: [{ card_id, connection_id, x, y, w, h }] }
 ```
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `card_id` | 卡片 id（**与 `list_cards[].id` 同名同义** ✓） |
-| `connection_id` | 这个格子绑的是哪条连接（`null` = 没有连接上下文） |
+| `card_id` | The card id (the same name and the same meaning as `list_cards[].id` ✓) |
+| `connection_id` | The connection this cell is bound to (`null` = no connection context) |
 
-> **布局的键是 `(card_id, connection_id)`** ✓ —— 一张卡在多条连接上各有一个格子 ✓。
+> The key of the layout is the pair `(card_id, connection_id)` ✓ — one card has one cell per connection ✓.
 
 ---
 
-## 三、工具集之外的接口
+## 3. Interfaces outside the tool set
 
-MCP 覆盖的是 **AI ↔ GUI**。另外两条通道不走 MCP：
+MCP covers AI ↔ GUI. The other two channels do not go through MCP:
 
-| 通道 | 用途 | 为什么不是 MCP |
+| Channel | Purpose | Why it is not MCP |
 |---|---|---|
-| **文件系统** | agent 直接编辑卡片目录 | MCP 不做文件 IO。agent 写文件比走 MCP 快得多，而且是它最擅长的 |
-| **文件监听** | 卡片目录变化 → 热重载 | 运行时内部机制 |
+| The file system | The agent edits the card directory directly | MCP does no file IO. An agent writes files much faster than it goes through MCP, and that is what it is best at |
+| The file watcher | A change in the card directory → hot reload | An internal mechanism of the runtime |
 
-这意味着 agent 的实际工作流是：
+The practical workflow of an agent is therefore:
 
 ```
-在文件系统里写卡片文件        ← 直接写文件
+write the card files in the file system   ← writing the files directly
     ↓
-validate_card(path)          ← MCP：检查
+validate_card(path)          ← MCP: check
     ↓
-install_card(path)           ← MCP：装上（或者放对目录，监听自动装）
+install_card(path)           ← MCP: install (or put them in the right directory and the watcher installs them)
     ↓
-get_card_runtime_log(id)     ← MCP：看运行结果
+get_card_runtime_log(id)     ← MCP: read the result of the run
 ```
 
-**MCP 是 AI 的眼睛和手，不是 AI 的硬盘。**
+MCP is the eyes and the hands of the AI, not its hard disk.
 
 ---
 
-## 四、返回值的共同约定
+## 4. Conventions shared by the return values
 
-| 约定 | 内容 |
+| Convention | Content |
 |---|---|
-| 错误 | 用 `ok: false` + `reason`，不抛异常 |
-| 未知 | `status: "unavailable"`，不返回 `null` 也不返回 0 |
-| 时间 | 毫秒时间戳，UTC。`at` = **本次采样完成**的时刻，不是广播时刻<br>**（流程那一侧是例外 ✓：`05` 的 `at` = **那一步开始**的时刻 ✓ —— 同一个字段名在流程里指的是「那一步什么时候起的」✓）** |
-| 路径 | 绝对路径 |
-| 版本 | `apiVersion` 字段在每个响应里都带上（**列表是每一项都带** ✓） |
+| Errors | `ok: false` plus a `reason`, no exception is thrown |
+| Unknown | `status: "unavailable"`, neither `null` nor 0 is returned |
+| Time | Millisecond timestamp, UTC. `at` = the moment this sample completed, not the moment it was broadcast<br>(the workflow side is the exception ✓: the `at` of `05` = the moment that step started ✓ — the same field name in a workflow means "when that step began" ✓) |
+| Paths | Absolute paths |
+| Version | The field `apiVersion` is carried by every response (a list carries it on every entry ✓) |
 
-> **版本字段的拼写统一为 `apiVersion`**（与 manifest、板型包一致）。
-> 历史上出现过 `api_version` 与 `version` 三种写法，
-> 现在只有 `apiVersion` 一种——响应里的 `apiVersion` 表示**契约版本**，
-> 不是工具集自己的版本。
+> The version field is spelled `apiVersion` throughout (as in the manifest and in the board pack).
+> Historically three spellings existed, `api_version` and `version` among them,
+> and now there is only `apiVersion` — the `apiVersion` in a response denotes the version of the contract,
+> not the version of the tool set itself.
 
-> **「值是 null」与「这一项没有」是两件事** ✓：
-> `status: "unavailable"` 说的是**读数** ✓；
-> 而 `range` / `semantics` / `type` 这类**元数据字段**在词表里查不到时给 `null` ✓
-> （意思是「**这一项没有**」✓）——不矛盾 ✓。
+> "the value is null" and "this item does not exist" are two different things ✓:
+> `status: "unavailable"` is about a reading ✓;
+> and metadata fields such as `range` / `semantics` / `type` are `null` when the vocabulary does not know them ✓
+> (which means "this item does not exist" ✓) — there is no contradiction ✓.
 
-### 4.1 失败理由码（**一张表，所有工具共用** ✓）
+### 4.1 The failure reason codes (one table, shared by all the tools ✓)
 
-**封闭** ✓ —— **所有 MCP 工具的失败都从这里取** ✓：
+It is closed ✓ — the failure of every MCP tool is taken from here ✓:
 
-| 码 | 什么时候 | 谁用 |
+| Code | When | Who uses it |
 |---|---|---|
-| `invalid_params` | 参数不合（类型/范围/枚举/取值非法） | **全部** ✓ |
-| `not_found` | 东西不存在（动作/流程/卡片/读数**同名同义** ✓ ADR-D27 ✓） | **全部** ✓ |
-| `denied` | 不许做（用户拒绝 / 无授权） | 写侧 ✓ |
-| `busy` | 同一件事正在跑，不能并发 | 流程 ✓ |
-| `invalid` | 内容不合法（manifest 本身不合法） | 卡片侧 ✓ |
-| `failed` | 别的失败 | **全部** ✓ |
-| `readback_mismatch` | 回读到的值与期望不符 | `execute_action` ✓ |
-| `timeout` | 命令或回读超时 | `execute_action` ✓ |
-| `unsupported_transport` | 回读要退出码而这条连接没有（串口） | `execute_action` ✓ |
-| `cancelled` | **被叫停**（不是失败 ✓） | `execute_action` ✓ |
+| `invalid_params` | The parameters do not fit (type, range, enumeration, illegal value) | All of them ✓ |
+| `not_found` | The thing does not exist (action, workflow, card and reading share the same name and the same meaning ✓ ADR-D27 ✓) | All of them ✓ |
+| `denied` | Not permitted (the user refused, or there is no authorisation) | The write side ✓ |
+| `busy` | The same thing is already running, it cannot run concurrently | The workflow side ✓ |
+| `invalid` | The content is not valid (the manifest itself is not valid) | The card side ✓ |
+| `failed` | Any other failure | All of them ✓ |
+| `readback_mismatch` | The value that was read back does not match the expectation | `execute_action` ✓ |
+| `timeout` | The command or the readback timed out | `execute_action` ✓ |
+| `unsupported_transport` | The readback needs an exit code and this connection has none (serial) | `execute_action` ✓ |
+| `cancelled` | It was stopped (not a failure ✓) | `execute_action` ✓ |
 
-> **`guard_exceeded` 不在这张表里** ✓ —— 2026-11-16 起**没有这个标志位了** ✓
-> （**超 guard 域直接 `denied`** ✓ —— **§2.4 ✓**）。
+> `guard_exceeded` is not in this table ✓ — the flag does not exist any more since 2026-11-16 ✓
+> (going outside the guard domain is a direct `denied` ✓ — section 2.4 ✓).
 
-> **码表加项 = 契约变更** ✓ —— 与 `danger_floor_version`（`02` §5.2.1 ✓）、
-> `reason_code_version`（`01` §2.1.1 ✓）是**同一套治理** ✓：
-> 封闭词表改了就要走评审 ✓。
+> Adding an entry to the table of codes is a contract change ✓ — it is the same governance as `danger_floor_version` (section 5.2.1 of `02` ✓)
+> and `reason_code_version` (section 2.1.1 of `01` ✓) ✓:
+> a change to a closed vocabulary goes through a review ✓.
 
-### 4.2 `apiVersion` 什么时候升（**口径** ✓）
+### 4.2 When `apiVersion` is bumped (the criterion ✓)
 
-| 情形 | 升不升 |
+| Case | Bumped or not |
 |---|---|
-| **`devboard/v1` 尚未随任何实现发布** | **不升** ✓ —— 这是「**v1 定稿前的修正**」✓（先例 `docs/05` ADR-D24 / D25 / D26 ✓） |
-| **v1 已发布之后** | **一律升** ✓ |
+| `devboard/v1` has not shipped with any implementation yet | Not bumped ✓ — this is a correction before v1 is finalised ✓ (precedent: ADR-D24 / D25 / D26 of the implementation-layer decision record ✓) |
+| After v1 has shipped | Always bumped ✓ |
 
-> **理由不能写成「加字段不算破坏性变更」** ✓ —— 本工程**没有**这条通则 ✓：
-> 封闭 schema 管的是**产物**（manifest / pack / workflow 的输入 ✓），
-> **MCP 响应不是产物** ✓ → 加字段不违反已声明的规则 ✓，
-> 但**依据是「v1 未发布」** ✓ —— **换个依据就站不住了** ✓。
+> The reason must not be written as "adding a field is not a breaking change" ✓ — this project has no such general rule ✓:
+> a closed schema governs the artefacts (the inputs of the manifest / pack / workflow ✓),
+> and an MCP response is not an artefact ✓ → adding a field does not violate the declared rules ✓,
+> but the ground is "v1 has not shipped" ✓ — a different ground would not hold ✓.
 
 
-**`sample_tag(name, n)` 的 `n` 是「最近 n 个样本」**，不是「最近 n 秒」。
-窗口长度由各 tag 所在 poll group 的周期决定（`01` §3.2），
-所以同一个 `n` 在不同 tag 上覆盖的时间跨度不同——agent 要判断「抖动」时
-应该先看 `list_data_sources` 里的 `interval_ms`。
-
----
-
-## 五、给 agent 的三条硬规则
-
-写进 SDK 活文档里：
-
-1. **不要发裸命令。** 要一个新能力，就写一个 board pack 扩展或一个卡片 action。
-2. **不要乐观更新 UI。** 动作之后一律用 `readback` 的值渲染。
-3. **写完卡一定要 `validate_card` + `get_card_runtime_log`。** 盲写出来的卡大概率是坏的。
-
-第 3 条是整个协作回路的成败点。
+The `n` of `sample_tag(name, n)` is "the n most recent samples", not "the last n seconds".
+The length of the window is determined by the period of the poll group each tag belongs to (section 3.2 of `01`),
+so the same `n` covers a different span of time on different tags — before an agent judges the jitter
+it should look at the `interval_ms` in `list_data_sources`.
 
 ---
 
-## 六、MCP 自身的边界
+## 5. Three hard rules for the agent
 
-| 不做 | 理由 |
+They are written into the live documentation of the SDK:
+
+1. Do not send raw commands. For a new capability, write a board pack extension or a card action.
+2. Do not update the UI optimistically. After an action, render with the value of the `readback` in every case.
+3. After writing a card, always run `validate_card` and `get_card_runtime_log`. A card that was written blind is most likely broken.
+
+The third rule decides whether the whole collaboration loop works.
+
+---
+
+## 6. The boundaries of MCP itself
+
+| What it does not do | Why |
 |---|---|
-| 不做文件 IO（除了 `install_card` 的复制） | agent 直接写文件更快 |
-| 不做通用 shell | 见 §1.3 |
-| 不存 agent 的状态 | 每次调用自带上下文 |
-| 不猜 agent 的意图 | 显式参数 + dry-run |
+| No file IO (except the copy of `install_card`) | An agent writes files faster on its own |
+| No general purpose shell | See section 1.3 |
+| It stores no state of the agent | Every call carries its own context |
+| It does not guess the intent of the agent | Explicit parameters + dry-run |
 
-MCP server 应该是**薄的**：它把 GUI 内部状态暴露出去，仅此而已。
-凡是能在 MCP 里做的，都是「读 GUI 内部状态」或「触发 GUI 已声明的动作」。
+The MCP server should be thin: it exposes the internal state of the GUI and nothing else.
+Everything that can be done in MCP is either "read the internal state of the GUI" or "trigger an action the GUI has declared".
 
 ---
 
-## 七、怎么接上去
+## 7. How to connect to it
 
-这一节不锁实现，但**必须**说清楚，否则 agent 没法用。
+This section does not lock the implementation, but it has to be clear, otherwise an agent cannot use it.
 
-### 7.1 传输
+### 7.1 Transport
 
-**定稿：HTTP 回环（127.0.0.1）+ 发现文件 + bearer token。**
+The decision: HTTP over the loopback interface (127.0.0.1) + a discovery file + a bearer token.
 
-MCP 标准传输有两种：stdio 和 HTTP（Streamable HTTP，取代了旧的 HTTP+SSE）。
+There are two standard MCP transports: stdio and HTTP (Streamable HTTP, which replaces the old HTTP+SSE).
 
-| | 怎么用 | 为什么不用 |
+| | How it is used | Why it is not used |
 |---|---|---|
-| **stdio** | agent **启动** MCP server 子进程，通过管道说话 | agent 要启动的是「一个正在被用户使用的桌面应用」——别扭；而且 GUI 得能同时被 agent 和用户操作。**独立进程还违反「MCP 与 GUI 同进程」这条硬约束**（`docs/05` ADR-D2） |
-| **HTTP（127.0.0.1）** | GUI 起一个本地端口，agent 连上去 | ✅ 采用。代价是端口与本机安全基线（见下） |
+| stdio | The agent starts the MCP server as a subprocess and talks to it through a pipe | What the agent would have to start is "a desktop application that is in use by the user" — awkward; and the GUI has to stay operable by the agent and by the user at the same time. A separate process also violates the hard constraint "the MCP server and the GUI live in the same process" (ADR-D2 of the implementation-layer decision record) |
+| HTTP (127.0.0.1) | The GUI opens a local port and the agent connects to it | Adopted. The price is the port and the local security baseline (see below) |
 
-**理由**：GUI 本来就是一个用户会打开并一直开着的东西，
-agent 是**连到已经在跑的 GUI**，而不是把它启动起来。
-HTTP 回环让 MCP server 仍然住在 Electron main 进程内（ADR-D2 成立），
-同时给 agent 一条「连过去」的路。
+The reason: the GUI is something a user opens and keeps open anyway,
+and the agent connects to the GUI that is already running instead of starting it.
+The HTTP loopback keeps the MCP server inside the Electron main process (ADR-D2 holds)
+and at the same time gives the agent a way to connect to it.
 
-**本机安全基线**（契约的一部分，不是实现建议）：
+The local security baseline (part of the contract, not an implementation suggestion):
 
-| 项 | 要求 |
+| Item | Requirement |
 |---|---|
-| 监听地址 | **只绑 `127.0.0.1`**，不绑 `0.0.0.0` |
-| `Origin` 校验 | 对所有入站请求校验 `Origin`；**存在且不合法时返回 403** |
-| `Host` 校验 | 只接受 `127.0.0.1:<port>` 与 `localhost:<port>` |
-| 认证 | 每个请求必须带 `Authorization: Bearer <token>`，token 来自发现文件 |
-| token | 每次 GUI 启动**重新生成**（随机 ≥ 32 字节）；不写进日志 |
-| 发现文件权限 | 仅当前用户可读（POSIX 0600 / Windows 当前用户 ACL） |
-| 无 CORS | 不发 `Access-Control-Allow-Origin`，不做跨域放行 |
+| Listening address | Bind `127.0.0.1` only, never `0.0.0.0` |
+| `Origin` validation | Validate the `Origin` of every inbound request; when it is present and not allowed, answer 403 |
+| `Host` validation | Accept only `127.0.0.1:<port>` and `localhost:<port>` |
+| Authentication | Every request must carry `Authorization: Bearer <token>`, the token comes from the discovery file |
+| Token | Regenerated on every start of the GUI (random, at least 32 bytes); never written to a log |
+| Permissions of the discovery file | Readable by the current user only (POSIX 0600 / the ACL of the current user on Windows) |
+| No CORS | No `Access-Control-Allow-Origin` is sent, no cross-origin access is granted |
 
-> **为什么这几条是契约而不是实现建议**：本地 HTTP MCP server 若不校验 `Origin`/`Host`，
-> 任何用户访问过的恶意网页都能通过 DNS rebinding 向 `127.0.0.1` 发请求，
-> 直接驱动 `execute_action` 改用户的板子。MCP 规范对此有明确要求
-> （「servers MUST validate the `Origin` header」），本产品把它当作**硬约束**写进契约。
+> Why these rules are part of the contract and not implementation advice: a local HTTP MCP server that does not validate `Origin` and `Host`
+> lets any malicious page the user has visited send requests to `127.0.0.1` through DNS rebinding,
+> and drive `execute_action` to change the board of the user. The MCP specification requires this explicitly
+> ("servers MUST validate the `Origin` header"), and this product writes it into the contract as a hard constraint.
 
-**不锁的部分**：具体库、端口分配策略、SSE 或 Streamable HTTP 的具体变体，
-由实现层的连接方式决定。本契约只要求「agent 能发现并连上，且连上的一定是本机用户自己启动的那个 GUI」。
+What is not locked: the concrete library, the strategy for the port allocation and the concrete variant of SSE or Streamable HTTP
+are decided by the connection method of the implementation layer. This contract only requires that "the agent can discover and connect, and what it connects to is always the GUI that the user of this machine started".
 
-### 7.2 发现
+### 7.2 Discovery
 
-agent 怎么知道端口和路径？
+How does the agent learn the port and the path?
 
-GUI 在本地写一个**发现文件**：
+The GUI writes a discovery file locally:
 
 ```
 %LOCALAPPDATA%/DevBoardCockpit/mcp.json
@@ -922,62 +922,62 @@ GUI 在本地写一个**发现文件**：
   "host": "127.0.0.1",
   "port": 51234,
   "pid": 12345,
-  "token": "<本次启动生成的 bearer token>",
+  "token": "<the bearer token generated for this start>",
   "cards_dir": "...",
   "started_at": "..."
 }
 ```
 
-agent 读这个文件就知道怎么连。这个文件是**唯一**的耦合点：
-换了传输方式，agent 只需要改读文件的方式。
+The agent reads this file and knows how to connect. This file is the only coupling point:
+when the transport changes, the agent only has to change the way it reads the file.
 
-（另一种常见做法是固定端口 + 固定路径。固定端口在多开时会撞，发现文件没这个问题。）
+(Another common approach is a fixed port plus a fixed path. A fixed port collides when several instances are open, the discovery file does not have that problem.)
 
-**发现文件的规则**：
+The rules of the discovery file:
 
-| 项 | 规则 |
+| Item | Rule |
 |---|---|
-| 写入时机 | GUI 启动并**成功监听端口之后** |
-| 写入方式 | 先写临时文件再原子改名，避免 agent 读到半个文件 |
-| 权限 | 仅当前用户可读 |
-| 清理 | GUI 退出时删除；端口被占用时也要删（不能留一个指向死进程的发现文件） |
-| 陈旧文件 | agent 连不上时**不重试其他端口**，直接报错——避免连到别的进程 |
-| `pid` | 用于 agent 确认这个发现文件对应当前活着的 GUI |
+| When it is written | After the GUI has started and has successfully bound the port |
+| How it is written | A temporary file is written first and then renamed atomically, so that the agent never reads half a file |
+| Permissions | Readable by the current user only |
+| Clean-up | It is deleted when the GUI exits; it is deleted as well when the port is taken (a discovery file that points at a dead process must not be left behind) |
+| Stale file | When the agent cannot connect it does not retry other ports, it reports the error directly — that avoids connecting to another process |
+| `pid` | It lets the agent confirm that this discovery file belongs to the GUI that is alive right now |
 
-> **token 为什么放在发现文件里**：发现文件本身就受权限保护（仅当前用户可读），
-> 它同时承担「地址」与「凭据」两件事。token 每次启动重生成，
-> 所以上次会话留下的 token 立刻失效。
+> Why the token lives in the discovery file: the discovery file is protected by permissions anyway (readable by the current user only),
+> and it carries the address and the credential at the same time. The token is regenerated on every start,
+> so the token left behind by the previous session is invalid immediately.
 
-### 7.3 谁可信
+### 7.3 Who is trusted
 
-**agent 是可信主体，但受动作分级约束。**
+The agent is a trusted party, but it is bound by the grading of the actions.
 
-- agent 可以读全部状态（`list_*`、`describe_*`、`sample_*`）。
-- agent 可以写卡片（`install_card`）——这就是产品设计的目的。
-- agent **不能**执行 `destructive` 动作而不经人确认（§2.4.1）。
+- The agent may read all the state (`list_*`, `describe_*`, `sample_*`).
+- The agent may write cards (`install_card`) — that is the purpose of the product design.
+- The agent may not execute a `destructive` action without a human confirmation (section 2.4.1).
 
-「agent 能装任意卡片」这件事需要正视：装一张卡 = 在工作台里跑一段 HTML/JS。
-所以卡片的沙箱是认真的（`03` §六 —— 含 CSP 与 `cockpit.storage.*`），
-而 `destructive` 动作要人确认。
+"The agent can install arbitrary cards" has to be taken seriously: installing a card means running a piece of HTML/JS inside the workbench.
+The sandbox of a card is therefore a serious one (`03` section 6 — it includes the CSP and `cockpit.storage.*`),
+and a `destructive` action requires a human confirmation.
 
-**agent 的可信是「在已授权范围内可信」**：agent 能读的板子状态 = 用户已经连上的板子；
-agent 能执行的动作 = 已授权的动作；参数超出 `guard` 域的要另行确认（`02` §5.5）。
-agent **不能**读用户的文件系统、不能改授权、不能连别的板子。
+The trust of the agent is "trust within what has been authorised": the board state the agent may read = the boards the user has already connected;
+the actions the agent may execute = the authorised actions; parameters outside the `guard` domain need a separate confirmation (`02` section 5.5).
+The agent may not read the file system of the user, may not change the authorisation and may not connect to another board.
 
-### 7.4 一次运行
+### 7.4 One run
 
 ```
-用户：装一张卡，显示 NPU 占用率
-agent: list_tags()                    → 看到 npu.usage 存在，status=unavailable
-agent: describe_tag("npu.usage")      → 看到语义：「各核利用率的最大值」
-agent: list_cards()                   → 看有没有现成的
-agent: 写卡片文件
-agent: validate_card(path)            → 静态检查通过
-agent: install_card(path)             → 热插拔生效
-agent: get_card_runtime_log(cardId)   → 无报错
-用户：（屏幕上出现了那张卡）
+user: install a card that shows the NPU utilisation
+agent: list_tags()                    → sees that npu.usage exists, status=unavailable
+agent: describe_tag("npu.usage")      → sees the semantics: "the maximum of the utilisation across the cores"
+agent: list_cards()                   → checks whether one already exists
+agent: writes the card files
+agent: validate_card(path)            → the static check passes
+agent: install_card(path)             → the hot plug takes effect
+agent: get_card_runtime_log(cardId)   → no errors
+user: (the card appears on the screen)
 ```
 
-这条回路里 agent 用了三个「列举/自省」工具才动手写——这就是为什么它们必须实时、
-必须准。**能力是动态出现的，不能靠静态文档。**
+In this loop the agent uses three listing and introspection tools before it writes anything — that is why they have to be live and they have to be accurate.
+Capabilities appear dynamically, static documentation cannot work.
 

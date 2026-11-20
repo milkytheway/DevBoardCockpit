@@ -2,7 +2,30 @@
   "name": "devboard-cockpit",
   "version": "0.1.0",
   "private": true,
-  "description": "开发板驾驶舱 —— 面向嵌入式 Linux 开发者的 Windows 桌面工作台",
+  "description": "A Windows desktop workbench for embedded Linux boards: tags, cards and MCP.",
+  "keywords": [
+    "embedded",
+    "linux",
+    "rk3588",
+    "buildroot",
+    "electron",
+    "mcp",
+    "model-context-protocol",
+    "dashboard",
+    "board-support-package"
+  ],
+  "homepage": "https://github.com/milkytheway/DevBoardCockpit#readme",
+  "bugs": {
+    "url": "https://github.com/milkytheway/DevBoardCockpit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milkytheway/DevBoardCockpit.git"
+  },
+  "author": {
+    "name": "milkytheway"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {

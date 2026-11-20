@@ -17,9 +17,10 @@ import {
 } from '../Icons';
 
 /**
- * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ * **Interface wording** —— every string the user can read is in this table ✓.
  *
- * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ * Each entry sits next to the code that uses it, and `t()` picks the one for
+ * the active locale ✓.
  */
 const strings = {
   title: { 'zh-Hans': '卡片库', en: 'Card library' },

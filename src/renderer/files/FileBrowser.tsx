@@ -3,24 +3,27 @@ import type { ConnectionCapabilities } from '../../shared/ipc-contract';
 import { useT, type Localised } from '../shell/i18n';
 
 /**
- * 双树文件浏览器。
+ * The dual-tree file browser.
  *
- * 交互沿用旧工程：「**交互设计保留，实现重写**：
- * 双树 + 懒加载 + 目标选择器 + 箭头传输」）：
+ * The interaction follows the predecessor project: **keep the interaction
+ * design, rewrite the implementation** — a dual tree, lazy loading, a target
+ * selector and arrow transfers:
  *
  * ```
- *   本地                        远端
- *  ┌──────────┐  ↑上传   ↓下载 ┌──────────┐
- *  │  文件树   │               │  文件树   │
- *  └──────────┘               └──────────┘
+ *   local                       remote
+ *  ┌──────────┐  ↑upload  ↓download ┌──────────┐
+ *  │  file tree│                │  file tree│
+ *  └──────────┘                └──────────┘
  * ```
  *
- * **远端树懒加载**：目录是要问宿主的，不该在渲染时就发生。
- * 点「刷新远端」才去列。
+ * **The remote tree is lazy**: a directory has to be asked of the host, and
+ * that must not happen while rendering. The listing is fetched when the user
+ * asks for it.
  *
- * **串口没有文件通道**（事实 S7）：`capabilities.files === false` 时
- * 两个箭头都不给，只留一句说明——不给入口，用户才知道是这条线不支持，
- * 而不是以为功能坏了。
+ * **A serial line has no file channel** (device fact S7): when
+ * `capabilities.files === false`, neither arrow is offered and a single line of
+ * explanation is left instead — without an entry point the user learns that
+ * this line does not support it, instead of thinking the feature is broken.
  */
 
 /** The wording of the browser, in both languages. */
@@ -42,7 +45,7 @@ const strings = {
   },
 } satisfies Record<string, Localised>;
 
-/** 远端目录里的一个条目（与 `shared/ipc-contract` 的 FileEntry 同形） */
+/** One entry of a remote directory (the same shape as `FileEntry` in `shared/ipc-contract`) */
 export interface RemoteEntry {
   name: string;
   path: string;
@@ -54,21 +57,21 @@ export interface RemoteEntry {
 export interface FileBrowserProps {
   connectionId: string;
   capabilities: ConnectionCapabilities;
-  /** 上传：本地文件 → 远端目录 */
+  /** Upload: a local file → the remote directory */
   onPush: (file: File, remotePath: string) => void;
-  /** 下载：远端 → 本地 */
+  /** Download: remote → local */
   onPull: (connectionId: string, remotePath: string) => void;
-  /** 列远端目录。问宿主，由宿主去跑传输 */
+  /** Lists a remote directory. The host runs the transfer */
   listRemote: (connectionId: string, remotePath: string) => Promise<RemoteEntry[]>;
-  /** 远端当前目录，缺省是根 */
+  /** The current remote directory; the root by default */
   remotePath?: string;
 }
 
 /**
- * 上一级目录。
+ * The parent directory.
  *
- * 远端路径一般是 POSIX 的（`/root/sub`），但**本机目标**给的是 Windows 路径
- * （`C:\Users\me`）——所以两种分隔符都得认。
+ * A remote path is normally POSIX (`/root/sub`), but a **local target** gives
+ * a Windows path (`C:\Users\me`) — so both separators have to be recognised.
  */
 export function parentPath(path: string): string {
   const m = /^(.*?)[\\/][^\\/]+[\\/]*$/.exec(path);
@@ -94,24 +97,26 @@ export function FileBrowser({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * 当前所在的远端目录。
+   * The remote directory the browser is in.
    *
-   * **远端树必须能进目录**——不然用户永远只能看到根目录，
-   * 而「上传到某个目录」这件事根本无从谈起
-   * （原来 `remotePath` 是个常量 prop，
-   * 组件内从不修改，点目录只是「选中」不是「进去」）。
+   * **The remote tree has to be navigable** — otherwise the user only ever
+   * sees the root directory and "upload into a directory" is not even a
+   * thing that can be asked for. (`remotePath` used to be a constant prop
+   * that the component never changed, so clicking a directory selected it
+   * instead of entering it.)
    */
   const [currentPath, setCurrentPath] = useState(remotePath);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  /** 最近一次列目录请求的序号（用来丢掉过期响应） */
+  /** The sequence number of the last listing request (used to drop stale responses) */
   const loadSeq = useRef(0);
   const t = useT();
 
   /**
-   * 列某个目录。
+   * Lists a directory.
    *
-   * **路径是源，列表跟着路径走**——进目录与回上级都要重新列一次，
-   * 否则会出现「路径已经变了、列表还是上一个目录的」。
+   * **The path is the source of truth and the listing follows it** — entering a
+   * directory and going back up both list again, otherwise the path has
+   * changed while the listing still shows the previous directory.
    */
   const load = useCallback(
     async (path: string) => {
@@ -140,7 +145,7 @@ export function FileBrowser({
     void load(currentPath);
   }, [load, currentPath]);
 
-  /** 进目录 */
+  /** Enter a directory */
   const enter = useCallback(
     (entry: RemoteEntry) => {
       if (!entry.isDirectory) return;
@@ -151,7 +156,7 @@ export function FileBrowser({
     [load],
   );
 
-  /** 回上级 */
+  /** Go to the parent */
   const goUp = useCallback(() => {
     setSelectedRemote(null);
     const parent = parentPath(currentPath);

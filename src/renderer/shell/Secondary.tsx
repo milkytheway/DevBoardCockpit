@@ -39,7 +39,7 @@ export interface SecondaryStatus {
  *
  * The board state used to be its own block at the top of the list, which cost
  * a scroll row on every page. It is now one line next to the page title:
- * "工作台 · 采样中". The list starts with the cards, which is what the page is
+ * "Workbench · sampling". The list starts with the cards, which is what the page is
  * actually for.
  *
  * ── section headings collapse ──

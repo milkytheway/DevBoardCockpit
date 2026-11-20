@@ -43,8 +43,9 @@ function useLatest<T>(value: T): { current: T } {
 /**
  * Connection profiles.
  *
- * → **开机读一次** ✓（profile 只在重启时变 ✓），
- *   **但「哪条是当前」会变** ✓（用户换了设备 ✓）→ **所以要能刷新** ✓。
+ * → **Read once at boot** ✓ (a profile only changes on a restart ✓), but
+ *   **which one is current does change** ✓ (the user switched device ✓) →
+ *   **so it has to be refreshable** ✓.
  */
 export function useConnections(reportError: ReportError): {
   connections: ConnectionInfo[];
@@ -73,10 +74,13 @@ export function useConnections(reportError: ReportError): {
 
 /** Runtime status: once at boot, then polled (the host has no push for it). */
 /**
- * **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓）。
+ * **The unified permission area** (the table on the settings page ✓ ·
+ * ADR-D47 ✓).
  *
- * → **一次读** ✓（**设置页打开时读** ✓ —— **不是轮询** ✓ —— **它很少变** ✓）
- * → **改一条就重读** ✓（**改完立刻看到** ✓）。
+ * → **Read once** ✓ (**when the settings page opens** ✓ — **not polled** ✓ —
+ *   **it hardly ever changes** ✓)
+ * → **Changing one entry reads it again** ✓ (**the change is visible at
+ *   once** ✓).
  */
 export function usePermissions(reportError: ReportError): {
   rows: PermissionRow[];

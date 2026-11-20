@@ -3,13 +3,15 @@ import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import type { CardBroker } from './broker';
 
 /**
- * 一张用户卡（沙箱 iframe）。
+ * A user card (a sandboxed iframe).
  *
- * ── 沙箱属性只有 `allow-scripts` ──
+ * ── The sandbox attribute is `allow-scripts` and nothing else ──
  *
- * **不给 `allow-same-origin`**（契约 `spec/03` §六）：
- * 给了它，所有卡就共享一个源 → **A 卡能读 B 卡的存储**（实测，见 ADR-D28）。
- * 每个 iframe 是一个**独立的不透明源** → 卡片之间互不可见，也碰不到宿主。
+ * **`allow-same-origin` is not granted** (contract `spec/03` §6):
+ * with it, all the cards would share one origin and **card A could read the
+ * storage of card B** (measured; see ADR-D28).
+ * Every iframe is an **independent opaque origin**, so the cards cannot see
+ * each other and cannot reach the host.
  */
 export function UserCard({
   info,

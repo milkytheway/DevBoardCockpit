@@ -5,23 +5,27 @@ import { useT, type Localised } from './i18n';
 import { ChevronIcon } from './Icons';
 
 /**
- * **选板子**（板实物与连接是两层 ✓ —— 契约 `spec/02` §10.2 ✓）。
+ * **Choosing a board** (the board and its connections are two layers ✓ —
+ * contract `spec/02` §10.2 ✓).
  *
- * ── 为什么是「板」而不是「连接」 ──
+ * ── Why a board and not a connection ──
  *
- * → 用户 2026-11-16 明确：「**设备要放在界面最顶端，仅支持板卡选择，
- *   当前有 fake 和 3588 的真版，不要把连接这些放进去**」✓
- * → 一块板有 **ADB / 串口 / SSH** 三条连接 ✓ → **界面只列板** ✓
- * → **哪条连接能用宿主才知道** ✓ → **宿主挑** ✓ → **界面不暴露连接** ✓。
+ * → A board has **three connections: ADB / serial / SSH** ✓ → **the interface
+ *   lists boards** ✓
+ * → **Only the host knows which connection works** ✓ → **the host picks** ✓ →
+ *   **the interface does not expose connections** ✓.
  *
- * ── 位置 ──
+ * ── Position ──
  *
- * → **界面最顶端** ✓（**标题条上** ✓ —— 那是这个窗口的第一行 ✓）
- * → **不是页面头** ✓ —— 页面头会跟着页面换位置 ✗ → 「我在这块板上」**得一直在** ✓。
+ * → **At the very top of the interface** ✓ (in the **title bar** ✓ — that is
+ *   the first line of the window ✓)
+ * → **Not in the page header** ✓ — the page header moves with the page ✗ →
+ *   "the board I am on" **has to stay visible** ✓.
  *
- * ── v1 的形状（**单连接** ✓）──
+ * ── The shape in v1 (**one connection at a time** ✓) ──
  *
- * → **一次只连一块板** ✓（`O11` / `O18` ✓）→ 「选板」= **宿主换一块板** ✓。
+ * → **One board is connected at a time** ✓ (`O11` / `O18` ✓) → "choose a
+ *   board" = **the host switches board** ✓.
  */
 
 /** The wording of the picker, in both languages. */
@@ -39,11 +43,11 @@ export function DevicePicker({
   onSelect,
   busy,
 }: {
-  /** 宿主给的连接清单（**带 `deviceKey` 与 `current`** ✓） */
+  /** The connection list from the host (**with `deviceKey` and `current`** ✓) */
   connections: ConnectionInfo[];
-  /** 选中一块板（**交出的是板的身份** ✓ —— **宿主去挑连接** ✓） */
+  /** A board was chosen (**what is handed over is the board identity** ✓ — **the host picks the connection** ✓) */
   onSelect: (deviceKey: string) => void;
-  /** 切换中（**别让用户连点** ✓） */
+  /** Switching (**do not let the user click again** ✓) */
   busy: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);

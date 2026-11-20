@@ -265,13 +265,18 @@ export function Shell(): JSX.Element {
   }, []);
 
   /**
-   * **换一块板**（界面「选板子」✓ —— 板实物与连接是两层 ✓）。
+   * **Switching to another board** (the interface has a "choose a board"
+   * control ✓ — the board and its connections are two layers ✓).
    *
-   * → **宿主去切** ✓（**界面不自己连** ✓ —— 那是宿主的活 ✓）
-   * → **交出去的是板的身份** ✓（**不是连接 id** ✓ —— **界面不暴露连接** ✓）
-   * → **连不上要说出来** ✓ —— **不静默地换一块** ✗
-   *   （**那就是「静默地做另一件事」** ✗ —— 用户选了 A、实际连的是 B ✗）
-   * → **切完刷新连接清单** ✓（「当前」变了 ✓）。
+   * → **The host does the switch** ✓ (**the interface does not connect** ✓ —
+   *   that is the host's job ✓)
+   * → **What is handed over is the board identity** ✓ (**not a connection id** ✓
+   *   — **the interface does not expose connections** ✓)
+   * → **A failure to connect has to be reported** ✓ — **never switch to a
+   *   different board silently** ✗ (that would be **doing another thing
+   *   silently** ✗ — the user chose A and B is what got connected ✗)
+   * → **Refresh the connection list after the switch** ✓ (the "current" board
+   *   changed ✓).
    */
   const [selecting, setSelecting] = useState(false);
   const selectDevice = useCallback(

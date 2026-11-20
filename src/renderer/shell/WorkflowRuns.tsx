@@ -3,26 +3,37 @@ import type { HostWorkflowRun } from '../../shared/ipc-contract';
 import { interpolate, pick, useLocale, useT, type Locale, type Localised } from './i18n';
 
 /**
- * **运行中的流程**（契约 `05` §八·A ✓）—— **宿主侧唯一的「停」入口** ✓。
+ * **The running workflows** (contract `05` §8.A ✓) — **the only place the
+ * host offers a "stop"** ✓.
  *
- * ── 为什么它在**宿主**而不在卡片里 ──
+ * ── Why it lives in the **host** and not in a card ──
  *
- * 契约 **A4** ✓：**只有宿主能取消** ✓（**卡片与 agent 都没有这个接口** ✓）→
- * → 「停一次别人的运行」**不在任何权限项里** ✓ → **卡片里不该有这个按钮** ✓
- * → **所以它必须在卡片之外** ✓（卡片是沙箱 ✓ · 它碰不到宿主的 chrome ✓）
+ * Contract **A4** ✓: **only the host can cancel** ✓ (**neither the cards nor
+ * an agent have that interface** ✓) →
+ * → "stop somebody else's run" is **not covered by any permission** ✓ →
+ *   **the button does not belong in a card** ✓
+ * → **So it has to live outside the cards** ✓ (a card is a sandbox ✓ and
+ *   cannot reach the host chrome ✓).
  *
- * ── 为什么它在**顶条**（`.window-drag`）而不是页面头 ──
+ * ── Why it lives in the **title bar** (`.window-drag`) and not in the page
+ * header ──
  *
- * → **编译要几分钟** ✓（实测 58.9s / 98.5s ✓）→ 中途**很可能切到终端页** ✓
- * → 页面头**跟着页面换位置** ✗ → 切走了就**找不着那个「停」**了 ✗
- * → 顶条**一直在** ✓（跟「选板子」并排 ✓ —— 「我在这块板上 · 现在在跑什么」✓）
+ * → **A build takes minutes** ✓ (measured 58.9 s / 98.5 s ✓) → the user is
+ *   **likely to switch to the terminal page** in the meantime ✓
+ * → The page header **moves with the page** ✗ → once the user has left, the
+ *   **"stop" is nowhere to be found** ✗
+ * → The title bar **stays** ✓ (next to the board selector ✓ — "the board I am
+ *   on, and what is running on it" ✓).
  *
- * ── 它显示什么（**克制** ✓）──
+ * ── What it shows (**restrained** ✓) ──
  *
- * → **只在有东西在跑时出现** ✓（没有常驻的行 ✓ —— 顶条不能变挤 ✓）
- * → **流程名 + 当前这一步 + 已经跑了多久** ✓
- * → **不给百分比** ✓（契约 **B2** ✓ —— 传输的百分比是猜的 ✗；「已经 42 秒」是事实 ✓）
- * → 一个「停」按钮 ✓（**就一个** ✓ —— 多个运行就多个 chip ✓ 但每个只一个按钮 ✓）
+ * → **It appears only while something runs** ✓ (no permanent row ✓ — the
+ *   title bar must not get crowded ✓)
+ * → **The workflow name, the current step and the elapsed time** ✓
+ * → **No percentage** ✓ (contract **B2** ✓ — the percentage of a transfer is
+ *   a guess ✗; "it has been 42 seconds" is a fact ✓)
+ * → One "stop" button ✓ (**one only** ✓ — several runs give several chips ✓
+ *   but each of them still has a single button ✓).
  */
 
 /** The wording of the strip, in both languages. */
@@ -98,7 +109,7 @@ export function WorkflowRuns(): JSX.Element | null {
   );
 }
 
-/** 「已经跑了多久」—— **算出来的** ✓（契约 B2 ✓：不给百分比 ✓） */
+/** "How long it has been running" — **computed** ✓ (contract B2 ✓: no percentage ✓) */
 function elapsed(since: number, locale: Locale): string {
   const seconds = Math.max(0, Math.round((Date.now() - since) / 1000));
   if (seconds < 60) return interpolate(pick(strings.elapsedSeconds, locale), { seconds });

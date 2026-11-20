@@ -37,8 +37,9 @@ export interface SecondaryItem {
   /**
    * A **close** button on the row.
    *
-   * **为什么会话需要它**：串口与 SSH 的连接是**独占**的——
-   * 没有关闭路径，那个连接就一直占着（用户只能重启应用）。
+   * **Why a session needs it**: a serial or SSH connection is **exclusive** —
+   * without a way to close it, the connection keeps holding the port and the
+   * only way out is to restart the application.
    */
   onClose?: () => void;
   /** The card id — the stable e2e hook (`data-cockpit-card-id`). */
@@ -52,7 +53,8 @@ export interface SecondaryItem {
   sessionId?: string;
   /**
    * A sub-heading inside the group. The card catalogue uses this to draw
-   * "Pinned" first, then the card's own bucket (性能 / 内存与温度 / …).
+   * "Pinned" first, then the card's own bucket (performance / memory and
+   * temperature / ...).
    * The group id itself stays `cards` so the rows keep their one data shape.
    */
   section?: Localised;
@@ -78,11 +80,13 @@ export interface SecondaryContext {
   /**
    * The **slot keys** of the cards that are placed in the main area right now.
    *
-   * **键是 (cardId, connectionId)，不是 cardId**——
-   * 一张卡在每条连接上各有一个实例（契约 §7.8），各占一个格子。
-   * 按 cardId 判的话，换了连接之后目录会说「已在主区」而主区里没有它，
-   * 再点只会去移除（按当前连接键过滤 → 什么也没移除）→
-   * **这张卡在新连接上再也摆不进去**。
+   * **The key is (cardId, connectionId), not cardId** —
+   * a card has one instance per connection (contract §7.8), and each occupies
+   * its own cell. Judging by cardId alone, after a connection switch the
+   * catalogue would say "already in the main area" while the main area does
+   * not hold it, and the next click would only try to remove it (filtered by
+   * the current connection key, nothing is removed) →
+   * **the card could never be placed on the new connection**.
    */
   placedSlotKeys: string[];
   sessions: TerminalTab[];

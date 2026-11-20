@@ -7,19 +7,20 @@ import {
 } from '../../shared/ipc-contract';
 
 /**
- * 页面侧的**卡片帧经纪人**。
+ * The **card frame broker**, on the page side.
  *
- * ── 它做三件事 ──
+ * ── It does three things ──
  *
- * | 事 | 怎么做 | 为什么 |
+ * | Job | How | Why |
  * |---|---|---|
- * | **认人** | 收到 `cockpit-hello` 时用 `event.source` 认出是哪个 iframe，**再比一次 instanceId** | 只比 source 不够：卡片 A 把自己导航到卡片 B 的 URL，就会**借到 A 的权限**（RF-1） |
- * | **建通道** | 给这张卡一条**私有的 MessagePort** | 共用父窗口的话，**每张卡的请求都经过同一个窗口**，卡与卡之间就有了公共面 |
- * | **转发** | 卡片的请求 → main；main 的推送 → 卡 | 权限判定在 main（**不可信的一侧不做判断**） |
+ * | **Identify** | On `cockpit-hello`, use `event.source` to find out which iframe it is, **then compare `instanceId` as well** | The source alone is not enough: card A can navigate itself to the URL of card B and **borrow A's permissions** (RF-1) |
+ * | **Build a channel** | Give the card a **private MessagePort** | With one shared parent window, **every card request goes through the same window**, and the cards gain a shared surface |
+ * | **Forward** | Card request → main; main push → card | The permission decision belongs to main (**the untrusted side does not decide**) |
  *
- * ── 它**不判权限** ──
+ * ── It **does not decide permissions** ──
  *
- * 权限过滤在 main 侧（契约 §7.1）。页面只负责「把消息送到该去的地方」。
+ * The filtering happens in main (contract §7.1). The page only has to deliver
+ * each message where it belongs.
  */
 
 interface PortLike {
@@ -52,18 +53,18 @@ export class CardBroker {
     });
   }
 
-  /** 登记一张卡的 iframe */
+  /** Registers the iframe of a card */
   attach(frame: FrameLike, instanceId: string): void {
     this.registered.set(instanceId, { instanceId, frame });
   }
 
-  /** 一张卡没了（卸载 / 重载） */
+  /** A card is gone (uninstalled / reloaded) */
   detach(instanceId: string): void {
     this.registered.delete(instanceId);
     this.ports.delete(instanceId);
   }
 
-  /** 收摊 */
+  /** Closing time */
   dispose(): void {
     this.offEvent();
     this.registered.clear();
@@ -71,9 +72,10 @@ export class CardBroker {
   }
 
   /**
-   * 处理窗口上的 `message` 事件。
+   * Handles the `message` event on the window.
    *
-   * **认人要认两次**：`event.source`（哪个窗口）+ `instanceId`（哪个实例）。
+   * **Identification takes two steps**: `event.source` (which window) plus
+   * `instanceId` (which instance).
    */
   handleMessage(event: MessageEvent): void {
     const data = event.data as { type?: string; instanceId?: string; detail?: unknown } | null;
@@ -131,7 +133,7 @@ export class CardBroker {
     void this.api.cardsCsp(instanceId, detail);
   }
 
-  /** main 的推送 → 那张卡的私有端口 */
+  /** A push from main → the private port of that card */
   push(instanceId: string, payload: unknown): void {
     const port = this.ports.get(instanceId);
     if (port === undefined) return;
@@ -176,5 +178,5 @@ export class CardBroker {
   }
 }
 
-/** 卡片清单的形状（页面用它渲染卡片区） */
+/** The shape of the card manifest (the page renders the card area from it) */
 export type { CardInstanceInfo };

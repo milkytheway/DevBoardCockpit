@@ -7,9 +7,10 @@ import { useT, type Localised } from '../i18n';
 import { ActivityIcon, GridIcon, LayersIcon, RefreshIcon } from '../Icons';
 
 /**
- * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ * **Interface wording** —— every string the user can read is in this table ✓.
  *
- * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ * Each entry sits next to the code that uses it, and `t()` picks the one for
+ * the active locale ✓.
  */
 const strings = {
   title: { 'zh-Hans': '总览', en: 'Overview' },
@@ -36,10 +37,12 @@ const strings = {
  * The page header carries the only page-level controls (density, refresh,
  * the way to the card library); everything else belongs to the cards.
  *
- * ── 「选板子」不在这里 ──
+ * ── The board selector is not here ──
  *
- * → 它在**界面最顶端** ✓（标题条 ✓ —— 用户 2026-11-16 明确 ✓）
- * → **页面头会跟着页面换位置** ✗ → 「我在这块板上」**得一直在** ✓。
+ * → It sits **at the very top of the interface** ✓ (in the title bar ✓ —
+ *   the user was explicit on 2026-11-16 ✓)
+ * → **The page header moves with the page** ✗ → "the board I am on" **has to
+ *   stay visible** ✓.
  */
 export function WorkbenchPage({
   cards,

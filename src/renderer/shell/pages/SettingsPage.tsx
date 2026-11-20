@@ -5,9 +5,10 @@ import type { PermissionActor, PermissionRow } from '../../../shared/ipc-contrac
 import { PaletteIcon } from '../Icons';
 
 /**
- * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ * **Interface wording** —— every string the user can read is in this table ✓.
  *
- * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ * Each entry sits next to the code that uses it, and `t()` picks the one for
+ * the active locale ✓.
  */
 const strings = {
   // ── 快捷键 ──
@@ -130,9 +131,9 @@ export function SettingsPage({
   cardsCount: number;
   connectionsCount: number;
   onRefreshCards: () => void;
-  /** **统一权限区**（设置页那张表 ✓ · ADR-D47 ✓） */
+  /** **The unified permission area** (the table on the settings page ✓ · ADR-D47 ✓) */
   permissions: PermissionRow[];
-  /** 改一条（**幂等** ✓） */
+  /** Change one entry (**idempotent** ✓) */
   onPermission: (actor: PermissionActor, op: string, allowed: boolean) => void;
   /** The interface language. */
   locale: Locale;

@@ -4,13 +4,15 @@ import { useT, type Localised } from '../i18n';
 import { AlertIcon, CopyIcon, LinkIcon } from '../Icons';
 
 /**
- * **接一块还不认识的板子**（人只做一步 ✓）。
+ * **Attaching a board it has not seen before** (the person takes one step ✓).
  *
- * 人选通道、填串口和名字，然后一次调用跑完：
- * 建连接 → 试 13 个元操作 → 生成包 → 落盘。
+ * The person picks a transport, fills in the serial port and the name, and
+ * then one call does the rest:
+ * build the connection → try 13 meta operations → generate the pack → install it.
  *
- * **界面不编进度** ✗ —— 宿主不回报中途状态；这里只说「正在做什么」，
- * 并明确告诉用户阶段是按耗时说的，不画百分比。
+ * **The interface does not invent progress** ✗ — the host reports no interim
+ * state; the page says what is happening, states plainly that the stages are
+ * ordered by elapsed time, and draws no percentage.
  */
 
 type Transport = 'serial' | 'adb';
@@ -33,9 +35,10 @@ export interface WizardPageProps {
 const BAUD_RATES = [1500000, 115200, 921600, 460800, 230400, 57600, 9600] as const;
 
 /**
- * **界面文案** —— 用户读得到的字都在这一张表里 ✓。
+ * **Interface wording** —— every string the user can read is in this table ✓.
  *
- * 词条挨着用到它的代码，`t()` 按当前语言挑一条 ✓。
+ * Each entry sits next to the code that uses it, and `t()` picks the one for
+ * the active locale ✓.
  */
 const strings = {
   title: { 'zh-Hans': '接板向导', en: 'Board setup wizard' },
@@ -48,7 +51,7 @@ const strings = {
   stageResult: { 'zh-Hans': '结果', en: 'Result' },
   stageStopped: { 'zh-Hans': '停在第', en: 'Stopped at step' },
   stageCurrent: { 'zh-Hans': '第', en: 'Step' },
-  /** 「步」是中文的说法；英文里这一步只剩下分隔点。 */
+  /** "Step" is a Chinese word; in English the step is only the separator. */
   stageTail: { 'zh-Hans': ' 步 · ', en: ' · ' },
 
   // ── 等待阶段 ──
@@ -245,7 +248,7 @@ function plain(text: string): string {
     .trim();
 }
 
-/** The host writes `标题 —— 细节`; the detail is what belongs under our headline. */
+/** The host writes `title —— detail`; the detail is what belongs under our headline. */
 function detailOf(message: string): string {
   const cleaned = plain(message);
   const at = cleaned.indexOf('——');

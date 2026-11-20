@@ -49,16 +49,19 @@ export interface XtermTheme {
 /**
  * The fallback palette.
  *
- * ── 为什么回落值取自**种子**，而不是另抄一份色值 ──
+ * ── Why the fallbacks come from the **seed** and not from a second copy of
+ * the colours ──
  *
- * 这个文件是终端主题的**产出方**。它里面一旦出现字面色值，
- * 就等于有**第二份真相**——而终端**真的**有过第二份：
- * `TerminalView.tsx` 里存着一套计划 1 时代的回落色
- * （`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`），
- * 与种子里的 `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129` 并存。
- * 两套都在，只是没同时生效过——**这正是「迟早会漂」的样子**。
+ * This file is the **producer** of the terminal theme. A literal colour value
+ * in it means a **second source of truth** — and the terminal really had one:
+ * `TerminalView.tsx` carried a set of plan-1 era fallback colours
+ * (`#14171c` / `#dfe4ec` / `#58a6ff` / `#1c2027`) alongside the seed values
+ * `#0A0C0F` / `#E6EAF2` / `#58A6FF` / `#1C2129`.
+ * Both sets were there, they had simply never been active at the same time —
+ * **which is exactly what "this will drift eventually" looks like**.
  *
- * → 回落值直接取 `SEEDS.dark`，**一个色值都不在这里手写**。
+ * → The fallbacks are taken straight from `SEEDS.dark`; **not one colour
+ *   value is written by hand here**.
  */
 const FALLBACK = SEEDS.dark;
 

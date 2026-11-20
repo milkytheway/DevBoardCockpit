@@ -5,13 +5,15 @@ import { pick, type Locale, type Localised } from './i18n';
 /**
  * The shell's wording helpers.
  *
- * ── 这里**没有**读数的格式化 ──
+ * ── There is **no** formatting of readings here ──
  *
- * 读数由**卡片自己**渲染（卡片拿到的是原始读数与五态），
- * 所以外壳这边不需要「把读数画成什么样」的代码。
- * （曾经有过一份 `readingMeta` / `readingValueText`——
- * 它们的语义还和 main 那边的通配符规则对不上，
- * 而且只被测试用着：**绿的套件证明不了产品**。）
+ * A reading is rendered by **the card itself** (the card receives the raw
+ * reading and its state), so the shell needs no code for "how a reading
+ * should look".
+ * (There used to be a `readingMeta` / `readingValueText` pair — their
+ * semantics did not even match the wildcard rules on the main side, and
+ * only the tests used them: **a green suite proves nothing about the
+ * product**.)
  */
 
 export type ReadingTone = 'ok' | 'warn' | 'danger' | 'unknown' | 'muted';
