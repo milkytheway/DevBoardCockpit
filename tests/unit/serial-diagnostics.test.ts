@@ -25,7 +25,7 @@ const log = { write: vi.fn(), close: vi.fn(), filePath: 'x' };
 function silentPort(): SerialPortFactory {
   return async () => ({
     write() {
-      // 什么都不回 —— 回包被别处吃掉了
+      // Nothing comes back — the reply was eaten somewhere else
     },
     onData() {
       /* no-op */

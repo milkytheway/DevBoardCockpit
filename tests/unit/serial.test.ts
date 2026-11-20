@@ -121,7 +121,7 @@ describe('SerialConnection.exec', () => {
   it('two concurrent exec calls on one connection are refused (the round trips are mutually exclusive, contract §1.2.1)', async () => {
     // The fake board does not answer → the first exec waits until the timeout and holds the line
     const factory: SerialPortFactory = async () => ({
-      write() { /* 什么都不回 */ },
+      write() { /* nothing comes back */ },
       onData() { /* no-op */ },
       onError() { /* no-op */ },
       async close() { /* no-op */ },
@@ -154,7 +154,7 @@ describe('SerialConnection.exec', () => {
   it('on a timeout it returns 124 and timedOut is true (fact S5)', async () => {
     // The fake board does not answer → only the timeout can help
     const factory: SerialPortFactory = async () => ({
-      write() { /* 什么都不回 */ },
+      write() { /* nothing comes back */ },
       onData() { /* no-op */ },
       onError() { /* no-op */ },
       async close() { /* no-op */ },

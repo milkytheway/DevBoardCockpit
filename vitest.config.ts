@@ -14,15 +14,18 @@ export default defineConfig({
       {
         test: {
           name: 'web',
-          // happy-dom 比 jsdom 快一个量级（jsdom 每个文件建一次环境要 23 秒）。
-          // 我们只需要基本 DOM + matchMedia + ResizeObserver，happy-dom 都给。
+          // happy-dom is an order of magnitude faster than jsdom (jsdom takes
+          // 23 seconds to build one environment per test file).
+          // All we need is a basic DOM plus matchMedia and ResizeObserver, and
+          // happy-dom has all of them.
           environment: 'happy-dom',
           include: ['tests/web/**/*.{test,spec}.{ts,tsx}'],
           setupFiles: [resolve(__dirname, 'tests/web/setup.ts')],
-          // **不要**设 isolate:false。共享一份 jsdom 环境会让
-          // vi.mock 的模块替身在文件之间串——terminal-view 的
-          // 「记录 write」数组会被别的文件清空，测试变成偶发红。
-          // 宁可慢，也不要一个会飘的红。
+          // **Do not** set isolate:false. One shared jsdom environment lets
+          // the module doubles of vi.mock leak from one file to the next —
+          // the "record write" array of terminal-view is cleared by another
+          // file, and the tests turn intermittently red.
+          // Better slow than an intermittent red.
         },
       },
     ],

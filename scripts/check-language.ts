@@ -63,6 +63,33 @@ const CJK = /[\u4e00-\u9fff]/;
  */
 const COMMENT_ALLOWED = /['"`]zh-Hans['"`]/;
 
+/**
+ * The Chinese literals that have to stay.
+ *
+ * They are test vectors, not prose:
+ *
+ *   - a multi-byte character has to be cut in the middle of a byte stream and
+ *     a wide character has to measure two columns, so the vector cannot be
+ *     ASCII;
+ *   - a label that comes out of a golden vector has to come back unchanged,
+ *     and the golden vectors are append-only.
+ *
+ * The list is of exact literals, not of files: a file that is on this list
+ * is still guarded for everything else it contains.
+ */
+const ALLOWED_LITERALS = new Set([
+  '中',
+  '文',
+  '中文',
+  '中文abc',
+  'echo 中文',
+  '错误',
+  '板子 · 串口',
+  '--- connected 板子 · 串口 ---',
+  '=== session opened 2026-11-12 02:15:07 target=板子 · 串口 transport=serial ===',
+  '我的板子',
+]);
+
 interface Finding {
   file: string;
   line: number;
@@ -209,7 +236,8 @@ function scanScript(file: string, source: string): Finding[] {
       ts.isTemplateTail(node)
     ) {
       const text = node.getText(sf);
-      if (CJK.test(text) && !localePinned) {
+      const value = (node as ts.StringLiteralLike).text ?? '';
+      if (CJK.test(text) && !localePinned && !ALLOWED_LITERALS.has(value)) {
         findings.push({ file, line: lineOf(node.getStart(sf)), kind: 'string', text: excerpt(text) });
       }
     }
