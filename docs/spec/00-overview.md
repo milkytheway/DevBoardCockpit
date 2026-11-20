@@ -1,216 +1,216 @@
-> **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
-> 契约层为**权威文档**。**迁入后经 `0244852` 修订过**（不是「正文未改动」，逐节来源见 §一之二）。
-> 实现方式见仓库根目录的 `README.md`。
-# 开发板驾驶舱 · 规格总览
+> Source and revisions: this document was migrated from the predecessor project `DevBoardConsole\docs\spec\` (2026-11-12, Codex, commit `c24b084`).
+> The contract layer is the authoritative documentation. It was revised by `0244852` after the migration (the body was not left unchanged; see section 1.2 for the per-section provenance).
+> For the implementation see `README.md` at the repository root.
+# DevBoard Cockpit · Specification Overview
 
-> 这份文档是**规格线**的第一份产出。它不绑定任何实现语言、不绑定任何外壳形态。
-> 外壳选 Electron、选薄壳还是选纯 Web，规格一个字都不用改。
+> This document is the first deliverable of the specification track. It binds to no implementation language and to no shell form.
+> Whether the shell turns out to be Electron, a thin shell or pure web, not one word of the specification has to change.
 
 ---
 
-## 一、两条对称的总线
+## 1. Two symmetric buses
 
-整个产品只有两条契约，其余全是实现细节：
+The whole product has exactly two contracts; everything else is implementation detail:
 
-| 总线 | 连接谁和谁 | 契约名 | 谁读 |
+| Bus | Connects | Contract | Read by |
 |---|---|---|---|
-| **tag 契约** | 卡片 ↔ 板子 | `01-tag-contract.md` + `02-board-pack.md` | 卡片、宿主 AI |
-| **MCP 契约** | AI ↔ GUI | `04-mcp-tools.md` | 宿主 AI |
+| tag contract | card ↔ board | `01-tag-contract.md` + `02-board-pack.md` | cards, the host-side agent |
+| MCP contract | AI ↔ GUI | `04-mcp-tools.md` | the host-side agent |
 
-> **流程包（`05-workflow-pack.md`）** 不在这两条总线上 ✓：
-> 它是**「一件事怎么做」的数据格式** ✓（多目标、多步骤、有判据 ✓），
-> 卡片与 agent 都**通过上面两条总线**去触发它 ✓（`03` §7.7 的 `cockpit.workflows.*` ·
-> `04` §2 的 `run_workflow` ✓）→ **它自己不是通道** ✓。
+> The workflow pack (`05-workflow-pack.md`) sits on neither of these buses ✓.
+> It is the data format for "how one job is done" ✓ (multiple targets, multiple steps, with criteria ✓).
+> Cards and agents both trigger it through the two buses above ✓ (`cockpit.workflows.*` in `03` section 7.7 ·
+> `run_workflow` in `04` section 2 ✓) → it is not a channel of its own ✓.
 
-两条总线对称，是因为它们回答同一类问题的两个方向：
+The two buses are symmetric because they answer the same kind of question from two directions:
 
-- tag 契约回答「**板子现在怎么样、怎么改它**」——卡片靠它工作。
-- MCP 契约回答「**这个软件现在有什么、你能替我做什么**」——AI 靠它工作。
+- The tag contract answers "what the board looks like right now and how to change it" — cards work through it.
+- The MCP contract answers "what this software has right now and what you can do on my behalf" — the agent works through it.
 
-宿主 AI 同时是这两条总线的读者：它读 tag 契约去理解一块它没见过的板子，读 MCP 契约去理解一个它没见过的软件。
-所以这两份契约必须**由 AI 自己能读懂**——这是它们和一般的配置文件的区别，也是为什么格式必须自带解释力。
+The host-side agent is a reader of both buses at once: it reads the tag contract to understand a board it has never seen, and the MCP contract to understand software it has never seen.
+Both contracts must therefore be readable by the agent on their own — this is what separates them from ordinary configuration files, and it is why the format has to carry its own explanation.
 
 ---
 
-## 一之二、来源与修订记录
+## 1.2 Source and revision record
 
-契约层从前身工程迁入后**被实质修订过**，不是「正文未改动」。这张表是评审与追溯的依据：
-每一节标明它是**迁入原文**、**迁入后修订**，还是**本轮评审新增**。
+The contract layer was substantially revised after it was migrated out of the predecessor project; it was not "left with an unchanged body". This table is the basis for review and traceability:
+every section states whether it is migrated original text, revised after the migration, or added by this review round.
 
-| 文件 | 迁入版本 | `0244852` 修订 | 本轮评审（2026-11-12）新增 |
+| File | Migrated version | `0244852` revision | Added by this review round (2026-11-12) |
 |---|---|---|---|
-| `00-overview.md` | §一~§七 | +26/−15：补 D6–D14、三个逃生门改为三个 | §一之二 本表；§四 决策编号改 `SPEC-D*` |
-| `01-tag-contract.md` | §一~§八 | +156/−44：词表改带语义列的表格、核心 tag 五态细化、新增 `backlight.brightness` | 词表移入 `data/tag-vocabulary.yaml` 并以它为权威；补 `mem.available_bytes` / `cpu.governor`；补状态迁移缺边；修 `mem.total` 与 `mem.used_bytes` 口径 |
-| `02-board-pack.md` | §一~§十 | +337/−83：**新增危险地板**、校验规则 10→19、回读三形式、绑定规则 | 补 `verify` 定义、参数编码规则、地板匹配规范、串口互斥；`readback.expect` 纳入 `{param}` 扫描；`format`/`type` 取值表 |
-| `03-card-manifest.md` | §一~§九 | +172/−28：schema 封闭、`actions[]` 字段、校验清单 11 条 | 卡片 API 只留一份并定名；补 CSP 与 `cockpit.storage.*`；补「视图内动作 vs 板型动作」的字段与校验 |
-| `04-mcp-tools.md` | §一~§七 | +194/−14：**新增 agent 授权**、包信任、传输与发现 | 传输定稿 HTTP 回环 + token + 安全基线；补 `confirm_id` 生命周期；统一版本字段拼写 |
+| `00-overview.md` | sections 1–7 | +26/−15: added D6–D14, changed the three escape hatches to three | section 1.2 this table; section 4 decision numbers changed to `SPEC-D*` |
+| `01-tag-contract.md` | sections 1–8 | +156/−44: the vocabulary became a table with a semantics column, the five states of core tags were refined, `backlight.brightness` added | the vocabulary moved into `data/tag-vocabulary.yaml` and became authoritative there; `mem.available_bytes` / `cpu.governor` added; the missing edges of the state transition table filled in; the definition of `mem.total` versus `mem.used_bytes` corrected |
+| `02-board-pack.md` | sections 1–10 | +337/−83: added the danger floor, grew validation rules 10 to 19, added the three readback forms, added binding rules | added the `verify` definition, the parameter encoding rules, the floor matching specification and serial mutual exclusion; `readback.expect` brought into the `{param}` scan; added value tables for `format`/`type` |
+| `03-card-manifest.md` | sections 1–9 | +172/−28: closed the schema, added the `actions[]` fields, 11 validation checklist items | kept one single card API and gave it its names; added CSP and `cockpit.storage.*`; added the fields and the validation for "in-view action versus board-pack action" |
+| `04-mcp-tools.md` | sections 1–7 | +194/−14: added agent authorisation, pack trust, transport and discovery | the transport settled on HTTP loopback plus a token plus a security baseline; added the `confirm_id` lifecycle; unified the spelling of the version field |
 
-**怎么用这张表**：评审时若对某条有异议，先看它属于哪一栏。
-「迁入原文」的部分改它等于改前身工程的规格；「本轮评审新增」的部分由本轮拍板决定。
+How to use this table: when a reviewer objects to an entry, first work out which column it belongs to.
+Changing something marked "migrated original" means changing the predecessor project's specification; what is marked "added by this review round" was decided by that round.
 
-> **为什么补这张表**：迁入说明曾经写「正文未改动」，而 `git diff c24b084 0244852 -- docs/spec` 是 **+956/−187 行**——
-> 危险地板、agent 授权、传输与发现这三大块安全机制都是那一次加进来的，却没有任何迁入记录。
-> 「权威、正文未改动」的标签会让评审者跳过它们。
+> Why this table was added: the migration note used to say "the body was not changed", yet `git diff c24b084 0244852 -- docs/spec` is +956/−187 lines —
+> the three large security mechanisms (the danger floor, agent authorisation, transport and discovery) all arrived in that revision with no migration record at all.
+> The label "authoritative, body unchanged" would let reviewers skip them.
 
 ---
 
-## 二、层次模型
+## 2. The layered model
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  应用层    终端卡 │ 监控卡 │ 控制卡 │ 采集卡 │ 布局编辑器    │
-├──────────────────────────────────────────────────────────┤
-│  卡片层    manifest 声明 · 即文件 · 热重载 · 沙箱 · promote  │
-├──────────────────────────────────────────────────────────┤
-│  能力层    观测源 Source（标量 tag）│ 连续流 Stream          │
-│            控制面 Action（参数 · 分级 · 回读）              │
-├──────────────────────────────────────────────────────────┤
-│  tag 契约  稳定词汇表：名字 · 类型 · 单位 · 语义 · 状态       │
-├──────────────────────────────────────────────────────────┤
-│  连接层    Connection HAL · 能力协商                        │
-│  ┌────────┬──────────┬──────────┬────────────────┐        │
-│  │ 串口    │   SSH    │   ADB    │   未来任意       │        │
-│  └────────┴──────────┴──────────┴────────────────┘        │
-├──────────────────────────────────────────────────────────┤
-│  板型包    board pack（YAML 数据包，每板一份）                │
-└──────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  Application layer   Terminal │ Monitor │ Control │ Capture │ Layout editor    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Card layer          manifest · file-based · hot reload · sandbox · promote    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Capability layer    Source (scalar tag) │ Stream                              │
+│                      Action (parameters · grading · readback)                  │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  tag contract        stable vocabulary: name · type · unit · semantics         │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Connection layer    Connection HAL · capability negotiation                   │
+│  ┌────────┬──────────┬──────────┬────────────────┐                             │
+│  │ Serial │   SSH    │   ADB    │   Any future   │                             │
+│  └────────┴──────────┴──────────┴────────────────┘                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Board pack          board pack (YAML data pack, one per board)                │
+└──────────────────────────────────────────────────────────────────────────────┘
      ▲
-     │  MCP 契约（读状态 / 写卡片）+ 文件监听（热重载）
+     │  MCP contract (read state / write cards) + file watching (hot reload)
      ▼
-┌──────────────────────────────────────────────────────────┐
-│  宿主 AI Agent：感知 → 写卡 → 热插拔 → 自测 → 迭代            │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Host-side AI Agent: perceive → write cards → hot-plug → self-test → iterate   │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**依赖方向只有一条**：上层依赖下层，下层不知道上层的存在。
+There is exactly one dependency direction: the upper layer depends on the lower one, and the lower one does not know that the upper one exists.
 
-- 卡片不知道板子是谁，只认识 tag 名字。
-- 板型包不知道卡片是谁，只声明「我提供哪些 tag、怎么产生、能接受哪些动作」。
-- 连接层不知道上面有谁，只提供「我能读文件、能执行命令、能推流」。
+- A card does not know which board it is on; it only knows tag names.
+- A board pack does not know which card is using it; it only declares which tags it provides, how they are produced and which actions it accepts.
+- The connection layer does not know who is above it; it only offers "I can read files, run commands and push streams".
 
-这条方向一旦被破坏，「支持新板 = 提交一个包」「N 张卡 × M 种板 = N+M 个文件」就不成立。
-
----
-
-## 三、五份契约
-
-| 文件 | 是什么 | 定稿状态 |
-|---|---|---|
-| `01-tag-contract.md` | 语义 tag 契约：词汇表、类型、状态、刷新模型 | 已起草 |
-| `02-board-pack.md` | 板型包格式：reader、tag 绑定、action、验证状态 | 已起草 |
-| `03-card-manifest.md` | 卡片 manifest 格式：读侧绑定、写侧绑定、分级、权限 | 已起草 |
-| `04-mcp-tools.md` | MCP 工具集：AI 的眼睛和手 | 已起草 |
-| `05-workflow-pack.md` | 流程包格式：一件事怎么做（多目标、多步骤、有判据） | 已起草（2026-11-15，ADR-D34） |
-| `data/tag-vocabulary.yaml` | **核心词表的机器可读权威**（`01` 的表格由它生成） | 已起草 |
-
-外加一份实物：
-`profiles/boards/rk3588-atk/board.yaml` —— 第一份真实板型包，基于 ATK-DLRK3588 实测数据。
-
-契约的**机器可读形态由实现层生成**，且必须从本目录的这几张表生成——不允许在代码里
-另写一份。**同改两处**（契约文档 / 实现层），另加板型包算三处，否则对拍测试会红。
-
-> **词表为什么单独放一个 YAML**：Markdown 表格不是可靠的机器可读载体
-> （单元格含 `|`、列序靠人维护、改个空格就静默错位）。
-> `data/tag-vocabulary.yaml` 是**唯一权威**，`01-tag-contract.md` 里的表格是它的渲染结果，
-> 实现层也从它生成。三者由对拍测试保证一致（`docs/04` §4.3）。
+Once this direction is broken, "supporting a new board = submitting a pack" and "N cards × M board types = N+M files" no longer hold.
 
 ---
 
-## 四、已经定下的决策
+## 3. Five contracts
 
-> **编号说明**：本表的编号是 `SPEC-D*`（契约层决策）。
-> 实现层的决策记录使用 `ADR-D*` 编号，与本层的 `SPEC-D*` 是两套体系，同号不同义。
-> 历史上两套都写作「D7」，导致「见 D7」有二义——本轮已改正（见 `docs/05` §0）。
-
-| # | 决策 | 理由 |
+| File | What it is | Drafting status |
 |---|---|---|
-| SPEC-D1 | **规格先行，外壳后定** | tag 契约、board pack、manifest、MCP 全是语言中立的。先定壳再写契约 = 规格空转。 |
-| SPEC-D2 | **board pack 用混合式**：内置少量有版本的 reader kind + 三个逃生门 | 纯声明式表达不了「两次采样做差」这类 tag；代码绑定会让 pack 不再自解释，退化成旧工程 `metrics.py` 套个 YAML 壳。 |
-| SPEC-D3 | **缺 tag 可降级**：卡片照常加载，缺失 widget 显示不可用 | agent 换板子试卡时不该被拒；否则迭代循环变沼泽。 |
-| SPEC-D4 | **标签只描述标量量测，连续流不是标签** | 视频流、日志流、文件内容塞进 tag 词汇表会污染它。流走另一条 API。 |
-| SPEC-D5 | **board pack 与连接 profile 是两样东西** | 前者描述「这块板是什么」，后者描述「怎么连上这块板」。旧工程 `TargetProfile` 是后者。 |
-| SPEC-D6 | **reader 产出 sample，pack 显式把 sample 绑成 tag** | 一个 kind 服务多块名字不同的板；两个 reader 也不会在同一个 tag 上撞车。 |
-| SPEC-D7 | **轮询的单位是 poll group**：一个 group = 一次往返 | 「每个文件一次 adb shell 30ms 且 fork 污染 /proc/stat」和「/proc/stat 必须每秒采」这两条实测事实的解。 |
-| SPEC-D8 | **reader 判「读没成」，运行时判「值新不新」** | reader 保持纯函数；`stale` 依赖历史，所以不属于 reader。 |
-| SPEC-D9 | **核心词表只有一份**，就是 `data/tag-vocabulary.yaml`；Markdown 表格与实现层的机器可读形态都从它生成 | 词表一旦有两份就会漂移——改了文档没改代码，两边都说自己是对的。实现层那一份是**生成物**不是**源头**。 |
-| SPEC-D10 | **卡片 schema 每一层都封闭**，未知字段报错 | 被静默忽略的字段就是拼错的字段。「v1 没有网络权限」这条承诺需要有人执行。 |
-| SPEC-D11 | **`permissions.write` 只支持精确 id**，不支持模式 | 读权限低风险，模式方便；写权限有副作用，模式危险。风险不对称。 |
-| SPEC-D12 | ⛔ **已作废**（2026-11-16 · **ADR-D46**）——原决策：**板型包一律生效**（信任 agent），**但「生效」的前提是人确认过这个包** | **现在：板型包一律生效** ✓（**板子描述文件说了算** ✓ —— **用户原话** ✓）→ **「装包要人点头」那一层没了** ✓。作废的理由：那张「卡」是 agent 的创作面 ✓（**装卡不审批** ✓）；**reader 那条旁路今天由契约层堵** ✓（`02` §七 **规则 28–31** ✓ —— **shell 元字符 / 解释器包装 / `script` kind 都禁** ✓），**不再靠「装一次问一次」** ✓。 |
-| SPEC-D13 | ⛔ **已作废**（2026-11-16 · **ADR-D48**）——原决策：**破坏性动作必须有人确认**，agent 不能自己造凭据 | **现在：破坏性动作照做** ✓（**不再逐次问人** ✓ —— **危险等级只是信息** ✓）→ **闸在设置里的统一权限区** ✓（**ADR-D47** ✓）：**那类动作默认关** ✓ → **打开它就是那一下知情** ✓。 |
-| SPEC-D14 | **危险等级有地板**：命令模式表属于契约，重启/刷写/格式化永远算破坏性 | SPEC-D12 和 SPEC-D13 有张力：不设地板，agent 写个 `reboot: reversible` 的包就能绕过分级。地板让两者同时成立。 |
-| SPEC-D15 | **危险地板按「解析后的命令」匹配，不按字面模板匹配** | 地板若匹配模板（`pipeline start --model {model}`），注入进来的 `reboot` 就不在模板里，地板形同虚设。 |
-| SPEC-D16 | **动作参数必须按类型编码后注入，不得原样拼接** | 声明式参数 + 自由文本替换 = 命令注入。板端会话是 root 权限，这条直接决定「agent 不能越权」是否成立。 |
-| SPEC-D17 | **卡片网络由宿主注入的 CSP 关闭；卡片存储走宿主托管的 `cockpit.storage.*`** | iframe 的 `sandbox` 属性不限制网络。只写「不给 same-origin」不足以兑现「v1 不能联网」。 |
-| SPEC-D18 | **MCP 走 HTTP 回环 + 发现文件 + bearer token** | agent 要连的是**已经在跑的 GUI**，不是让它去启动。stdio 要求 agent 启动进程，与「GUI 是长驻桌面应用」冲突。 |
-| SPEC-D19 | ⛔ **已作废**（2026-11-16 · **ADR-D46**）——原决策：**授权粒度 = 动作 id + 可选参数域** | **现在：授权粒度 = 动作 id** ✓（**域就是动作自己声明的 `guard`** ✓）——**没有「人授过的更窄的域」** ✓（**那一层 2026-11-16 删了** ✓ · `04` §2.4.2 ✓）。 |
-| SPEC-D20 | **取数侧接口为 Source（poll / push），v1 只实现 poll** | Stream（HDMI、摄像头→NPU）天然是 push。若把「取数→分发」按纯 poll 焊死，将来补 Stream 等于返工所有卡片 API。接口多态是一行签名的决定，拖到 M3 代价太大。 |
-| SPEC-D21 | **TagStore 是读数的唯一汇点；读数带单调 `seq`** | UI、卡片、AI 看到的必须是同一份状态的投影。一旦某层自建「我记得是……」，两块卡显示不同数字而用户无法判断哪个是真的。`seq` 让渲染层能丢弃乱序的旧值。 |
-| SPEC-D22 | **一次往返在链路上独占；动作与回读不可拆分** | 半双工线（串口）上采样与动作必须事务化串行。回读若被采样插队，读到的可能是别的命令的输出，「回读不符」就成了假阴性——驾驶舱会显示错的真实状态。 |
-| SPEC-D23 | **取消是宿主的事：卡片与 agent 没有取消接口；契约不承诺「进程一定死」** | 「行不行」与「停不停」是同一族判断——「行不行」已定为不给 agent（§2.4.1），「停不停」也不给，否则确认链多一个「自己决定不干」的旁路。而「进程一定死」是实现层机制：本地杀进程、ssh 关通道、adb 杀本地客户端、串口杀不了——写进契约就是对三种传输撒谎。契约承诺的是「宿主不再等」+「时间线如实说」。 |
-| SPEC-D24 | **在飞的那一步用附加字段 `current` 表达；卡片侧是缩减投影** | 编译是分钟级，界面不能一片死寂。`current` 独立于 `stages`：`stages` 是只增不改的判定（`ok` 是二值的判定，不是三态），`current` 是活快照（正在跑或停下等人点头）。卡片侧只给 `stepId`/`kind`/`ok`/`verified`/`reason`——卡片是 AI 写的，看到的越少越安全。 |
-| SPEC-D25 | **传输失败或取消后，「目的地原本不存在」才谈得上不留半截文件** | `to.path` 是包给的、值模式不编码——清理若不编码就是一条注入面。判据用「目的地传输前不存在」（那它一定是这次传出来的），而不是「大小+mtime 变了」（同秒同大小测不出、也分不清是这一步改的还是别人改的）。拿不准时默认不删：宁可留半截，不删用户的东西。 |
-| SPEC-D26 | **设备（板实物）与连接（profile）是两层：`device_key` 是这块板的标识，`options.ssh` 是这条连接背后那台机器的 SSH 端点** | 一块板有 ADB / 串口 / SSH 三条连接，都指同一块板。板型包说的是「板是什么型号」，连接说的是「怎么连上它」——两块同型号的板共享一个包，却不是一块板。`device_key` 把「板实物」这一层补上：界面要按板子分组、凭据要绑住是哪块板（为 A 板签的凭据不能拿去动 B 板），都得靠它。`options.ssh` 则解决跨机器的动作：命令在客机上跑、要的是板子的地址，而那块板的私钥在客机上——板子的 SSH 地址得跟着连接走（跟着 profile 走，不进流程包：机器专属的值不进包）。 |
+| `01-tag-contract.md` | the semantic tag contract: vocabulary, types, states, refresh model | drafted |
+| `02-board-pack.md` | the board pack format: readers, tag bindings, actions, verification states | drafted |
+| `03-card-manifest.md` | the card manifest format: read-side bindings, write-side bindings, grading, permissions | drafted |
+| `04-mcp-tools.md` | the MCP tool set: the AI's eyes and hands | drafted |
+| `05-workflow-pack.md` | the workflow pack format: how one job is done (multiple targets, multiple steps, with criteria) | drafted (2026-11-15, ADR-D34) |
+| `data/tag-vocabulary.yaml` | the machine-readable authority for the core vocabulary (the table in `01` is generated from it) | drafted |
 
-> **这一段是 2026-11-12 的原文** ✓ —— **2026-11-16 已被 ADR-D46 / ADR-D48 推翻** ✓
-> （**见上表那两条的 ⛔ 标记** ✓）。
+Plus one artefact:
+`profiles/boards/rk3588-atk/board.yaml` — the first real board pack, based on measured data from an ATK-DLRK3588.
 
-原话：SPEC-D12 + SPEC-D14 的组合是那轮最需要说清楚的一处——
-**被信任的是「agent 可以自己写东西」，不是「agent 可以绕过人的确认」**；
-SPEC-D12 因此被**收窄**为「包要人确认才生效」。
+The machine-readable form of the contracts is generated by the implementation layer, and it must be generated from the tables in this directory — writing a second copy in code is not allowed.
+Changing one place means two places (the contract document / the implementation layer); adding a board pack on top makes it three, otherwise the cross-check test goes red.
 
-**今天的样子（按 ADR 走，不按原文走）✓**：
+> Why the vocabulary lives in a YAML file of its own: a Markdown table is not a reliable machine-readable carrier
+> (a cell can contain `|`, the column order has to be maintained by hand, and a single changed space shifts a column silently).
+> `data/tag-vocabulary.yaml` is the single authority; the table in `01-tag-contract.md` is its rendered result,
+> and the implementation layer is generated from it too. The three are kept consistent by a cross-check test (the implementation-layer architecture record, section 4.3, calls this the only hard criterion against semantic drift).
 
-> **被信任的是「agent 可以自己写东西」** ✓。
-> → **板型包一律生效** ✓（**板子描述文件说了算** ✓ —— ADR-D46 ✓）
-> → **破坏性动作照做** ✓（**不再逐次问人** ✓ —— ADR-D48 ✓）
-> → **闸在设置里的统一权限区** ✓（ADR-D47 ✓ —— **危险的动作默认关** ✓）
-> → **reader 的旁路由契约层堵** ✓（`02` §七 **规则 28–31** ✓）
+---
+
+## 4. Decisions already made
+
+> On numbering: the numbers in this table are `SPEC-D*` (contract-layer decisions).
+> The implementation-layer decision record uses `ADR-D*` numbers; that is a separate system from this layer's `SPEC-D*`, and the same number means different things in each of them.
+> Historically both systems wrote "D7", which made "see D7" ambiguous — this round fixed that (see the implementation-layer decision record, section 0).
+
+| # | Decision | Reason |
+|---|---|---|
+| SPEC-D1 | The specification comes first, the shell is decided later | The tag contract, the board pack, the manifest and MCP are all language-neutral. Deciding the shell before writing the contracts means the specification spins on the spot. |
+| SPEC-D2 | The board pack uses a hybrid: a small number of versioned built-in reader kinds plus three escape hatches | A purely declarative form cannot express tags such as "the difference of two samples"; code bindings would stop the pack from being self-explanatory and would degrade it into the old project's `metrics.py` with a YAML shell wrapped around it. |
+| SPEC-D3 | A missing tag degrades gracefully: the card still loads, the missing widget shows as unavailable | When an agent tries a card on another board it should not be turned away; otherwise the iteration loop turns into a swamp. |
+| SPEC-D4 | Tags describe scalar measurements only; a continuous stream is not a tag | Putting video streams, log streams and file contents into the tag vocabulary pollutes it. Streams travel over a different API. |
+| SPEC-D5 | A board pack and a connection profile are two different things | The first describes "what this board is", the second describes "how to connect to this board". The old project's `TargetProfile` was the latter. |
+| SPEC-D6 | A reader produces samples; the pack explicitly binds samples to tags | One kind serves many boards with different names; two readers also cannot collide on the same tag. |
+| SPEC-D7 | The unit of polling is the poll group: one group = one round trip | This resolves two measured facts at once: "one `adb shell` per file costs 30ms and the fork pollutes `/proc/stat`" and "`/proc/stat` must be sampled every second". |
+| SPEC-D8 | The reader decides whether the read succeeded; the runtime decides whether the value is fresh | A reader stays a pure function; `stale` depends on history, so it does not belong to the reader. |
+| SPEC-D9 | There is only one core vocabulary, namely `data/tag-vocabulary.yaml`; the Markdown table and the implementation layer's machine-readable form are both generated from it | Two copies of the vocabulary inevitably drift — you change the document and not the code, and both sides claim to be right. The implementation layer's copy is a generated artefact, not a source. |
+| SPEC-D10 | Every layer of the card schema is closed; an unknown field is an error | A field that is silently ignored is a field that was mistyped. The promise "v1 has no network permission" needs somebody to enforce it. |
+| SPEC-D11 | `permissions.write` supports exact ids only, not patterns | Read permission is low risk and patterns are convenient; write permission has side effects and patterns are dangerous. The risk is asymmetric. |
+| SPEC-D12 | ⛔ Superseded (2026-11-16 · ADR-D46) — the original decision: board packs take effect unconditionally (the agent is trusted), but "taking effect" presupposed that a human had confirmed that pack | Now: board packs take effect unconditionally ✓ (the board description file has the final say ✓ — the user's own words ✓) → the "a human has to nod before a pack is installed" layer is gone ✓. Why it was superseded: that "card" is the agent's creative surface ✓ (installing cards is not approved ✓); the reader bypass is blocked by the contract layer today ✓ (`02` section 7, rules 28–31 ✓ — shell metacharacters / interpreter wrapping / the `script` kind are all forbidden ✓), so it no longer relies on "ask once per install" ✓. |
+| SPEC-D13 | ⛔ Superseded (2026-11-16 · ADR-D48) — the original decision: destructive actions must be confirmed by a human, and the agent cannot mint its own credentials | Now: destructive actions are executed as declared ✓ (no more asking a human every time ✓ — the danger grade is only information ✓) → the gate is the unified permission area in settings ✓ (ADR-D47 ✓): that class of action is off by default ✓ → turning it on is the informed consent for that one step ✓. |
+| SPEC-D14 | The danger grade has a floor: the command pattern table belongs to the contract, and reboot / flash / format always count as destructive | SPEC-D12 and SPEC-D13 pull against each other: without a floor an agent could write a pack with `reboot: reversible` and slip past the grading. The floor lets both of them hold at the same time. |
+| SPEC-D15 | The danger floor matches the parsed command, not the literal template | If the floor matched the template (`pipeline start --model {model}`), an injected `reboot` would not be inside the template and the floor would be useless. |
+| SPEC-D16 | Action parameters must be encoded by type before they are injected; they must never be concatenated verbatim | Declarative parameters plus free-text substitution equals command injection. The board-side session runs as root, so this rule decides outright whether "the agent cannot exceed its permissions" holds. |
+| SPEC-D17 | Card network access is switched off by a host-injected CSP; card storage goes through the host-managed `cockpit.storage.*` | The `sandbox` attribute of an iframe does not restrict network access. Writing only "no same-origin" is not enough to honour "v1 cannot reach the network". |
+| SPEC-D18 | MCP runs over an HTTP loopback plus a discovery file plus a bearer token | The agent connects to a GUI that is already running instead of being asked to start it. stdio requires the agent to launch the process, which conflicts with "the GUI is a long-lived desktop application". |
+| SPEC-D19 | ⛔ Superseded (2026-11-16 · ADR-D46) — the original decision: authorisation granularity = action id plus an optional parameter domain | Now: authorisation granularity = action id ✓ (the domain is the `guard` the action declares itself ✓) — there is no "narrower domain granted by a human" ✓ (that layer was removed on 2026-11-16 ✓ · `04` section 2.4.2 ✓). |
+| SPEC-D20 | The data-acquisition interface is a Source (poll / push); v1 implements poll only | A Stream (HDMI, camera into the NPU) is inherently push-based. Welding "acquire then distribute" to pure poll means that adding a Stream later means reworking every card API. Interface polymorphism is a one-line signature decision; deferring it to M3 costs too much. |
+| SPEC-D21 | TagStore is the single convergence point for readings; readings carry a monotonic `seq` | The UI, the cards and the AI must all see a projection of the same state. Once a layer starts keeping its own "I remember it as…", two cards display different numbers and the user cannot tell which one is real. `seq` lets the render layer discard out-of-order old values. |
+| SPEC-D22 | A round trip is exclusive on the link; an action and its readback cannot be split apart | On a half-duplex line (serial) sampling and actions have to be serialised transactionally. If a readback is cut in on by a sample it may read the output of a different command, and "the readback did not match" becomes a false negative — the cockpit would display a wrong real state. |
+| SPEC-D23 | Cancelling is the host's business: cards and agents have no cancel interface; the contract does not promise that "the process definitely dies" | "Whether it is allowed" and "whether it stops" are judgments of the same family — "whether it is allowed" has already been denied to the agent (section 2.4.1), and "whether it stops" is denied too, otherwise the confirmation chain gains a bypass for "deciding by myself not to do it". And "the process definitely dies" is an implementation-layer mechanism: kill the process locally, close the channel over ssh, kill the local client over adb, impossible over serial — putting that into the contract would be lying to three of the transports. What the contract promises is "the host stops waiting" plus "the timeline tells the truth". |
+| SPEC-D24 | The step in flight is expressed with the additional field `current`; the card side gets a reduced projection | A compile takes minutes, so the interface must not be dead silent. `current` is independent of `stages`: `stages` is an append-only verdict (`ok` is a binary verdict, not a tri-state), while `current` is a live snapshot (running, or stopped waiting for a nod). The card side only gets `stepId`/`kind`/`ok`/`verified`/`reason` — cards are written by an AI, and the less they see the safer they are. |
+| SPEC-D25 | Only "the destination did not exist before" makes it meaningful to leave no half-written file after a failed or cancelled transfer | `to.path` comes from the pack and value-mode substitution is not encoded — cleanup that is not encoded is an injection surface. The criterion is "the destination did not exist before the transfer" (so it must have been produced by this transfer), not "the size and the mtime changed" (the same size within the same second cannot be detected, and it cannot be told whether this step or somebody else changed it). When in doubt, do not delete: it is better to leave half a file than to delete the user's data. |
+| SPEC-D26 | The device (the physical board) and the connection (the profile) are two layers: `device_key` identifies the board, `options.ssh` is the SSH endpoint of the machine behind that connection | One board has ADB / serial / SSH connections, and all of them point at the same board. A board pack says "what model this board is", a connection says "how to reach it" — two boards of the same model share one pack, yet they are not one board. `device_key` supplies the "physical board" layer: the interface has to group by board and credentials have to be bound to a specific board (a credential signed for board A must not be used on board B), and both need it. `options.ssh` in turn solves actions that cross machines: the command runs on the client machine but what is wanted is the board's address, while that board's private key sits on the client — so the board's SSH address has to travel with the connection (with the profile, not into the pack: machine-specific values do not go into a pack). |
+
+> This paragraph is the original text of 2026-11-12 — it was overturned on 2026-11-16 by ADR-D46 / ADR-D48 ✓
+> (see the ⛔ marks on those two rows of the table above ✓).
+
+Original wording: the combination of SPEC-D12 and SPEC-D14 was the point that most needed spelling out in that round —
+what is trusted is "the agent may write things by itself", not "the agent may bypass the human's confirmation";
+SPEC-D12 was therefore narrowed to "a pack takes effect only after a human confirms it".
+
+How it stands today (following the ADRs, not the original wording) ✓:
+
+> What is trusted is "the agent may write things by itself" ✓.
+> → Board packs take effect unconditionally ✓ (the board description file has the final say ✓ — ADR-D46 ✓)
+> → Destructive actions are executed as declared ✓ (no more asking a human every time ✓ — ADR-D48 ✓)
+> → The gate is the unified permission area in settings ✓ (ADR-D47 ✓ — dangerous actions are off by default ✓)
+> → The reader bypass is blocked by the contract layer ✓ (`02` section 7, rules 28–31 ✓)
 >
-> **代价写在这里** ✓：**不再有「装包要人点头」** ✓ →
-> **一个 agent 起草的板型包，装上去就生效** ✓ →
-> **今天的兜底是「机器可查的规矩」（校验器 + 地板 + 权限区）✓，不是「人点一下」** ✓。
+> The cost is written down here ✓: there is no longer an "a human has to nod before a pack is installed" step ✓ →
+> a board pack drafted by an agent takes effect as soon as it is installed ✓ →
+> today's fallback is "rules a machine can check" (the validator + the floor + the permission area) ✓, not "a human clicks once" ✓.
 
 
-## 五、和现有代码的对应关系
+## 5. How this maps onto the existing code
 
-现有 `core/` 约 2000 行，其中约 1500 行与新契约正交，可以直接留用：
+The existing `core/` is about 2000 lines, of which about 1500 are orthogonal to the new contract and can be kept as they are:
 
-| 现有模块 | 在新架构里的位置 | 处置 |
+| Existing module | Position in the new architecture | Disposition |
 |---|---|---|
-| `core/targets.py`（`Target` ABC） | 连接层 HAL | **留用**。加 capability 面（`pty`、`files` 已经是雏形）。 |
-| `core/registry.py`（`register_transport`） | 连接层 HAL 的注册面 | **留用**。 |
-| `core/adb_target.py` / `ssh_target.py` / `serial_target.py` / `local_target.py` | 连接层 HAL 的实现 | **留用**。板型知识要从这里清干净（`ls -la` 的 GNU 假设除外）。 |
-| `core/process.py` | 连接层 HAL | **留用**。 |
-| `core/session_log.py` | 动作审计日志的形态参考 | **留用**（审计日志照它的写法）。 |
-| `core/colouring.py` | 终端卡的显示细节 | 随终端卡一起走。 |
-| `core/metrics.py` | **拆分**：reader kind 的实现搬进 reader 层；RK3588 的具体路径搬进 board pack | 拆分。 |
-| `core/profiles.py`（连接 profile） | 连接层 | 留用，但**改名**（现在叫 profile，会和 board pack 撞名）。 |
-| `ui/` 全部 | 应用层 | **推翻重来**。 |
+| `core/targets.py` (the `Target` ABC) | the connection layer HAL | Keep. Add a capability face (`pty` and `files` are already embryonic). |
+| `core/registry.py` (`register_transport`) | the registration face of the connection layer HAL | Keep. |
+| `core/adb_target.py` / `ssh_target.py` / `serial_target.py` / `local_target.py` | the implementations of the connection layer HAL | Keep. Board-specific knowledge has to be cleaned out of here (except for the GNU assumptions of `ls -la`). |
+| `core/process.py` | the connection layer HAL | Keep. |
+| `core/session_log.py` | a shape reference for the action audit log | Keep (the audit log follows its style). |
+| `core/colouring.py` | the display details of the terminal card | Goes along with the terminal card. |
+| `core/metrics.py` | Split: the reader kind implementations move into the reader layer; the RK3588-specific paths move into the board pack | Split. |
+| `core/profiles.py` (the connection profile) | the connection layer | Keep, but rename (it is called profile today, and that collides with board pack). |
+| the whole of `ui/` | the application layer | Throw away and rewrite. |
 
-`core/metrics.py` 里那段「一次 round trip、marker 分段、未知报 None 不报 0」的思路，是新架构里 reader 的正确形态，已经被验证过，直接继承。
-
----
-
-## 六、这一轮不做的事
-
-- 不定外壳形态、不定实现语言、不定进程模型。
-- 不写卡片运行时的实现。
-- 不写 MCP server 的实现。
-- 不做 HDMI 采集、多板管理、布局分享、录制回放。
-
-这一轮的产出**只有契约和一份真实板型包**，加一个能在真板上跑的验证脚本。
+The idea inside `core/metrics.py` of "one round trip, marker segmentation, report None and not 0 for the unknown" is the right shape for a reader in the new architecture, it has already been validated, and it is inherited as it is.
 
 ---
 
-## 七、待办与风险
+## 6. What this round does not do
 
-| 项 | 说明 |
+- No decision on the shell form, the implementation language or the process model.
+- No implementation of the card runtime.
+- No implementation of the MCP server.
+- No HDMI capture, no multi-board management, no layout sharing, no recording and replay.
+
+The deliverable of this round is only the contracts and one real board pack, plus a verification script that can run against a real board.
+
+---
+
+## 7. Open items and risks
+
+| Item | Description |
 |---|---|
-| 板型包需要真机验证 | 沙箱够不到板子（宿主 adb 的 5037 端口转发未开）。实现层需要一个 probe 命令，在宿主 Windows 上对着真板跑一遍，确认每个 reader 的实际输出格式。 |
-| 词表边界 | 现在只有「核心封闭 + `custom.*` 私有扩展」一条粗规则。什么量该进核心词表，需要第二个板子出现时才有判断依据。 |
-| 连续流的契约 | Stream（视频 / 日志 / 文件）目前只有一个占位定义，没定死。**接口层已预留**（`SPEC-D20`：取数侧统一为 Source，`kind ∈ {poll, push}`，v1 只实现 poll），但 Stream 的业务契约仍未定。**2026-11-13 起，板型包不再声明 `capabilities: [..., stream, ...]`**——声明了也给不出来，校验规则 26 会当**错误**拦下（`02` §10.3.4）。 |
-| capability 词汇表 | ✅ **已定**（2026-11-13，`02` §10.3）：板级词表 `{shell, exec, stream, files}` 与连接级词表 `{exec, pty, files, exitCode}` 是**两个轴**，中间有一张**词义对照表**；`requires.capabilities` 是**信息不是门禁**（串口的 `files=false`，拿它做门禁会违反 `02` §10.2）。**仍缺**的是「传输 × 能力」的一致性矩阵——`ssh` / `local` 两行还没有实测依据，规则写死会变成假规则。 |
-| 多板语义 | **已由 `03` §7.8 解开**：卡片 API 以宿主注入的连接上下文为隐式作用域，tag 名在卡片 API 内始终不带前缀；绑定发生在布局层（`(cardId, connectionId)`）。前缀问题隔离在宿主解析层，将来加多板不必改卡片 API |
-| 能力层词汇 | 愿景写的是 `Metric / Video / File / Shell` 与 `Action / Command`，契约收敛成 `Source / Stream` 与 `Action`。**`Command` 在契约里不存在**——而 `02-board-pack.md` §4.1 明写「如果控制面只有『发一条命令』，那它就是遥控器，不是驾驶舱」。愿景那张图需要按契约更新。 |
-| 布局模型 | 卡片尺寸、栅格、布局保存格式没在本轮定。 |
+| The board pack needs verification on real hardware | The sandbox cannot reach the board (the host's adb port 5037 forwarding is not enabled). The implementation layer needs a probe command that runs against a real board on the Windows host and confirms the actual output format of every reader. |
+| The vocabulary boundary | For now there is only the coarse rule "closed core plus `custom.*` private extension". What belongs in the core vocabulary can only be judged once a second board shows up. |
+| The contract for continuous streams | A Stream (video / logs / files) currently has only a placeholder definition and is not settled. The interface layer already reserves room for it (`SPEC-D20`: the acquisition side is unified as a Source, `kind ∈ {poll, push}`, v1 implements poll only), but the business contract for a Stream is still undefined. From 2026-11-13 board packs no longer declare `capabilities: [..., stream, ...]` — declaring it would promise something that cannot be delivered, and validation rule 26 rejects it as an error (`02` section 10.3.4). |
+| The capability vocabulary | ✅ Settled (2026-11-13, `02` section 10.3): the board-level vocabulary `{shell, exec, stream, files}` and the connection-level vocabulary `{exec, pty, files, exitCode}` are two axes, with a word-sense correspondence table between them; `requires.capabilities` is information and not a gate (serial has `files=false`, and using it as a gate would violate `02` section 10.2). What is still missing is a consistency matrix of "transport × capability" — the `ssh` and `local` rows have no measured basis yet, and writing the rules down as if they were settled would turn them into false rules. |
+| Multi-board semantics | Already resolved by `03` section 7.8: the card API takes the host-injected connection context as an implicit scope, tag names inside the card API never carry a prefix, and the binding happens at the layout layer (`(cardId, connectionId)`). The prefix question is isolated in the host's resolution layer, so adding multi-board support later does not require changing the card API |
+| The capability-layer vocabulary | The vision document writes `Metric / Video / File / Shell` and `Action / Command`; the contract converges these into `Source / Stream` and `Action`. `Command` does not exist in the contract — and `02-board-pack.md` section 4.1 states plainly that "if the control plane offers nothing but 'send one command', it is a remote control, not a cockpit". The diagram in the vision document has to be updated to match the contract. |
+| The layout model | Card sizes, the grid and the layout save format are not settled in this round. |
 

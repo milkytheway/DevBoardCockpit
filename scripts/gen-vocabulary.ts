@@ -154,7 +154,7 @@ function rangeText(range: [number, number] | string): string {
 
 /** 渲染成 `docs/spec/01` 里那张 Markdown 表格 */
 export function renderMarkdownTable(entries: VocabularyEntry[]): string {
-  const header = '| 模式 | 类型 | 单位 | 取值域 | 语义 | v1 |';
+  const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
   const sep = '|---|---|---|---|---|---|';
   const rows = entries.map(
     (e) =>
@@ -261,7 +261,7 @@ function defaultPaths(root: string): Paths {
 
 /** 把渲染出来的表格替换进文档里的那一段 */
 export function replaceTableInDoc(doc: string, table: string): string {
-  const header = '| 模式 | 类型 | 单位 | 取值域 | 语义 | v1 |';
+  const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
   const start = doc.indexOf(header);
   if (start < 0) throw new Error('文档里找不到词表表格');
   const lines = doc.split(/\r?\n/);

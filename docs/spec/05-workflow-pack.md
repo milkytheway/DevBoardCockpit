@@ -1,53 +1,53 @@
-# 流程包（workflow pack）格式
+# The Workflow Pack Format
 
-> **契约版本**：`devboard/v1`
-> **定稿状态**：已起草（2026-11-15，ADR-D34 ✓）
-> **上位**：`00-overview.md`（两条总线）· `02-board-pack.md`（动作与回读）· `03-card-manifest.md`（卡片与权限）· `04-mcp-tools.md`（agent 的手）
+> **Contract version**: `devboard/v1`
+> **Drafting status**: drafted (2026-11-15, ADR-D34 ✓)
+> **See also**: `00-overview.md` (the two buses) · `02-board-pack.md` (actions and readback) · `03-card-manifest.md` (cards and permissions) · `04-mcp-tools.md` (the hands of the agent)
 
 ---
 
-## 〇 · 它回答什么
+## 0. What it answers
 
-| 包 | 回答 |
+| Pack | Answers |
 |---|---|
-| 板型包（`02`） | **这块板有什么**（能产生哪些量、能接受哪些写） |
-| **流程包（本文）** | **这件事怎么做**（多目标、多步骤、有判据、可追责） |
+| Board pack (`02`) | **What this board has** (which quantities it can produce, which writes it accepts) |
+| **Workflow pack (this document)** | **How one job is done** (multiple targets, multiple steps, with criteria, accountable) |
 
-> **「目标」不是契约的概念** ✓：
-> 「本机编译」与「客机编译」是**两个流程包** ✓ → 卡片与 agent 只看到
-> **流程 id + 输入声明** ✓ → 契约层不需要「目标」这一维 ✓。
+> **"Target" is not a contract concept** ✓:
+> "compile on the host" and "compile on the guest" are **two workflow packs** ✓ → cards and agents see only
+> **the workflow id plus the input declaration** ✓ → the contract layer does not need a "target" dimension ✓.
 
 ---
 
-## 一 · 一个包长什么样
+## 1. What a pack looks like
 
 ```yaml
 apiVersion: devboard/v1
 kind: Workflow
 
 id: hello-kernel.build-run
-name: 编译内核模块 → 直传板子 → 装 → 跑
+name: Compile a kernel module → transfer it straight to the board → install it → load it
 version: 1.0.0
-description: 在客机上编译内核模块，客机直传到板子的规范位置，depmod -a 后按名字加载。
+description: Compile the kernel module on the client machine, let the client machine transfer it directly to the canonical location on the board, run depmod -a and then load it by name.
 
 inputs:
   build_dir:
     type: path
     required: true
     maxLength: 200
-    description: 构建机上的工程根目录
+    description: The project root on the build machine
   project:
     type: string
     required: true
     maxLength: 200
-    description: 项目目录名（相对 build_dir）
+    description: The project directory name (relative to build_dir)
 
 roles:
   build:
-    purpose: 编译所在（客机）
+    purpose: Where the build runs (the client machine)
     profile: ubuntu-ssh
   target:
-    purpose: 板子
+    purpose: The board
     profile: board-adb
 
 steps:
@@ -93,344 +93,344 @@ steps:
       kind: command_ok
 ```
 
-**顶层字段（封闭）**：`apiVersion` `kind` `id` `name` `version` `description` `inputs` `roles` `steps` ✓。
-**未知字段一律报错** ✓（与 `02`/`03` 同一规矩 ✓）。
+**Top-level fields (closed)**: `apiVersion` `kind` `id` `name` `version` `description` `inputs` `roles` `steps` ✓.
+**An unknown field is always an error** ✓ (the same rule as `02`/`03` ✓).
 
 ---
 
-## 二 · `inputs`（参数）
+## 2. `inputs` (parameters)
 
-类型表**照 `02` §4.3** ✓（不另造一套 ✓）：
+The type table follows `02` section 4.3 ✓ (no second table ✓):
 
-| type | 额外必填 | 说明 |
+| type | Additionally required | Explanation |
 |---|---|---|
-| `string` | `maxLength` | 不许开口 ✓ |
-| `integer` | — | 可选 `min` / `max` ✓ |
-| `number` | — | 可选 `min` / `max` ✓ |
+| `string` | `maxLength` | the length must be bounded ✓ |
+| `integer` | — | optional `min` / `max` ✓ |
+| `number` | — | optional `min` / `max` ✓ |
 | `boolean` | — | |
-| `enum` | `values`（封闭取值表 ✓） | 不在 `values` 里 → **报错** ✓ |
-| `path` | `maxLength` | **等价于 `string`** ✓（编码规则一样 ✓） |
+| `enum` | `values` (a closed set of values ✓) | a value outside `values` → **an error** ✓ |
+| `path` | `maxLength` | **equivalent to `string`** ✓ (the same encoding rules ✓) |
 
-其余字段：`required`（布尔）· `default` · `pattern` · `description` ✓。
+The other fields: `required` (boolean) · `default` · `pattern` · `description` ✓.
 
 ---
 
-## 三 · `roles`（角色 → 连接）
+## 3. `roles` (role → connection)
 
-| 字段 | 必填 | 含义 |
+| Field | Required | Meaning |
 |---|---|---|
-| `purpose` | 是 | 这个角色**是干什么的**（给人看 ✓） |
-| `profile` | 是 | 宿主里**存在的**连接 profile id ✓ |
+| `purpose` | Yes | what this role **is for** (for the reader ✓) |
+| `profile` | Yes | the id of a connection profile **that exists in the host** ✓ |
 
-| 规矩 | 为什么 |
+| Rule | Why |
 |---|---|
-| **只许引用 profile id，不许覆写字段** | 地址、用户、凭据**全是宿主的账** ✓（`02` §5.5 的同款原则 ✓） |
-| **不许引用 `local` 传输的 profile** | `local` 是**宿主自己的 shell** ✓ —— 流程在它上面跑命令 = 在宿主上跑命令 ✗ |
-| **profile 不存在 → 报错** | 不许悄悄连到别的目标 ✓ |
+| **Only a profile id may be referenced, no field may be overridden** | the address, the user and the credentials **are the host's business** ✓ (the same principle as `02` section 5.5 ✓) |
+| **A profile with the `local` transport must not be referenced** | `local` is **the host's own shell** ✓ — a workflow running a command on it runs that command on the host ✗ |
+| **A profile that does not exist → an error** | no silent connection to a different target ✓ |
 
 ---
 
-## 四 · `steps`（步骤）
+## 4. `steps` (the steps)
 
-### 4.1 六种 kind（**封闭**）
+### 4.1 The six kinds (**closed**)
 
-| kind | 干什么 | 必填 | **在哪跑** |
+| kind | What it does | Required | **Where it runs** |
 |---|---|---|---|
-| `exec` | 跑一条命令 | `role` `cmd` | `role` 指的目标 ✓ |
-| `discover` | 产物发现 | `role` `pattern` `out` | `role` 的目标上**列目录** ✓ |
-| `file.transfer` | 搬运 | `from` `to` `cmd` | **源目标**（`from.role` ✓） |
-| `action` | 引用板型包里的**已声明动作** | `role` `action` | `role` 的目标 ✓ |
-| `await` | 等一个判据成立 | `readback` | 判据指定的角色 ✓ |
-| `assert` | 判据 + 不符时怎么办 | `readback` | 同上 ✓ |
+| `exec` | run one command | `role` `cmd` | the target named by `role` ✓ |
+| `discover` | artefact discovery | `role` `pattern` `out` | **lists the directory** on the target of `role` ✓ |
+| `file.transfer` | transport | `from` `to` `cmd` | **the source target** (`from.role` ✓) |
+| `action` | references an **already declared action** of a board pack | `role` `action` | the target of `role` ✓ |
+| `await` | waits until a criterion holds | `readback` | the role named by the criterion ✓ |
+| `assert` | criterion plus what happens when it does not hold | `readback` | the same ✓ |
 
-> **`file.transfer` 的命令跑在源角色上** ✓ ——
-> 「客机编译的产物**由客机自己**送到板子」✓，**不经宿主取回** ✓。
+> **The command of `file.transfer` runs on the source role** ✓ —
+> "the artefact compiled on the client machine is **delivered by the client machine itself** to the board" ✓, **not fetched back through the host** ✓.
 
-> **`exec_script` 连「留位置」都不留** ✓（逃生门一旦写进表项，就会有人去用 ✓）。
+> **`exec_script` does not even get a place in the table** ✓ (once an escape hatch is written into the table, somebody will use it ✓).
 
-### 4.2 步骤的其余字段
+### 4.2 The remaining fields of a step
 
-| 字段 | 用在哪 | 说明 |
+| Field | Used by | Explanation |
 |---|---|---|
-| `timeout_ms` | `exec` / `file.transfer` | 这一步的执行超时 ✓ |
-| `params` | `action` | 动作的参数（值里可有占位符 ✓） |
-| `danger` | 全部 | `reversible`（默认）/ `destructive` ✓ |
-| `on_mismatch` | `assert` | `fail`（默认）/ `continue` ✓ |
-| `out` | `discover` / `file.transfer` | 这一步的产出进哪个槽 ✓ |
+| `timeout_ms` | `exec` / `file.transfer` | the execution timeout of this step ✓ |
+| `params` | `action` | the parameters of the action (the values may contain placeholders ✓) |
+| `danger` | all | `reversible` (default) / `destructive` ✓ |
+| `on_mismatch` | `assert` | `fail` (default) / `continue` ✓ |
+| `out` | `discover` / `file.transfer` | which slot the output of this step goes into ✓ |
 
-### 4.3 `discover` 的发现规则
+### 4.3 The discovery rules of `discover`
 
-| 字段 | 意思 |
+| Field | Meaning |
 |---|---|
-| `dir` | 在哪个目录找（默认当前目录 ✓） |
-| `pattern` | **要什么**（按**文件名**匹配 ✓） |
-| `exclude` | **不要什么**（同样的匹配方式 ✓） |
-| `out` | 找到的路径进哪个槽 ✓ |
+| `dir` | which directory to search (the current directory by default ✓) |
+| `pattern` | **what is wanted** (matched against the **file name** ✓) |
+| `exclude` | **what is not wanted** (the same matching rules ✓) |
+| `out` | which slot the found paths go into ✓ |
 
-> **排除表必须有意义**：编译目录里满是中间产物（`.o` / `.cmd` / `.order` / `.mod.c`），
-> 漏一条就可能**把中间文件当产物送上去** ✗。
-> **多个匹配 → 取第一个**（按名字排序 ✓，结果可复现 ✓）。
+> **The exclusion list has to be meaningful**: a build directory is full of intermediate artefacts (`.o` / `.cmd` / `.order` / `.mod.c`),
+> and one missing entry may **send an intermediate file up as if it were the artefact** ✗.
+> **Several matches → take the first one** (sorted by name ✓, so the result is reproducible ✓).
 
-### 4.4 `file.transfer` 的两端
+### 4.4 The two ends of `file.transfer`
 
 ```yaml
 from:
-  role: build          # 源（**命令在这里跑** ✓）
+  role: build          # the source (**the command runs here** ✓)
   path: "{output:artifacts}"
 to:
-  role: target         # 目的地
-  path: "/opt/x"       # ① 用户指定的路径
-  # placement: kernel-module    # ② 语义默认（**封闭词表** ✓）
+  role: target         # the destination
+  path: "/opt/x"       # ① the path given by the user
+  # placement: kernel-module    # ② the semantic default (**a closed vocabulary** ✓)
 ```
 
-| placement | 落位 |
+| placement | Where it lands |
 |---|---|
-| `kernel-module` | `/usr/lib/modules/<版本>/extra/`（**版本要问目标机器** ✓） |
+| `kernel-module` | `/usr/lib/modules/<version>/extra/` (**the version has to be asked of the target machine** ✓) |
 | `user-program` | `/usr/local/bin/` |
 
-> **拼错 → 报错** ✓（不能默默回落到「随便放」✗ —— 那会把 `.ko` 丢在 `/tmp` 里，
-> 而 `modprobe` 找不到它，流程却报成功 ✗）。
-> **三形态**：① `path` ② `placement` ③ `ask`（**首版不做** ✓）。
+> **A typo → an error** ✓ (it must not silently fall back to "put it anywhere" ✗ — that would drop a `.ko` into `/tmp`,
+> where `modprobe` cannot find it, while the workflow reports success ✗).
+> **Three forms**: ① `path` ② `placement` ③ `ask` (**not in the first version** ✓).
 
 ---
 
-## 五 · 判据（`readback`）
+## 5. Criteria (`readback`)
 
-**词汇就是 `02` §4.4 的五种** ✓——**不新增第六种形式** ✓：
+**The vocabulary is the five forms of `02` section 4.4** ✓ — **no sixth form is added** ✓:
 
-| 形式 | 首版 |
+| Form | First version |
 |---|---|
-| ① `tag` | ❌ **首版报错**（tag 属于**板型包的核心词表** ✓，流程层没有板型包 → **查不了** ✗） |
-| ② `file_equals` | ✅ |
-| ③ `command_ok` | ✅（**串口上没有退出码** → 在串口上被拒 ✓） |
-| ④ `verify` | ✅ |
-| ⑤ `none` | ✅（**只允许在 `danger: reversible` 的步上** ✓） |
+| ① `tag` | Rejected in the first version (a tag belongs to the **core vocabulary of the board pack** ✓, and the workflow layer has no board pack → it **cannot be looked up** ✗) |
+| ② `file_equals` | Supported |
+| ③ `command_ok` | Supported (**a serial line has no exit code** → it is refused on serial ✓) |
+| ④ `verify` | Supported |
+| ⑤ `none` | Supported (**only allowed on a step with `danger: reversible`** ✓) |
 
-**唯一的扩展：多一个 `role`** —— 「**在哪个角色上读**」✓。
+**The only extension: one more `role`** — "**on which role it is read**" ✓.
 
 ```yaml
 readback:
   kind: verify
-  role: target          # ← 在**目标**上读（「板子上真的有那个文件吗」✓）
+  role: target          # ← read on the **target** ("is that file really on the board?" ✓)
   command: "test -f {to.path}"
   timeout_ms: 30000
 ```
 
-| 规矩 | 为什么 |
+| Rule | Why |
 |---|---|
-| **`role` 指到没声明过的角色 → 报错** | 判据不能去读**没授权的机器** ✗ |
-| **`await`/`assert` 必须说得出在哪个角色上读** | 否则「默认读哪」是猜的 ✗ |
-| **判据的命令也要过危险地板** | 它是**包给的命令** ✓ → 不查就能借「验证」之名跑危险命令 ✗ |
-| **判据命令不进确认通道**（首版） | 判据是**只读验证** ✓；防线是「装包时人看过」✓ + 地板 ✓ |
+| **A `role` that points at a role that was never declared → an error** | a criterion must not read **an unauthorised machine** ✗ |
+| **`await`/`assert` must say on which role it reads** | otherwise "which one does it read by default" is a guess ✗ |
+| **The command of a criterion also goes through the danger floor** | it is **a command given by the pack** ✓ → without the floor it could run a dangerous command in the name of "verification" ✗ |
+| **The command of a criterion does not enter the confirmation channel** (first version) | a criterion is **a read-only verification** ✓; the defences are "a human read it when the pack was installed" ✓ + the floor ✓ |
 
-> **跨目标的判据由流程层跑** ✓（`02` §5.2 的执行器在**执行的那条连接**上回读 ✓）→
-> **两个事实、两行账** ✓（判据那一行单独记 ✓）。
+> **A criterion across targets is run by the workflow layer** ✓ (the executor of `02` section 5.2 reads back **on the connection it executes on** ✓) →
+> **two facts, two ledger lines** ✓ (the line of the criterion is recorded on its own ✓).
 
 ---
 
-## 六 · 占位符（**封闭的五种** —— 它**就是注入防线** ✓）
+## 6. Placeholders (**a closed set of five** — it **is** the injection defence ✓)
 
-| 写法 | 指什么 |
+| Form | What it denotes |
 |---|---|
-| `{input:名字}` | 一个参数的值 |
-| `{role:角色.事实}` | 角色的连接事实 |
-| `{output:槽}` | **前面某一步**产出的槽 |
-| `{output:槽.name}` | 文件名**去掉扩展名**（`hello.ko` → `hello` ✓） |
-| `{from.path}` / `{to.path}` | **这一步自己的**源 / 目的地（**只有 `file.transfer` 步里有** ✓） |
+| `{input:name}` | the value of a parameter |
+| `{role:role.fact}` | a connection fact of a role |
+| `{output:slot}` | a slot produced by **an earlier step** |
+| `{output:slot.name}` | the file name **without its extension** (`hello.ko` → `hello` ✓) |
+| `{from.path}` / `{to.path}` | the source / destination **of this step itself** (**only inside a `file.transfer` step** ✓) |
 
-**角色事实的封闭表**：`host` / `port` / `user` / `profile_id` ✓
-（**没有 `key`** ✓ —— 凭据路径不该被插进命令 ✓：它会进审计行 ✓、会进 `dry_run` 回显 ✓，
-而且它**多半没用** —— 命令跑在**源目标**上，源目标用的是**它自己的**密钥 ✓）。
+**The closed table of role facts**: `host` / `port` / `user` / `profile_id` ✓
+(**no `key`** ✓ — the path of a credential must not be interpolated into a command ✓: it would end up in the audit line ✓, it would end up in the `dry_run` echo ✓,
+and it is **mostly useless** — the command runs on the **source target**, and the source target uses **its own** key ✓).
 
-**角色事实从哪来**（`02` §10.3 ✓）✓ —— **该角色所绑的连接 profile** ✓：
+**Where the role facts come from** (`02` section 10.3 ✓) ✓ — **the connection profile bound to that role** ✓:
 
-| 事实 | 来源（**按顺序取，第一个有的算数** ✓） |
+| Fact | Source (**taken in order, the first one that exists wins** ✓) |
 |---|---|
-| `host` | profile 的 `options.ssh.host` ✓ → `options.host` ✓ → **空串** ✓ |
+| `host` | `options.ssh.host` of the profile ✓ → `options.host` ✓ → **the empty string** ✓ |
 | `port` | `options.ssh.port` ✓ → `options.port` ✓ → **22** ✓ |
 | `user` | `options.ssh.username` ✓ → `options.username` ✓ → **`root`** ✓ |
-| `profile_id` | 该角色的 `profile.id` ✓ |
+| `profile_id` | the `profile.id` of that role ✓ |
 
-> **为什么要 `options.ssh` 这一层** ✓：**跨机器的动作在另一台机器上发起** ✓
-> （`file.transfer` 的命令跑在**源目标**上 ✓）→ 那条命令要用**板子的 SSH 地址** ✓
-> → **流程包不该知道板子的地址** ✓ → **它跟着 profile 走** ✓。
-> → **`transport: 'ssh'` 的 profile 自己就是那个端点** ✓ → **不许双写** ✓（漂移 ✓）。
+> **Why there is an `options.ssh` layer** ✓: **an action across machines is started on another machine** ✓
+> (the command of `file.transfer` runs on the **source target** ✓) → that command needs **the SSH address of the board** ✓
+> → **the workflow pack must not know the address of the board** ✓ → **it follows the profile** ✓.
+> → **a profile with `transport: 'ssh'` is itself that endpoint** ✓ → **it must not be written twice** ✓ (drift ✓).
 
-**两种替换模式**：
+**Two substitution modes**:
 
-| 模式 | 用在哪 | 输入值 | 角色事实 | 槽里的路径 |
+| Mode | Used by | Input values | Role facts | Paths in slots |
 |---|---|---|---|---|
-| **命令模式** | 步骤的命令、回读的二次验证命令 | **按类型编码过**（`02` §4.6 ✓） | **字符串包引号** ✓ | **包引号** ✓ |
-| **值模式** | 回读的 `expect` / `path`、发现的 `dir` / `pattern` / `exclude` | 原样 ✓ | 原样 ✓ | 原样 ✓ |
+| **Command mode** | the command of a step, the secondary verification command of a readback | **encoded by type** (`02` section 4.6 ✓) | **quoted as a string** ✓ | **quoted** ✓ |
+| **Value mode** | the `expect` / `path` of a readback, the `dir` / `pattern` / `exclude` of a discovery | verbatim ✓ | verbatim ✓ | verbatim ✓ |
 
-> **命令模式就是注入防线** ✓：`; reboot` 这种输入值**被当字面量** ✓。
-> **模板里的占位不许自带引号** ✓（与 `02` 校验规则 21 同款 ✓）。
+> **Command mode is the injection defence** ✓: an input value such as `; reboot` is **treated as a literal** ✓.
+> **A placeholder in a template must not carry its own quotes** ✓ (the same rule as validation rule 21 of `02` ✓).
 
-**静态检查**（解析时就查 ✓）：占位指向没声明过的 input / role / 输出槽 → **报错** ✓
-（拼错到运行时才炸 = 流程跑到一半才失败 ✗）。
+**Static check** (at parse time ✓): a placeholder points at an input / role / output slot that was never declared → **an error** ✓
+(a typo that only blows up at runtime means the workflow fails halfway through ✗).
 
 ---
 
-## 七 · 信任模型（**这一节是本文最要紧的** ✓）
+## 7. The trust model (**this is the most important section of this document** ✓)
 
-### 7.1 一个流程包就是「一组要在用户机器上执行的命令」
+### 7.1 A workflow pack is "a set of commands that are going to run on the user's machine"
 
-→ 它必须有**比动作更严**的入口 ✓。
+→ It has to have a **stricter entry point than an action** ✓.
 
-### 7.2 两本账
+### 7.2 Two ledgers
 
-| 账 | 记什么 | 谁能改 |
+| Ledger | What it records | Who may change it |
 |---|---|---|
-| **注册表** | 目录里有哪些包（id → 包 + **内容摘要**） | 放文件进目录 |
-| **审计** | 每次运行每一步做了什么（`02` §5.4 ✓） | 宿主 |
+| **Registry** | which packs the directory holds (id → pack + **content digest**) | putting a file into the directory |
+| **Audit** | what every step of every run did (`02` section 5.4 ✓) | the host |
 
-> **批准账没有了** ✓（**2026-11-16 砍掉** ✓ · ADR-D48 ✓）——
-> **流程包的存在本身就是说明** ✓（用户：「**流程存在本身即说明了**」✓）。
-> → **闸在设置里的统一权限区** ✓（`03` §2.4 ✓ · ADR-D47 ✓）：**流程那一行开关** ✓。
+> **There is no approval ledger any more** ✓ (**removed on 2026-11-16** ✓ · ADR-D48 ✓) —
+> **the existence of a workflow pack is the explanation by itself** ✓ (the user: "**the existence of the workflow explains itself**" ✓).
+> → **the gate is the unified permission area in settings** ✓ (`03` section 2.4 ✓ · ADR-D47 ✓): **the row for the workflow** ✓.
 
-### 7.3 五条规矩
+### 7.3 Five rules
 
-| # | 规矩 | 为什么 |
+| # | Rule | Why |
 |---|---|---|
-| **T1** | **放一个文件进目录 ≠ 它就能跑** | **能跑的是权限区里开着的那一行** ✓（`03` §2.4 ✓） |
-| **T2** | **流程包的内容摘要记在注册表里** | 改了内容 → **摘要就变** ✓（**追责链的第一环** ✓ —— 与「批准绑摘要」同款理由 ✓） |
-| **T3** | **卡片与 agent 只能按 id 取注册表里的包**，**给不了路径** | agent 不能自写一个包就跑 ✗ |
-| **T4** | **每个写步骤都过 `02` §4.6 的编码 + §5.2.1 的危险地板**；命中地板 → **按 `destructive` 处理** | 自由命令是**第二条命令通道** ✗ —— 它必须与动作**同一条防线** ✓ |
+| **T1** | **putting a file into the directory does not mean that it may run** | **the row that is enabled in the permission area is what may run** ✓ (`03` section 2.4 ✓) |
+| **T2** | **the content digest of a workflow pack is recorded in the registry** | change the content → **the digest changes** ✓ (**the first link of the chain of accountability** ✓ — the same reason as "an approval is bound to a digest" ✓) |
+| **T3** | **cards and agents may only take a pack from the registry by id**, **they cannot supply a path** | an agent must not be able to write a pack and run it ✗ |
+| **T4** | **every write step goes through the encoding of `02` section 4.6 and the danger floor of section 5.2.1**; hitting the floor → **it is treated as `destructive`** | a free command is **a second command channel** ✗ — it has to share **the same line of defence as an action** ✓ |
 
-> **T4 的主语是「包给的写」** ✓。
-> **宿主自己的收尾写**（§八·C 的清理 ✓）走**另一条** ✓：
-> 路径**只许取自这一步的解析结果** ✓ + **按 `02` §4.6 编码** ✓ +
-> **只许一个普通文件、不递归** ✓ + **单独记一行审计** ✓。
-| **T5** | **角色不许绑到 `local` 传输** | `local` 是宿主自己的 shell ✓ |
+> **The subject of T4 is "the write given by the pack"** ✓.
+> **The host's own clean-up write** (the clean-up of section 8.C ✓) takes **another route** ✓:
+> the path **may only come from the resolved result of this step** ✓ + **encoded as in `02` section 4.6** ✓ +
+> **only one regular file, no recursion** ✓ + **a separate audit line** ✓.
+| **T5** | **a role must not be bound to the `local` transport** | `local` is the host's own shell ✓ |
 
-### 7.4 权限区里**必须展示**「这个流程会在哪些目标上跑哪些命令」
+### 7.4 The permission area **must show** "which commands this workflow runs on which targets"
 
-→ 角色 → profile id、每个写步骤的命令**模板**、这一步危不危险、判据读在哪个角色上 ✓
-（**权限区那一行的说明** ✓ —— `03` §2.4 ✓）。
+→ role → profile id, the command **template** of every write step, whether the step is dangerous, on which role the criterion reads ✓
+(**the description of that row in the permission area** ✓ — `03` section 2.4 ✓).
 
-> 不然开关就只是「开一个文件名」✓ → **等于没看** ✗。
-> → **`planOf(id)` 出这份摘要** ✓（注册表侧 ✓）。
+> Otherwise the switch is only "enabling a file name" ✓ → **it amounts to not having looked** ✗.
+> → **`planOf()` produces this summary** ✓ (on the registry side ✓).
 
-### 7.5 危险命令：**不再有运行期确认** ✓（**2026-11-16 改** ✓ · ADR-D48 ✓）
+### 7.5 Dangerous commands: **there is no runtime confirmation any more** ✓ (**changed on 2026-11-16** ✓ · ADR-D48 ✓)
 
-| # | 规矩 |
+| # | Rule |
 |---|---|
-| 1 | 步骤声明 `danger: destructive` → **照跑** ✓（**不再问人** ✓ —— **危险等级只是信息** ✓） |
-| 2 | **命中危险地板 → 也按 `destructive` 处理**（取更严的 ✓）—— **在包里判** ✓（规则 16 ✓） |
-| 3 | **闸在设置里的统一权限区** ✓（`03` §2.4 ✓）：**流程那一行开关** ✓ · **危险的动作默认关** ✓ |
-| 4 | **确认凭据那一整套没了** ✓（`confirm_id` ✓ · `awaiting_confirmation` ✓ · 续跑链 ✓） |
+| 1 | A step declares `danger: destructive` → **it runs as declared** ✓ (**nobody is asked** ✓ — **the danger grade is information only** ✓) |
+| 2 | **hitting the danger floor → it is treated as `destructive` as well** (the stricter one wins ✓) — **it is decided inside the pack** ✓ (rule 16 ✓) |
+| 3 | **the gate is the unified permission area in settings** ✓ (`03` section 2.4 ✓): **the row for the workflow** ✓ · **dangerous actions are off by default** ✓ |
+| 4 | **the whole confirmation credential apparatus is gone** ✓ (`confirm_id` ✓ · `awaiting_confirmation` ✓ · the resume chain ✓) |
 
-> **为什么不再有运行期确认** ✓（用户原话：「**不要再问"命令危不危险"，
-> 一律都用权限，开启权限默认知道危险性**」✓）：
-> → **危险的信息写在设置页那一行** ✓ → **开那个开关就是知情** ✓。
-> → **流程包的存在本身就是说明** ✓ → **不再问"流程会做什么"** ✓（**清单里写着** ✓）。
+> **Why there is no runtime confirmation any more** ✓ (the user in so many words: "**stop asking whether a command is dangerous,
+> use the permissions throughout, enabling a permission already means knowing the danger**" ✓):
+> → **the dangerous information is written into that row of the settings page** ✓ → **turning that switch on is the informed consent** ✓.
+> → **the existence of a workflow pack is the explanation by itself** ✓ → **nobody asks "what will this workflow do" any more** ✓ (**it is written in the list** ✓).
 
-### 7.6 流程的授权：**就是权限区里那一行**
+### 7.6 The authorisation of a workflow: **it is that row in the permission area**
 
-① **这张卡的 manifest 声明了它**（卡片侧 ✓）② **权限区里那行开着** ✓ → **两样都要有** ✓。
+① **the manifest of the card declares it** (card side ✓) ② **that row in the permission area is enabled** ✓ → **both are required** ✓.
 
-> 流程**不是动作**（不在板型包里 ✓），但它**一样能在用户机器上执行命令** ✗
-> → 它**必须**有自己的授权层 ✓（`03` §3.3 的同款模型 ✓）——
-> **现在那一层就是设置页的开关** ✓（**一个地方** ✓ · ADR-D47 ✓）。
+> A workflow is **not an action** (it is not in a board pack ✓), but it can **also run commands on the user's machine** ✗
+> → it **must** have an authorisation layer of its own ✓ (the same model as `03` section 3.3 ✓) —
+> **that layer is now the switch on the settings page** ✓ (**one place** ✓ · ADR-D47 ✓).
 
 ---
 
-## 八 · 长任务的运行语义
+## 8. Run semantics for long tasks
 
-| # | 规定 |
+| # | Provision |
 |---|---|
-| 1 | **触发立刻返回 `run_id`**（编译是分钟级 ✓ → 同步返回不成立 ✓） |
-| 2 | **`status(run_id)` 轮询取时间线** ✓（首版 poll ✓） |
-| 3 | **状态机**：`running` / `done` / `failed` / **`cancelled`** ✓（**2026-11-16 去掉 `awaiting_confirmation`** ✓ —— **不再有停下等人点头** ✓ · ADR-D48 ✓） |
-| 4 | **幂等**：同一个 `run_id` 重复查 → **同一份时间线** ✓ |
-| 5 | **重新触发** = **从头再跑** ✓（**前面已完成的写步骤会重复执行** ✓ → `destructive` 的步**不要放在有副作用的写步之后** ✓） |
-| 6 | **续跑**（人点头后）= **从停住的那一步继续** ✓（§7.6 ✓） |
-| 7 | **并发**：**同一个流程包同时只允许一次运行** ✓（两个流程同时抢一条串口会串台 ✓） |
-| 8 | **取消**：§八·A ✓ |
-| 9 | **在飞的那一步**：§八·B ✓ |
-| 10 | **不留半截文件**：§八·C ✓ |
+| 1 | **the trigger returns a `run_id` immediately** (a compilation takes minutes ✓ → a synchronous return does not hold ✓) |
+| 2 | **`status(run_id)` is polled for the timeline** ✓ (polling in the first version ✓) |
+| 3 | **state machine**: `running` / `done` / `failed` / **`cancelled`** ✓ (**`awaiting_confirmation` removed on 2026-11-16** ✓ — **there is no more stopping to wait for a nod** ✓ · ADR-D48 ✓) |
+| 4 | **idempotent**: polling the same `run_id` again → **the same timeline** ✓ |
+| 5 | **triggering again** = **running from the beginning again** ✓ (**the write steps that already completed run again** ✓ → a `destructive` step **must not be placed after a write step with a side effect** ✓) |
+| 6 | **resuming** (after a nod) = **continuing from the step where it stopped** ✓ (section 7.6 ✓) |
+| 7 | **concurrency**: **only one run of the same workflow pack at a time** ✓ (two workflows competing for one serial line would talk over each other ✓) |
+| 8 | **cancellation**: section 8.A ✓ |
+| 9 | **the step in flight**: section 8.B ✓ |
+| 10 | **no half-written files**: section 8.C ✓ |
 
-### 八·A · 取消
+### 8.A Cancellation
 
-| # | 规定 | 为什么 |
+| # | Provision | Why |
 |---|---|---|
-| **A1** | **取消 = 宿主*请求*中止在飞的那一步** ✓<br>**能不能真的停，取决于传输与远端** ✓ —— 契约**不承诺**「进程一定死」✓<br>（串口上做不到 ✓ —— 那不是一条 shell 连接 ✓；ssh/adb 上取决于远端 ✓）<br>契约承诺的是两件：**宿主不再等** ✓ + **时间线如实说** ✓ | 「进程一定没了」是**实现层机制** ✓，而四种传输的语义**各不相同** ✓（本地杀进程 ✓ / ssh 关通道 ✓ / adb 杀的是本地客户端 ✓ / 串口杀不了 ✓）→ 把它写进契约 = **对三种传输撒谎** ✗ |
-| **A2** | 运行状态 = **`cancelled`** ✓（**不是 `failed`** ✓ —— 取消不是失败 ✓） | 混在一起 → 界面把「人叫停」说成「出错了」✗；重试逻辑也会误判 ✗ |
-| **A3** | **已经跑完的步不回滚** ✓ | 契约里**没有回滚**这个概念 ✓（§十 ✓）—— 回滚的逆操作**自己也是一条写命令** ✓ → 它也要过地板、也要人确认、还可能失败 ✓ → **代价大于收益** ✓ |
-| **A4** | **只有宿主能取消** ✓（GUI ✓ / 宿主命令行 ✓）<br>→ **卡片与 agent 没有取消接口** ✓ | 「行不行」与「停不停」是**同一族判断** ✓（§7.6 的确认链 ✓）——「行不行」不给 agent ✓（`04` §2.4.1 ✓），「停不停」也不给 ✓<br>否则 agent 就有了「**自己决定不干**」的通道 ✓ → 「人点头」那条链多了一个旁路 ✗<br>卡片也不给 ✓：卡片权限**逐方法**授权 ✓（`03` §7.7 ✓）→「停一次别人的运行」**不在任何权限项里** ✓ |
-| **A5** | 取消一个**不存在**的 `run_id` → **报错** ✓<br>取消一个**已经结束**的运行 → **幂等** ✓（状态一个字都不改 ✓）<br>**取消之后可以立刻重新触发** ✓（§八·5 ✓） | 打错 id 要说清楚 ✓；重复点「停」不该炸 ✓；停完还能再干 ✓ |
-| **A6** | 取消**只影响那一次运行** ✓ | 别的运行不该跟着停 ✓ |
-| **A7** | 被取消的那一步，在时间线里**理由写 `cancelled`** ✓（**不是 `failed`** ✓、**不是 `readback_mismatch`** ✓） | 追责时要能看出「人叫停」✗ ≠ 「机器坏了」✓ |
-| **A8** | 取消**撤销**这次运行的**待确认请求** ✓ | 否则队列里挂着一条僵尸请求 ✓ → 人会去点一个已经被取消的运行 ✗ |
-| **A9** | 取消**记一行审计** ✓（谁叫停的 ✓） | 「谁叫停的」查不到 ✓ → 事后没法追责 ✓ |
-| **A10** | **续跑与取消互斥** ✓ | 取消之后再点「继续」= 跑一个已经被叫停的运行 ✗ |
+| **A1** | **cancellation = the host *requests* the abortion of the step in flight** ✓<br>**whether it can actually stop depends on the transport and the remote side** ✓ — the contract **does not promise** that "the process certainly dies" ✓<br>(on serial that is impossible ✓ — it is not a shell connection ✓; on ssh/adb it depends on the remote side ✓)<br>what the contract promises is two things: **the host stops waiting** ✓ + **the timeline says it truthfully** ✓ | "the process is certainly gone" is an **implementation layer mechanism** ✓, and the semantics of the four transports **differ from each other** ✓ (locally the process is killed ✓ / over ssh the channel is closed ✓ / over adb what dies is the local client ✓ / over serial nothing can be killed ✓) → writing it into the contract = **lying to three of the transports** ✗ |
+| **A2** | the state of the run = **`cancelled`** ✓ (**not `failed`** ✓ — a cancellation is not a failure ✓) | mixed together → the interface reports "a human stopped it" as "something broke" ✗; the retry logic misjudges it as well ✗ |
+| **A3** | **a step that has already run is not rolled back** ✓ | the contract **has no notion of a rollback** ✓ (section 10 ✓) — the inverse operation of a rollback **is a write command of its own** ✓ → it also goes through the floor, also needs a human confirmation, and may fail as well ✓ → **the cost is greater than the benefit** ✓ |
+| **A4** | **only the host may cancel** ✓ (the GUI ✓ / the host command line ✓)<br>→ **cards and agents have no cancellation interface** ✓ | "may it" and "may it stop" are **the same family of judgement** ✓ (the confirmation chain of section 7.6 ✓) — "may it" is not given to the agent ✓ (`04` section 2.4.1 ✓), and "may it stop" is not given to it either ✓<br>otherwise the agent would have a channel for **deciding on its own not to do the work** ✓ → the "a human nods" chain would have a bypass ✗<br>cards do not get it either ✓: the card permissions are granted **per method** ✓ (`03` section 7.7 ✓) → "stopping somebody else's run" is **not in any permission item** ✓ |
+| **A5** | cancelling a `run_id` that **does not exist** → **an error** ✓<br>cancelling a run that **has already ended** → **idempotent** ✓ (not one character of the state changes ✓)<br>**after a cancellation the workflow may be triggered again at once** ✓ (section 8.5 ✓) | a mistyped id has to be said clearly ✓; pressing "stop" twice must not crash ✓; after a stop there may still be work to do ✓ |
+| **A6** | a cancellation **affects that one run only** ✓ | another run must not stop with it ✓ |
+| **A7** | for the cancelled step the timeline **gives `cancelled` as the reason** ✓ (**not `failed`** ✓, **not `readback_mismatch`** ✓) | in an audit it has to be visible that "a human stopped it" ✗ ≠ "the machine broke" ✓ |
+| **A8** | a cancellation **revokes the pending confirmation requests of this run** ✓ | otherwise a zombie request hangs in the queue ✓ → a human would click a run that has already been cancelled ✗ |
+| **A9** | a cancellation **writes an audit line** ✓ (who stopped it ✓) | if "who stopped it" cannot be looked up ✓ → there is no accountability afterwards ✓ |
+| **A10** | **resuming and cancelling are mutually exclusive** ✓ | after a cancellation, pressing "continue" = running a run that has already been stopped ✗ |
 
-> **「取消」不承诺什么**（诚实说 ✓）：
-> - **不承诺进程一定死** ✓（A1 ✓）
-> - **不承诺回滚** ✓（A3 ✓）
-> - **不承诺机器回到原样** ✓ —— 取消之后**留了什么**，必须**说清楚** ✓（§八·C ✓）
+> **What "cancellation" does not promise** (stated honestly ✓):
+> - **it does not promise that the process dies** ✓ (A1 ✓)
+> - **it does not promise a rollback** ✓ (A3 ✓)
+> - **it does not promise that the machine returns to its original state** ✓ — **what is left behind after a cancellation has to be stated clearly** ✓ (section 8.C ✓)
 
-### 八·B · 在飞的那一步
+### 8.B The step in flight
 
-| # | 规定 | 为什么 |
+| # | Provision | Why |
 |---|---|---|
-| **B1** | `status(run_id)` 除了时间线，还给 **`current`** = **当前这一步**（**正在跑** ✓ **或** **停下等人点头** ✓）：`{ stepId, kind, at }` ✓<br>运行**已结束**（`done` / `failed` / `cancelled`）→ `current` = `null` ✓ | 编译实测 58.9s / 98.5s ✓ → 界面不能一片死寂 ✓；「现在在第几步」是界面最需要的一件事 ✓ |
-| **B2** | `current.at` = **那一步开始的时刻** ✓ → 界面能自己算「**已经用了多久**」✓ | **不给百分比** ✓ —— 传输的百分比是猜的 ✗；「已经 42 秒」是事实 ✓ |
-| **B3** | **`current` 是活快照**（会变 ✓）；**`stages` 是只增不改** ✓（§八·4 ✓）<br>→ **两者的幂等性不同** ✓ | 同一个 `run_id` 两次查：`stages` 一样 ✓、`current` 可能不同 ✓ —— 混为一谈就会写出「时间线也是幂等的」这种半句话 ✗ |
-| **B4** | `current` **不给角色** ✓（**不给拓扑** ✓ —— `04` 的同款原则 ✓） | 「哪个角色连哪台机器」是**未授权方不该看到的** ✓（`04` §2.4.1 那条 ✓） |
-| **B5** | **卡片侧是缩减投影** ✓：`stages` 只给 `stepId` / `kind` / `ok` / `verified` / `reason` ✓；**明细（路径、输出值、角色）留在宿主与 agent 那边** ✓ | 卡片是 AI 写的 ✓ → 卡片侧看到的东西**越少越安全** ✓ |
+| **B1** | `status(run_id)` gives, besides the timeline, **`current`** = **the current step** (**running** ✓ **or** **stopped to wait for a nod** ✓): `{ stepId, kind, at }` ✓<br>the run **has ended** (`done` / `failed` / `cancelled`) → `current` = `null` ✓ | a measured compilation takes 58.9s / 98.5s ✓ → the interface must not be a dead silence ✓; "which step is it on now" is the one thing the interface needs most ✓ |
+| **B2** | `current.at` = **the moment that step started** ✓ → the interface can compute "**how long it has been running**" by itself ✓ | **no percentage** ✓ — the percentage of a transfer is a guess ✗; "42 seconds already" is a fact ✓ |
+| **B3** | **`current` is a live snapshot** (it changes ✓); **`stages` only grows** ✓ (section 8.4 ✓)<br>→ **the two have a different idempotency** ✓ | two queries of the same `run_id`: `stages` is the same ✓, `current` may differ ✓ — conflating them produces half-sentences like "the timeline is idempotent as well" ✗ |
+| **B4** | `current` **does not give the role** ✓ (**it gives no topology** ✓ — the same principle as `04` ✓) | "which role connects to which machine" is **something an unauthorised party must not see** ✓ (the rule of `04` section 2.4.1 ✓) |
+| **B5** | **the card side is a reduced projection** ✓: `stages` only gives `stepId` / `kind` / `ok` / `verified` / `reason` ✓; **the detail (paths, output values, roles) stays with the host and the agent** ✓ | a card is written by an AI ✓ → the less the card side sees, **the safer** ✓ |
 
-### 八·C · 不留半截文件
+### 8.C No half-written files
 
-| # | 规定 | 为什么 |
+| # | Provision | Why |
 |---|---|---|
-| **R1** | **传输命令自己没成（含被取消 ✓）之后，若目的地原本不存在**，流程层保证**它不留半截文件** ✓<br>→ **「回读失败但命令成功」不算** ✓（那是「**传了，未验成**」✓ —— **不清理** ✓，只在时间线上说清楚 ✓） | 「停得干净」是取消的一部分 ✓ —— 否则用户不敢停 ✗<br>→ 「传了」与「验成了」是**两个事实** ✓ —— **其中一个不成立，不该由另一个来收拾** ✓ |
-| **R2** | **目的地原本存在** → **默认不动** ✓<br>**拿不准**（查不到 ✓）→ **不删** ✓，只在时间线上说清「目的地有一个未确认的文件」 ✓ | 宁可留一个被截断的旧文件 ✓，也不删用户的东西 ✓<br>→ **唯一的例外** = **目的地传输前不存在** ✓ —— 那它**一定是**这次传出来的 ✓ |
-| **R3** | 清理**只许作用于「这一步解析出来的那个路径」** ✓：路径**按 `02` §4.6 编码** ✓（单引号 + 换行/空字符拒掉 ✓）、**只许一个普通文件** ✓（不许递归 ✓ / 不许目录 ✓ / 不许通配符 ✓）、**与 `to.path` 逐字符相等** ✓ | `to.path` 是**包给的** ✓ → 不编码就是**一条注入面** ✓（§七·T4 ✓） |
-| **R4** | 清理**单独记一行审计** ✓（谁删的、删的哪个路径 ✓）；**不弹确认** ✓ | 删了东西**必须留账** ✓<br>它是**这次运行自己的**收尾 ✓ —— 取消时再弹一个框 → 用户以为没停干净 ✓ |
-| **R5** | **传输命令在目的地之外产生的中间残留（如 `.b64`）由包负责** ✓；批准时可见 ✓（§7.4 展示命令模板 ✓） | 流程层**只看得见 `to.path`** ✓ → 别处的东西**管不着** ✓<br>→ 契约**不要求原子传输** ✓（没有「临时名 + 改名」的占位符 ✓ → 强推它 = 长出表达式语言 ✗） |
+| **R1** | **after the transport command itself did not succeed (including being cancelled ✓), if the destination did not exist before**, the workflow layer guarantees **that it leaves no half-written file behind** ✓<br>→ **"the readback failed but the command succeeded" does not count** ✓ (that is "**it was transferred, it was not verified**" ✓ — **no clean-up** ✓, the timeline only states it clearly ✓) | "stopping cleanly" is part of a cancellation ✓ — otherwise nobody dares to stop ✗<br>→ "it was transferred" and "it was verified" are **two facts** ✓ — **if one of them does not hold, the other must not clean up after it** ✓ |
+| **R2** | **the destination existed before** → **it is left alone by default** ✓<br>**when it is not certain** (it cannot be looked up ✓) → **it is not deleted** ✓, the timeline only says "the destination holds an unconfirmed file" ✓ | better to leave a truncated old file ✓ than to delete something of the user ✓<br>→ **the only exception** = **the destination did not exist before the transfer** ✓ — in that case it **must be** the one this transfer produced ✓ |
+| **R3** | the clean-up **may only act on "the path this step resolved"** ✓: the path is **encoded as in `02` section 4.6** ✓ (single quotes, newlines and null characters refused ✓), **only one regular file is allowed** ✓ (no recursion ✓ / no directory ✓ / no wildcard ✓), **and it has to be character for character equal to `to.path`** ✓ | `to.path` is **given by the pack** ✓ → not encoding it is **an injection surface** ✓ (section 7, rule T4 ✓) |
+| **R4** | the clean-up **writes an audit line of its own** ✓ (who deleted it, which path was deleted ✓); **it raises no confirmation** ✓ | if something was deleted, **it has to be accounted for** ✓<br>it is **the clean-up of this very run** ✓ — raising another dialog on a cancellation → the user thinks the stop was not clean ✓ |
+| **R5** | **intermediate leftovers outside the destination produced by the transport command (such as `.b64`) are the responsibility of the pack** ✓; they are visible at approval time ✓ (section 7.4 shows the command templates ✓) | the workflow layer **only sees `to.path`** ✓ → things elsewhere are **none of its business** ✓<br>→ the contract **does not require an atomic transport** ✓ (there is no "temporary name plus rename" placeholder ✓ → forcing it = growing an expression language ✗) |
 
 ---
 
-## 九 · 校验清单
+## 9. The validation checklist
 
-`validate_workflow(path)` 必须检查：
+`validate_workflow(path)` must check:
 
-| # | 规则 |
+| # | Rule |
 |---|---|
-| 1 | `apiVersion` 是已知版本 |
-| 2 | `kind` 是 `Workflow` |
-| 3 | **每一层都没有未知字段** |
-| 4 | `id` 格式合法（`名字.名字`） |
-| 5 | `inputs` 的类型在封闭表里；`enum` 有 `values`；`string`/`path` 有 `maxLength` |
-| 6 | `roles` 的每个 role 有 `purpose` 与 `profile`；**profile 存在**且**不是 `local` 传输** |
-| 7 | `steps` 非空；`id` 唯一；`kind` 在六种里 |
-| 8 | 每种 kind 的必填字段都在（§4.1） |
-| 9 | `placement` 在封闭词表里 |
-| 10 | **占位指向的东西都存在**（input / role / 输出槽 / 角色事实） |
-| 11 | **`danger: destructive` 的步不许用 `readback.kind: none`**（同 `02` §4.4.1 ✓） |
-| 12 | **`await`/`assert` 说得出在哪个角色上读** ✓ |
+| 1 | `apiVersion` is a known version |
+| 2 | `kind` is `Workflow` |
+| 3 | **there is no unknown field at any level** |
+| 4 | the `id` has a valid format (`name.name`) |
+| 5 | the type of `inputs` is in the closed table; `enum` has `values`; `string`/`path` have `maxLength` |
+| 6 | every role of `roles` has `purpose` and `profile`; **the profile exists** and **is not a `local` transport** |
+| 7 | `steps` is not empty; the `id` is unique; the `kind` is one of the six |
+| 8 | the required fields of every kind are present (section 4.1) |
+| 9 | `placement` is in the closed vocabulary |
+| 10 | **everything a placeholder points at exists** (input / role / output slot / role fact) |
+| 11 | **a step with `danger: destructive` must not use `readback.kind: none`** (the same as `02` section 4.4.1 ✓) |
+| 12 | **`await`/`assert` can say on which role it reads** ✓ |
 
-> 规则 **11** 是 `02` §4.4.1 的同款（「`destructive` 仍禁止 `none`」✓）——
-> 跨目标的判据**不算豁免** ✓。
+> Rule **11** is the same as `02` section 4.4.1 ("`destructive` still forbids `none`" ✓) —
+> a criterion across targets **is not an exemption** ✓.
 
 ---
 
-## 十 · 契约里**不做**的事
+## 10. What the contract **does not** do
 
-| 不做 | 为什么 |
+| Not done | Why |
 |---|---|
-| **「目标」作为契约概念** | §〇 ✓ |
-| **卡片自己拼多步** | 组合属于流程包 ✓ |
-| **流程的推送通道** | 首版 poll ✓（`00` §七 的连续流契约还没定死 ✓） |
-| **流程包自己携带凭据** | 只许引用 profile id ✓ |
-| **`exec_script`** | §4.1 ✓ |
-| **判据的形式 1** | §五 ✓ |
-| **回滚** | §八·A·A3 ✓ —— 逆操作自己也是一条写命令 ✓ |
-| **落地的第三形态 `ask`** | §4.4 ✓ |
-| **分支与循环** | 首版是**一条直线** ✓ |
+| **"target" as a contract concept** | section 0 ✓ |
+| **a card assembling several steps itself** | composition belongs to the workflow pack ✓ |
+| **a push channel for workflows** | polling in the first version ✓ (the continuous stream contract of `00` section 7 is not settled yet ✓) |
+| **a workflow pack carrying its own credentials** | only a profile id may be referenced ✓ |
+| **`exec_script`** | section 4.1 ✓ |
+| **form 1 of the criteria** | section 5 ✓ |
+| **rollback** | section 8.A, rule A3 ✓ — the inverse operation is a write command of its own ✓ |
+| **the third form `ask`** | section 4.4 ✓ |
+| **branches and loops** | the first version is **a straight line** ✓ |
 
 ---
 
-*依据：实现层决策记录中的 **ADR-D31 / ADR-D32 / ADR-D34 / ADR-D36**；
-本文的历次增量提案与独立评审，以及真机实测记录。*
+*Basis: the implementation-layer decision record — **ADR-D31 / ADR-D32 / ADR-D34 / ADR-D36**;
+the successive incremental proposals and independent reviews of this document, and the measurements made on real hardware.*

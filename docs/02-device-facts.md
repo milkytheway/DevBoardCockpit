@@ -1,189 +1,192 @@
-# 设备事实清单
+# Device facts
 
-> **作者：迁移自 `DevBoardConsole`（前身工程），2026-11-12 由 Codex 逐条复核并补上证据。**
-> 这份清单是**全库最不能丢的一篇**——旧工程的 Python 代码可以被扔掉，这里的事实不能。
-> 写任何解析器、连接层、tag 绑定之前，先读本文。
+> Migrated from the previous project, `DevBoardConsole`, and reviewed
+> line by line against real hardware in November 2026.
+> This is the document the project cannot lose. The previous Python code can
+> be discarded; the facts recorded here cannot.
+> Read it before writing a parser, a transport or a tag binding.
 
-## 0. 怎么读
+## 0. How to read it
 
-| 标记 | 含义 |
+| Mark | Meaning |
 |---|---|
-| 🟢 | 本机实测确认过，本文给出证据或复验命令 |
-| 🟡 | 用户陈述或旧工程记录，尚未独立复核 |
-| 🔵 | 待验证，附了验证命令 |
+| 🟢 | Measured on this machine; the evidence or the command to repeat it is given |
+| 🟡 | Reported by the user or recorded by the previous project; not independently confirmed |
+| 🔵 | Not verified yet; the command to verify it is given |
 
-上游来源：学习工作区 `C:\Users\<user>\Desktop\嵌入式Linux学习\04-环境\环境实况.md`
-（那里的实测值是本清单的出处，但**以本清单为准**）。
+The upstream source is the notes of the earlier study environment. The
+measurements there are where this list comes from, but this list is what
+counts.
 
 ---
 
-## 1. 板子本体
+## 1. The board
 
-| 项 | 值 | 标记 | 证据 |
+| Item | Value | Mark | Evidence |
 |---|---|---|---|
-| 型号 | `ATK-DLRK3588 Board` | 🟢 | `rk3588-alientek.dtsi:22` |
+| Model | `ATK-DLRK3588 Board` | 🟢 | `rk3588-alientek.dtsi:22` |
 | compatible | `rockchip,rk3588-evb7-lp4-v10`, `rockchip,rk3588` | 🟢 | `rk3588-alientek.dtsi:23` |
-| 发行版 | **Buildroot 2024.02**（`NAME=Buildroot`） | 🟢 | `adb shell cat /etc/os-release` |
-| rootfs 版本 | `VERSION=-g06c38152` | 🟢 | 同上 |
-| 内核 | `6.1.141` | 🟢 | `adb shell uname -r` |
-| init | BusyBox init + eudev 3.2.14，**无 systemd** | 🟢 | 启动现场日志 + `ps` |
-| CPU | 8 核 = **A55×4 (CPU part 0xd05) + A76×4 (CPU part 0xd0b)** | 🟢 | `grep CPU part /proc/cpuinfo` |
-| 内存 | `MemTotal: 8107744 kB`（约 7.7 GiB） | 🟢 | `adb shell grep MemTotal /proc/meminfo` |
-| 用户态工具 | **`ls` 是 GNU coreutils，不是 BusyBox** | 🟢 | `ls -l /bin/ls` |
-| 板上 Python | 3.11.8 | 🟡 | 学习工作区实测记录 |
-| **eth0 地址** | **`192.168.5.100/24`**（宿主物理网段） | 🟢 | `adb shell ip -4 addr show`（2026-11-15） |
+| Distribution | Buildroot 2024.02 (`NAME=Buildroot`) | 🟢 | `adb shell cat /etc/os-release` |
+| rootfs version | `VERSION=-g06c38152` | 🟢 | as above |
+| Kernel | `6.1.141` | 🟢 | `adb shell uname -r` |
+| init | BusyBox init + eudev 3.2.14, no systemd | 🟢 | boot-time log + `ps` |
+| CPU | 8 cores = A55×4 (CPU part 0xd05) + A76×4 (CPU part 0xd0b) | 🟢 | `grep CPU part /proc/cpuinfo` |
+| Memory | `MemTotal: 8107744 kB` (about 7.7 GiB) | 🟢 | `adb shell grep MemTotal /proc/meminfo` |
+| User-space tools | `ls` is GNU coreutils, not BusyBox | 🟢 | `ls -l /bin/ls` |
+| Python on the board | 3.11.8 | 🟡 | measurement recorded in the earlier study environment |
+| eth0 address | `192.168.5.100/24` (the host physical segment) | 🟢 | `adb shell ip -4 addr show` (2026-11-15) |
 
-> ⚠️ 注意最后两条的组合：init 是 BusyBox，但用户态工具是 coreutils。
-> 这直接影响「哪些命令支持 `--color`」「哪些命令支持 `-C`」的判断。
+> ⚠️ Note the combination of the last two rows: init is BusyBox, but the user-space tools are coreutils.
+> That directly decides which commands support `--color` and which support `-C`.
 
-## 2. 三条通道（宿主视角）
+## 2. The three transports (host side)
 
-| 通道 | 目标 | 参数 | 标记 |
+| Transport | Target | Parameters | Mark |
 |---|---|---|---|
-| ADB | 板子 | 板子 serial `0000000000000000`，状态 `device` | 🟢 `adb devices -l` |
-| 串口 | 板子 | 宿主 `COM3`（CH343 USB-UART），**1500000** 波特 | 🟢 PnP 枚举 |
-| SSH | Ubuntu 客机（VMware） | `192.168.100.10`，用户 `alientek` | 🟡 旧工程 profile |
-| 本机 | 宿主自己 | — | 🟢 |
+| ADB | the board | board serial `0000000000000000`, state `device` | 🟢 `adb devices -l` |
+| Serial | the board | host `COM3` (CH343 USB-UART), 1500000 baud | 🟢 PnP enumeration |
+| SSH | Ubuntu guest (VMware) | `192.168.100.10`, user `alientek` | 🟡 profile from the previous project |
+| Local | the host itself | — | 🟢 |
 
-**宿主 adb 路径**（不在 PATH，`where adb` 查不到）：
+The host adb path (not on PATH, `where adb` cannot find it):
 
 ```
 C:\Users\<user>\Downloads\platform-tools_r33.0.3-windows\platform-tools\adb.exe
 ```
 
-> 旧工程把它硬编码在 `core/adb_target.py:46` 的候选列表里。
-> 新工程应放进 `profiles/settings.json`，**不要留在代码里**（AGENTS.md 规矩：路径归配置）。
+> The previous project hardcoded it in the candidate list at `core/adb_target.py:46`.
+> The new project should keep it in `profiles/settings.json`, not in the code (AGENTS.md rule: paths belong in configuration).
 
-## 3. 板端可读路径与读数格式（tag 的原料）
+## 3. Readable paths on the board and reading formats (the raw material for tags)
 
-> ⚠️ **契约名以 `docs/spec/01-tag-contract.md` 的核心词表为准**，本文只给事实（路径、格式、实测值）。
-> 两者不一致的地方以本文为准，并记入契约核对清单。
+> ⚠️ The contract names follow the core vocabulary in `docs/spec/01-tag-contract.md`; this document gives only the facts (paths, formats, measured values).
+> Where the two disagree, this document wins, and the difference is recorded in the contract cross-check list.
 >
-> 📁 **原始样本在 `fixtures/board/`**（2026-11-13 直接从板子上采的）：
-> `ls -la /`、一次往返的快照、NPU 两条路径的对照、`/proc/stat` 的**两次真实采样**。
-> 逐条结论见契约核对清单。
+> 📁 The raw samples are in `fixtures/board/` (collected straight off the board on 2026-11-13):
+> `ls -la /`, a snapshot from one round trip, a comparison of the two NPU paths, and two real samples of `/proc/stat`.
+> The item-by-item conclusions are in the contract cross-check list.
 
-| 契约名 | 路径 | 原始格式 | 实测 / 备注 |
+| Contract name | Path | Raw format | Measured / Notes |
 |---|---|---|---|
-| `cpu.usage` | `/proc/stat` | `cpu  25288 0 16570 41447116 …` | busy = user + system + …（不含 idle）；**两次采样做差**，首读 `pending` |
-| `cpu.core.*.usage` | `/proc/stat` | `cpu0 15399 0 4709 5163405 …` | 核编号取 `cpuN` 的 **N**，不能取计数器 |
-| `cpu.core.*.cluster` | `/proc/cpuinfo` | `CPU part	: 0xd05` | 🟢 0xd05=A55 ×4、0xd0b=A76 ×4 |
-| `gpu.usage` | `/sys/class/devfreq/fb000000.gpu/load` | `0@300000000Hz`（空闲） | 🟡 空闲时读 **0**（与 NPU 的 100 相反）→ **像是**忙碌占比，但**缺一次带负载的采样**，不能当已证 |
-| `gpu.freq_hz` | 同上 | 同上 | 频率部分，单位 Hz |
-| `npu.usage` | `/sys/kernel/debug/rknpu/load` | `NPU load:  Core0: 0%, Core1: 0%, Core2: 0%,` | 🟢 真负载，3 个计算核，取 max |
-| `mem.total_bytes` | `/proc/meminfo` | `MemTotal:        8107744 kB` | 🟢 源单位是 kB，**reader 必须 ×1024** |
-| `mem.used_bytes` | `/proc/meminfo` | `MemTotal - MemAvailable` | 🟢 实测 MemAvailable 7655664 kB（另一次采样为 6104320 kB，见 `fixtures/metrics/snapshot-sample.txt`——**不同时刻，不是矛盾**） |
-| `mem.usage` | 同上 | 派生 | |
-| `temp.soc` | `/sys/class/thermal/thermal_zone*/{type,temp}` | 毫摄氏度，如 `32384` | 按 `type` 归并，**不依赖 zone 序号** |
-| `temp.gpu` | 同上 | `31461` → 31.461 °C | 🟢 `thermal_zone5` = `gpu-thermal` |
+| `cpu.usage` | `/proc/stat` | `cpu  25288 0 16570 41447116 …` | busy = user + system + … (idle excluded); the value is the difference between two samples, the first reading is `pending` |
+| `cpu.core.*.usage` | `/proc/stat` | `cpu0 15399 0 4709 5163405 …` | the core index is the N of `cpuN`, not the counter |
+| `cpu.core.*.cluster` | `/proc/cpuinfo` | `CPU part	: 0xd05` | 🟢 0xd05=A55 ×4, 0xd0b=A76 ×4 |
+| `gpu.usage` | `/sys/class/devfreq/fb000000.gpu/load` | `0@300000000Hz` (idle) | 🟡 reads 0 when idle (the opposite of the NPU's 100) → it looks like a busy ratio, but there is no sample taken under load, so it cannot be treated as proven |
+| `gpu.freq_hz` | same as above | same as above | the frequency part, unit Hz |
+| `npu.usage` | `/sys/kernel/debug/rknpu/load` | `NPU load:  Core0: 0%, Core1: 0%, Core2: 0%,` | 🟢 real load, 3 compute cores, take the max |
+| `mem.total_bytes` | `/proc/meminfo` | `MemTotal:        8107744 kB` | 🟢 the source unit is kB, the reader must multiply by 1024 |
+| `mem.used_bytes` | `/proc/meminfo` | `MemTotal - MemAvailable` | 🟢 measured MemAvailable 7655664 kB (another sample gave 6104320 kB, see `fixtures/metrics/snapshot-sample.txt` — different moments, not a contradiction) |
+| `mem.usage` | same as above | derived | |
+| `temp.soc` | `/sys/class/thermal/thermal_zone*/{type,temp}` | millidegrees Celsius, e.g. `32384` | group by `type`, not by the zone index |
+| `temp.gpu` | same as above | `31461` → 31.461 °C | 🟢 `thermal_zone5` = `gpu-thermal` |
 
-> ⚠️ **「三个温度各自独立」的证据** ✓ —— **结构性的** ✓（不是「值恰好不同」✓）：
+> ⚠️ The evidence that the three temperatures are independent ✓ — it is structural ✓ (not "the values happen to differ" ✓):
 >
-> | zone | `type` | 2026-11-16 实测 `temp` | 谁读它 |
+> | zone | `type` | `temp` measured on 2026-11-16 | Who reads it |
 > |---|---|---|---|
-> | `thermal_zone0` | **`soc-thermal`** ✓ | **34230**（34.230 °C ✓） | `temp.soc` ✓ |
-> | `thermal_zone5` | **`gpu-thermal`** ✓ | **33307**（33.307 °C ✓） | `temp.gpu` ✓ |
-> | `thermal_zone6` | **`npu-thermal`** ✓ | **33307**（33.307 °C ✓） | `temp.npu` ✓ |
+> | `thermal_zone0` | `soc-thermal` ✓ | 34230 (34.230 °C ✓) | `temp.soc` ✓ |
+> | `thermal_zone5` | `gpu-thermal` ✓ | 33307 (33.307 °C ✓) | `temp.gpu` ✓ |
+> | `thermal_zone6` | `npu-thermal` ✓ | 33307 (33.307 °C ✓) | `temp.npu` ✓ |
 >
-> → **三个不同的 `type` 名** ✓ → **归并按 `type` 匹配、不按序号** ✓（规则本身 ✓）→
-> → **三个 tag 读的是三个不同的传感器** ✓ → **彼此独立** ✓
-> → **且同一时刻 SoC 与 GPU/NPU 的读数确实不同** ✓（34.230 vs 33.307 ✓）
-| `temp.npu` | 同上 | 毫摄氏度 | 类型名 `npu-thermal` |
-| `board.model` | `/proc/device-tree/model` | `ATK-DLRK3588 Board\0` | 🟢 实测；尾部有 NUL，要 strip |
+> → Three different `type` names ✓ → grouping matches on `type`, not on the index ✓ (that is the rule itself ✓) →
+> → the three tags read three different sensors ✓ → they are independent of each other ✓
+> → and at the same moment the SoC and the GPU/NPU readings really do differ ✓ (34.230 vs 33.307 ✓)
+| `temp.npu` | same as above | millidegrees Celsius | the type name is `npu-thermal` |
+| `board.model` | `/proc/device-tree/model` | `ATK-DLRK3588 Board\0` | 🟢 measured; there is a NUL at the end, strip it |
 
-### 3.1 板型私有量（不进核心词表）
+### 3.1 Board-private quantities (not in the core vocabulary)
 
-| 事实 | 路径 | 实测 | 说明 |
+| Fact | Path | Measured | Notes |
 |---|---|---|---|
-| 背光 1 | `/sys/class/backlight/backlight/brightness` | `200`（max 255） | ⚠️ 目录名是 **`backlight`**，不是 `backlight0` |
-| 背光 2 | `/sys/class/backlight/backlight1/brightness` | `255`（max 255） | 第二块屏（`platform/backlight1`）；核心词表只定义了一个背光 → 见 06 核对 C2 |
-| CPU 调频策略 | `/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` | `schedutil` | 可选：interactive conservative ondemand userspace powersave performance schedutil。🟢 **2026-11-13 真机验过写入**：写 `ondemand` → 读回 `schedutil`，rc=0、**无挂死**（E6）——它走 **cpufreq**，与 devfreq 不是同一个驱动，**风险不同** |
-| NPU 调频策略 | `/sys/class/devfreq/fdab0000.npu/governor` | `rknpu_ondemand` | 🟢 实测（2026-11-13）该节点的 `available_governors` = `rknpu_ondemand dmc_ondemand vop2_ondemand venc_ondemand userspace powersave performance simple_ondemand`——**只有第一个是 NPU 自己的，其余是 rkdevfreq 全局列表**（含 dmc/vop2/venc 与 cpufreq 通用档）。⚠️ **写这个节点会让板子锁死**——见 §3.4 |
-| NPU 当前频率 | `/sys/class/devfreq/fdab0000.npu/cur_freq` | `1000000000` | 🟢 **实测存在**（sysfs 下 always available，不依赖 debugfs）。前身工程板型包里写的 `…/rknpu/devfreq/cur_freq` **不存在** → 见 06 核对 C1 |
-| NPU 占空比 | `/sys/class/devfreq/fdab0000.npu/load` | `100@1000000000Hz` | ⚠️ **占空比，不是利用率**；板子空闲时它就是 100 |
-| NPU 频率 | `/sys/kernel/debug/rknpu/freq` | `1000000000` | ⚠️ 前身工程板型包里写的 `…/rknpu/devfreq/cur_freq` **在该板上不存在** → 见 06 核对 C1 |
+| Backlight 1 | `/sys/class/backlight/backlight/brightness` | `200` (max 255) | ⚠️ the directory name is `backlight`, not `backlight0` |
+| Backlight 2 | `/sys/class/backlight/backlight1/brightness` | `255` (max 255) | the second screen (`platform/backlight1`); the core vocabulary defines only one backlight → see item C2 in the contract cross-check list |
+| CPU scaling policy | `/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` | `schedutil` | optional: interactive conservative ondemand userspace powersave performance schedutil. 🟢 the write was verified on the real board on 2026-11-13: write `ondemand` → read back `schedutil`, rc=0, no hang (E6) — it goes through cpufreq, which is not the same driver as devfreq, so the risk is different |
+| NPU scaling policy | `/sys/class/devfreq/fdab0000.npu/governor` | `rknpu_ondemand` | 🟢 measured (2026-11-13): the `available_governors` of that node = `rknpu_ondemand dmc_ondemand vop2_ondemand venc_ondemand userspace powersave performance simple_ondemand` — only the first one belongs to the NPU itself, the rest are the global rkdevfreq list (it holds the dmc/vop2/venc entries and the cpufreq general ones). ⚠️ writing this node locks the board up — see §3.4 |
+| NPU current frequency | `/sys/class/devfreq/fdab0000.npu/cur_freq` | `1000000000` | 🟢 measured to exist (always available under sysfs, no debugfs needed). The path written in the board pack of the previous project, `…/rknpu/devfreq/cur_freq`, does not exist → see item C1 in the contract cross-check list |
+| NPU duty cycle | `/sys/class/devfreq/fdab0000.npu/load` | `100@1000000000Hz` | ⚠️ a duty cycle, not a utilisation figure; on an idle board it is 100 |
+| NPU frequency | `/sys/kernel/debug/rknpu/freq` | `1000000000` | ⚠️ the path written in the board pack of the previous project, `…/rknpu/devfreq/cur_freq`, does not exist on this board → see item C1 in the contract cross-check list |
 
-### 3.2 板上的 devfreq 节点全集（🟢 实测）
+### 3.2 The complete set of devfreq nodes on the board (🟢 measured)
 
 ```
 dmc  fb000000.gpu  fdab0000.npu  fdbd0000.rkvenc-core  fdbe0000.rkvenc-core  fdd90000.vop
 ```
 
-`dmc`（DDR）、`vop`（显示输出）、`rkvenc-core`（视频编码器）尚未接入 tag，
-但是「组态元件」的好候选（内存带宽、显示模式、编码负载）。
+`dmc` (DDR), `vop` (display output) and `rkvenc-core` (video encoder) are not wired to a tag yet,
+but they are good candidates for components (memory bandwidth, display modes, encoding load).
 
-### 3.3 debugfs 与 rknpu 目录（🟢 实测）
+### 3.3 The debugfs and rknpu directories (🟢 measured)
 
 ```
 $ grep debugfs /proc/mounts
-debugfs /sys/kernel/debug debugfs rw,relatime 0 0      ← 当前已挂载
+debugfs /sys/kernel/debug debugfs rw,relatime 0 0      ← currently mounted
 
 $ ls /sys/kernel/debug/rknpu/
-delayms  freq  load  power  reset  version  volt        ← 没有 devfreq/ 子目录
+delayms  freq  load  power  reset  version  volt        ← no devfreq/ subdirectory
 ```
 
-- `npu.usage` 依赖 debugfs；**挂载不是持久的**（重启后可能丢），
-  所以「读不到」要报 `unavailable` 并说明原因，而不是退回去读占空比。
-- `rknpu/load` 是多核一行（`Core0: …, Core1: …`），与 `npu.core.*.usage` 对得上。
+- `npu.usage` depends on debugfs; the mount is not persistent (it can be lost after a reboot),
+  so "cannot be read" must be reported as `unavailable` with the reason, not by falling back to the duty cycle.
+- `rknpu/load` puts all cores on one line (`Core0: …, Core1: …`), which matches `npu.core.*.usage`.
 
-### 3.4 devfreq 写路径的实测（2026-11-13，E1–E6）🟢
+### 3.4 The devfreq write path, measured (2026-11-13, E1–E6) 🟢
 
-> **这一节是「别让 agent 碰 devfreq 写路径」的事实依据。**
-> 板子 serial `0000000000000000`，`adb push` 脚本 + `adb shell sh`，
-> **不经 shell 插值**（避免本地展开）。
+> This section is the factual basis for "do not let an agent touch the devfreq write path".
+> Board serial `0000000000000000`, `adb push` of a script plus `adb shell sh`,
+> with no shell interpolation (to avoid local expansion).
 
-| # | 实测 | 结论 |
+| # | Measurement | Conclusion |
 |---|---|---|
-| **E1** | `fdab0000.npu` 与 `dmc` 的 `available_governors` **完全相同**（9 个值：`rknpu_ondemand dmc_ondemand vop2_ondemand venc_ondemand userspace powersave performance simple_ondemand`） | 这个列表是 **rkdevfreq 类级的全局并集**，对单个节点**没有信息量** |
-| **E2** | 向 `fdab0000.npu/governor` 写 `dmc_ondemand`、`powersave`：**rc=0、无任何报错、读回原值** | 节点**接受列表里的任意值**。列表不会告诉你哪个值对这个节点有意义 |
-| **E3** | 写 `fdab0000.npu/governor` 期间，`dmc/governor` **始终是 `dmc_ondemand`**（两次独立观测） | **当前值是每节点独立的**，**不是全局的**。⚠️ 此前文档写「写它会改到别的模块」——**那是错的**，全局的只是**可选值列表** |
-| **E4** | 向 NPU 节点写 `powersave` → **写调用挂死**：`/proc/<pid>/wchan = devfreq_monitor_stop`，进程进 **D 状态**，`kill -9` 无效。此后该节点的**所有** governor 读写与 `trans_stat` 读取全部阻塞在 D 状态 | 🔴 **切 devfreq governor 有内核死锁风险，且不可恢复——只有重启能救**。同顺序先跑过一次没挂 → **是竞态，不是必现**。**一次就够把板子锁死** |
-| **E5** | `fdab0000.npu/cur_freq` 权限位 **`-r--r--r--`**（root 也写不进去） | `userspace` governor 在这块板上**没有可用语义**：它的含义是「由用户态设频率」，而用户态**没有写权限**。选 `userspace` = 实质上关掉自动调频 |
-| **E6** | `cpu.governor.set` 用的那条路径（cpufreq `scaling_governor`）写 `ondemand` → `schedutil`：**rc=0、无挂死、读回一致** | 现有的 `cpu.governor.set` 走 **cpufreq**（与 devfreq 不是同一个驱动），**风险不同、目前干净**。这条动作此前**从未被真机验过**，本轮验过了 |
+| E1 | the `available_governors` of `fdab0000.npu` and `dmc` are exactly the same (9 values: `rknpu_ondemand dmc_ondemand vop2_ondemand venc_ondemand userspace powersave performance simple_ondemand`) | this list is the global union at the rkdevfreq class level; it carries no information for a single node |
+| E2 | writing `dmc_ondemand` and `powersave` to `fdab0000.npu/governor`: rc=0, no error at all, the old value is read back | the node accepts any value in the list. The list does not tell you which value means something for this node |
+| E3 | while writing to `fdab0000.npu/governor`, `dmc/governor` stays `dmc_ondemand` (two independent observations) | the current value is per node, not global. ⚠️ the earlier document said "writing it changes other modules" — that is wrong, only the list of available values is global |
+| E4 | writing `powersave` to the NPU node → the write call hangs: `/proc/<pid>/wchan = devfreq_monitor_stop`, the process enters state D, `kill -9` has no effect. From then on every governor read and write on that node and every `trans_stat` read block in state D | 🔴 switching a devfreq governor risks a kernel deadlock, and it is unrecoverable — only a reboot saves the board. The same order was run once without a hang → it is a race, not a certainty. One occurrence is enough to lock the board up |
+| E5 | the permission bits of `fdab0000.npu/cur_freq` are `-r--r--r--` (even root cannot write into it) | the `userspace` governor has no usable meaning on this board: it means "the user space sets the frequency", and the user space has no write permission. Choosing `userspace` is in practice switching off automatic scaling |
+| E6 | writing `ondemand` through the path `cpu.governor.set` uses (cpufreq `scaling_governor`) → `schedutil`: rc=0, no hang, the read-back agrees | the existing `cpu.governor.set` goes through cpufreq (not the same driver as devfreq), the risk is different and it is clean today. This action had never been verified on real hardware before; this round verified it |
 
-**这张表的用处**：
+How this table is used:
 
-1. **`npu.governor.set` 不进板型包**（ADR-D26）——
-   理由不是「我们不确定它的语义」，而是**实测它会把板子锁死、且不可恢复**。
-2. **`cpu.governor.set` 保留**——它走的是另一个驱动，实测干净。
-3. **O15 的答案是 `rknpu_ondemand` 一个值**——E1/E2 证明**列表给不出正确的枚举**。
-4. **风险边界**：E4 覆盖 **devfreq 类节点**（`fdab0000.npu`、`dmc`、`fb000000.gpu`…），
-   **不覆盖** cpufreq 节点。
+1. `npu.governor.set` does not go into the board pack (ADR-D26) — the reason is not "we are unsure of its semantics" but the
+   measurement that it locks the board up and cannot be recovered from.
+2. `cpu.governor.set` is kept — it goes through a different driver and measured clean.
+3. The answer for O15 is the single value `rknpu_ondemand` — E1 and E2 prove that the list cannot yield the correct enumeration.
+4. Risk boundary: E4 covers the devfreq class nodes (`fdab0000.npu`, `dmc`, `fb000000.gpu`…),
+   and does not cover the cpufreq nodes.
 
-> **板子状态披露**：本轮开始时，NPU governor **已经是 `userspace`**（不是开机默认的
-> `rknpu_ondemand`）——说明此前有会话写过后**没还原**。
-> 这恰好是「agent 能写 governor、没人盯着还原」的现实样本。
-> 本轮结束时已恢复为 `rknpu_ondemand`（开机默认），`dmc/governor` 未受影响，全量复核通过。
+> Board state disclosure: at the start of this round the NPU governor was already `userspace` (not the power-on default
+> `rknpu_ondemand`) — a previous session wrote it and did not restore it.
+> That is exactly a real sample of "an agent can write a governor and nobody watches it get restored".
+> At the end of this round it was restored to `rknpu_ondemand` (the power-on default), `dmc/governor` was unaffected, and the full re-check passed.
 >
-> **顺带**：E4 那个卡死的状态**当时只能靠重启**——
-> 这本身就是 E4 最硬的证据。
+> Incidentally: the hung state of E4 could at that time only be cleared by a reboot —
+> which is itself the hardest evidence for E4.
 
 ---
 
-### 3.5 产物落位（编译产物放哪、怎么装、怎么跑）🟢 实测（2026-11-15）
+### 3.5 Where the artefacts go (where the build output goes, how to install it, how to run it) 🟢 measured (2026-11-15)
 
-> **为什么进这份清单**：落位是**板子的规矩**（不是流程的要求）——
-> 换板型时规矩可能变，所以规矩归板型包/本清单，**流程只说「装到内核模块位」**。
-> 2026-11-15 之前这批事实只存在于学习工作区（🟡），三路独立评审都要求先把它落到这里。
+> Why it is on this list: placement is a rule of the board (not a requirement of the workflow) —
+> changing board model can change the rule, so the rule belongs to the board pack and this list, and the workflow only says "install it to the kernel module location".
+> Before 2026-11-15 these facts existed only in the earlier study environment (🟡); three independent reviews all asked for them to be pinned down here.
 
-| 产物 | 落位 | 标记 | 证据 |
+| Artefact | Placement | Mark | Evidence |
 |---|---|---|---|
-| **自己编的 `.ko`** | `/usr/lib/modules/<内核版本>/extra/` | 🟢 | `ls -d /usr/lib/modules/*/` → `/usr/lib/modules/6.1.141/`；其下 `extra/` 目录存在 |
-| **自己编的可执行程序** | `/usr/local/bin/` | 🟢 | 学习工作区 `板子放置规范.md` §1（同一份规范，其路径约定与板子实测一致） |
-| 内核版本 | `6.1.141` | 🟢 | `uname -r` |
-| 装载工具 | `modprobe` / `depmod` / `insmod` 均在 `/usr/sbin/` | 🟢 | `which modprobe depmod insmod` |
+| a `.ko` you built yourself | `/usr/lib/modules/<kernel version>/extra/` | 🟢 | `ls -d /usr/lib/modules/*/` → `/usr/lib/modules/6.1.141/`; the `extra/` directory exists under it |
+| an executable you built yourself | `/usr/local/bin/` | 🟢 | the earlier study environment, placement rules, section 1 (the same rules, whose path conventions agree with the measurements on the board) |
+| Kernel version | `6.1.141` | 🟢 | `uname -r` |
+| Loading tools | `modprobe` / `depmod` / `insmod`, all of them in `/usr/sbin/` | 🟢 | `which modprobe depmod insmod` |
 
-**硬规矩（装 `.ko` 的常规流程）**——依据：学习工作区 `板子放置规范.md` §4（**其路径与本清单 §3.5 的实测一致**）+ 本清单实测：
+The hard rules (the normal flow for installing a `.ko`) — basis: the earlier study environment, placement rules, section 4 (its paths agree with the measurements of §3.5 of this list) plus the measurements of this list:
 
-| # | 规矩 | 标记 |
+| # | Rule | Mark |
 |---|---|---|
-| P1 | ❌ 不要把 `.ko` 放进 `/root` 或 `/tmp` → 放 `extra/` | 🟢 |
-| P2 | ❌ **不要用 `insmod /path/x.ko` 当常规流程** → 装进 `extra/` + `depmod -a` + **`modprobe <名字>`**（按**名字**加载，不需要写路径——这正是装进 `extra/` 的好处） | 🟢 |
-| P3 | ❌ 装完 `.ko` 别忘了 `depmod -a` —— 不跑这步 `modprobe` 报找不到 | 🟢 |
-| P4 | ❌ `adb push` 过去的东西权限是 `-rw-rw-rw-` → 程序要自己 `chmod +x` | 🟢 |
-| P5 | ⚠️ `depmod -a` 会重建整个索引 → 每次**把自己的 `.ko` 完整推完之后**再跑一次，**勿并发推模块** | 🟢 |
+| P1 | ❌ do not put a `.ko` into `/root` or `/tmp` → put it into `extra/` | 🟢 |
+| P2 | ❌ do not use `insmod /path/x.ko` as the normal flow → install it into `extra/` + `depmod -a` + `modprobe <name>` (load it by name, no path needed — which is exactly the benefit of installing it into `extra/`) | 🟢 |
+| P3 | ❌ after installing a `.ko`, do not forget `depmod -a` — without that step `modprobe` reports "not found" | 🟢 |
+| P4 | ❌ what `adb push` transfers has the permissions `-rw-rw-rw-` → the program has to `chmod +x` itself | 🟢 |
+| P5 | ⚠️ `depmod -a` rebuilds the whole index → run it once after you have fully pushed your own `.ko`, and do not push modules concurrently | 🟢 |
 
-**复验命令**（宿主上）：
+The re-check commands (run on the host):
 
 ```powershell
 adb shell uname -r
@@ -194,217 +197,217 @@ adb shell which modprobe depmod insmod
 
 ---
 
-## 4. 行为坑清单（按通道）
+## 4. Behavioural traps, by transport
 
 ### 4.1 ADB
 
-| # | 坑 | 现象 | 对策 | 标记 |
+| # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
-| A1 | **不要用 PTY** | `adb shell -t -t` 会把回复攒到下一条命令才吐，表现为「晚一条」 | 用 `adb shell`（无 PTY），自己画提示符、自己做行编辑 | 🟢 旧工程实测 |
-| A2 | `TERM=dumb` | adb 把 `TERM` 设成 `dumb`，GNU coreutils 直接拒绝着色（`--color=always` 也没用） | 会话启动时 `export TERM=xterm-256color` | 🟢 |
-| A3 | alias 不生效 | 非交互 shell 不展开 alias，`alias ls='ls --color=auto'` 静默无效 | 改装 **shell 函数**：`ls() { command ls -C --color=always "$@"; }` | 🟢 |
-| A4 | `-C` 排版 | 不加 `-C` 时 coreutils 一行一个；带 `-l`/`-1` 时它自己退回一行 | `-C` + 只对「给人看的命令」加色，管道的命令原样发出 | 🟢 |
-| A5 | 每命令一次 `adb shell` ≈ 30 ms | 指标采集若逐文件读取会很慢 | 合并成一次快照脚本往返 | 🟢 |
-| A6 | **fork 的 CPU 时间会污染 `/proc/stat`** | 逐文件读取时板子看起来 100% 忙 | 同 A5：必须一次往返 | 🟢 |
-| A7 | 只认 `device` 状态 | `adb devices` 里有 `offline`/`unauthorized` | 过滤 `parts[1] == "device"` | 🟢 |
-| A8 | 输出解码 | 板子是 UTF-8 Buildroot，但可能有杂字节 | `decode('utf-8', 'replace')`，绝不让一个坏字节废掉整条命令 | 🟢 |
+| A1 | do not use a PTY | `adb shell -t -t` holds the reply back until the next command, which shows up as "one command late" | use `adb shell` (no PTY), draw your own prompt, do your own line editing | 🟢 measured in the previous project |
+| A2 | `TERM=dumb` | adb sets `TERM` to `dumb`, GNU coreutils then refuses to colour the output (`--color=always` does not help either) | `export TERM=xterm-256color` when the session starts | 🟢 |
+| A3 | aliases do not take effect | a non-interactive shell does not expand aliases, `alias ls='ls --color=auto'` fails silently | use a shell function instead: `ls() { command ls -C --color=always "$@"; }` | 🟢 |
+| A4 | `-C` layout | without `-C` coreutils prints one entry per line; with `-l`/`-1` it falls back to one per line on its own | `-C`, and colour only the commands meant for humans; piped commands go out unchanged | 🟢 |
+| A5 | one `adb shell` per command ≈ 30 ms | sampling metrics file by file is slow | merge them into a single snapshot script round trip | 🟢 |
+| A6 | the CPU time of the fork pollutes `/proc/stat` | reading file by file makes the board look 100% busy | as A5: it must be one round trip | 🟢 |
+| A7 | only the `device` state counts | `adb devices` can show `offline`/`unauthorized` | filter `parts[1] == "device"` | 🟢 |
+| A8 | output decoding | the board is UTF-8 Buildroot, but there can be stray bytes | `decode('utf-8', 'replace')`, never let one bad byte throw away a whole command | 🟢 |
 
-### 4.2 串口（UART）
+### 4.2 Serial (UART)
 
-| # | 坑 | 现象 | 对策 | 标记 |
+| # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
-| S1 | **单通道** | 命令通道和交互终端共用一根线 | 一个读线程 + 一份 transcript；命令靠 marker 认领自己的回包 | 🟢 |
-| S2 | marker 协议 | 板子会**回显**命令，所以 marker 在 transcript 里出现**两次**（回显行一次、输出之后一次） | 取「第一次之后的换行」到「第二次出现」之间的内容 | 🟢 |
-| S3 | marker 格式 | 需每次唯一 | `__DBC<pid>_<毫秒时间戳>__`；发给用户前必须从 transcript 里抹掉 | 🟢 |
-| S4 | getty 期待 CR | 只发 `\n` 可能不换行 | 发送时 `\n` → `\r\n` | 🟢 |
-| S5 | 没有退出码 | 串口拿不到 exit status | 有文本回包 = 0；超时 = 124 | 🟢 |
-| S6 | 一次一行 | 串口的行缓冲吃不下多行脚本 | 指标采集要有**单行变体**（旧工程 `supports_script=False` 分支） | 🟢 |
-| S7 | 传不了文件 | UART 传文件没有意义 | `capabilities()` 不含 `files`，UI 相应禁用文件浏览器 | 🟢 |
-| S8 | 端口枚举 | PowerShell 的 `Win32_SerialPort` **列不出 CH343**，但端口确实在 | 用 pyserial 的 `list_ports`（旧工程已这么干） | 🟢 |
+| S1 | single channel | the command channel and the interactive terminal share one wire | one read thread + one transcript; a command claims its own reply through a marker | 🟢 |
+| S2 | marker protocol | the board echoes the command, so the marker appears twice in the transcript (once on the echo line, once after the output) | take the content between "the newline after the first occurrence" and "the second occurrence" | 🟢 |
+| S3 | marker format | it has to be unique every time | `__DBC<pid>_<millisecond timestamp>__`; it must be scrubbed out of the transcript before the text goes to the user | 🟢 |
+| S4 | getty expects CR | sending only `\n` may not produce a line break | send `\n` → `\r\n` | 🟢 |
+| S5 | no exit code | the serial port cannot return an exit status | a textual reply = 0; a timeout = 124 | 🟢 |
+| S6 | one line at a time | the serial line buffer cannot swallow a multi-line script | metric sampling needs a single-line variant (the `supports_script=False` branch of the previous project) | 🟢 |
+| S7 | no file transfer | sending files over UART is meaningless | `capabilities()` does not include `files`, and the UI disables the file browser accordingly | 🟢 |
+| S8 | port enumeration | PowerShell's `Win32_SerialPort` cannot list the CH343, but the port really is there | use pyserial's `list_ports` (the previous project already did this) | 🟢 |
 
-### 4.3 串口上跑通了整条读数链路（2026-11-13）🟢
+### 4.3 The whole reading chain works over serial (2026-11-13) 🟢
 
-`probe:board --profile board-serial` → **11 个 reader 全绿**
-（第一次跑是 11/11 超时——根因**不是代码**：宿主上计划 1 验收留下的
-`serial-server.py` **独占打开了 COM3**，**回包被它吃掉**；停掉它之后同一条命令全绿）。
+`probe:board --profile board-serial` → all 11 readers green
+(the first run timed out on 11/11 — the root cause was not the code: a `serial-server.py` left over on the host by the plan 1 acceptance run
+had opened COM3 exclusively and swallowed the replies; after stopping it the same command was all green).
 
-| 观察 | 说明 |
+| Observation | Explanation |
 |---|---|
-| `cpu.usage=0.596%`、`cpu.core.0..3=A55` / `4..7=A76` | 与 adb 上的读数**同形**（不是同值——值会变） |
-| `mem.usage=5.524%`、`backlight=200/255`、`cpu.governor=schedutil` | 与 §3.1 的实测一致 |
-| `custom.rk3588-atk.npu.duty=100` | **占空比绑在 `.duty` 上，没绑 `*.usage`**——规则 3 拦的那个洞没被踩 |
+| `cpu.usage=0.596%`, `cpu.core.0..3=A55` / `4..7=A76` | the same shape as the readings over adb (not the same values — the values change) |
+| `mem.usage=5.524%`, `backlight=200/255`, `cpu.governor=schedutil` | agrees with the measurements of §3.1 |
+| `custom.rk3588-atk.npu.duty=100` | the duty cycle is bound to `.duty`, not to `*.usage` — the hole that rule 3 blocks was not stepped into |
 
-> **这条也证明了一件事**：契约 §1.2.1 的「一次往返互斥」在**串口**上真的能用——
-> 三个 reader 的合成命令**一行**发出去（事实 S6），marker 把三段分开，**没有串台**。
+> This also proves one thing: the "one round trip, mutually exclusive" rule of contract §1.2.1 really works over serial —
+> the combined command of the three readers is sent as one line (fact S6), the marker separates the three parts, and there is no cross-talk.
 
 ### 4.4 SSH
 
-| # | 坑 | 现象 | 对策 | 标记 |
+| # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
-| H1 | `ssh.exe` 脚本里做不了密码认证 | 自动化调用失败 | 用 paramiko（Node 侧对应 `ssh2`） | 🟢 旧工程实测 |
+| H1 | `ssh.exe` cannot do password authentication in a script | the automated call fails | use paramiko (`ssh2` on the Node side) | 🟢 measured in the previous project |
 
 
 
-| # | 坑 | 现象 | 对策 | 标记 |
+| # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
-| H1 | `ssh.exe` 脚本里做不了密码认证 | 自动化调用失败 | 用 paramiko（Node 侧对应 `ssh2`） | 🟢 旧工程实测 |
-| H2 | 客机是 VMware NAT，板子在宿主物理网段（192.168.5.0/24），客机在 NAT 段（192.168.136.0/24） | **它们不是同网段**（别以为能直接互访）。⚠️ **2026-11-15 实测修正**：客机**能** ping 通并连上板子的 `192.168.5.100`（ping 2ms、22 端口可达）——**网络层是通的**（NAT 网关能路由到宿主物理段）。→ 真正缺的不是网络，是**凭据**：客机拿什么去连板子（客机公钥进板子的 `/root/.ssh/authorized_keys`）——那是 destructive 级的写 | 🟢 沙箱实测（`ping 192.168.5.100` + `connect()`） |
+| H1 | `ssh.exe` cannot do password authentication in a script | the automated call fails | use paramiko (`ssh2` on the Node side) | 🟢 measured in the previous project |
+| H2 | the guest is on VMware NAT, the board is on the host physical segment (192.168.5.0/24), the guest is on the NAT segment (192.168.136.0/24) | they are not on the same segment (do not assume they can reach each other directly). ⚠️ corrected by the measurement of 2026-11-15: the guest can ping the board's `192.168.5.100` and connect to it (ping 2 ms, port 22 reachable) — the network layer works (the NAT gateway can route to the host physical segment). What is really missing is the credential: what the guest uses to connect to the board (the guest's public key goes into the board's `/root/.ssh/authorized_keys`) — that is a destructive-level write | 🟢 measured in the sandbox (`ping 192.168.5.100` + `connect()`) |
 
-### 4.5 通用 / 宿主
+### 4.5 General / host side
 
-| # | 坑 | 现象 | 对策 | 标记 |
+| # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
-| G1 | 超时语义 | 各传输超时表现不一致 | **统一返回 124**，调用方只认这一个含义 | 🟢 旧工程约定 |
-| G2 | 未知 ≠ 零 | 「板子读不到」和「板子很闲」长得一样就是灾难 | 指标缺失用 `unknown`，UI 显示 `--`，绝不填 0 | 🟢 旧工程设计决策 |
-| G3 | 子进程闪黑窗 | Windows 上 GUI 拉起的进程默认开控制台窗；旧工程每秒采一次指标 → 屏幕狂闪 | 子进程一律 `CREATE_NO_WINDOW` / Node 侧 `windowsHide: true` | 🟢 |
-| G4 | 会话日志 | 崩溃/重启/关窗都不能丢记录 | 每行落盘 + flush；ANSI 码剥掉；路径 `%LOCALAPPDATA%/<App>/logs/<date>/<label>-<HHMMSS>.log` | 🟢 |
-| G5 | 终端不回流 | VT 终端加宽**不能**恢复被截掉的单元 | 要么不 resize，要么接受截断 | 🟢 旧工程 pyte 实测 |
+| G1 | timeout semantics | the timeouts of the different transports behave differently | return 124 in every case, the caller recognises that one meaning only | 🟢 previous project convention |
+| G2 | unknown ≠ zero | "the board cannot be read" and "the board is idle" looking the same is a disaster | a missing metric is `unknown`, the UI shows `--`, never fill in 0 | 🟢 previous project design decision |
+| G3 | the child process flashes a console window | on Windows a process launched by a GUI opens a console window by default; the previous project sampled metrics once a second → the screen flickered madly | child processes always use `CREATE_NO_WINDOW` / `windowsHide: true` on the Node side | 🟢 |
+| G4 | session log | a crash, a restart or closing the window must not lose the record | every line goes to disk + flush; the ANSI codes are stripped; the path is `%LOCALAPPDATA%/<App>/logs/<date>/<label>-<HHMMSS>.log` | 🟢 |
+| G5 | the terminal does not flow back | widening a VT terminal cannot restore the cells that were cut off | either do not resize, or accept the truncation | 🟢 measured with pyte in the previous project |
 
 ---
 
-## 5. 旧工程里可以直接继承的结论
+## 5. Conclusions that can be inherited directly from the previous project
 
-这些是旧工程用真机换来的判断，**新工程不必重新验证，直接继承**：
+These are the judgements the previous project paid for with real hardware; the new project does not have to verify them again, it inherits them directly:
 
-1. **UI 永远不直接碰设备**，一切经统一接口 —— 这条已经成立，直接继承（对应 tag/action 分层）。
-2. **能力协商驱动 UI 降级**：不支持 `files` 的目标，文件浏览器自动禁用。
-3. **「怎么连」和「连的是什么」要分开** —— 旧工程只做了前者（target profile），
-   板型差异（`fb000000.gpu` 这种路径）还硬编码在 `metrics.py` 里。
-   **新工程必须补上后者（板型 profile）**，这正是 tag 契约要解决的问题。
-4. **指标采集要一次往返**（见 A5/A6）—— 解析逻辑可以重写，**这个约束必须继承**。
-5. **`unknown` 语义**（G2）—— 继承。
-6. **统一超时码 124**（G1）—— 继承。
-7. **会话日志格式**（G4）—— 格式继承，路径里的应用名改成 `DevBoardCockpit`。
+1. The UI never touches the device directly, everything goes through one interface — this already holds, inherit it directly (it is the tag/action layering).
+2. Capability negotiation drives the degradation of the UI: a target that does not support `files` has the file browser disabled automatically.
+3. "How to connect" and "what it connects to" have to be kept apart — the previous project only did the former (target profile),
+   while the board differences (paths such as `fb000000.gpu`) were still hardcoded in `metrics.py`.
+   The new project must add the latter (board profile), and that is exactly the problem the tag contract is there to solve.
+4. Metric sampling has to be one round trip (see A5/A6) — the parsing logic can be rewritten, but this constraint has to be inherited.
+5. The `unknown` semantics (G2) — inherit.
+6. The uniform timeout code 124 (G1) — inherit.
+7. The session log format (G4) — inherit the format, and change the application name in the path to `DevBoardCockpit`.
 
-### 3.6 2026-11-16 · 手册对照后的板端实测（**扩充元操作与流程包的依据** 🟢）
+### 3.6 2026-11-16 · board measurements after the cross-check against the manual (the basis for extending the meta-operations and the workflow packs) 🟢
 
-> **依据**：《【正点原子】ATK-DLRK3588_Buildroot 系统快速体验手册 V1.0》第二章
-> 的功能测试矩阵 + **2026-11-16 在真板（`0000000000000000`）上逐条复验**。
-> 详细清单见随本工程分发的元操作与流程包扩充说明。
+> Basis: chapter 2 of the ALIENTEK ATK-DLRK3588_Buildroot System Quick Experience Manual V1.0
+> and its functional test matrix, plus a line-by-line re-verification on the real board (`0000000000000000`) on 2026-11-16.
+> The detailed list is in the meta-operations and workflow pack extension notes shipped with this project.
 
-#### 3.6.1 CPU 调频是 **policy 制**，不是 cpu 制 🟢
+#### 3.6.1 CPU frequency scaling is policy-based, not cpu-based 🟢
 
-| 事实 | 值 |
+| Fact | Value |
 |---|---|
-| **策略节点** | `policy0` / `policy4` / `policy6`（**只有三个** ✓） |
-| **policy0** | 核 **0-3**（A55 小核 ✓） |
-| **policy4** | 核 **4-5**（A76 大核 ✓） |
-| **policy6** | 核 **6-7**（A76 大核 ✓） |
-| `cpu{N}/cpufreq` | **是软链** → 指向 `../cpufreq/policyN` ✓ |
-| 可选 governor | `performance schedutil powersave ondemand userspace interactive conservative` ✓ |
-| 实测频率范围 | 小核 408000–1800000 ✓ · 大核 408000–2256000 ✓ |
+| Policy nodes | `policy0` / `policy4` / `policy6` (only three ✓) |
+| `policy0` | cores 0-3 (the A55 little cores ✓) |
+| `policy4` | cores 4-5 (the A76 big cores ✓) |
+| `policy6` | cores 6-7 (the A76 big cores ✓) |
+| `cpu{N}/cpufreq` | is a symlink → points at `../cpufreq/policyN` ✓ |
+| Available governors | `performance schedutil powersave ondemand userspace interactive conservative` ✓ |
+| Measured frequency range | little cores 408000–1800000 ✓ · big cores 408000–2256000 ✓ |
 
-> ⚠️ **写 `cpu0` 实际写的是 `policy0`** ✓ → **只管 4 个核** ✓。
-> 手册 §2.17 明确说「全部核心都建议开启」✓ → 所以有 `cpu.governor.set_all` ✓。
+> ⚠️ Writing `cpu0` actually writes `policy0` ✓ → it governs only 4 cores ✓.
+> Manual §2.17 explicitly says "enabling all cores is recommended" ✓ → hence there is a `cpu.governor.set_all` ✓.
 
-#### 3.6.2 **板子的系统时间是 1970-01-01** 🟢
+#### 3.6.2 The system time of the board is 1970-01-01 🟢
 
-| 事实 | 值 |
+| Fact | Value |
 |---|---|
 | `date` | `1970-01-01 12:43:24` ✓ |
-| `hwclock` | **`hwclock: RTC_RD_TIME: Invalid argument`** ✓（**RTC 读不出来** ✓） |
-| `/dev/rtc0` | **存在** ✓（节点在 ✓） |
-| `/sys/class/rtc/rtc0/name` | **存在** ✓ → 厂商的 `rtc_test.sh` **因此判过** ✓（它只查节点 ✓） |
+| `hwclock` | `hwclock: RTC_RD_TIME: Invalid argument` ✓ (the RTC cannot be read ✓) |
+| `/dev/rtc0` | exists ✓ (the node is there ✓) |
+| `/sys/class/rtc/rtc0/name` | exists ✓ → the vendor's `rtc_test.sh` therefore passed ✓ (it only checks that the node exists ✓) |
 
-> → **RTC 节点在，但读不出时间** ✓ → 板子**没有可用的绝对时间** ✓。
-> → 出厂系统有 NTP（手册 §2.6 ✓），但**没联网就不对** ✓。
-> → **所以「设系统时间」是真需求** ✓（`sysclock.set` ✓），
-> 而 **`hwclock.write` 在这块板上是废的** ✗ → **没有做成动作** ✓。
+> → The RTC node is there, but the time cannot be read ✓ → the board has no usable absolute time ✓.
+> → The factory system has NTP (manual §2.6 ✓), but without a network it is wrong ✓.
+> → So "setting the system time" is a real requirement ✓ (`sysclock.set` ✓),
+> while `hwclock.write` is useless on this board ✗ → it was not made into an action ✓.
 
-#### 3.6.3 板载 LED：**心跳模式下写亮度无效** 🟢
+#### 3.6.3 The on-board LED: writing the brightness has no effect in heartbeat mode 🟢
 
-| 事实 | 值 |
+| Fact | Value |
 |---|---|
-| 节点 | `/sys/class/leds/work/` ✓ |
-| 出厂 `trigger` | **`heartbeat`** ✓ |
-| 直接写 `brightness` | **读回还是 0** ✓（**值由触发器决定** ✓） |
-| 正确的写法 | **先 `echo none > trigger`，再写 brightness** ✓ → 读回 `1` ✓ |
+| Node | `/sys/class/leds/work/` ✓ |
+| Factory `trigger` | `heartbeat` ✓ |
+| Writing `brightness` directly | it still reads back as 0 ✓ (the value is decided by the trigger ✓) |
+| The correct way | first `echo none > trigger`, then write the brightness ✓ → it reads back as 1 ✓ |
 
-> 手册 §2.1 写的就是这两步 ✓。→ `led.set` 把它写成一条命令 ✓。
+> Manual §2.1 describes exactly these two steps ✓.→ `led.set` writes them as one command ✓.
 
-#### 3.6.4 板载工具的实测清单 🟢（手册用到的全在）
+#### 3.6.4 The measured list of the on-board tools 🟢 (everything the manual uses is there)
 
 `hdparm` `iperf3`(3.14) `dd` `evtest` `amixer` `arecord` `aplay` `gst-play-1.0`
 `gst-launch-1.0` `cansend` `candump` `ip` `rfkill` `wpa_supplicant` `connmanctl`
 `hciconfig` `hcitool` `ifconfig` `depmod` `modprobe` `insmod` `rmmod` `lsmod`
 `scp` `ssh` `dmesg` `hexdump` `od` `xxd` `pkill` `v4l2-ctl` `hwclock` `date` ✓
 
-#### 3.6.5 厂商**出厂自检脚本**在板上 🟢
+#### 3.6.5 The vendor factory self-test scripts on the board 🟢
 
-`/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/` ✓ —— 出厂测试 App 用的就是它 ✓。
+`/opt/ui/src/apps/resource/pcba/ATK-DLRK3588/` ✓ — this is what the factory test app uses ✓.
 
-| 脚本 | 实测结果 |
+| Script | Measured result |
 |---|---|
-| `cpufre_test.sh` | ✅ **过** ✓（查三个 policy 的 `cpuinfo_cur_freq` 在不在 ✓） |
-| `eth0_test.sh` | ✅ **过** ✓（eth0 有 IP ✓） |
-| `eth1_test.sh` | ❌ **不过** ✓（**eth1 没插网线** ✓） |
-| `wifi_test.sh` | ✅ **过** ✓ |
-| `bluetooth_test.sh` | ✅ **过** ✓（`hci0` UP RUNNING ✓） |
-| `rtc_test.sh` | ✅ **过** ✓（**但它只查节点存在** ✓ —— 与 `hwclock` 失败不矛盾 ✓） |
-| `sdcard_test.sh` | ❌ **不过** ✓（**没插 TF 卡** ✓） |
+| `cpufre_test.sh` | ✅ pass ✓ (checks whether `cpuinfo_cur_freq` of the three policies is there ✓) |
+| `eth0_test.sh` | ✅ pass ✓ (eth0 has an IP ✓) |
+| `eth1_test.sh` | ❌ fail ✓ (no Ethernet cable plugged into eth1 ✓) |
+| `wifi_test.sh` | ✅ pass ✓ |
+| `bluetooth_test.sh` | ✅ pass ✓ (`hci0` UP RUNNING ✓) |
+| `rtc_test.sh` | ✅ pass ✓ (but it only checks that the node exists ✓ — that is not a contradiction with `hwclock` failing ✓) |
+| `sdcard_test.sh` | ❌ fail ✓ (no TF card inserted ✓) |
 
-> ⚠️ **`mic_test.sh` / `loudspeaker_test.sh` 是 `for i in {1..1000}` 的死循环** ✓
-> → **不列进流程** ✓（跑一次几十分钟 ✓）。
+> ⚠️ `mic_test.sh` / `loudspeaker_test.sh` are `for i in {1..1000}` infinite loops ✓
+> → do not list them in a workflow ✓ (one run takes tens of minutes ✓).
 
-#### 3.6.6 MIPI CSI 相机的节点对照 🟢
+#### 3.6.6 The node mapping of the MIPI CSI cameras 🟢
 
-手册 §2.8 的丝印 ↔ 节点 ✓（**实测四个节点的 name 都是 `rkisp_mainpath`** ✓
-→ **型号认不出来** ✓ → **只能靠丝印对照认** ✓）：
+The silkscreen of manual §2.8 ↔ the nodes ✓ (all four nodes really report the name `rkisp_mainpath` ✓
+→ the model cannot be recognised from them ✓ → only the silkscreen mapping can identify them ✓):
 
-| 丝印 | 节点 |
+| Silkscreen | Node |
 |---|---|
 | MIPI CSI1 | `/dev/video62` ✓ |
 | MIPI CSI2 | `/dev/video71` ✓ |
 | MIPI CSI3 | `/dev/video44` ✓ |
 | MIPI CSI4 | `/dev/video53` ✓ |
 
-> **`v4l2-ctl --list-devices` 不能用** ✓ —— 它**去打开每一个设备节点** ✓
-> → 没插相机的节点让它**整体失败** ✓（实测 `Failed to open /dev/video0` ✓）。
-> → **读 sysfs** ✓（`/sys/class/video4linux/video*/name` ✓）—— 不碰设备节点 ✓。
+> `v4l2-ctl --list-devices` cannot be used ✓ — it goes and opens every device node ✓
+> → a node with no camera plugged in makes the whole command fail ✓ (measured `Failed to open /dev/video0` ✓).
+> → Read sysfs instead ✓ (`/sys/class/video4linux/video*/name` ✓) — it does not touch the device nodes ✓.
 
-#### 3.6.7 板子 ↔ 客机的网络是**单向**的 🟢
+#### 3.6.7 The network between the board and the guest is one-directional 🟢
 
-| 方向 | 结果 |
+| Direction | Result |
 |---|---|
-| **客机 → 板子**（`192.168.100.10` → `192.168.5.100`） | ✅ **通** ✓ |
-| **板子 → 客机** | ❌ **`Network is unreachable`** ✓（**不在同一网段** ✓） |
+| guest → board (`192.168.100.10` → `192.168.5.100`) | ✅ works ✓ |
+| board → guest | ❌ `Network is unreachable` ✓ (not on the same segment ✓) |
 
-> → **iperf3 必须是「板子做服务端」** ✓（反了就不通 ✓）。
+> → `iperf3` must have the board as the server ✓ (the other way round does not work ✓).
 
-#### 3.6.8 eMMC 与存储的实测速度 🟢
+#### 3.6.8 The measured speeds of the eMMC and the storage 🟢
 
-| 测项 | 实测 | 手册 |
+| Measurement | Measured | Manual |
 |---|---|---|
-| eMMC 写（`/userdata`，50 MB，`conv=fdatasync`） | **253 MB/s** ✓ | 164 MB/s ✓ |
-| eMMC 读（`hdparm -t /dev/mmcblk0p8`） | **345 MB/s** ✓ | 320 MB/s ✓ |
-| 千兆网（iperf3，板子做服务端） | **421–425 Mbits/sec** ✓ | ~900 Mbits/sec（直连对照 ✓） |
+| eMMC write (`/userdata`, 50 MB, `conv=fdatasync`) | 253 MB/s ✓ | 164 MB/s ✓ |
+| eMMC read (`hdparm -t /dev/mmcblk0p8`) | 345 MB/s ✓ | 320 MB/s ✓ |
+| Gigabit Ethernet (iperf3, the board as the server) | 421–425 Mbits/sec ✓ | ~900 Mbits/sec (direct connection comparison ✓) |
 
-> ⚠️ **写测速必须 `conv=fdatasync`** ✓ —— 不加它测的是**进缓存的速度** ✗。
+> ⚠️ The write benchmark must use `conv=fdatasync` ✓ — without it what is measured is the speed into the cache ✗.
 
-#### 3.6.9 两个**自杀式**的命令坑 🟢
+#### 3.6.9 Two self-destructive command traps 🟢
 
-| 坑 | 现象 | 正解 |
+| Trap | Symptom | Correct way |
 |---|---|---|
-| **`pkill -f "iperf3 -s"`** | **把自己的 shell 也杀了** ✓（`-f` 匹配整条命令行 ✓，模式出现在自己命令行里 ✓）→ 命令**无任何输出** ✓ + 退出码非 0 ✓ | **`pkill -x iperf3`** ✓（只匹配进程名 ✓） |
-| **`dd` 的统计打到 stderr** | 产出槽**是空的** ✓（执行器只取 stdout ✓） | **命令自己加 `2>&1`** ✓ |
+| `pkill -f "iperf3 -s"` | it kills its own shell as well ✓ (`-f` matches the whole command line ✓, and the pattern appears in its own command line ✓) → the command produces no output at all ✓ and a non-zero exit code ✓ | `pkill -x iperf3` ✓ (matches the process name only ✓) |
+| the statistics of `dd` go to stderr | the output slot is empty ✓ (the executor only takes stdout ✓) | the command adds `2>&1` itself ✓ |
 
-#### 3.6.10 其他两条 🟢
+#### 3.6.10 Two more 🟢
 
-| 事实 | 值 |
+| Fact | Value |
 |---|---|
-| `/proc/device-tree/model` | **带一个尾随 NUL** ✓ → **拼进命令会被注入防线拒绝** ✓（取数时 `tr -d '\0'` ✓） |
-| 串口节点 | **只有 `/dev/ttyS3`** ✓（UART2 是调试控制台 ✓，没有节点 ✓） |
-| 声卡 | `0 rockchiphdmiin` · **`1 rockchipes8388`** ✓ · `2 rockchiphdmi0` · `3 rockchiphdmi1` ✓ |
-| → | **厂商的 `mic_test.sh` 用 `amixer -c 3`** ✓ → **那指向的是 hdmi1** ✗ → **要用名字 `rockchipes8388`** ✓ |
+| `/proc/device-tree/model` | it carries a trailing NUL ✓ → pasting it into a command is rejected by the injection guard ✓ (`tr -d '\0'` when the value is read ✓) |
+| Serial node | only `/dev/ttyS3` ✓ (UART2 is the debug console ✓, it has no node ✓) |
+| Sound cards | `0 rockchiphdmiin` · `1 rockchipes8388` ✓ · `2 rockchiphdmi0` · `3 rockchiphdmi1` ✓ |
+| → | the vendor's `mic_test.sh` uses `amixer -c 3` ✓ → that points at hdmi1 ✗ → the name `rockchipes8388` has to be used ✓ |
 
 ---
 
-## 6. 复验命令（贴在宿主跑）
+## 6. The re-check commands (run on the host)
 
 ```powershell
 $adb = "C:\Users\<user>\Downloads\platform-tools_r33.0.3-windows\platform-tools\adb.exe"
 
-& $adb devices -l                                   # 板子是否在 device 状态
+& $adb devices -l                                   # is the board in the device state
 & $adb -s 0000000000000000 shell 'cat /etc/os-release | head -2; uname -r'
 & $adb -s 0000000000000000 shell 'grep MemTotal /proc/meminfo'
 & $adb -s 0000000000000000 shell 'cat /sys/class/devfreq/fb000000.gpu/load'
@@ -414,5 +417,5 @@ $adb = "C:\Users\<user>\Downloads\platform-tools_r33.0.3-windows\platform-tools\
 & $adb -s 0000000000000000 shell 'cat /sys/class/thermal/thermal_zone5/type'
 ```
 
-> 注意：PowerShell 里 `2>/dev/null` 会被 PowerShell 自己吃掉（当成重定向）。
-> 板端命令要整体放进**单引号**里再传，或改用 `shell sh -c '...'`。
+> Note: in PowerShell `2>/dev/null` is swallowed by PowerShell itself (it treats it as a redirection).
+> A board-side command has to go into single quotes as a whole before it is passed, or use `shell sh -c '...'`.

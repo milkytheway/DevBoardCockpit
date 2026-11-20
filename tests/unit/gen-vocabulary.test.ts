@@ -73,7 +73,7 @@ describe('词表生成器', () => {
 
   it('渲染的表格头与文档一致', () => {
     const doc = readFileSync(DOC_PATH, 'utf8');
-    const header = '| 模式 | 类型 | 单位 | 取值域 | 语义 | v1 |';
+    const header = '| Pattern | Type | Unit | Range | Semantics | v1 |';
     expect(doc).toContain(header);
     expect(renderMarkdownTable(vocab)).toContain(header);
   });

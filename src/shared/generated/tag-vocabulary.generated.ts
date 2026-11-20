@@ -23,7 +23,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "过去 1 秒内，所有 CPU 核心执行非空闲指令的时间占比",
+    semantics: "The share of the time in the past second during which all CPU cores executed non-idle instructions",
     v1: 'required',
   },
   {
@@ -31,23 +31,23 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "过去 1 秒内，单个 CPU 核心执行非空闲指令的时间占比",
+    semantics: "The share of the time in the past second during which a single CPU core executed non-idle instructions",
     v1: 'required',
   },
   {
     pattern: 'cpu.core.*.cluster',
     type: 'string',
     unit: '-',
-    range: "开放枚举",
-    semantics: "CPU 核心所属的簇名，如 A55 / A76。**未知名字按字符串原样上报**，不报错",
+    range: "open enumeration",
+    semantics: "The name of the cluster the CPU core belongs to, such as A55 / A76. An unknown name is reported verbatim as a string and is not an error",
     v1: 'required',
   },
   {
     pattern: 'cpu.governor',
     type: 'enum',
     unit: '-',
-    range: "开放枚举",
-    semantics: "当前生效的 CPU 调频策略（cpufreq 的 `scaling_governor`），如 `schedutil`。取 cpu0 的值；各核可独立设置",
+    range: "open enumeration",
+    semantics: "The CPU frequency scaling policy in effect (the `scaling_governor` of cpufreq), such as `schedutil`. The value of cpu0 is taken; each core can be set independently",
     v1: 'required',
   },
   {
@@ -55,7 +55,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "GPU 当前读数：执行非空闲指令的时间占比。**采样窗口由驱动决定**，不是固定的 1 秒",
+    semantics: "The current GPU reading: the share of the time executing non-idle instructions. The sampling window is decided by the driver and is not a fixed one second",
     v1: 'required',
   },
   {
@@ -63,7 +63,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'hertz',
     range: "≥0",
-    semantics: "GPU 当前工作频率",
+    semantics: "The current GPU operating frequency",
     v1: 'required',
   },
   {
@@ -71,7 +71,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "NPU 当前读数：各计算核利用率的**最大值**。**采样窗口由驱动决定**，不是固定的 1 秒",
+    semantics: "The current NPU reading: the maximum of the utilisation of the compute cores. The sampling window is decided by the driver and is not a fixed one second",
     v1: 'required',
   },
   {
@@ -79,7 +79,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "单个 NPU 计算核的当前利用率",
+    semantics: "The current utilisation of a single NPU compute core",
     v1: 'required',
   },
   {
@@ -87,7 +87,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: ">0",
-    semantics: "物理内存总量",
+    semantics: "The total amount of physical memory",
     v1: 'required',
   },
   {
@@ -95,7 +95,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "无需交换即可分配给新进程的内存（MemAvailable）",
+    semantics: "The memory that can be handed to a new process without swapping (MemAvailable)",
     v1: 'required',
   },
   {
@@ -103,7 +103,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "已用内存 = MemTotal - MemAvailable（**不含**可回收的 page cache）",
+    semantics: "The used memory = MemTotal - MemAvailable (excluding the reclaimable page cache)",
     v1: 'required',
   },
   {
@@ -111,7 +111,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'percent',
     range: [0,100],
-    semantics: "已用内存占物理内存总量的百分比",
+    semantics: "The percentage of the total physical memory that is in use",
     v1: 'required',
   },
   {
@@ -119,7 +119,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'celsius',
     range: "-",
-    semantics: "SoC 核心温度，按 thermal zone 的 `type` 归并，不依赖 zone 序号",
+    semantics: "The SoC core temperature, merged by the `type` of the thermal zone and not depending on the zone index",
     v1: 'required',
   },
   {
@@ -127,7 +127,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'celsius',
     range: "-",
-    semantics: "GPU 温度，按 thermal zone 的 `type` 归并",
+    semantics: "The GPU temperature, merged by the `type` of the thermal zone",
     v1: 'required',
   },
   {
@@ -135,7 +135,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'celsius',
     range: "-",
-    semantics: "NPU 温度，按 thermal zone 的 `type` 归并",
+    semantics: "The NPU temperature, merged by the `type` of the thermal zone",
     v1: 'required',
   },
   {
@@ -143,7 +143,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'string',
     unit: '-',
     range: "-",
-    semantics: "板子型号字符串，用于自动识别板型包",
+    semantics: "The board model string, used to identify the board pack automatically",
     v1: 'required',
   },
   {
@@ -151,7 +151,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'string',
     unit: '-',
     range: "-",
-    semantics: "运行中的内核版本字符串",
+    semantics: "The kernel version string of the running system",
     v1: 'reserved',
   },
   {
@@ -159,7 +159,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "自启动以来累计接收的字节数",
+    semantics: "The number of bytes received in total since boot",
     v1: 'reserved',
   },
   {
@@ -167,7 +167,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "自启动以来累计发送的字节数",
+    semantics: "The number of bytes sent in total since boot",
     v1: 'reserved',
   },
   {
@@ -175,7 +175,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "某个挂载点所在文件系统的可用字节数",
+    semantics: "The number of bytes available on the file system that holds a given mount point",
     v1: 'reserved',
   },
   {
@@ -183,7 +183,7 @@ export const CORE_VOCABULARY: readonly CoreTagEntry[] = [
     type: 'number',
     unit: 'byte',
     range: "≥0",
-    semantics: "某个挂载点所在文件系统的总字节数",
+    semantics: "The total number of bytes on the file system that holds a given mount point",
     v1: 'reserved',
   },
 ];

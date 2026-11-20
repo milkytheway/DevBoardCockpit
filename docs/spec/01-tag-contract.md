@@ -1,207 +1,207 @@
-> **来源与修订**：本文自前身工程 `DevBoardConsole\docs\spec\` 迁入（2026-11-12，Codex，提交 `c24b084`）。
-> 契约层为**权威文档**。**迁入后经 `0244852` 修订过**，2026-11-12 的评审又做了一轮修订
-> ——逐节来源见 `00-overview.md` §一之二。实现方式见仓库根目录的 `README.md`。
-# 语义 tag 契约
+> Source and revisions: this document was migrated from the predecessor project `DevBoardConsole\docs\spec\` (2026-11-12, Codex, commit `c24b084`).
+> The contract layer is the authoritative documentation. It was revised by `0244852` after the migration, and the review of 2026-11-12 revised it once more
+> — see `00-overview.md` section 1.2 for the per-section provenance. For the implementation see `README.md` at the repository root.
+# The Semantic Tag Contract
 
-> 卡片 ↔ 板子之间的总线。这份文档定义**词汇**，板型包定义**怎么产生**。
+> The bus between cards and boards. This document defines the vocabulary; the board pack defines how the values are produced.
 
 ---
 
-## 一、一个 tag 是什么
+## 1. What a tag is
 
-一个 tag 是**一个可被命名的标量量测**，有五个属性：
+A tag is a nameable scalar measurement with five attributes:
 
-| 属性 | 含义 | 例 |
+| Attribute | Meaning | Example |
 |---|---|---|
-| **名字** | 稳定标识，点号分层，全小写 | `cpu.usage` |
-| **类型** | number / string / boolean / enum | number |
-| **单位** | SI 单位或无量纲 | `percent` |
-| **取值域** | 合法范围，越界视为读失败 | `[0, 100]` |
-| **语义** | 这个数字**究竟是什么** | 「过去 1 秒所有核心的忙碌时间占比」 |
+| Name | A stable identifier, layered with dots, all lower case | `cpu.usage` |
+| Type | number / string / boolean / enum | number |
+| Unit | An SI unit or dimensionless | `percent` |
+| Range | The legal domain; a value outside it counts as a failed read | `[0, 100]` |
+| Semantics | What this number actually is | "the share of the busy time of all cores over the past second" |
 
-名字**不含板型**。`cpu.usage` 在 RK3588 上、在 RK3568 上、在全志上，含义必须一致。
+The name carries no board model. `cpu.usage` must mean the same thing on an RK3588, on an RK3568 and on an Allwinner board.
 
-### 名字的分层
+### How the name is layered
 
 ```
-cpu.usage                 设备 . 属性
-cpu.core.3.usage          设备 . 实例组 . 实例 . 属性
+cpu.usage                 device . attribute
+cpu.core.3.usage          device . instance group . instance . attribute
 npu.core.0.usage
 mem.total_bytes
 temp.soc
 ```
 
-规则：
+Rules:
 
-- **第一段是设备域**：`cpu` / `gpu` / `npu` / `mem` / `temp` / `disk` / `net` / `board` / …
-- **第二段起是实例组和实例**，只在需要区分同类实体时出现。
-- **最后一段是属性**。
-- 全小写，下划线连接单词（`temp.soc`、`net.rx_bytes`）。
-- **不缩写**：写 `gpu.freq_hz` 不写 `gpu.f`；写 `mem.used_bytes` 不写 `mem.u`。
+- The first segment is the device domain: `cpu` / `gpu` / `npu` / `mem` / `temp` / `disk` / `net` / `board` / …
+- From the second segment on there are instance groups and instances; they appear only when entities of the same kind have to be told apart.
+- The last segment is the attribute.
+- All lower case, words joined with underscores (`temp.soc`, `net.rx_bytes`).
+- No abbreviations: write `gpu.freq_hz`, not `gpu.f`; write `mem.used_bytes`, not `mem.u`.
 
-### 词表分层
+### How the vocabulary is layered
 
-| 层 | 谁定义 | 谁能用 | 稳定性 |
+| Layer | Defined by | Who may use it | Stability |
 |---|---|---|---|
-| **核心词表** | 本文档，随契约版本走 | 所有板、所有卡片 | 语义永不改变；要改语义就升版本并另起新名 |
-| **板型私有扩展** | board pack 自己声明，命名空间 `custom.<板型>.<…>` | 只有该板型的卡片 | 不保证跨板可用 |
+| The core vocabulary | this document, it follows the contract version | every board, every card | the semantics never change; to change the semantics, bump the version and start a new name |
+| The board-private extension | declared by the board pack itself, namespace `custom.<board model>.<…>` | only the cards of that board model | no guarantee that it works across boards |
 
-核心词表用**匹配模式**表达，模式里的 `*` 匹配恰好一段。
+The core vocabulary is expressed with matching patterns; the `*` in a pattern matches exactly one segment.
 
-> **权威在 `data/tag-vocabulary.yaml`。** 下面这张表是它的**渲染结果**，不是另一份定义。
-> 要新增或修改核心 tag，改 YAML；实现层的机器可读形态也从它生成。
-> 三者（YAML / 本表 / 实现层）由对拍测试保证逐条一致（`docs/04` §4.3）。
+> The authority is `data/tag-vocabulary.yaml`. The table below is its rendered result, not a second definition.
+> To add or change a core tag, change the YAML; the implementation layer's machine-readable form is generated from it too.
+> The three of them (the YAML / this table / the implementation layer) are kept consistent entry by entry by a cross-check test (the implementation-layer architecture record, section 4.3, calls this the only hard criterion against semantic drift).
 >
-> 表里多了一列 **v1**：`required` = v1 的板型包应提供；`reserved` = 词表保留语义但 v1 不要求任何包提供。
-> 这一列解决「词表里有定义、包里没有实现」的落差（`board.kernel`、`net.*`、`disk.*` 目前是 `reserved`）。
+> The table carries one extra column, v1: `required` means a v1 board pack should provide it; `reserved` means the vocabulary reserves the semantics but v1 requires no pack to provide it.
+> That column closes the gap between "the vocabulary has a definition" and "no pack implements it" (`board.kernel`, `net.*` and `disk.*` are `reserved` today).
 
-| 模式 | 类型 | 单位 | 取值域 | 语义 | v1 |
+| Pattern | Type | Unit | Range | Semantics | v1 |
 |---|---|---|---|---|---|
-| `cpu.usage` | number | percent | [0,100] | 过去 1 秒内，所有 CPU 核心执行非空闲指令的时间占比 | required |
-| `cpu.core.*.usage` | number | percent | [0,100] | 过去 1 秒内，单个 CPU 核心执行非空闲指令的时间占比 | required |
-| `cpu.core.*.cluster` | string | - | 开放枚举 | CPU 核心所属的簇名，如 A55 / A76。**未知名字按字符串原样上报**，不报错 | required |
-| `cpu.governor` | enum | - | 开放枚举 | 当前生效的 CPU 调频策略（cpufreq 的 `scaling_governor`），如 `schedutil`。取 cpu0 的值；各核可独立设置 | required |
-| `gpu.usage` | number | percent | [0,100] | GPU 当前读数：执行非空闲指令的时间占比。**采样窗口由驱动决定**，不是固定的 1 秒 | required |
-| `gpu.freq_hz` | number | hertz | ≥0 | GPU 当前工作频率 | required |
-| `npu.usage` | number | percent | [0,100] | NPU 当前读数：各计算核利用率的**最大值**。**采样窗口由驱动决定**，不是固定的 1 秒 | required |
-| `npu.core.*.usage` | number | percent | [0,100] | 单个 NPU 计算核的当前利用率 | required |
-| `mem.total_bytes` | number | byte | >0 | 物理内存总量 | required |
-| `mem.available_bytes` | number | byte | ≥0 | 无需交换即可分配给新进程的内存（MemAvailable） | required |
-| `mem.used_bytes` | number | byte | ≥0 | 已用内存 = MemTotal - MemAvailable（**不含**可回收的 page cache） | required |
-| `mem.usage` | number | percent | [0,100] | 已用内存占物理内存总量的百分比 | required |
-| `temp.soc` | number | celsius | - | SoC 核心温度，按 thermal zone 的 `type` 归并，不依赖 zone 序号 | required |
-| `temp.gpu` | number | celsius | - | GPU 温度，按 thermal zone 的 `type` 归并 | required |
-| `temp.npu` | number | celsius | - | NPU 温度，按 thermal zone 的 `type` 归并 | required |
-| `board.model` | string | - | - | 板子型号字符串，用于自动识别板型包 | required |
-| `board.kernel` | string | - | - | 运行中的内核版本字符串 | reserved |
-| `net.rx_bytes` | number | byte | ≥0 | 自启动以来累计接收的字节数 | reserved |
-| `net.tx_bytes` | number | byte | ≥0 | 自启动以来累计发送的字节数 | reserved |
-| `disk.*.free_bytes` | number | byte | ≥0 | 某个挂载点所在文件系统的可用字节数 | reserved |
-| `disk.*.total_bytes` | number | byte | ≥0 | 某个挂载点所在文件系统的总字节数 | reserved |
+| `cpu.usage` | number | percent | [0,100] | The share of the time in the past second during which all CPU cores executed non-idle instructions | required |
+| `cpu.core.*.usage` | number | percent | [0,100] | The share of the time in the past second during which a single CPU core executed non-idle instructions | required |
+| `cpu.core.*.cluster` | string | - | open enumeration | The name of the cluster the CPU core belongs to, such as A55 / A76. An unknown name is reported verbatim as a string and is not an error | required |
+| `cpu.governor` | enum | - | open enumeration | The CPU frequency scaling policy in effect (the `scaling_governor` of cpufreq), such as `schedutil`. The value of cpu0 is taken; each core can be set independently | required |
+| `gpu.usage` | number | percent | [0,100] | The current GPU reading: the share of the time executing non-idle instructions. The sampling window is decided by the driver and is not a fixed one second | required |
+| `gpu.freq_hz` | number | hertz | ≥0 | The current GPU operating frequency | required |
+| `npu.usage` | number | percent | [0,100] | The current NPU reading: the maximum of the utilisation of the compute cores. The sampling window is decided by the driver and is not a fixed one second | required |
+| `npu.core.*.usage` | number | percent | [0,100] | The current utilisation of a single NPU compute core | required |
+| `mem.total_bytes` | number | byte | >0 | The total amount of physical memory | required |
+| `mem.available_bytes` | number | byte | ≥0 | The memory that can be handed to a new process without swapping (MemAvailable) | required |
+| `mem.used_bytes` | number | byte | ≥0 | The used memory = MemTotal - MemAvailable (excluding the reclaimable page cache) | required |
+| `mem.usage` | number | percent | [0,100] | The percentage of the total physical memory that is in use | required |
+| `temp.soc` | number | celsius | - | The SoC core temperature, merged by the `type` of the thermal zone and not depending on the zone index | required |
+| `temp.gpu` | number | celsius | - | The GPU temperature, merged by the `type` of the thermal zone | required |
+| `temp.npu` | number | celsius | - | The NPU temperature, merged by the `type` of the thermal zone | required |
+| `board.model` | string | - | - | The board model string, used to identify the board pack automatically | required |
+| `board.kernel` | string | - | - | The kernel version string of the running system | reserved |
+| `net.rx_bytes` | number | byte | ≥0 | The number of bytes received in total since boot | reserved |
+| `net.tx_bytes` | number | byte | ≥0 | The number of bytes sent in total since boot | reserved |
+| `disk.*.free_bytes` | number | byte | ≥0 | The number of bytes available on the file system that holds a given mount point | reserved |
+| `disk.*.total_bytes` | number | byte | ≥0 | The total number of bytes on the file system that holds a given mount point | reserved |
 
-**背光为什么不在核心词表**：这块板有**两块**背光（`backlight` 与 `backlight1`），
-实例名与刻度都是板子特有的，不满足「语义在所有板上一致」的准入门槛。
-所以两个实例都走 `custom.<板型>.*`（用户 2026-11-12 拍板，见 `docs/06` C2）。
+Why the backlight is not in the core vocabulary: this board has two backlights (`backlight` and `backlight1`),
+and both the instance names and the scale are specific to the board, so they do not meet the admission threshold of "the semantics are the same on every board".
+Both instances therefore go through `custom.<board model>.*` (the user decided this on 2026-11-12; see item C2 of the contract reconciliation checklist).
 
-**「语义」这一栏不是装饰。** 它就是 `describe_tag()` 返回给 AI 的那段文字，
-也是防止「npu.usage」被当成任何模糊的「NPU 负载」来理解的唯一东西。
-没有语义的量不要进核心词表。
+The "semantics" column is not decoration. It is exactly the text that `describe_tag()` hands to the AI,
+and it is the only thing that stops `npu.usage` from being read as any vague "NPU load".
+A measurement without semantics does not enter the core vocabulary.
 
-**权威只有一份：`data/tag-vocabulary.yaml`。** 本表是它的渲染结果，
-实现层的机器可读形态也从它生成——不允许在代码里另写一份词表。
+There is only one authority: `data/tag-vocabulary.yaml`. This table is its rendered result,
+and the implementation layer's machine-readable form is generated from it too — writing a second vocabulary in code is not allowed.
 
-> **为什么强调「唯一」**：词表一旦有两份，就会漂移——改了文档没改代码，
-> 或者改了代码没改文档，而两边都说自己是对的。
-> 实现层的那一份是**生成物**，不是**源头**；源头永远在 YAML 里。
-> 评审通过后，实现层需要自带一个对拍测试：逐条比对「代码里的词表」、
-> 「本表的渲染结果」与「YAML」，不一致就红。
+> Why "only one" is emphasised: as soon as there are two copies of the vocabulary they drift — you change the document and not the code,
+> or you change the code and not the document, and both sides claim to be right.
+> The implementation layer's copy is a generated artefact, not a source; the source always lives in the YAML.
+> Once the review has passed, the implementation layer needs a cross-check test of its own: it compares entry by entry "the vocabulary in the code",
+> "the rendered result of this table" and "the YAML", and turns red when they disagree.
 
-新增一个核心 tag 是**契约升版本**的事，不是 board pack 的事。board pack 只能**声明自己实现了哪些核心 tag**。
+Adding a core tag is a contract version bump, not a board pack matter. A board pack may only declare which core tags it implements.
 
-> **本轮（T-6）新增了三个核心 tag**：`mem.available_bytes`、`cpu.governor`，
-> 以及把 `mem.used_bytes` 的语义写准（原来写「含可回收 page cache」，
-> 而 `MemTotal - MemAvailable` 恰恰是**不含**可回收部分的口径）。
-> 因为 `devboard/v1` 尚未随任何实现发布，这属于 **v1 定稿前的修正**，不是破坏性变更。
-> v1 一旦发布，核心 tag 的语义就不再原地改。
+> This round (T-6) added three core tags: `mem.available_bytes`, `cpu.governor`,
+> and a correct semantics for `mem.used_bytes` (it used to say "includes the reclaimable page cache",
+> whereas `MemTotal - MemAvailable` is precisely the definition that excludes the reclaimable part).
+> Because `devboard/v1` has not shipped with any implementation yet, this is a correction before v1 is finalised, not a breaking change.
+> Once v1 ships, the semantics of the core tags are never changed in place again.
 
-### 板型私有扩展的命名
+### Naming of the board-private extensions
 
-私有 tag 的命名空间是 `custom.<board pack id>.<…>`。
+The namespace of a private tag is `custom.<board pack id>.<…>`.
 
-- `<board pack id>` 可以含连字符（`rk3588-atk`），因为匹配是**字面前缀**匹配，不是段模式匹配。
-- 私有 tag 的段数不限：`custom.rk3588-atk.npu.duty` 是合法的。
-- 私有 tag **没有核心词表那样的语义约束**——它们是那块板自己的东西。
-  但 board pack 应该在自己的 README 里写清楚每一个的含义。
+- `<board pack id>` may contain a hyphen (`rk3588-atk`), because the matching is a literal prefix match and not a segment pattern match.
+- The number of segments in a private tag is not limited: `custom.rk3588-atk.npu.duty` is legal.
+- A private tag has none of the semantic constraints of the core vocabulary — it belongs to that one board.
+  A board pack should nevertheless document the meaning of each one in its own README.
 
 
 ---
 
-## 二、状态：一个 tag 不是一个数字
+## 2. States: a tag is not a number
 
-这是最容易做错、也最影响「驾驶舱 vs 遥控器」的地方。
+This is the easiest part to get wrong and the one that most decides "cockpit versus remote control".
 
-一个 tag 的读数**永远是**「值 + 状态」，不是裸值：
+The reading of a tag is always "a value plus a state", never a bare value:
 
-| 状态 | 含义 | 卡片怎么显示 |
+| State | Meaning | How a card displays it |
 |---|---|---|
-| `ok` | 有值，且在刷新周期内 | 正常显示 |
-| `stale` | 有值，但上次刷新失败，值可能过时 | 显示值 + 「已过时」标记 |
-| `unavailable` | 这块板不提供这个 tag，或该资源此刻不在 | 显示「不可用」，不显示数值 |
-| `error` | 应该能读，但读取或解析失败 | 显示错误 |
-| `pending` | 还没建立起基线（如需要两次采样做差） | 显示「等待」 |
+| `ok` | There is a value and it is inside the refresh cycle | display it normally |
+| `stale` | There is a value, but the last refresh failed, so the value may be out of date | show the value plus an "out of date" marker |
+| `unavailable` | This board does not provide the tag, or the resource is not there right now | show "unavailable", show no number |
+| `error` | It should be readable, but the read or the parse failed | show the error |
+| `pending` | No baseline has been established yet (for example when two samples have to be differenced) | show "waiting" |
 
-**关键约定：`unavailable` 和 `0` 是两回事，绝不能混。**
+The key rule: `unavailable` and `0` are two different things and must never be mixed up.
 
-这直接继承旧工程 `core/metrics.py` 里已经做对的事——那个 `Metrics` dataclass 里读不到的
-量是 `None` 而不是 `0.0`，注释写得很清楚：「一块够不到的板和一块没事干的板，绝不能长得
-一样」。契约把它升格成正式的状态机。
+This directly inherits something the old project's `core/metrics.py` already got right — in that `Metrics` dataclass
+a measurement that could not be read was `None` and not `0.0`, and the comment said it plainly: "a board you cannot
+reach and a board with nothing to do must never look the same". The contract promotes it into a formal state machine.
 
-这条约定是「驾驶舱」的底线：**显示 0% 负载的按钮，可能其实是没连上。** 反过来，一个
-`unavailable` 的按钮必须显示成不可用，而不是 0——否则用户会去点一个不存在的开关。
+This rule is the floor of a "cockpit": a button showing 0% load may in fact not be connected at all. In the other direction,
+an `unavailable` button has to be shown as unavailable and not as 0 — otherwise the user will press a switch that does not exist.
 
-### 2.1 状态怎么迁移
+### 2.1 How the states transition
 
-这张表是**有状态的**：运行时必须按这张表迁移，不能各写各的。
+This table is stateful: the runtime has to transition according to it, and each implementation must not invent its own.
 
-| 从 | 到 | 触发条件 |
+| From | To | Trigger |
 |---|---|---|
-| （无） | `pending` | 该 tag 第一次被读，且需要两次采样做差 |
-| （无） | `ok` | 该 tag 第一次被读，且单次即可算出（无历史依赖） |
-| `pending` | `ok` | 第二次采样完成，算出差值 |
-| `pending` | `pending` | 第二次采样仍未成功（基线还没建立） |
-| `pending` | `unavailable` | 资源已不存在 |
-| `pending` | `error` | 采样过程本身失败（命令非零、超时、传输断了） |
-| `ok` | `ok` | 读到新值 |
-| `ok` | `stale` | 本次刷新失败，但保留上一次的值 |
-| `ok` | `error` | 读出了值，但值**坏了**（解析失败、越界、类型不符） |
-| `ok` | `unavailable` | 资源消失（设备被拔出、debugfs 被卸载） |
-| `stale` | `ok` | 刷新恢复 |
-| `stale` | `stale` | 继续失败，值仍是旧的 |
-| `stale` | `error` | 刷新恢复但这次读出来的值坏了 |
-| `stale` | `unavailable` | 资源消失 |
-| `stale` | `pending` | 资源回来，但需要**重新建立基线**（有状态 tag） |
-| `unavailable` | `ok` | 资源回来，且直接能读出值 |
-| `unavailable` | `pending` | 资源回来，但需要**重新建立基线**（有状态 tag） |
-| `unavailable` | `error` | 资源回来了，但第一次读就失败 |
-| `error` | `ok` | 刷新恢复 |
-| `error` | `error` | 继续失败 |
-| `error` | `stale` | 继续失败，且之前有过一个可用的值——**保留它**，标为已过时 |
-| `error` | `unavailable` | 资源消失 |
-| `error` | `pending` | 资源回来，但需要重新建立基线 |
+| (none) | `pending` | The tag is read for the first time and two samples have to be differenced |
+| (none) | `ok` | The tag is read for the first time and one sample is enough (no dependency on history) |
+| `pending` | `ok` | The second sample completed and the difference was computed |
+| `pending` | `pending` | The second sample still failed (the baseline is still not established) |
+| `pending` | `unavailable` | The resource is gone |
+| `pending` | `error` | The sampling itself failed (non-zero command, timeout, the link dropped) |
+| `ok` | `ok` | A new value was read |
+| `ok` | `stale` | This refresh failed but the previous value is kept |
+| `ok` | `error` | A value was read but the value is broken (parse failure, out of domain, wrong type) |
+| `ok` | `unavailable` | The resource disappeared (the device was unplugged, debugfs was unmounted) |
+| `stale` | `ok` | The refresh recovered |
+| `stale` | `stale` | It keeps failing, the value is still the old one |
+| `stale` | `error` | The refresh recovered but the value read this time is broken |
+| `stale` | `unavailable` | The resource disappeared |
+| `stale` | `pending` | The resource came back but the baseline has to be re-established (a stateful tag) |
+| `unavailable` | `ok` | The resource came back and the value can be read straight away |
+| `unavailable` | `pending` | The resource came back but the baseline has to be re-established (a stateful tag) |
+| `unavailable` | `error` | The resource came back but the very first read failed |
+| `error` | `ok` | The refresh recovered |
+| `error` | `error` | It keeps failing |
+| `error` | `stale` | It keeps failing and there was a usable value before — keep it and mark it as out of date |
+| `error` | `unavailable` | The resource disappeared |
+| `error` | `pending` | The resource came back but the baseline has to be re-established |
 
-**这张表没有死路。** 每一行都可以走回 `ok`——一次瞬时故障不会让一张卡的显示永久坏掉。
-这很重要：`error` 和 `stale` 都不是终态。
+This table has no dead ends. Every row can walk back to `ok` — a momentary fault does not permanently break a card's display.
+That matters: neither `error` nor `stale` is a terminal state.
 
-**`unavailable` 与 `error` 的分界**：资源**不在**是 `unavailable`，资源**在但读不出来**
-是 `error`。
+The line between `unavailable` and `error`: a resource that is not there is `unavailable`; a resource
+that is there but cannot be read is `error`.
 
-> 一个具体的例子：RK3588 的 NPU 读 `/sys/kernel/debug/rknpu/load`，而
-> `/sys/kernel/debug` 默认没挂载。挂载与否是**环境状态**，不是板子能力的缺失——
-> 所以它是 `unavailable`（此刻读不到），不是 `error`（读的时候出了错）。
+> A concrete example: the NPU of an RK3588 reads `/sys/kernel/debug/rknpu/load`, and `/sys/kernel/debug` is not
+> mounted by default. Whether it is mounted is an environment state, not a missing board capability —
+> so it is `unavailable` (not readable right now), not `error` (something went wrong while reading).
 
-这直接影响卡片：一个 `unavailable` 的 widget 应当引导用户去挂载 debugfs，
-而不是报「NPU 读取失败」。
+This reaches the card directly: an `unavailable` widget should guide the user to mount debugfs,
+instead of reporting "NPU read failed".
 
-**取值越界算 `error` 还是 `unavailable`？算 `error`。**
-取值域（§一）是 tag 的语义契约；资源还在但读出的值不合法，是「读出来了但坏了」，
-与「资源不在」是两回事。实现层遇到越界值必须报 `error`，**不得**把它夹到合法区间当作 `ok`
-（那是在撒谎），也**不得**当 `0`（那是更糟的撒谎）。
+A value outside the domain counts as `error`, not as `unavailable`.
+The range (section 1) is the semantic contract of the tag; a resource that is still there but whose value is illegal is "it was read and it is broken",
+which is a different thing from "the resource is not there". The implementation layer has to report `error` for an out-of-domain value and must not clamp it into the legal range and treat it as `ok`
+(that would be lying), nor treat it as `0` (that would be a worse lie).
 
-**`stale` 保留旧值**，`unavailable` 不保留（值为 `null`）。
-`error` 的行为分两种，**由运行时决定，不由 reader 决定**：
+A `stale` reading keeps the old value; an `unavailable` one keeps nothing (the value is `null`).
+There are two behaviours for `error`, and the runtime decides which one applies, not the reader:
 
-| 情形 | 行为 |
+| Situation | Behaviour |
 |---|---|
-| 从 `ok`/`stale` 进入 `error`（值坏了） | **保留旧值**，同时标 `error` |
-| 从 `pending` 进入 `error`（从没成功过） | 没有旧值，值为 `null` |
+| Entering `error` from `ok`/`stale` (the value is broken) | Keep the old value and mark `error` at the same time |
+| Entering `error` from `pending` (it never succeeded) | There is no old value, the value is `null` |
 
-保留旧值是有理由的：一个刚刚掉线的板子，显示它最后一次已知的 37% 比显示空白有用——
-但必须**标出它已过时**，否则就是在撒谎。卡片拿到 `error` 且值为 `null` 时，
-显示「读取失败」；拿到 `error` 且有值时，显示「读取失败（显示的是上一次的值）」。
+Keeping the old value has a reason: for a board that has just dropped off, showing its last known 37% is more useful than showing a blank —
+but it has to be marked as out of date, otherwise that is lying too. When a card receives `error` with a `null` value it shows "read failed";
+when it receives `error` with a value it shows "read failed (showing the previous value)".
 
-### 2.1.1 读数的结构
+### 2.1.1 The structure of a reading
 
-一个读数是**一个结构**，不是一个裸值：
+A reading is a structure, not a bare value:
 
 ```json
 {
@@ -210,225 +210,225 @@ temp.soc
   "unit": "percent",
   "status": "unavailable",
   "reason": "device_absent",
-  "detail": "/sys/kernel/debug/rknpu/load 不存在：debugfs 未挂载。修复：mount -t debugfs debugfs /sys/kernel/debug",
+  "detail": "/sys/kernel/debug/rknpu/load does not exist: debugfs is not mounted. Fix: mount -t debugfs debugfs /sys/kernel/debug",
   "at": 1762910000123,
   "seq": 418
 }
 ```
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `value` | 当前值。`unavailable` 时**没有** value；`ok` 时**必带** value |
-| `status` | 五态之一 |
-| `reason` | **机器可读的封闭枚举**，见下 |
-| `detail` | **给人看的自由文本**。可含修复提示 |
-| `at` | 本次采样的完成时刻（毫秒 UTC） |
-| `seq` | 同一 tag 内**单调递增**的序号 |
+| `value` | The current value. With `unavailable` there is no value; with `ok` a value is always present |
+| `status` | One of the five states |
+| `reason` | A machine-readable closed enumeration, see below |
+| `detail` | Free text for humans. It may contain a repair hint |
+| `at` | The moment this sample completed (milliseconds, UTC) |
+| `seq` | A monotonically increasing sequence number within the same tag |
 
-**`reason` 是封闭枚举，带版本**（`reason_code_version`，与 `danger_floor_version` 同一治理模式）。
-起始码表：
+The `reason` is a closed enumeration and it carries a version (`reason_code_version`, governed exactly like `danger_floor_version`).
+The initial code table:
 
-| 码 | 语义 | 典型来源 |
+| Code | Semantics | Typical source |
 |---|---|---|
-| `not_found` | **你问的那个东西不存在**（当前板型包不提供这个 tag、动作 id 不存在……） | 静态可判，装卡时就能算出。**与 `04` §2.4 动作侧的 `not_found` 同名同义**——不给 AI 两套要互相翻译的方言（ADR-D27） |
-| `device_absent` | 资源此刻不在：路径不存在、设备被拔、挂载丢失 | reader 段缺失、文件不可读 |
-| `service_down` | 依赖的服务 / 进程没在跑 | `exec_regex` 的命令失败 |
-| `link_busy_terminal` | 链路被终端占用，采样暂停 | ADR-D23 |
-| `parse_error` | 读到了但解析不出来 | 格式不匹配 |
-| `out_of_domain` | 读到了但值越界 | 取值域校验失败 |
-| `timeout` | 这次读没在期限内完成 | 往返超时 |
+| `not_found` | The thing you asked for does not exist (the current board pack does not provide this tag, the action id does not exist, …) | Statically decidable, it can be computed while the card is being installed. It has the same name and the same meaning as the `not_found` on the action side in `04` section 2.4 — the AI does not get two dialects that have to be translated into each other (ADR-D27) |
+| `device_absent` | The resource is not there right now: the path does not exist, the device was unplugged, the mount is gone | The reader section is missing, the file cannot be read |
+| `service_down` | The service or process it depends on is not running | The command of `exec_regex` failed |
+| `link_busy_terminal` | The link is occupied by the terminal, sampling is paused | ADR-D23 |
+| `parse_error` | It was read but it cannot be parsed | The format does not match |
+| `out_of_domain` | It was read but the value is out of domain | The range check failed |
+| `timeout` | This read did not finish within the deadline | The round trip timed out |
 
-**为什么要「机器码 + 自由文本」两栏**：
-`reason` 给 AI 与卡片逻辑消费（`unavailable(device_absent)` 可以程序化地
-映射到一个「挂载 debugfs」按钮），`detail` 给人看。
-只给自由文本，等于每个包一种写法，AI 读不懂，降级提示无法被程序化消费。
+Why there are two columns, a machine code and free text:
+`reason` is there for the AI and for the card logic to consume (`unavailable(device_absent)` can be mapped programmatically onto a
+"mount debugfs" button), while `detail` is for humans.
+Free text alone means every pack has its own way of saying things, the AI cannot read it, and the degradation hints cannot be consumed programmatically.
 
-**码表保持最小**：具体性由 `detail` 承担，不为每个路径变体新增一个码。
+The code table stays minimal: the specificity is carried by `detail`, and no new code is added for every variation of a path.
 
-> **别把「动作没验证」塞进这张表。**
-> 本表是 **tag 读数**的原因码；**动作执行**的原因码在 `04` §2.4
-> （`readback_mismatch` / `denied` / `not_found` / …）——**两张表，别混**。
-> 「动作执行了但没有回读」既不是 tag 状态、也不是本表的码：
-> 它是动作结果上的一个**独立布尔字段 `verified`**（`04` §2.4）。
-> `unverified` **不是** tag 状态——加进五态模型会污染所有 tag 消费者。
+> Do not push "the action was not verified" into this table.
+> This table holds the reason codes for a tag reading; the reason codes for an action execution are in `04` section 2.4
+> (`readback_mismatch` / `denied` / `not_found` / …) — two tables, do not mix them.
+> "The action ran but there was no readback" is neither a tag state nor a code of this table:
+> it is a separate boolean field `verified` on the action result (`04` section 2.4).
+> `unverified` is not a tag state — adding it to the five-state model would pollute every consumer of tags.
 
-> **卡片 API 的错误码与这张 `reason` 码表共用一套词汇**——
-> 不给 AI 两套需要互相翻译的方言。
+> The error codes of the card API share one vocabulary with this `reason` table —
+> the AI does not get two dialects that have to be translated into each other.
 
-### 2.2 谁负责算什么
+### 2.2 Who is responsible for what
 
-| 谁 | 负责 |
+| Who | Is responsible for |
 |---|---|
-| **reader** | 判断这次读**成没成**：产出 `ok` / `pending` / `unavailable` / `error` |
-| **运行时** | 判断值**新不新**：把 `ok` 降级成 `stale`，并做 §2.1 的状态迁移 |
+| The reader | Deciding whether this read succeeded: producing `ok` / `pending` / `unavailable` / `error` |
+| The runtime | Deciding whether the value is fresh: downgrading `ok` to `stale` and performing the state transitions of section 2.1 |
 
-所以：**reader 不产出 `stale`。** `stale` 是一个关于「时间」的判断，而 reader 只知道
-「我刚才读到了什么」。运行时知道上一次成功是什么时候，所以由它来决定一个值是否还新鲜。
+So: a reader never produces `stale`. `stale` is a judgment about time, and a reader only knows
+"what I just read". The runtime knows when the last success was, so it decides whether a value is still fresh.
 
-这条分工很重要，因为它让 reader 保持纯函数：给它同样的输入，它给出同样的输出。
-`stale` 依赖历史，所以它不属于 reader。
+This division matters because it keeps the reader a pure function: given the same input it gives the same output.
+`stale` depends on history, so it does not belong to the reader.
 
-### 2.3 新鲜度
+### 2.3 Freshness
 
-**运行时**把一个 tag 标为 `stale` 的条件是：**最后一次成功读到现在，超过了 3 × 该 poll
-group 的刷新周期**。
+The runtime marks a tag as `stale` when more than 3 × the refresh period of its poll
+group has passed since the last successful read.
 
-这个倍数由契约固定，board pack 不能改。原因很简单：不同板子刷新快慢差很多，
-如果每个包自己定「多久算过时」，那 `stale` 就成了一个没有统一含义的词，
-AI 和卡片都无法据此判断。
+The multiplier is fixed by the contract and a board pack cannot change it. The reason is simple: boards differ a lot in how fast they refresh,
+and if every pack decides for itself "how long counts as out of date", then `stale` becomes a word with no uniform meaning
+and neither the AI nor the cards can judge anything on the basis of it.
 
-注意 `stale` 有**两个触发路径**，都是同一个状态：
+Note that `stale` has two trigger paths, and both lead to the same state:
 
-1. **刷新失败**——本次 poll 没能读出来，但保留着上一次的值，标记为 `stale`。
-2. **刷新停了**——整个 poll group 停止被轮询（连接断了、程序挂了），
-   值本身还在，但已经过了 3 倍周期。
+1. A failed refresh — this poll could not read the value, but the previous value is kept and marked `stale`.
+2. The refresh stopped — the whole poll group is no longer being polled (the connection dropped, the program crashed);
+   the value itself is still there, but three periods have passed.
 
-两者都是「值可能不准了」，卡片上的处理是一样的：**显示值 + 标出已过时**。
+Both of them mean "the value may no longer be accurate", and the card handles them the same way: show the value and mark it as out of date.
 
-**两条路径的优先级**：同一次刷新里如果**既失败又超时**（例如超时后紧接着连接断开），
-按 **`stale`** 处理，不进 `error`。理由：`stale` 说的是「值可能不准」，
-`error` 说的是「这次读出来的值坏了」——超时并没有读出任何坏值。
-只有**读出了值但值不合法**（越界、类型不符、解析出乱码）才是 `error`。
+The priority between the two paths: if in one refresh the read both fails and times out (for example a timeout immediately followed by the connection dropping),
+it is handled as `stale` and does not become `error`. The reason: `stale` says "the value may be inaccurate",
+while `error` says "the value read this time is broken" — a timeout did not read any broken value out.
+Only a value that was read but is illegal (out of domain, wrong type, parsed into garbage) is an `error`.
 
-**超时后本周期是跳过还是重试**：本周期**跳过**，不立刻重试。
-理由是旧工程的实测：每文件一次 `adb shell` ≈ 30ms，失败后立刻重试会在连接不稳时
-把板子打满，并把 `/proc/stat` 的采样窗口搅乱。下一次按 poll group 的正常周期重试。
+Whether the cycle is skipped or retried after a timeout: the cycle is skipped and there is no immediate retry.
+The reason comes from the old project's measurements: one `adb shell` per file is about 30ms, and retrying immediately after a failure floods the board while the connection is unstable
+and distorts the sampling window of `/proc/stat`. The next attempt comes at the normal period of the poll group.
 
-**重连后的状态**：连接断开又恢复时，该连接下**所有** tag 一律先转 `unavailable`，
-再按 §2.1 正常迁移（需要两次采样的转 `pending`）。不允许把断线前的旧值直接恢复成 `ok`——
-那正是「显示 0% 负载的按钮其实没连上」这类谎言的来源。
+The state after a reconnect: when a connection drops and comes back, all tags under that connection first go to `unavailable`,
+and then transition normally according to section 2.1 (the ones that need two samples go to `pending`). Restoring the pre-disconnect value directly as `ok` is not allowed —
+that is exactly the source of lies such as "the button showing 0% load was never connected".
 
 ---
 
-## 三、刷新模型
+## 3. The refresh model
 
-### 3.1 谁在轮询
+### 3.1 Who polls
 
-**运行时是唯一的轮询者。** 卡片订阅，agent 查询，都不自己轮询。
+The runtime is the only poller. Cards subscribe and agents query; neither polls on its own.
 
-理由在旧工程里有实测记录：每个文件 spawn 一次 `adb shell` 大约 30 ms，而且 fork 出来的
-shell 自己的 CPU 时间会记进 `/proc/stat`，让板子看起来 100% 忙。N 张卡各自轮询，
-负载就是 N 倍。
+The old project has measurements behind this: spawning one `adb shell` per file takes about 30ms, and the CPU time of the forked
+shell itself is booked into `/proc/stat`, which makes the board look 100% busy.
+With N cards polling independently the load is N times that.
 
-### 3.2 轮询的单位是 poll group
+### 3.2 The unit of polling is the poll group
 
-board pack 把 reader 分成 **poll group**（见 `02-board-pack.md` §1.2）。
-**一个 group = 一次往返 = 一个刷新周期。**
+The board pack groups the readers into poll groups (see `02-board-pack.md` section 1.2).
+One group = one round trip = one refresh period.
 
-同组的所有 reader 合成一条命令取回，每个 reader 的输出用 marker 隔开，所以一个 reader
-挂了不影响同组其他 reader。
+All the readers of a group are fetched with one combined command and each reader's output is separated by a marker, so a reader that fails
+does not affect the other readers of the same group.
 
-这解决了两个实测事实的冲突：`/proc/stat` 必须每秒采一次（占用率是两次采样做差），
-而 `/proc/device-tree/model` 一天不变。合成一条命令会让 model 每秒被重读一次，
-白费 30ms，还多一份 fork 的 CPU 噪声。
+This resolves the conflict between two measured facts: `/proc/stat` has to be sampled every second (the utilisation is the difference of two samples),
+while `/proc/device-tree/model` does not change all day. Combining the commands means the model is read again every second, wasting 30ms
+and adding one more source of fork CPU noise.
 
-因此：
+Therefore:
 
-| 概念 | 归属 | 周期 |
+| Concept | Belongs to | Period |
 |---|---|---|
-| poll group | board pack | 组自己的 `interval_ms` |
-| reader | board pack | 继承所在 group 的周期 |
-| tag | board pack | 继承其 reader 的周期 |
-| 刷新推送 | 运行时 | 按 group 周期 |
+| poll group | the board pack | its own `interval_ms` |
+| reader | the board pack | the period of the group it is in |
+| tag | the board pack | the period of its reader |
+| refresh push | the runtime | the period of the group |
 
-**card manifest 里的权限和降级判断用的是 tag 名，与轮询无关。**
+The permissions and the degradation decisions in the card manifest work on tag names and have nothing to do with polling.
 
-### 3.3 首次读的特殊性
+### 3.3 The special case of the first read
 
-有些量必须**两次采样做差**才能算出来（CPU 占用率就是这样）。这类 tag 在第一次读时返回
-`pending`，第二次起才有值。
+Some measurements can only be computed by differencing two samples (CPU utilisation is one of them). Such a tag returns `pending`
+on the first read and only has a value from the second one on.
 
-卡片必须能优雅处理 `pending`：显示「等待第一次采样」，而不是转圈或显示 0。
-
----
-
-## 四、tag 的发现
-
-核心问题：**AI 怎么知道一块板上有哪些 tag？**
-
-三种机制，缺一不可：
-
-### 4.1 静态：board pack 自述
-
-board pack 声明它实现了哪些 tag（见 `02-board-pack.md`）。这让 AI 不接板子也能先读懂这块板。
-
-### 4.2 动态：运行时列举
-
-`list_tags()` 返回当前连接的所有板**实际提供**的 tag，含实时状态。这解决「包说有，实际读不出来」的情况。
-
-### 4.3 自省：读一个 tag 的详细信息
-
-`describe_tag(name)` 返回类型、单位、取值域、当前值、状态、历史数据源。这是 AI 写卡片前的必查项。
-
-> **为什么不能靠静态文档**：能力是动态出现的——摄像头是插上的，NPU 驱动是后来装的，profile 是运行时加载的。文档永远滞后于现场。MCP 工具表里 `list_data_sources` 那一行的原话就是「能力动态出现，不能靠静态文档」。
+A card has to handle `pending` gracefully: show "waiting for the first sample", not a spinner and not a zero.
 
 ---
 
-## 五、缺 tag 怎么办（已定：可降级）
+## 4. Discovery of tags
 
-卡片引用了当前板子没有的 tag 时：
+The central question: how does the AI know which tags a board has?
 
-1. **卡片照常加载**。不拒绝、不报错、不阻塞。
-2. 引用缺失 tag 的那个 widget 显示「不可用」，并注明**缺哪个 tag**。
-3. manifest 里声明所需的 tag 清单和最低 board pack 版本；加载时由运行时做检查，把缺失项列出来。
+Three mechanisms, all of them necessary:
 
-这与 AI 协作的回路直接相关：agent 写卡 → 热插拔 → 你看效果 → agent 迭代。中间任何一步因为「这张卡在别的板子上不完整」而失败，迭代就断了。降级让「不完整的卡」依然可用、可看、可诊断。
+### 4.1 Static: the board pack describes itself
 
-**但降级不等于沉默。** 缺失必须**显式可见**：
-- 卡片内显示「不可用 · 缺 cpu.usage」
-- MCP 的 `validate_card` 返回缺失清单
-- MCP 的 `list_cards` 报告哪些卡在当前板上处于降级状态
+The board pack declares which tags it implements (see `02-board-pack.md`). That lets the AI understand the board before it is even connected.
 
----
+### 4.2 Dynamic: the runtime enumerates
 
-## 六、核心词表的门槛
+`list_tags()` returns all the tags that the boards of the current connection actually provide, with their live state. That covers the case of "the pack says so, but it cannot actually be read".
 
-什么量才有资格进核心词表？三个条件同时满足：
+### 4.3 Introspection: read the details of one tag
 
-1. **至少两块板会产生它**，或者它是一个 Linux 通用量（`mem.usage`、`board.model`）。
-2. **语义在所有板上一致**。「负载」在不同厂商的语义经常不一样（duty cycle vs 实际利用率——现有 `metrics.py` 里就踩过这个坑：NPU 的 devfreq `load` 文件空闲时读 `100@1000000000Hz`，那是占空比不是利用率，真正的利用率在 `rknpu` debugfs 里）。这类量**必须先在多个板上核对语义一致**，才能进核心词表。
-3. **有一个明确的失败语义**。读不到时状态是什么，写清楚。
+`describe_tag(name)` returns the type, the unit, the range, the current value, the state and the source of the history. This is the item the AI has to check before it writes a card.
 
-不满足条件的量，走 `custom.<板型>.*`。
-
-**这个门槛是防止核心词表膨胀成垃圾场的主要机制。** 词表每加一个词，就多一份「所有实现者都得按这个语义来」的承诺。
-
-**「保留」不等于「已实现」**：词表里 `v1: reserved` 的条目（`board.kernel`、`net.*`、`disk.*`）
-语义已经占位、名字已经占住，但 v1 不要求任何板型包提供。
-它们**不是**「漏实现了」——板型包不提供它们是合规的，卡片引用它们按 §五 走降级。
-这样做的目的是：等这些量真的被两块板实现时，名字不必另起，不必升契约版本。
-
-**「语义已占位」的名字也不许被实现者改写。** `reserved` 条目一旦被某块板实现，
-它的语义必须与词表里写的一致；实现者不得借「反正还没实现」自行定义语义。
+> Why static documentation cannot be relied on: capabilities appear dynamically — a camera is plugged in, the NPU driver is installed later, a profile is loaded at runtime. Documentation always lags behind the reality on site. The exact wording of the `list_data_sources` row in the MCP tool table is "capabilities appear dynamically, static documentation cannot be relied on".
 
 ---
 
-## 七、一个具体的坑：当心 duty cycle
+## 5. What happens when a tag is missing (settled: it degrades)
 
-这条值得单独立，因为它是真实踩过的：
+When a card references a tag the current board does not have:
 
-> 某厂商的 devfreq `load` 文件读出来是 `<duty>@<freq>Hz`。这个 duty 是**时钟占空比**，不是**利用率**。板子空闲时它读 100（时钟满速待命），板子满载时它读 100（真的在算）。用它当利用率，空闲的板会显示 100% 忙。
+1. The card still loads. It is not rejected, no error is raised and nothing is blocked.
+2. The widget that references the missing tag shows "unavailable" and names which tag is missing.
+3. The manifest declares the list of required tags and the minimum board pack version; the runtime performs the check while loading and lists the missing items.
 
-正确的来源通常是另一处（该厂商的 debugfs 或 sysfs 属性）。
+This is directly tied to the collaboration loop with the AI: the agent writes a card → it is hot-plugged → you look at the result → the agent iterates. If any step in between fails because "this card is incomplete on another board", the iteration is broken. Degradation keeps an "incomplete card" usable, visible and diagnosable.
 
-**契约层面的要求**：核心词表里的每个量，其「语义」一栏必须写清楚**它到底代表什么**。
-「利用率」不够，要写「当前读数：执行非空闲指令的时间占比，采样窗口由驱动决定」。
-写不清楚的量，不要进核心词表。
-
-> **不要写「过去 1 秒」除非确实是 1 秒。** CPU 占用率是**我们**做两次采样做差算出来的，
-> 所以它的窗口确实是两次采样间隔；GPU/NPU 的 devfreq 与 debugfs 读数是**驱动**给的快照，
-> 窗口由驱动决定。把这两种都写成「过去 1 秒」会让 agent 以为它们可以互相比较，
-> 也会让实现者去写一个根本做不到的滑动窗口。
+But degradation is not silence. A missing thing must be explicitly visible:
+- inside the card: "unavailable · missing cpu.usage"
+- the MCP `validate_card` returns the list of missing items
+- the MCP `list_cards` reports which cards are degraded on the current board
 
 ---
 
-## 八、名词对照
+## 6. The admission threshold of the core vocabulary
 
-| 契约名词 | 含义 | 现有代码对应 |
+What qualifies for the core vocabulary? All three conditions have to hold at the same time:
+
+1. At least two boards produce it, or it is a generic Linux quantity (`mem.usage`, `board.model`).
+2. The semantics are the same on every board. "Load" often means different things at different vendors (duty cycle versus actual utilisation — the existing `metrics.py` fell into exactly this trap: the NPU's devfreq `load` file reads `100@1000000000Hz` when idle, which is a duty cycle and not a utilisation; the real utilisation lives in the `rknpu` debugfs). Such a quantity must first be checked on several boards for a consistent meaning before it may enter the core vocabulary.
+3. It has a clear failure semantics. What the state is when it cannot be read has to be written down.
+
+A quantity that does not meet the conditions goes through `custom.<board model>.*`.
+
+This threshold is the main mechanism that keeps the core vocabulary from swelling into a junk yard. Every word added to the vocabulary is one more promise that "every implementer has to follow this meaning".
+
+"Reserved" does not mean "implemented": the entries marked `v1: reserved` in the vocabulary (`board.kernel`, `net.*`, `disk.*`)
+have their semantics and their names already taken, but v1 requires no board pack to provide them.
+They are not "forgotten implementations" — a board pack that does not provide them is compliant, and a card that references them degrades as described in section 5.
+The point is that when these quantities really are implemented on two boards, the name does not have to be reinvented and the contract version does not have to be bumped.
+
+A name whose semantics are already reserved may not be rewritten by the implementer either. Once a `reserved` entry is implemented by some board,
+its semantics have to match what the vocabulary says; an implementer may not define its own semantics on the grounds of "it was not implemented anyway".
+
+---
+
+## 7. A concrete trap: watch out for the duty cycle
+
+This one deserves a section of its own, because it was really fallen into:
+
+> At one vendor the devfreq `load` file reads `<duty>@<freq>Hz`. That duty is the clock duty cycle, not the utilisation. When the board is idle it reads 100 (the clock running at full speed on standby), and when the board is fully loaded it also reads 100 (really computing). Used as a utilisation, an idle board shows as 100% busy.
+
+The correct source is usually somewhere else (that vendor's debugfs or a sysfs attribute).
+
+The requirement at the contract level: for every quantity in the core vocabulary the "semantics" column has to spell out what it actually represents.
+"Utilisation" is not enough; it has to read "the current reading: the share of the time spent executing non-idle instructions, the sampling window is decided by the driver".
+A quantity that cannot be spelled out does not enter the core vocabulary.
+
+> Do not write "over the past second" unless it really is one second. The CPU utilisation is computed by us as the difference of two samples, so
+> its window really is the interval between two samples; the devfreq and debugfs readings of the GPU/NPU are snapshots given by the driver, and the
+> window is decided by the driver. Writing both of them as "over the past second" makes the agent believe they can be compared with each other,
+> and makes the implementer write a sliding window that simply cannot be built.
+
+---
+
+## 8. Glossary
+
+| Contract term | Meaning | Corresponding existing code |
 |---|---|---|
-| tag | 一个可命名的标量量测 | `Metrics` 里的一个字段（如 `cpu_total`） |
-| 状态 | ok / stale / unavailable / error / pending | `Metrics` 里的 `None` 与 `ok` 标志 |
-| reader | 一次往返取回的一批数据 | `SNAPSHOT_SCRIPT` 那段脚本 |
-| board pack | 一块板的 YAML 数据包 | 不存在（散落在 `metrics.py` 里） |
-| 动作 | GUI → 板的一次受控写入 | 不存在 |
+| tag | a nameable scalar measurement | a field of `Metrics` (for example `cpu_total`) |
+| state | ok / stale / unavailable / error / pending | the `None` and the `ok` flag in `Metrics` |
+| reader | a batch of data fetched in one round trip | that script of `SNAPSHOT_SCRIPT` |
+| board pack | the YAML data pack of one board | does not exist (scattered through `metrics.py`) |
+| action | one controlled write from the GUI to the board | does not exist |
 
