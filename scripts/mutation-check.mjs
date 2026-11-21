@@ -786,6 +786,10 @@ const MUTATIONS = [
   {
     name: 'M61 the watcher: after a change it has to attach again (the directory of a newly installed card has to be watched)',
     file: 'src/main/cards/watcher.ts',
+    // → **Only on Linux** ✓ — on Windows `fs.watch` on a directory already
+    //   reports the subtree ✓ (ReadDirectoryChangesW ✓) → the re-attach
+    //   cannot be seen there ✓ → the guard would be judged wrongly ✓.
+    only: 'linux',
     check: ['npx', 'vitest', 'run', 'tests/unit/cards/watcher.test.ts'],
     expect: '**the directory of a card that was installed after the startup is watched as well** (edit the file and it takes effect)',
     apply: (s) =>
@@ -2060,7 +2064,7 @@ const MUTATIONS = [
     name: 'M75 the shell: "is in the main area" is decided by the instance key (not by the cardId)',
     file: 'src/renderer/shell/nav.ts',
     check: ['npx', 'vitest', 'run', 'tests/web/shell-nav.test.ts'],
-    expect: 'the card that is placed in the work area is hinted as "already in the work area"',
+    expect: 'the placed card is marked by state',
     apply: (s) =>
       replace(
         s,
@@ -2738,9 +2742,13 @@ console.log();
  * source file stays in the repository with the mutation in it.
  */
 const FILTERS = process.argv.slice(2);
+// → **A guard that only makes sense on one platform** ✓ is skipped on the
+//   others ✓ (and it says so ✓ — it is not judged wrongly ✓).
+const PLATFORM = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+const onThisPlatform = (m) => m.only === undefined || m.only === PLATFORM;
 const selected = FILTERS.length
-  ? MUTATIONS.filter((m) => FILTERS.some((f) => m.name.includes(f)))
-  : MUTATIONS;
+  ? MUTATIONS.filter((m) => onThisPlatform(m) && FILTERS.some((f) => m.name.includes(f)))
+  : MUTATIONS.filter(onThisPlatform);
 
 if (selected.length === 0) {
   console.error(`no mutation matches: ${FILTERS.join(', ')}`);
