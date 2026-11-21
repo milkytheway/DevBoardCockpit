@@ -1,8 +1,8 @@
 # DevBoard Cockpit
 
-A Windows desktop workbench for embedded Linux boards. A standard set of board metrics exposes runtime state, composable cards build live instrumentation and controls, and workflow packs orchestrate build, deployment and verification tasks. The same capabilities are available to external agents through MCP.
-
 [中文](README.md)
+
+A Windows desktop workbench for embedded Linux boards. A standard set of board metrics exposes runtime state, composable cards build live instrumentation and controls, and workflow packs orchestrate build, deployment and verification tasks. The same capabilities are available to external agents through MCP.
 
 ![DevBoard Cockpit workbench](docs/assets/devboard-cockpit-workbench.png)
 

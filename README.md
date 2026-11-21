@@ -1,8 +1,8 @@
 # DevBoard Cockpit
 
-面向嵌入式 Linux 开发板的 Windows 桌面工作台。以标准板卡指标读取运行状态，通过可组合卡片构建实时监控与操作面板，通过流程包编排编译、部署和验证任务；同一套能力也可通过 MCP 提供给外部 agent。
-
 [English](README.en.md)
+
+面向嵌入式 Linux 开发板的 Windows 桌面工作台。以标准板卡指标读取运行状态，通过可组合卡片构建实时监控与操作面板，通过流程包编排编译、部署和验证任务；同一套能力也可通过 MCP 提供给外部 agent。
 
 ![DevBoard Cockpit 工作台](docs/assets/devboard-cockpit-workbench.png)
 
