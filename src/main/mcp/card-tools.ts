@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
-import { parseManifest } from '../cards/manifest';
+import { isSafeCardId, parseManifest } from '../cards/manifest';
 import type { CardRegistry } from '../cards/registry';
 /** The **minimal view** of an action (**only the few fields the installation needs** ✓ — not the whole definition ✓) */
 export interface PackActionView {
@@ -104,11 +104,24 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   const cardId = manifest.id;
   const target = join(deps.cardsRoot, cardId);
 
-  // → **The id was checked by the parser** ✓ (`parseManifest` ✓ — the closed
-  //   shape ✓ · one implementation ✓) → the host deletes a whole directory
-  //   tree here ✓ (rmSync recursive ✓) → the **path** is checked below ✓
-  //   (the second lock ✓ — the parser is the authority ✓ · the path is the
-  //   guarantee ✓).
+  // ── **The id must be a safe directory name** ✓ ──
+  //
+  // → The parser already rejects the other shapes ✓ (`parseManifest` ✓ — the
+  //   closed shape ✓ · one implementation ✓) → this is the **second lock on
+  //   the same door** ✓ → the host deletes a whole directory tree here ✓
+  //   (rmSync recursive ✓) → the check has to be **before** that ✓ (found on
+  //   2026-11-21 ✓: `"id": ".."` deleted the user data directory ✓).
+  if (!isSafeCardId(cardId)) {
+    return {
+      ok: false,
+      installed: false,
+      reason: 'invalid',
+      detail: `The card id "${cardId}" is not a name of letters, digits and hyphens`,
+    };
+  }
+
+  // → **And the path has to be inside the card root** ✓ (the third lock ✓ —
+  //   it does not trust the id ✓ · it looks at the path that was built ✓).
 
   // ── **The target must be inside the card root** ✓ ──
   //

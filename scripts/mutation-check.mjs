@@ -2507,8 +2507,6 @@ const MUTATIONS = [
       ),
   },
   {
-  },
-  {
     name: 'M236 the runtime **claims a board only after the connection is up**',
     file: 'src/main/tags/runtime.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-runtime.test.ts'],
