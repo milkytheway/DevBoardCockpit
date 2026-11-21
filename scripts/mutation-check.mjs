@@ -2765,7 +2765,12 @@ for (const m of selected) {
   //   it fail to apply ✓ (the text it searches for is not there ✓) → the
   //   guard would prove nothing ✓ (found on 2026-11-21 ✓: four guards had
   //   rotted that way ✓).
-  const original = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+  // → **The bytes are kept aside** ✓ — the file has to end up **exactly**
+  //   as it was ✓ (a file with CRLF ✓ that is written back with LF ✓ would
+  //   look changed ✓ → the run would report a dirty tree ✓ — found on
+  //   2026-11-21 ✓).
+  const bytes = readFileSync(path);
+  const original = bytes.toString('utf8').replace(/\r\n/g, '\n');
 
   let mutated;
   try {
@@ -2786,7 +2791,8 @@ for (const m of selected) {
     result = run(m.check[0], m.check.slice(1));
   } finally {
     // restore — whatever the verdict was, the file has to end up as it was
-    writeFileSync(path, original, 'utf8');
+    // → **The bytes go back** ✓ (byte for byte ✓)
+    writeFileSync(path, bytes);
     pendingRestore = null;
     clearJournal();
   }
