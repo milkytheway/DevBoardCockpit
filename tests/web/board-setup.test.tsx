@@ -25,6 +25,10 @@ const DETECTION = {
     { path: 'COM7', answered: true },
   ],
   boardPack: 'rk3588-atk',
+  sshKeys: [
+    { path: 'C:\\Users\\me\\.ssh\\id_ed25519_board', name: 'id_ed25519_board' },
+    { path: 'C:\\Users\\me\\.ssh\\id_ed25519_guest', name: 'id_ed25519_guest' },
+  ],
 };
 
 function apiMock(overrides: Partial<CockpitApi> = {}): {
@@ -63,15 +67,15 @@ describe('the board setup', () => {
       '192.168.100.10',
     );
     // → **The port that answers is offered** ✓
-    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('COM7');
+    expect((screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement).value).toBe('COM7');
   });
 
   it('**the port list says which port answers** ✓', async () => {
     apiMock();
     renderSetup();
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
-    const options = screen.getAllByRole('option') as HTMLOptionElement[];
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
+    const options = [...(screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement).options];
     const com3 = options.find((option) => option.value === 'COM3');
     const com7 = options.find((option) => option.value === 'COM7');
     expect(com3?.textContent).toContain('没回应');
@@ -83,7 +87,7 @@ describe('the board setup', () => {
     const onApplied = vi.fn();
     renderSetup(onApplied);
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
     fireEvent.click(screen.getByText('保存'));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply.mock.calls[0]?.[0]).toMatchObject({
@@ -101,7 +105,7 @@ describe('the board setup', () => {
     } as unknown as Partial<CockpitApi>);
     renderSetup();
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
     const save = screen.getByText('保存') as HTMLButtonElement;
     expect(save.disabled).toBe(true);
   });

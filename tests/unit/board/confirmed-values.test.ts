@@ -46,6 +46,7 @@ const VALUES = {
   adbSerial: 'f34dca7784396ab2',
   address: '192.168.100.10',
   serialPort: 'COM7',
+  keyFilename: 'C:\\Users\\me\\.ssh\\id_ed25519_board',
 };
 
 describe('the confirmed values · the payload', () => {
@@ -76,6 +77,11 @@ describe('the confirmed values · the profiles', () => {
   it('**the ssh connection gets the address** ✓', () => {
     const profile = applyValues(SSH, VALUES);
     expect(profile.options['host']).toBe('192.168.100.10');
+  });
+
+  it('**the ssh connection gets the credential** ✓', () => {
+    const profile = applyValues(SSH, VALUES);
+    expect(profile.options['key_filename']).toBe('C:\\Users\\me\\.ssh\\id_ed25519_board');
   });
 
   it('**the serial connection gets the port** ✓', () => {

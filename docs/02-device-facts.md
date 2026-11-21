@@ -45,7 +45,8 @@ counts.
 |---|---|---|---|
 | ADB | the board | board serial `0000000000000000`, state `device` | 🟢 `adb devices -l` |
 | Serial | the board | host `COM3` (CH343 USB-UART), 1500000 baud | 🟢 PnP enumeration |
-| SSH | Ubuntu guest (VMware) | `192.168.100.10`, user `alientek` | 🟡 profile from the previous project |
+| SSH | the board | `192.168.5.100:22`, user `root`, key `~/.ssh/id_ed25519_codex_board` | 🟢 measured 2026-11-21 (the handshake answers ✓) |
+| SSH | Ubuntu guest (VMware) | `192.168.136.131:22`, user `alientek`, key `~/.ssh/id_ed25519_codex_vm` | 🟢 measured 2026-11-21 (the old `192.168.100.10` was the VMware NAT gateway — not the guest — 🟡 from the previous project) |
 | Local | the host itself | — | 🟢 |
 
 The host adb path (not on PATH, `where adb` cannot find it):
@@ -245,13 +246,11 @@ had opened COM3 exclusively and swallowed the replies; after stopping it the sam
 | # | Trap | Symptom | Countermeasure | Mark |
 |---|---|---|---|---|
 | H1 | `ssh.exe` cannot do password authentication in a script | the automated call fails | use paramiko (`ssh2` on the Node side) | 🟢 measured in the previous project |
-
-
-
-| # | Trap | Symptom | Countermeasure | Mark |
-|---|---|---|---|---|
-| H1 | `ssh.exe` cannot do password authentication in a script | the automated call fails | use paramiko (`ssh2` on the Node side) | 🟢 measured in the previous project |
 | H2 | the guest is on VMware NAT, the board is on the host physical segment (192.168.5.0/24), the guest is on the NAT segment (192.168.136.0/24) | they are not on the same segment (do not assume they can reach each other directly). ⚠️ corrected by the measurement of 2026-11-15: the guest can ping the board's `192.168.5.100` and connect to it (ping 2 ms, port 22 reachable) — the network layer works (the NAT gateway can route to the host physical segment). What is really missing is the credential: what the guest uses to connect to the board (the guest's public key goes into the board's `/root/.ssh/authorized_keys`) — that is a destructive-level write | 🟢 measured in the sandbox (`ping 192.168.5.100` + `connect()`) |
+| H3 | **a key is bound to the host it opens** | the board's key does not open the guest and the guest's key does not open the board — the handshake answers "All configured authentication methods failed" in both directions | the credential is a **machine-specific value** ✓ and it is **verified** against the host ✓ (the key that authenticates is the credential of that host ✓) | 🟢 measured 2026-11-21 (`id_ed25519_codex_board` → `root@192.168.5.100` ✓ · `id_ed25519_codex_vm` → `alientek@192.168.136.131` ✓ · crossed over ✗) |
+| H4 | **the address of the guest is the one the person already reaches** | a connection that is not a board (the guest ✓) was pointing at the **board's** address — the board's answer for the guest ✓ and the guest's key does not open the board ✗ | the address of a machine that is not a board comes from the **person's own ssh records** ✓ (`~/.ssh/known_hosts` ✓ · `~/.ssh/config` ✓) — **the board's address never leaks into it** ✓ | 🟢 measured 2026-11-21 (`known_hosts` carries `192.168.136.131` ✓ · the guest's answer for the board ✗) |
+| H5 | **"cannot reach the host" is three different problems** | the board **answered** ✓ and refused the key ✗ — and the interface said "cannot reach the SSH host" ✓ → the user looks for a network problem that does not exist ✗ | the failure names the kind ✓: the host did not answer ✓ · it answered and refused the credential ✓ · there was no credential at all ✓ | 🟢 measured 2026-11-21 |
+| H6 | the handshake of ssh2 waits **20 seconds** by default | the interface says nothing for 20 seconds → **it looks like the application hangs** | `readyTimeout` ✓ (8 s ✓) | 🟢 measured 2026-11-21 |
 
 ### 4.5 General / host side
 
@@ -369,7 +368,7 @@ The silkscreen of manual §2.8 ↔ the nodes ✓ (all four nodes really report t
 
 | Direction | Result |
 |---|---|
-| guest → board (`192.168.100.10` → `192.168.5.100`) | ✅ works ✓ |
+| guest → board (`192.168.136.131` → `192.168.5.100`) | ✅ works ✓ |
 | board → guest | ❌ `Network is unreachable` ✓ (not on the same segment ✓) |
 
 > → `iperf3` must have the board as the server ✓ (the other way round does not work ✓).

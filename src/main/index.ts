@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, protocol } from 'electron';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import {
   IPC,
   parseCardCspViolation,
@@ -14,7 +15,7 @@ import type { HostWorkflowRun } from '../shared/ipc-contract';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
-import { fakeMode, type FakeMode } from './hal/fake/profile';
+import { fakeMode, fakeProfileIds, type FakeMode } from './hal/fake/profile';
 import { fakeRouteFor, profilesWithFake } from './hal/fake/wiring';
 import type { Connection } from './hal/connection';
 import { SessionLog } from './logging/session-log';
@@ -42,6 +43,9 @@ import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { listPacksIn, matchPack } from './tags/binding';
 import { applyValues, prepareProfile } from './board/prepare';
 import { hostPortProbe, listHostPorts } from './board/ports';
+import { readSshRecords } from './board/ssh-records';
+import { tcpAddressProbe } from './board/detect';
+import { sshAuthenticates } from './hal/ssh';
 import {
   listAdbDevices,
   probeSerialPorts,
@@ -216,6 +220,14 @@ async function createConnectionFor(
     // → It is only the **serial** connection that asks ✓ (the other two
     //   transports do not use a port ✓).
     ports: profile.transport === 'serial' ? hostPortProbe : undefined,
+    // → **The SSH records of this machine** ✓ (the addresses the person
+    //   reaches ✓ · the private keys they use ✓) → the credential is one of
+    //   them ✓ and it is **verified** against the host ✓.
+    ssh: readSshRecords(homedir()),
+    probeCredential: (target, candidate) => sshAuthenticates(target, candidate.key),
+    // → **Does the address still answer?** ✓ → a stored address that does
+    //   not answer is detected again ✓ (the freeze is broken ✓).
+    probeAddress: tcpAddressProbe,
     log: (message) => console.log(message),
   });
   return createConnection(prepared, log, { adbPath });
@@ -819,9 +831,20 @@ handle(IPC.cardsCsp, (instanceId, detail) => {
  * occupied) is not a failure, just move on to the next. If none works, go
  * through another round following the backoff schedule (a board plugged in
  * later must not leave the panels permanently empty).
+ *
+ * → **The fake board is not a candidate** ✓ — it is **synthetic data** ✓ →
+ *   it must never take the role of a real board ✓ (it always connects ✓ →
+ *   it wins the race ✓ → the runtime samples synthetic data ✓ and the
+ *   interface shows the fake board as the board it is on ✗ — found on
+ *   2026-11-21 ✓).
+ *   → **Unless the fake board is the only one there is** ✓
+ *   (`COCKPIT_FAKE=only` ✓) → then it is what the person asked for ✓.
  */
 async function startTagRuntime(): Promise<void> {
-  const candidates = pickCandidates(listProfiles());
+  const fakeIds = new Set(fakeProfileIds(process.env));
+  const candidates = pickCandidates(listProfiles()).filter(
+    (candidate) => FAKE_MODE === 'only' || !fakeIds.has(candidate.profileId),
+  );
   if (candidates.length === 0) {
     // No connection with a board pack: the panels will show 'no connection with a board pack'
     return;
@@ -923,7 +946,14 @@ handle(IPC.boardDetect, async () => {
 
   const packs = listPacksIn([join(app.getAppPath(), 'profiles', 'boards'), userBoardsDir()]);
   const boardPack = model === null ? null : (packs.find((pack) => matchPack(pack, model))?.id ?? null);
-  return { adbDevices: devices, model, address, ports, boardPack };
+
+  // → **The private keys of this machine** ✓ (the credential is a
+  //   machine-specific value ✓ → the person says which one it is ✓).
+  const sshKeys = readSshRecords(homedir()).keys.map((path) => ({
+    path,
+    name: basename(path),
+  }));
+  return { adbDevices: devices, model, address, ports, boardPack, sshKeys };
 });
 
 /**

@@ -101,7 +101,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'rgba(4, 6, 9, 0.5)',
     family: 'veil',
     status: 'legacy',
-    usage: '原始读数（JSON）块的底 —— v0.6 规则，后续被 color-mix 版覆盖',
+    usage: 'the background of the raw reading (JSON) block - the v0.6 rule, later covered by the color-mix version',
   },
   {
     name: '--shell-mat-veil-terminal',
@@ -109,7 +109,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'rgba(6, 8, 11, 0.66)',
     family: 'veil',
     status: 'active',
-    usage: '终端窗格的底 —— 终端要的是"沉进去"，不能和面板一样亮',
+    usage: 'the background of the terminal pane - the terminal has to sink into the page, it may not be as bright as a panel',
   },
   {
     name: '--shell-mat-veil-canvas',
@@ -117,7 +117,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'radial-gradient(80% 60% at 40% 40%, rgba(255, 255, 255, 0.025), transparent 70%)',
     family: 'veil',
     status: 'legacy',
-    usage: '画布中央的一圈环境光 —— v0.6 glass pass',
+    usage: 'the ring of ambient light in the middle of the canvas - the v0.6 glass pass',
   },
 
   // ── edge: outlines and highlights ─────────────────────────────
@@ -127,7 +127,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'rgba(255, 255, 255, 1)',
     family: 'edge',
     status: 'active',
-    usage: '面上沿那一道 1px 高光 —— 面板/卡片/窗格共用，是"这块是浮起来的"的主要信号',
+    usage: 'the 1px highlight along the top edge - panels / cards / panes share it; it is the main signal that "this is floating"',
   },
   {
     name: '--shell-mat-edge-bright',
@@ -135,7 +135,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'rgba(255, 255, 255, 0.35)',
     family: 'edge',
     status: 'active',
-    usage: '主按钮上沿的强高光 —— 主按钮是唯一允许"发光"的东西',
+    usage: 'the strong highlight along the top edge of the primary button - the primary button is the only thing allowed to "glow"',
   },
   {
     name: '--shell-mat-edge-hairline',
@@ -143,7 +143,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'rgba(255, 255, 255, 0.16)',
     family: 'edge',
     status: 'active',
-    usage: '发丝线里掺的那一点白 —— 纯 border 太硬，掺白才有"金属细线"的感觉',
+    usage: 'the little white mixed into the hairline - a pure border is too hard; the white gives it the feel of a "metal thread"',
   },
 
 
@@ -154,7 +154,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.025) 46%)',
     family: 'sheen',
     status: 'active',
-    usage: '玻璃卡片面的渐变高光 —— v0.7 生效值',
+    usage: 'the gradient highlight on the face of a glass card - the value in effect since v0.7',
   },
   {
     name: '--shell-mat-sheen-card-v2',
@@ -162,7 +162,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 48%)',
     family: 'sheen',
     status: 'legacy',
-    usage: '玻璃卡片面高光 —— v0.7 第一遍，被后一遍覆盖',
+    usage: 'the highlight on the face of a glass card - the first pass of v0.7, covered by the later one',
   },
   {
     name: '--shell-mat-sheen-card-v1',
@@ -170,7 +170,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: 'linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%)',
     family: 'sheen',
     status: 'legacy',
-    usage: '玻璃卡片面高光 —— v0.6',
+    usage: 'the highlight on the face of a glass card - v0.6',
   },
   {
     name: '--shell-mat-pure-white',
@@ -178,7 +178,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '#ffffff',
     family: 'sheen',
     status: 'active',
-    usage: '浅色皮肤上的纯白 —— 浮层底、渐变起点',
+    usage: 'the pure white on the light skin - the background of an overlay, the start of a gradient',
   },
 
   // ── canvas: the layer at the very bottom ─────────────────────
@@ -188,7 +188,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '#F5F6F7',
     family: 'canvas',
     status: 'active',
-    usage: '玻璃画布的底 —— 深色比 --cockpit-bg 更黑让浮层浮起来；浅色用暖灰底衬托浮层',
+    usage: 'the background of the glass canvas - in the dark skin it is blacker than --cockpit-bg so that the overlays float; in the light skin a warm grey carries them',
   },
   {
     name: '--shell-mat-canvas-v1',
@@ -196,7 +196,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '#EEF0F2',
     family: 'canvas',
     status: 'legacy',
-    usage: '玻璃画布的底 —— v0.7 第一遍',
+    usage: 'the background of the glass canvas - the first pass of v0.7',
   },
 
   // ── lift: shadows ────────────────────────────────────────────
@@ -206,7 +206,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 10px 26px -20px rgba(23, 30, 40, 0.28), 0 1px 2px -1px rgba(23, 30, 40, 0.14)',
     family: 'lift',
     status: 'active',
-    usage: '面板与窗格的常规投影 —— 浅色皮肤用带色相的冷灰，不用纯黑',
+    usage: 'the ordinary shadow of panels and panes - the light skin uses a cool grey with a hue, not pure black',
   },
   {
     name: '--shell-mat-shadow-float',
@@ -214,7 +214,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 24px 60px -30px rgba(23, 30, 40, 0.3)',
     family: 'lift',
     status: 'active',
-    usage: '浮层（调色板 / 卡片菜单）的投影 —— 比常规投影更远更淡',
+    usage: 'the shadow of an overlay (the palette / the card menu) - further away and lighter than the ordinary shadow',
   },
   {
     name: '--shell-mat-shadow-glass',
@@ -224,7 +224,7 @@ export const MATERIALS: readonly MaterialDef[] = [
       '0 34px 66px -32px rgba(0, 0, 0, 0.98), 0 10px 26px -14px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
     family: 'lift',
     status: 'active',
-    usage: '玻璃卡片的投影 —— v0.7 生效值（远投影 + 近投影 + 内嵌上沿高光）',
+    usage: 'the shadow of a glass card - the value in effect since v0.7 (a far shadow + a near shadow + an inset highlight along the top edge)',
   },
   {
     name: '--shell-mat-shadow-glass-hover',
@@ -234,7 +234,7 @@ export const MATERIALS: readonly MaterialDef[] = [
       '0 44px 86px -34px rgba(0, 0, 0, 1), 0 14px 34px -16px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.16)',
     family: 'lift',
     status: 'active',
-    usage: '玻璃卡片悬停时的投影 —— 比常态更大更黑',
+    usage: 'the shadow of a glass card under the pointer - bigger and darker than the resting one',
   },
   {
     name: '--shell-mat-shadow-glass-v1',
@@ -244,7 +244,7 @@ export const MATERIALS: readonly MaterialDef[] = [
       '0 28px 56px -30px rgba(0, 0, 0, 0.95), 0 6px 18px -10px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09)',
     family: 'lift',
     status: 'legacy',
-    usage: '玻璃卡片投影 —— v0.6 glass pass',
+    usage: 'the shadow of a glass card - the v0.6 glass pass',
   },
   {
     name: '--shell-mat-shadow-glass-hover-v1',
@@ -254,7 +254,7 @@ export const MATERIALS: readonly MaterialDef[] = [
       '0 34px 64px -30px rgba(0, 0, 0, 0.98), 0 10px 24px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
     family: 'lift',
     status: 'legacy',
-    usage: '玻璃卡片悬停投影 —— v0.6 glass pass',
+    usage: 'the shadow of a glass card under the pointer - the v0.6 glass pass',
   },
   {
     name: '--shell-mat-shadow-detail',
@@ -262,7 +262,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '-24px 0 48px rgba(30, 40, 55, 0.16)',
     family: 'lift',
     status: 'active',
-    usage: '详情栏的投影 —— 只有左侧一道（它是覆盖式浮层，右侧没有边界）',
+    usage: 'the shadow of the detail column - only on the left (it is an overlay, it has no edge on the right)',
   },
   {
     name: '--shell-mat-shadow-detail-v1',
@@ -270,7 +270,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '-20px 0 40px -32px rgba(0, 0, 0, 0.9)',
     family: 'lift',
     status: 'legacy',
-    usage: '详情栏早期投影 —— 被后来的 .detail 规则覆盖',
+    usage: 'the early shadow of the detail column - covered by the later .detail rule',
   },
   {
     name: '--shell-mat-shadow-active',
@@ -278,7 +278,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 6px 16px -12px rgba(0, 0, 0, 0.8)',
     family: 'lift',
     status: 'active',
-    usage: '侧栏选中项的投影 —— 选中项是"抬起来"的，不是"换了颜色"',
+    usage: 'the shadow of the selected row in the sidebar - the selected row is "lifted", not "recoloured"',
   },
   {
     name: '--shell-mat-shadow-lift',
@@ -286,7 +286,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 30px 60px -26px rgba(0, 0, 0, 0.9)',
     family: 'lift',
     status: 'active',
-    usage: '拖拽中的卡片被抬起时的投影',
+    usage: 'the shadow of a card that is lifted while it is dragged',
   },
   {
     name: '--shell-mat-shadow-hover-v1',
@@ -294,7 +294,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 22px 44px -24px rgba(0, 0, 0, 0.95)',
     family: 'lift',
     status: 'legacy',
-    usage: '卡片悬停投影 —— v0.6，被玻璃版覆盖',
+    usage: 'the shadow of a card under the pointer - v0.6, covered by the glass version',
   },
   {
     name: '--shell-mat-shadow-selected',
@@ -302,7 +302,7 @@ export const MATERIALS: readonly MaterialDef[] = [
     light: '0 24px 48px -26px rgba(0, 0, 0, 0.95)',
     family: 'lift',
     status: 'active',
-    usage: '选中卡片的投影 —— 选中是"被拿起来看"，不是"亮了"',
+    usage: 'the shadow of the selected card - being selected is "picked up to look at", not "lit up"',
   },
 ];
 

@@ -999,7 +999,7 @@ Three ways to bind, ordered by how reliable they are:
   "transport": "adb",
   "options": { "pty": false, "prompt": "root@board" },
   "board_pack": "rk3588-atk",
-  "device_key": "atk-01"
+  "device_key": "ATK-DLRK3588"
 }
 ```
 
@@ -1024,6 +1024,25 @@ Three ways to bind, ordered by how reliable they are:
 
 An unknown top-level field is an error ✓ (the same closed rule as rule 24 of section 7 ✓).
 
+### 10.1.1 The two layers of one profile
+
+> **The identity comes from the shipped profile ✓ · the machine-specific values come from the user's copy ✓** (decision record SPEC-D28 ✓).
+
+| Layer | The fields | Where it comes from | Why |
+|---|---|---|---|
+| **The identity** | `label` ✓ · `transport` ✓ · `board_pack` ✓ · `device_key` ✓ | the **shipped** profile ✓ | it says **which board** it is ✓ and **which channel** it uses ✓ — it does not belong to one machine ✓ |
+| **The machine-specific values** | the `options` ✓ (the address ✓ · the serial number ✓ · the serial port ✓ · the credential ✓) | the **user's** copy ✓ | they belong to **the machine the profile is used on** ✓ |
+
+| Item | Rule |
+|---|---|
+| The same id in both directories | **one profile** ✓ — the two copies are merged ✓ |
+| The merge | the identity from the shipped profile ✓ · the options field by field ✓ (the user's value wins ✓ · the shipped fields the user's copy does not name survive ✓) |
+| An option of the user's copy that the transport does not allow | it is **dropped** ✓ (the shipped value stays ✓) — a profile that does not fit its transport is not a profile ✓ |
+| A copy that is stale | it is **reported** ✓ (and the shipped identity is used ✓) |
+| A profile that only the user's directory has | it is used **as it is** ✓ (the wizard's own board ✓) |
+
+> **Why not "the user's copy wins completely"** ✓: a copy that is written once and never touched **freezes** the profile ✓ → a shipped fix never reaches the machine ✓ (found on 2026-11-21 ✓: the board was still called `atk-01` although the shipped profile says `ATK-DLRK3588` ✓).
+
 ### 10.2 `device_key`: the physical board and the connection are two layers
 
 | Item | Rule |
@@ -1046,7 +1065,7 @@ An unknown top-level field is an error ✓ (the same closed rule as rule 24 of s
   "id": "board-adb",
   "transport": "adb",
   "board_pack": "rk3588-atk",
-  "device_key": "atk-01",
+  "device_key": "ATK-DLRK3588",
   "options": {
     "serial": "0000000000000000",
     "pty": false,
@@ -1066,6 +1085,22 @@ An unknown top-level field is an error ✓ (the same closed rule as rule 24 of s
 > Why it is needed ✓: an action that crosses machines is started on the other machine ✓ (`05` section 8.C ✓) →
 > that command needs the SSH address of the board ✓ → the workflow pack should not know the address of the board ✓ →
 > it travels with the profile ✓ (machine-specific values do not go into a pack ✓ — see SPEC-D26 in `00-overview.md` ✓).
+
+#### 10.3.1 The credential: the key that opens the host
+
+> The credential is as **machine-specific** as the address ✓ (decision record SPEC-D29 ✓).
+
+| Item | Rule |
+|---|---|
+| Where it lives | in the `options` of the **ssh** transport ✓ (`key_filename` ✓ · `password` ✓) — a published repository must not carry it ✓ |
+| Which key it is | **the key that authenticates at that host** ✓ — the criterion is the handshake ✓ (**a measurement ✓** — never a guess ✓) |
+| The address of a **machine that is not a board** ✓ (the guest ✓) | it comes from the person's own ssh records ✓ (`~/.ssh/known_hosts` ✓ · `~/.ssh/config` ✓) → **the board's address never leaks into it** ✓ |
+| The address of a **board** ✓ | it comes from the board itself ✓ (`adb shell ip -4 addr show` ✓) |
+| A stored address that does not answer | it is **detected again** ✓ (a value that looks plausible but is wrong was invisible to the "is it a placeholder" check ✓) |
+| The failure | it says **which** problem it is ✓: the host did not answer ✓ · the host answered and refused the credential ✓ · there was no credential at all ✓ |
+
+> → **The three link kinds are one shape** ✓: **the host → the board** ✓ · **the host → the host-machine (the guest)** ✓ · **the guest → the board** ✓ (it travels with the profile ✓ · `options.ssh` ✓).
+> → **Adding a board is adding a kit** ✓ (`06` ✓) — nothing in the code changes ✓ (decision record SPEC-D27 ✓).
 
 ### 10.4 The interface lists boards only: the host picks the connection
 

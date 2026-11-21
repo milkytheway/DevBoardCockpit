@@ -189,6 +189,31 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
   });
   const machineTitle: Localised = { 'zh-Hans': '机器', en: 'Machines' };
 
+  /** One row per connection ✓ */
+  const connectionRow = (connection: ConnectionInfo): SecondaryItem => ({
+    id: connection.id,
+    label: { 'zh-Hans': connection.label, en: connection.label },
+    hint: {
+      'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+      en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+    },
+    onSelect: () => ctx.onOpenSession(connection.id),
+  });
+
+  /** One row per session ✓ */
+  const sessionRow = (session: TerminalTab): SecondaryItem => ({
+    id: session.sessionId,
+    label: { 'zh-Hans': session.label, en: session.label },
+    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
+    tone:
+      session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+    sessionId: session.sessionId,
+    onSelect: () => ctx.onSelectSession(session.sessionId),
+    // **A session has to be closable**: a serial or SSH connection is exclusive,
+    // and without a way to close it the port stays held.
+    onClose: () => ctx.onCloseSession(session.sessionId),
+  });
+
   // ── The connections, one group per board ✓ ──
   // → **Only the board that is current** ✓ (plus the machines ✓) → a
   //   connection of another board would open a session that the page does
@@ -201,15 +226,10 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
         (connection) =>
           connection.boardPack !== null && connection.deviceKey === key,
       )
-      .map((connection) => ({
-        id: connection.id,
-        label: { 'zh-Hans': connection.label, en: connection.label },
-        hint: {
-          'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-          en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-        },
-        onSelect: () => ctx.onOpenSession(connection.id),
-      }));
+      .map(connectionRow);
+    // → **A group with no rows is not drawn** ✓ (an empty group says nothing
+    //   ✓ and it looks like a board that is there but has nothing ✗).
+    if (items.length === 0) continue;
     groups.push({ id: `connections:${key}`, title: boardTitle(key), items });
   }
   const machines = machineConnections(ctx.connections);
@@ -217,53 +237,42 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     groups.push({
       id: 'connections:machines',
       title: machineTitle,
-      items: machines.map((connection) => ({
-        id: connection.id,
-        label: { 'zh-Hans': connection.label, en: connection.label },
-        hint: {
-          'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-          en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-        },
-        onSelect: () => ctx.onOpenSession(connection.id),
-      })),
+      items: machines.map(connectionRow),
     });
   }
 
-  // ── The sessions, one group per board ✓ ──
-  for (const board of boardsIn(ctx.connections)) {
-    const items: SecondaryItem[] = ctx.sessions
-      .filter((session) => boardOfSession(ctx.connections, session) === board)
-      .map((session) => ({
-        id: session.sessionId,
-        label: { 'zh-Hans': session.label, en: session.label },
-        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
-        tone:
-          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
-        sessionId: session.sessionId,
-        onSelect: () => ctx.onSelectSession(session.sessionId),
-        // **A session has to be closable**: a serial or SSH connection is exclusive,
-        // and without a way to close it the port stays held.
-        onClose: () => ctx.onCloseSession(session.sessionId),
-      }));
-    groups.push({ id: `sessions:${board}`, title: boardTitle(board), items });
+  // ── The sessions ✓ ──
+  // → **The board that is current** ✓ (its own group ✓) · **the machines** ✓
+  //   (their own group ✓ — they are not boards ✓) · **the other boards** ✓
+  //   (one group ✓ — they have to stay closable ✓ · a serial port is
+  //   exclusive ✓) → **no board is a peer of the board that is current** ✓
+  //   (the fake board's terminal used to sit next to the 3588's ✓ — found on
+  //   2026-11-21 ✓).
+  const currentSessions = ctx.sessions.filter(
+    (session) => boardOfSession(ctx.connections, session) === board,
+  );
+  if (board !== null && currentSessions.length > 0) {
+    groups.push({
+      id: `sessions:${board}`,
+      title: boardTitle(board),
+      items: currentSessions.map(sessionRow),
+    });
   }
   const machineSessions = ctx.sessions.filter(
     (session) => boardOfSession(ctx.connections, session) === null,
   );
   if (machineSessions.length > 0) {
+    groups.push({ id: 'sessions:machines', title: machineTitle, items: machineSessions.map(sessionRow) });
+  }
+  const otherSessions = ctx.sessions.filter((session) => {
+    const owner = boardOfSession(ctx.connections, session);
+    return owner !== null && owner !== board;
+  });
+  if (otherSessions.length > 0) {
     groups.push({
-      id: 'sessions:other',
-      title: { 'zh-Hans': '其他会话', en: 'Other sessions' },
-      items: machineSessions.map((session) => ({
-        id: session.sessionId,
-        label: { 'zh-Hans': session.label, en: session.label },
-        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
-        tone:
-          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
-        sessionId: session.sessionId,
-        onSelect: () => ctx.onSelectSession(session.sessionId),
-        onClose: () => ctx.onCloseSession(session.sessionId),
-      })),
+      id: 'sessions:other-boards',
+      title: { 'zh-Hans': '其他板子的会话', en: 'Sessions of other boards' },
+      items: otherSessions.map(sessionRow),
     });
   }
 

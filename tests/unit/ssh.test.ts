@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sshCapabilities, sshArgs, SshConnection } from '../../src/main/hal/ssh';
+import { sshCapabilities, sshArgs, sshOpenError, SshConnection } from '../../src/main/hal/ssh';
 
 describe('sshCapabilities', () => {
   it('SSH has a real pty and can transfer files', () => {
@@ -483,5 +483,50 @@ describe('the timeout path of SshConnection.exec', () => {
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('it hung')), 2000)),
     ]);
     expect(result.timedOut).toBe(true);
+  });
+});
+
+/**
+ * **The failure has to say which problem it is** ✓.
+ *
+ * → "cannot reach the SSH host" for *every* failure ✓ sends the user looking
+ *   for a network problem that does not exist ✓ (measured on 2026-11-21 ✓:
+ *   the board answered ✓ and refused the credential ✓ — and the message said
+ *   "cannot reach" ✓).
+ * → The three failures are three different problems ✓.
+ */
+describe('the failure of an ssh connection', () => {
+  const opts = { host: '192.168.5.100', port: 22, username: 'root' };
+
+  it('**the host did not answer → it says "cannot reach"** ✓', () => {
+    const err = sshOpenError(
+      Object.assign(new Error('connect ECONNREFUSED'), { level: 'client-socket' }),
+      opts,
+      'key',
+    );
+    expect(err.message).toMatch(/cannot reach the SSH host 192\.168\.5\.100:22/);
+  });
+
+  it('**the host answered and refused the credential → it says so** ✓', () => {
+    const err = sshOpenError(
+      Object.assign(new Error('All configured authentication methods failed'), {
+        level: 'client-authentication',
+      }),
+      opts,
+      'key',
+    );
+    expect(err.message).toMatch(/answered but refused the credential/);
+    expect(err.message).not.toMatch(/cannot reach/);
+  });
+
+  it('**there was no credential at all → it says that** ✓', () => {
+    const err = sshOpenError(
+      Object.assign(new Error('All configured authentication methods failed'), {
+        level: 'client-authentication',
+      }),
+      opts,
+      'none',
+    );
+    expect(err.message).toMatch(/no credential/);
   });
 });

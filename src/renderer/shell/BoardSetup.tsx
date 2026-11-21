@@ -43,8 +43,10 @@ const strings = {
   adbSerial: { 'zh-Hans': '板子序列号', en: 'Board serial number' },
   address: { 'zh-Hans': '板子地址', en: 'Board address' },
   serialPort: { 'zh-Hans': '串口', en: 'Serial port' },
+  key: { 'zh-Hans': '私钥', en: 'Private key' },
   detected: { 'zh-Hans': '探测到的', en: 'Detected' },
   none: { 'zh-Hans': '没有探测到', en: 'nothing detected' },
+  noKey: { 'zh-Hans': '没有找到私钥', en: 'no private key found' },
   devices: { 'zh-Hans': 'adb 设备', en: 'adb devices' },
   model: { 'zh-Hans': '板子自报型号', en: 'The model the board reports' },
   ports: { 'zh-Hans': '串口', en: 'Serial ports' },
@@ -53,7 +55,7 @@ const strings = {
   saved: { 'zh-Hans': '已写入 {count} 个连接', en: 'Written into {count} connections' },
   savedNone: { 'zh-Hans': '没有写入任何连接', en: 'Nothing was written' },
   noBoardPack: {
-    'zh-Hans': '这台板子的型号还没有对应的板型包 —— 先用向导接这块板',
+    'zh-Hans': '这块板子的型号还没有对应的板型包 —— 先用向导接这块板',
     en: 'No board pack claims the model of this board — attach it with the wizard first',
   },
   failed: { 'zh-Hans': '没成：{detail}', en: 'It did not work: {detail}' },
@@ -73,6 +75,7 @@ export function BoardSetup({
   const [adbSerial, setAdbSerial] = useState('');
   const [address, setAddress] = useState('');
   const [serialPort, setSerialPort] = useState('');
+  const [keyFilename, setKeyFilename] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -111,6 +114,7 @@ export function BoardSetup({
       adbSerial,
       address,
       serialPort,
+      keyFilename,
     };
     try {
       const result = await api.boardApply(values);
@@ -182,6 +186,7 @@ export function BoardSetup({
             <label className="board-setup__field">
               <span>{t(strings.serialPort)}</span>
               <select
+                id="board-setup-port"
                 value={serialPort}
                 onChange={(event) => setSerialPort(event.target.value)}
               >
@@ -190,6 +195,21 @@ export function BoardSetup({
                   <option key={port.path} value={port.path}>
                     {port.path}
                     {port.answered ? ` · ${t(strings.answers)}` : ` · ${t(strings.silent)}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="board-setup__field">
+              <span>{t(strings.key)}</span>
+              <select
+                id="board-setup-key"
+                value={keyFilename}
+                onChange={(event) => setKeyFilename(event.target.value)}
+              >
+                <option value="">{t(strings.none)}</option>
+                {detection.sshKeys?.map((key) => (
+                  <option key={key.path} value={key.path}>
+                    {key.name}
                   </option>
                 ))}
               </select>

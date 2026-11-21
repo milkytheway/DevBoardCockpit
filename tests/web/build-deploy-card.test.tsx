@@ -123,9 +123,8 @@ describe('The "build and deploy" card', () => {
     await loadCard();
     (document.getElementById('phase-compile') as HTMLButtonElement).click();
     await flush();
-    expect(document.getElementById('note')?.textContent).toMatch(
-      /not authori[sz]ed|no permission|permission denied/i,
-    );
+    // → **The cards speak Chinese** ✓ (the card protocol carries no locale ✓)
+    expect(document.getElementById('note')?.textContent).toMatch(/没有被授权/);
     expect(document.querySelector('.bd__step.is-failed')).not.toBeNull();
   });
 
@@ -157,8 +156,6 @@ describe('The "build and deploy" card', () => {
   it('a workflow the host does not have is reported as missing (the card must not pretend it has it)', async () => {
     installCockpit({ workflows: { list: async () => [] } });
     await loadCard();
-    expect(document.getElementById('note')?.textContent).toMatch(
-      /host (does not have|has no|lacks)/i,
-    );
+    expect(document.getElementById('note')?.textContent).toMatch(/宿主没有/);
   });
 });

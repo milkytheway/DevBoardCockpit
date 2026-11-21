@@ -437,6 +437,9 @@ export function installKit(
     }
   }
 
+  // → **A variable that has no value is reported** ✓ (the person fills it in
+  //   ✓) — it does **not** stop the other templates ✓ (the board's adb
+  //   connection can be installed before the key is known ✓).
   mkdirSync(userProfilesDir, { recursive: true });
   for (const connection of kit.connections) {
     const target = join(userProfilesDir, `${connection.id}.json`);
@@ -444,7 +447,14 @@ export function installKit(
       kept.push(connection.id);
       continue;
     }
-    const substituted = substitute(connection.profile, answers, kit.variables, connection.id);
+    let substituted: unknown;
+    try {
+      substituted = substitute(connection.profile, answers, kit.variables, connection.id);
+    } catch {
+      // → **The template needs a variable that has no value** ✓ → it is not
+      //   installed ✓ (the person fills it in ✓ → and installs again ✓).
+      continue;
+    }
     const text = JSON.stringify(substituted);
     if (text.includes('${')) {
       fail(`the profile "${connection.id}" still has a placeholder in it`, connection.id);

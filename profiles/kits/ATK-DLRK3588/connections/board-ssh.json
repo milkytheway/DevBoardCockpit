@@ -9,6 +9,7 @@
     "port": 22,
     "username": "root",
     "pty": true,
-    "commands": "ssh"
+    "commands": "ssh",
+    "key_filename": "${board_key}"
   }
 }

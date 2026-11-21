@@ -89,7 +89,10 @@ describe('The "board hardware" card', () => {
     const applies = document.getElementById('applies');
     // The wording belongs to the card package; the judgment is that the card
     // names the board it recognised instead of staying silent.
-    expect(applies?.textContent).toMatch(/this board/i);
+    // → **The cards speak Chinese** ✓ (the card protocol carries no locale ✓ —
+    //   the card is a document of its own ✓) → the assertion is the card's own
+    //   wording ✓.
+    expect(applies?.textContent).toMatch(/本板/);
     expect(applies?.className).toContain('is-ok');
   });
 
@@ -97,7 +100,7 @@ describe('The "board hardware" card', () => {
     installCockpit('some other board');
     await loadCard();
     const applies = document.getElementById('applies');
-    expect(applies?.textContent).toMatch(/may not apply|not necessarily apply|does not apply/i);
+    expect(applies?.textContent).toMatch(/不一定适用/);
     expect(applies?.className).toContain('is-warn');
   });
 
@@ -117,8 +120,6 @@ describe('The "board hardware" card', () => {
     });
     await loadCard();
     const lives = [...document.querySelectorAll('.hw__live')];
-    expect(lives.map((el) => el.textContent).join(' ')).toMatch(
-      /cannot be read|not readable|unavailable/i,
-    );
+    expect(lives.map((el) => el.textContent).join(' ')).toMatch(/读不到/);
   });
 });

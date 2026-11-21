@@ -31,9 +31,16 @@ import {
   readBoardModel,
   probeSerialPorts,
   type AdbDevice,
+  type AddressProbe,
   type DetectDeps,
   type PortProbe,
 } from './detect';
+import {
+  candidatesOf,
+  findCredential,
+  type CredentialProbe,
+} from './credential';
+import type { SshRecords } from './ssh-records';
 
 /** One value that was filled in ✓ */
 export interface ProfileChange {
@@ -69,6 +76,26 @@ export interface ResolveDeps extends DetectDeps {
   ports?: PortProbe;
   /** The devices adb sees ✓ — **already fetched** ✓ (so the caller does not ask adb twice ✓) */
   devices?: readonly AdbDevice[];
+  /**
+   * **The SSH records of this machine** ✓ — the addresses the person already
+   * reaches ✓ and the private keys they use ✓.
+   *
+   * → They are the authority for a machine that is **not a board** ✓ (the
+   *   guest ✓ — it has an address of its own ✓) and the pool the credential
+   *   is taken from ✓.
+   */
+  ssh?: SshRecords;
+  /** **Does this key authenticate at this host?** ✓ (injected ✓ — the tests do not connect ✓) */
+  probeCredential?: CredentialProbe;
+  /** **Does this address answer?** ✓ (injected ✓) */
+  probeAddress?: AddressProbe;
+  /**
+   * The host that **did not answer** ✓ — already measured ✓.
+   *
+   * → It is handed in so that the same host is not probed twice ✓ (a host
+   *   that does not answer costs the whole timeout ✓).
+   */
+  deadHost?: string | null;
 }
 
 /** Does the model the board reports match what the board pack expects? */
@@ -175,6 +202,119 @@ async function detectBoardAddress(
 }
 
 /**
+ * **The address of a machine that is not a board** ✓ — the guest ✓.
+ *
+ * → **It comes from the person's own records** ✓ (`~/.ssh/known_hosts` ✓ ·
+ *   `~/.ssh/config` ✓) → **the board's address never leaks into it** ✓
+ *   (the same rule as everywhere else ✓).
+ * → **Exactly one address → it is used** ✓ · **several → the person says**
+ *   ✓ (and the value that is there stays ✓ — it is the person's own ✓) ·
+ *   **none → it is reported** ✓.
+ */
+function resolveMachineAddress(
+  profile: ConnectionProfile,
+  options: Record<string, unknown>,
+  deps: ResolveDeps,
+  changes: ProfileChange[],
+  problems: string[],
+): string | null {
+  if (profile.transport !== 'ssh') return null;
+  const records = deps.ssh?.addresses ?? [];
+  const current = optionString(options, 'host');
+
+  if (records.length === 0) {
+    if (current !== undefined && !isPlaceholderHost(current)) return current;
+    problems.push(
+      'this machine has no ssh records (no ~/.ssh/known_hosts, no ~/.ssh/config) — the address of this machine has to be said',
+    );
+    return null;
+  }
+
+  if (records.length > 1) {
+    // → **Several candidates → the person says which one** ✓ (rule 17 ✓)
+    if (current !== undefined && records.includes(current)) return current;
+    problems.push(
+      `this machine knows ${records.length} ssh addresses (${records.join(' / ')}) — the board setup has to say which one this connection is`,
+    );
+    return current ?? null;
+  }
+
+  const address = records[0] ?? '';
+  if (address.length === 0) return null;
+  if (current === address) return address;
+  options['host'] = address;
+  changes.push({
+    field: 'options.host',
+    from: current ?? '(not set)',
+    to: address,
+    how: 'the address this machine reaches over ssh (the known hosts of this machine)',
+  });
+  return address;
+}
+
+/**
+ * **The credential of an ssh connection** ✓.
+ *
+ * → A profile that names one keeps it ✓ (the person's own choice ✓).
+ * → Otherwise the **keys of this machine** are tried ✓ and the one that
+ *   **authenticates** is the credential ✓ (a measurement ✓ · never a guess
+ *   ✓).
+ * → **No key authenticates** → the profile keeps no credential ✓ and the
+ *   connection says that the host **answered but refused** ✓ (a different
+ *   problem than "the host does not answer" ✓ — the fix is different ✓).
+ */
+async function resolveCredential(
+  profile: ConnectionProfile,
+  options: Record<string, unknown>,
+  deps: ResolveDeps,
+  changes: ProfileChange[],
+  problems: string[],
+): Promise<void> {
+  if (profile.transport !== 'ssh') return;
+  const named = optionString(options, 'key_filename');
+  const password = optionString(options, 'password');
+  if (named !== undefined || password !== undefined) return;
+
+  const host = optionString(options, 'host');
+  if (host === undefined) return;
+  const port = Number(options['port'] ?? 22);
+  const username = optionString(options, 'username') ?? '';
+  if (username.length === 0) return;
+
+  // → **A host that does not answer is not tried** ✓ — the handshake against
+  //   it would wait for the whole timeout ✓ (8 seconds ✓) and it could not
+  //   succeed anyway ✓ (there is nobody there ✓).
+  if (deps.deadHost === host) {
+    problems.push(`the SSH host ${host} does not answer — the credential cannot be tried`);
+    return;
+  }
+
+  const candidates = candidatesOf(deps.ssh?.keys ?? []);
+  if (candidates.length === 0) {
+    problems.push(
+      'this machine has no ssh private key (nothing in ~/.ssh) — the credential has to be said',
+    );
+    return;
+  }
+  if (deps.probeCredential === undefined) return;
+
+  const found = await findCredential({ host, port, username }, candidates, deps.probeCredential);
+  if (found === null) {
+    problems.push(
+      `none of the ${candidates.length} private keys of this machine authenticates at ${host} as ${username}`,
+    );
+    return;
+  }
+  options['key_filename'] = found.candidate.path;
+  changes.push({
+    field: 'options.key_filename',
+    from: '(not set)',
+    to: found.candidate.path,
+    how: 'the key of this machine that authenticates at this host',
+  });
+}
+
+/**
  * Fill the machine-specific values of one profile ✓.
  *
  * → **Nothing is written to the disk here** ✓ (that is `persistProfile` ✓) —
@@ -188,30 +328,52 @@ export async function resolveProfile(
   const changes: ProfileChange[] = [];
   const problems: string[] = [];
 
-  // ── The adb serial ✓ (needed for the address too ✓) ──
-  const serialOutcome = await detectAdbSerial(options, deps, problems);
-  // → **Only the adb connection carries a serial** ✓ — the other two would
-  //   get a field they never read ✗ (a field nobody reads is a lie about
-  //   what the connection is ✓).
-  if (serialOutcome.change !== null && profile.transport === 'adb') {
-    changes.push(serialOutcome.change);
-    options['serial'] = serialOutcome.change.to;
-  }
-  const serial = serialOutcome.serial;
+  // → **A connection without a board pack is not a board's connection** ✓
+  //   (the host's own shell ✓ · **the guest machine** ✓) → it must never get
+  //   the board's address ✓ → **the adb detection is not its business** ✓
+  //   (the guest is not on adb ✓ · asking adb about it is nonsense ✓).
+  const isBoard = typeof profile.board_pack === 'string' && profile.board_pack.length > 0;
 
-  // ── The address of the board ✓ ──
-  // → The SSH connection uses `options.host` ✓; the other transports carry
-  //   it in `options.ssh.host` ✓ (the guest reaches the board through it ✓).
-  const address = await detectBoardAddress(serial, deps);
+  // ── The adb serial ✓ (needed for the address too ✓) ──
+  let serial: string | null = null;
+  if (isBoard) {
+    const serialOutcome = await detectAdbSerial(options, deps, problems);
+    // → **Only the adb connection carries a serial** ✓ — the other two would
+    //   get a field they never read ✗ (a field nobody reads is a lie about
+    //   what the connection is ✓).
+    if (serialOutcome.change !== null && profile.transport === 'adb') {
+      changes.push(serialOutcome.change);
+      options['serial'] = serialOutcome.change.to;
+    }
+    serial = serialOutcome.serial;
+  }
+
+  // ── The address ✓ ──
+  // → **A machine that is not a board** ✓ (the guest ✓) → its address is the
+  //   person's own ✓ (the ssh records ✓) → **the board's address never leaks
+  //   into it** ✓.
+  const address = isBoard
+    ? await detectBoardAddress(serial, deps)
+    : resolveMachineAddress(profile, options, deps, changes, problems);
+
   if (address !== null) {
     const host = optionString(options, 'host');
-    if (host !== undefined && isPlaceholderHost(host)) {
+    // → **A stored address that does not answer is replaced** ✓ → the freeze
+    //   of a connection is broken ✓ (a plausible but wrong address was
+    //   invisible to the "is it a placeholder" check ✓).
+    const dead = deps.deadHost ?? null;
+    const broken =
+      host !== undefined &&
+      (isPlaceholderHost(host) || (dead !== null && dead === host));
+    if (broken) {
       options['host'] = address;
       changes.push({
         field: 'options.host',
-        from: host,
+        from: host ?? '(not set)',
         to: address,
-        how: 'the address the board reports about itself',
+        how: isBoard
+          ? 'the address the board reports about itself'
+          : 'the address this machine reaches over ssh',
       });
     }
     const nested = options['ssh'];
@@ -230,6 +392,11 @@ export async function resolveProfile(
       }
     }
   }
+
+  // ── The credential ✓ (the ssh transport only ✓) ──
+  // → A profile that names one keeps it ✓ → otherwise the key of this
+  //   machine that **authenticates** is taken ✓ (a measurement ✓).
+  await resolveCredential(profile, options, deps, changes, problems);
 
   // ── The serial port ✓ (only when it is asked for ✓) ──
   // → The probe **opens the ports** ✓ → it is not done on every connection

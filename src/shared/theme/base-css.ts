@@ -20,8 +20,8 @@
  * change by a single line.
  */
 export function baseStyleBlock(): string {
-  return `/* cockpit 基础样式 —— 宿主注入（__host/theme.css）
-   只有 var(--cockpit-*)，没有任何色值：皮肤变了这段自动跟着变。 */
+  return `/* The base style of the cockpit - injected by the host (__host/theme.css)
+   Only var(--cockpit-*), no colour values at all: the skin changes and this follows. */
 html, body {
   user-select: none;
   -webkit-user-select: none;
@@ -59,7 +59,7 @@ input, textarea, select, [contenteditable='true'] {
   font-size: var(--cockpit-type-caption);
   color: var(--cockpit-text-faint);
 }
-/* 不可用：斜纹底 + **没有数字**（航空仪表「此仪表不可用」的惯用符号） */
+/* unavailable: a hatched ground + **no number** (the usual sign of an instrument that does not read) */
 .cockpit-unavailable {
   display: inline-block;
   min-width: 54px;
@@ -74,7 +74,7 @@ input, textarea, select, [contenteditable='true'] {
     var(--cockpit-border) 5px
   );
 }
-/* 等待第一次采样：骨架（不闪得让人焦虑） */
+/* waiting for the first sample: a skeleton (it must not flash and make people anxious) */
 .cockpit-pending {
   display: inline-block;
   width: 54px;

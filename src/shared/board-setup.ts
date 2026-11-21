@@ -17,6 +17,17 @@ export interface BoardDetection {
   ports: { path: string; answered: boolean }[];
   /** The board pack the detected model belongs to ✓ (`null` = no pack claims it ✓) */
   boardPack: string | null;
+  /**
+   * **The private keys of this machine** ✓ (the ones in `~/.ssh` ✓).
+   *
+   * → The credential is a **machine-specific value** ✓ (like the address ✓) —
+   *   it belongs to the person ✓ → the person says which key it is ✓ (the
+   *   detection proposes the one that authenticates ✓ — but the person has the
+   *   last word ✓).
+   * → **Only the name is shown** ✓ (the path is the person's own ✓ · the
+   *   content never leaves the file ✓).
+   */
+  sshKeys: { path: string; name: string }[];
 }
 
 /** The values the person confirms ✓ */
@@ -29,6 +40,8 @@ export interface BoardValues {
   address: string;
   /** The serial port of the console ✓ */
   serialPort: string;
+  /** The private key that opens the board (ssh) ✓ (empty = not given ✓) */
+  keyFilename: string;
 }
 
 /** What the apply did ✓ */
@@ -56,5 +69,6 @@ export function parseBoardValues(raw: unknown): BoardValues {
     adbSerial: text('adbSerial'),
     address: text('address'),
     serialPort: text('serialPort'),
+    keyFilename: text('keyFilename'),
   };
 }

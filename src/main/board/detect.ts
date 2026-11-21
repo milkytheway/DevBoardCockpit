@@ -25,6 +25,7 @@
  *   (`resolve.ts` ✓).
  */
 import { runProcess, type SpawnResult } from '../util/spawn';
+import { Socket } from 'node:net';
 
 /** One device in the output of `adb devices`. */
 export interface AdbDevice {
@@ -185,6 +186,39 @@ export async function readBoardModel(serial: string, deps: DetectDeps = {}): Pro
     return null;
   }
 }
+
+/**
+ * **Does this address answer?** ✓
+ *
+ * → A TCP connection ✓ (not an ssh handshake ✓ — the question is "is
+ *   anything listening there" ✓).
+ * → **The timeout is short** ✓ (1.5 s ✓): this runs before every connection
+ *   ✓ and a host that does not answer must not hold the interface ✓.
+ */
+export type AddressProbe = (host: string, port: number, timeoutMs?: number) => Promise<boolean>;
+
+/** The real probe ✓ (a TCP connection ✓) */
+export const tcpAddressProbe: AddressProbe = async (
+  host: string,
+  port: number,
+  timeoutMs = 1500,
+): Promise<boolean> => {
+  const socket = new Socket();
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (answer: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(answer);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => done(true));
+    socket.once('timeout', () => done(false));
+    socket.once('error', () => done(false));
+    socket.connect(port, host);
+  });
+};
 
 /**
  * The minimal serial port surface the detection needs ✓.

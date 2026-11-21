@@ -154,13 +154,30 @@ all run; only the layer that talks to the board is replaced.
 | Rule | Reason |
 |---|---|
 | The fake board emits raw text only — jiffies, kB, `@Hz`, millidegrees. It never produces a percentage and never produces a state. | The five states are the contract (`docs/spec/01`). A fake that invents them is a second copy of the contract, and it will drift. |
-| The fake device's connection profile is never written to disk. | `profiles/targets/` stays clean. |
+| The fake board's connection profile is never written to disk. | `profiles/targets/` stays clean. |
+| The fake board is **never an automatic runtime candidate** — it only becomes one when it is the only board there is (`COCKPIT_FAKE=only`). | It is synthetic data, and it always connects. Left in the running, it wins the race against the real board, the runtime samples synthetic data, and the interface shows the fake board as the board the person is on (found on 2026-11-21). |
 | The real boards are listed **first**; the fake one comes last. | The default selection has to be the real board — the fake one is synthetic data. |
 | The production build **does** contain it — the user decided that on 2026-11-21. | The fake board is useful without the hardware ✓; the interface labels it as synthetic data on every screen ✓ and the real boards come first ✓. `scripts/check-build.ts` **asserts the marker is there** ✓. |
 
 Without it, the shell can only be developed against absent hardware — and an
 interface that has never seen `unavailable` or `error` meets both for the first
 time the moment the board drops off.
+
+### The fake board and the real one
+
+They are **two boards** ✓ — never one ✓:
+
+| | The real board | The fake board |
+|---|---|---|
+| Its identity | its `device_key` ✓ | its own ✓ (`fake-board` ✓) |
+| Its terminal | on its own page ✓ | on its own page ✓ |
+| Its role | the runtime samples it ✓ | **only when it is asked for** ✓ |
+
+→ **One board's information never shows up under another board** ✓ — the
+terminal page belongs to the board that is current ✓ (and to the machines ✓ —
+they are not boards ✓) · the sidebar draws the group of the board that is
+current ✓ and puts the sessions of the other boards in one group of their own
+✓ (they have to stay closable ✓ — a serial port is exclusive ✓).
 
 ---
 

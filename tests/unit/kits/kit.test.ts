@@ -182,7 +182,12 @@ describe('the board kit · the one that ships', () => {
     const kit = loadKit('profiles/kits/ATK-DLRK3588');
     expect(kit.id).toBe('ATK-DLRK3588');
     expect(kit.board_pack).toBe('rk3588-atk');
-    expect(Object.keys(kit.variables).sort()).toEqual(['adb_serial', 'board_host', 'serial_port']);
+    expect(Object.keys(kit.variables).sort()).toEqual([
+      'adb_serial',
+      'board_host',
+      'board_key',
+      'serial_port',
+    ]);
     expect(kit.connections.map((c) => c.id).sort()).toEqual([
       'board-adb',
       'board-serial',

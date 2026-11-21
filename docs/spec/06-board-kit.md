@@ -117,13 +117,31 @@ does not fit the schema is an error, not a profile that fails later ✓.
 → The **person is the authority** ✓ — but the host may **propose** ✓:
 the board's serial number (`adb devices` ✓) · the address the board reports
 about itself (`adb shell ip -4 addr show` ✓) · the serial port (**the one
-that answers** ✓ — a port that exists proves nothing ✓).
+that answers** ✓ — a port that exists proves nothing ✓) · **the credential**
+✓ (the key that authenticates at the host ✓ — the criterion is the
+handshake ✓ · decision record SPEC-D29 ✓).
 → **Exactly one candidate → it may be filled in** ✓.
 → **Several candidates → the person says which one** ✓ (the board setup ✓).
 → **No candidate → it is reported** ✓ — never invented ✓.
 → **A connection without a board pack never receives a board's address** ✓
 (the host's own shell ✓ · the guest machine ✓ — it has an address of its
-own ✓).
+own ✓ · **and the address of the guest comes from the person's own ssh
+records** ✓ · `~/.ssh/known_hosts` ✓ · `~/.ssh/config` ✓).
+→ **A stored value that does not answer any more is detected again** ✓ → a
+value that looks plausible but is wrong is invisible to the "is it a
+placeholder" check ✓ (decision record SPEC-D28 ✓ · SPEC-D29 ✓).
+
+### 4.5 The credential is a variable of the kit
+
+→ The **credential** is a machine-specific value ✓ (like the address ✓) →
+  **the kit names it** ✓ (`board_key` ✓) → the person fills it in once ✓.
+→ **It is verified** ✓: the key that opens the board is the credential of the
+  board ✓ (the guest's key opens the guest ✓ — a key is bound to the host it
+  opens ✓).
+→ **The host may find it on its own** ✓ — the keys of `~/.ssh` ✓ are tried ✓
+  and the one that authenticates is the credential ✓ (decision record
+  SPEC-D29 ✓) → the kit variable is what the person says when the automatic
+  way cannot decide ✓.
 
 ---
 
@@ -141,13 +159,15 @@ own ✓).
 | 8 | The kit's `model` is matched with `exact` or `substring` ✓ (the two modes of the board pack's `match` ✓) | a second meaning for "matches" would be a second dialect ✓ |
 | 9 | **Zero or several matching kits → the host picks none and says so** ✓ | the same "never guess" the board pack binding has ✓ |
 | 10 | The kit's connections **share one `device_key`** ✓ and **declare one `board_pack`** ✓ | otherwise one physical board appears twice in the interface ✓ — and the conflict warning does not see it ✓ |
-| 11 | Installing a kit writes the profiles into the **user profile directory** ✓ | the user's copy wins over the built-in one ✓ |
+| 11 | Installing a kit writes the profiles into the **user profile directory** ✓ | the user's copy wins over the built-in one ✓ — **for the machine-specific values** ✓ (the identity comes from the shipped profile ✓ · decision record SPEC-D28 ✓) |
 | 12 | A kit may only refer to a board pack / workflow packs / cards **that exist in the same distribution** ✓ | a kit is not a self-contained container ✓ — a reference to something that is not there fails silently otherwise ✓ |
 | 13 | The **variables live in the user data directory** ✓ | `profiles/settings.json` is inside the read-only archive ✓ |
 | 14 | Installing a kit does not overwrite an existing profile ✓ | installing is "fill in what is missing" ✓ |
 | 15 | Installing a kit is a **host-local action** ✓ — it is not an MCP tool ✓ | the MCP tool set is closed ✓ (§3 has two exceptions ✓ — this is not one of them ✓) |
 | 16 | `apiVersion` is **not bumped** ✓ (`devboard/v1` has not shipped with any implementation ✓) | the version discipline of the contract layer ✓ |
 | 17 | The machine-specific values may be **detected** ✓ — but **only when there is exactly one candidate** ✓ | the detection is a proposal ✓ · several candidates are a question for the person ✓ · none are reported ✓ |
+| 18 | The **credential** is one of the variables ✓ | it is a machine-specific value ✓ (like the address ✓) → the kit names it ✓ → the person fills it in once ✓ (decision record SPEC-D29 ✓) |
+| 19 | A template whose variable has **no value** is not installed ✓ — the other templates still are ✓ | the person fills the missing ones in ✓ and installs again ✓ — one missing value must not block the whole kit ✓ |
 
 ---
 

@@ -263,6 +263,16 @@ export function parseProfile(raw: unknown, source: string): ConnectionProfile {
     fail("the pty of adb must be false: adb shell -t -t arrives one command late on Windows (Fact A1)", source);
   }
 
+  // **The port of ssh is a number** ✓ — the transport reads it as one ✓
+  // (`Number(profile.options['port'])` ✓) → a string ("COM3" ✓) is not a
+  // port ✓ → it would become `NaN` and the connection would fail with a
+  // number that is not a number ✗.
+  if (transport === 'ssh' && rawOptions['port'] !== undefined) {
+    if (typeof rawOptions['port'] !== 'number' || !Number.isInteger(rawOptions['port'])) {
+      fail('the port of ssh must be a whole number', source, { port: rawOptions['port'] });
+    }
+  }
+
   const options: Record<string, unknown> = { ...spec.defaults, ...rawOptions };
 
   const boardPack = raw['board_pack'];

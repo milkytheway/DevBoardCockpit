@@ -33,6 +33,13 @@
  *      purpose.
  *   4. The files listed in `ALLOWED_FILES`. They are the Chinese front door
  *      of the repository and they are Chinese on purpose.
+ *   5. The **cards** (`cards/**`). They are the Chinese front door of the
+ *      *product* ✓ — the card protocol carries no locale ✓ → a card is one
+ *      document in one language ✓ → and that language is the one the person
+ *      who wrote the card chose ✓.
+ *      → The gate was introduced after the cards existed ✓ (2026-11-20 ✓)
+ *        and it never covered them ✓ → the repository was red from the day
+ *        the gate landed ✓.
  */
 
 import { readFileSync } from 'node:fs';
@@ -54,6 +61,20 @@ const ALLOWED_FILES = new Set([
   'docs/tutorial/01-build-a-board-pack.zh-Hans.md',
   'docs/tutorial/02-terminology-glossary.md',
 ]);
+
+/**
+ * The directories that are Chinese on purpose ✓.
+ *
+ * → The **cards** ✓ — the product's own front door ✓ (the card protocol
+ *   carries no locale ✓ → a card is one document in one language ✓).
+ */
+const ALLOWED_PREFIXES = ['cards/'];
+
+/** Is this file allowed to be Chinese? ✓ */
+function isAllowed(file: string): boolean {
+  if (ALLOWED_FILES.has(file)) return true;
+  return ALLOWED_PREFIXES.some((prefix) => file.startsWith(prefix));
+}
 
 const CJK = /[\u4e00-\u9fff]/;
 
@@ -261,7 +282,7 @@ function scanText(file: string, source: string): Finding[] {
 function main(): void {
   const findings: Finding[] = [];
   for (const file of trackedFiles()) {
-    if (ALLOWED_FILES.has(file)) continue;
+    if (isAllowed(file)) continue;
     let source: string;
     try {
       source = readFileSync(join(process.cwd(), file), 'utf8');

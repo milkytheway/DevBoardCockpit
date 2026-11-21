@@ -89,7 +89,14 @@ export function TerminalPage({
     setPaneIds((current) => {
       const alive = current.filter((id) => sessions.some((session) => session.sessionId === id));
       const next = [...alive];
-      if (activeSessionId !== null && !next.includes(activeSessionId)) {
+      // → **The active session only takes a pane when it is on this page** ✓
+      //   (the page belongs to one board ✓ · the user switched the board ✓ →
+      //   the active session is another board's ✓ → it must not fill the pane
+      //   ✓ — the page would show nothing at all ✗ · found on 2026-11-21 ✓).
+      const activeIsHere =
+        activeSessionId !== null &&
+        sessions.some((session) => session.sessionId === activeSessionId);
+      if (activeIsHere && activeSessionId !== null && !next.includes(activeSessionId)) {
         if (next.length < capacity) next.push(activeSessionId);
         else next[next.length - 1] = activeSessionId;
       }

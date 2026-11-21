@@ -64,3 +64,10 @@ variables:
     label: The address of the board
     description: The address the host reaches the board at (SSH and the guest relay).
     required: true
+  board_key:
+    type: path
+    label: The private key of the board
+    description: >
+      The key in ~/.ssh that authenticates at the board (the guest's key is a
+      different one — a key is bound to the host it opens).
+    required: true

@@ -127,6 +127,84 @@ describe('Shell · the sessions of the terminal page', () => {
   });
 });
 
+/**
+ * **One board at a time** ✓ — the sidebar must not make the fake board look
+ * like a peer of the 3588 ✓ (found on 2026-11-21 ✓).
+ */
+function boardConnection(id: string, deviceKey: string, current = false) {
+  return {
+    id,
+    label: id,
+    transport: 'adb' as const,
+    boardPack: 'rk3588-atk',
+    deviceKey,
+    current,
+    capabilities: { exec: true, pty: false, files: false, exitCode: true },
+  };
+}
+
+const MACHINE = {
+  id: 'local',
+  label: 'Local machine',
+  transport: 'local' as const,
+  boardPack: null,
+  deviceKey: 'local',
+  current: false,
+  capabilities: { exec: true, pty: true, files: true, exitCode: true },
+};
+
+describe('Shell · the terminal sidebar (one board at a time)', () => {
+  const connections = [
+    boardConnection('board-adb', 'ATK-DLRK3588', true),
+    boardConnection('fake-board', 'fake-board'),
+    MACHINE,
+  ];
+
+  it('**a group with no rows is not drawn** ✓ (an empty group looks like a board that is there but has nothing ✓)', () => {
+    const groups = secondaryGroupsFor(
+      'terminal',
+      context({ connections, sessions: [{ sessionId: 's-1', profileId: 'fake-board', label: 'fake' }] }),
+    );
+    // → The connections of the fake board are not listed ✓ (the board that is
+    //   current is the 3588 ✓) → no empty group ✓
+    expect(groups.find((g) => g.id === 'connections:fake-board')).toBeUndefined();
+    // → Every group that is drawn has rows ✓
+    for (const group of groups) {
+      expect(group.items.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('**the sessions of the other boards are in one group** ✓ (they have to stay closable ✓)', () => {
+    const groups = secondaryGroupsFor(
+      'terminal',
+      context({
+        connections,
+        sessions: [
+          { sessionId: 's-real', profileId: 'board-adb', label: 'Board · ADB' },
+          { sessionId: 's-fake', profileId: 'fake-board', label: 'fake board' },
+        ],
+      }),
+    );
+    const other = groups.find((g) => g.id === 'sessions:other-boards');
+    expect(other).toBeDefined();
+    expect(other!.items.map((item) => item.sessionId)).toEqual(['s-fake']);
+    expect(other!.items[0]?.onClose).toBeTypeOf('function');
+  });
+
+  it('**the sessions of the machines are in their own group** ✓', () => {
+    const groups = secondaryGroupsFor(
+      'terminal',
+      context({
+        connections,
+        sessions: [{ sessionId: 's-local', profileId: 'local', label: 'Local machine' }],
+      }),
+    );
+    const machines = groups.find((g) => g.id === 'sessions:machines');
+    expect(machines).toBeDefined();
+    expect(machines!.items.map((item) => item.sessionId)).toEqual(['s-local']);
+  });
+});
+
 describe('Shell · the card catalogue (English)', () => {
   it('the same hint has an English wording (the language option of the interface really switches the text)', () => {
     const items = cardItems(

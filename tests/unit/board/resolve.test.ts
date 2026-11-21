@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveProfile, modelMatches } from '../../../src/main/board/resolve';
@@ -269,5 +269,140 @@ describe('the persistence', () => {
     expect(second.written).toBe(false);
     const written = JSON.parse(readFileSync(join(dir, 'board-adb.json'), 'utf8')) as ConnectionProfile;
     expect(written.options['serial']).toBe('0000000000000000');
+  });
+});
+
+/**
+ * **The machine's own values** ✓ — the address of a machine that is not a
+ * board ✓ and the credential ✓.
+ *
+ * | Criterion | Why |
+ * |---|---|
+ * | the address of the guest comes from the ssh records | it is the person's own ✓ — the board's address must never leak into it ✓ |
+ * | the credential is the key that authenticates | a key that does not authenticate is not the credential ✓ |
+ * | a profile that names a credential keeps it | the person's own choice ✓ |
+ * | no key authenticates → it is reported | the failure has to say which problem it is ✓ |
+ */
+const GUEST: ConnectionProfile = {
+  id: 'ubuntu-ssh',
+  label: 'Ubuntu · SSH',
+  transport: 'ssh',
+  options: { host: '198.51.100.10', port: 22, username: 'alientek' },
+};
+
+const RECORDS = {
+  addresses: ['192.168.136.131'],
+  keys: [] as string[],
+};
+
+/** A key file that really exists ✓ (the candidates are read from the disk ✓) */
+function keyFile(name: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'cockpit-keys-'));
+  const path = join(dir, name);
+  writeFileSync(path, 'KEY', 'utf8');
+  return path;
+}
+
+/** A probe that accepts exactly one key ✓ */
+function probeOf(accepted: string) {
+  return async (
+    _target: { host: string; port: number; username: string },
+    candidate: { path: string; key: Buffer },
+  ): Promise<boolean> => candidate.path === accepted;
+}
+
+describe('the resolution · the address of a machine', () => {
+  it('**the address comes from the ssh records of this machine** ✓', async () => {
+    const outcome = await resolveProfile(GUEST, {
+      runner: runnerOf({ devices: '' }),
+      ssh: RECORDS,
+      probeCredential: probeOf(''),
+    });
+    expect(outcome.profile.options['host']).toBe('192.168.136.131');
+    expect(outcome.changes.map((c) => c.field)).toContain('options.host');
+  });
+
+  it('**the guest never gets the address of the board** ✓ (adb is not asked at all ✓)', async () => {
+    let called = false;
+    const outcome = await resolveProfile(GUEST, {
+      runner: async () => {
+        called = true;
+        return result('f34dca7784396ab2\tdevice');
+      },
+      ssh: RECORDS,
+      probeCredential: probeOf(''),
+    });
+    expect(called).toBe(false);
+    expect(outcome.profile.options['host']).toBe('192.168.136.131');
+  });
+
+  it('**several addresses → the person says which one** ✓ (the value that is there stays ✓)', async () => {
+    const outcome = await resolveProfile(GUEST, {
+      runner: runnerOf({ devices: '' }),
+      ssh: { addresses: ['192.168.136.131', '10.0.0.5'], keys: RECORDS.keys },
+      probeCredential: probeOf(''),
+    });
+    expect(outcome.profile.options['host']).toBe('198.51.100.10');
+    expect(outcome.problems.join(' ')).toMatch(/2 ssh addresses/);
+  });
+});
+
+describe('the resolution · the credential', () => {
+  it('**the key that authenticates becomes the credential** ✓', async () => {
+    const key = keyFile('id_ed25519_codex_vm');
+    const outcome = await resolveProfile(GUEST, {
+      runner: runnerOf({ devices: '' }),
+      ssh: { addresses: RECORDS.addresses, keys: [key] },
+      probeCredential: probeOf(key),
+    });
+    expect(outcome.profile.options['key_filename']).toBe(key);
+    expect(outcome.changes.map((c) => c.field)).toContain('options.key_filename');
+  });
+
+  it('**a profile that names a credential keeps it** ✓ (the search does not run ✓)', async () => {
+    let probed = false;
+    const mine = keyFile('mine');
+    const outcome = await resolveProfile(
+      { ...GUEST, options: { ...GUEST.options, key_filename: mine } },
+      {
+        runner: runnerOf({ devices: '' }),
+        ssh: RECORDS,
+        probeCredential: async () => {
+          probed = true;
+          return true;
+        },
+      },
+    );
+    expect(probed).toBe(false);
+    expect(outcome.profile.options['key_filename']).toBe(mine);
+  });
+
+  it('**no key authenticates → it is reported** ✓ (the caller has to say so ✓)', async () => {
+    const key = keyFile('id_ed25519_codex_vm');
+    const outcome = await resolveProfile(GUEST, {
+      runner: runnerOf({ devices: '' }),
+      ssh: { addresses: RECORDS.addresses, keys: [key] },
+      probeCredential: probeOf('something-else'),
+    });
+    expect(outcome.profile.options['key_filename']).toBeUndefined();
+    expect(outcome.problems.join(' ')).toMatch(/none of the 1 private keys/);
+  });
+
+  it('**the ssh connection of the board gets the key of the board** ✓', async () => {
+    const key = keyFile('id_ed25519_codex_board');
+    const outcome = await resolveProfile(
+      {
+        ...GUEST,
+        id: 'board-ssh',
+        board_pack: 'rk3588-atk',
+        options: { host: '192.168.5.100', port: 22, username: 'root' },
+      },
+      {
+        runner: runnerOf({ devices: '' }),
+        ssh: { addresses: RECORDS.addresses, keys: [key] },
+        probeCredential: probeOf(key),
+      },
+    );
+    expect(outcome.profile.options['key_filename']).toBe(key);
   });
 });

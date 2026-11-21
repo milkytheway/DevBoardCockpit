@@ -1,7 +1,7 @@
 import { StringDecoder } from 'node:string_decoder';
 import { basename, join } from 'node:path';
 import { Client, type ClientChannel, type SFTPWrapper } from 'ssh2';
-import { makeError } from '../../shared/errors';
+import { makeError, type AppError } from '../../shared/errors';
 import type { FileEntry } from '../../shared/ipc-contract';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
@@ -58,6 +58,55 @@ export interface SshConnectOptions {
   password?: string;
 }
 
+/**
+ * **The failure has to say which problem it is** ✓.
+ *
+ * → **"cannot reach the SSH host"** for *every* failure ✓ sends the user
+ *   looking for a network problem that does not exist ✓ — the board
+ *   answered ✓ and refused the credential ✓ (measured on 2026-11-21 ✓:
+ *   "All configured authentication methods failed" ✓ became "cannot reach
+ *   the SSH host" ✓).
+ * → The three failures are **three different problems** ✓:
+ *
+ * | What happened | What it means | What the fix is |
+ * |---|---|---|
+ * | the host did not answer | the address is wrong or the board is off | the address ✓ |
+ * | the host answered and refused the credential | the key is not the credential of this host | the credential ✓ |
+ * | there was no credential at all | the profile has no key and no password | the credential ✓ |
+ */
+export function sshOpenError(
+  err: Error & { level?: string },
+  opts: SshConnectOptions,
+  credential: CredentialKind,
+): AppError {
+  const detail = { host: opts.host, port: opts.port, cause: err.message, level: err.level };
+  const refusal = err.level === 'client-authentication' || /authentication/i.test(err.message);
+
+  if (refusal) {
+    if (credential === 'none') {
+      return makeError(
+        'CONN_OPEN_FAILED',
+        `the SSH host ${opts.host}:${opts.port} answered but there is no credential for it — the profile names no key and no password`,
+        { detail },
+      );
+    }
+    return makeError(
+      'CONN_OPEN_FAILED',
+      `the SSH host ${opts.host}:${opts.port} answered but refused the credential — the key is not the credential of this host`,
+      { detail },
+    );
+  }
+
+  return makeError(
+    'CONN_OPEN_FAILED',
+    `cannot reach the SSH host ${opts.host}:${opts.port} (${err.message})`,
+    { detail },
+  );
+}
+
+/** Which credential the connection carries ✓ */
+export type CredentialKind = 'none' | 'key' | 'password';
+
 /** Parse the connection parameters from the profile. A missing host raises an error right away — when the connection fails it has to name the host. */
 export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
   const host = profile.options['host'];
@@ -91,6 +140,39 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
 export interface SshConnectionOptions {
   /** Inject the ssh2 client, used by tests */
   clientFactory?: (opts: SshConnectOptions) => Client;
+}
+
+/**
+ * **Does this key authenticate at this host?** ✓
+ *
+ * → The criterion is the handshake itself ✓ — "the host answered **and**
+ *   accepted the key" ✓.
+ * → **A refusal is not an error** ✓ — it is the answer "this key is not the
+ *   credential of this host" ✓ (the search goes on ✓).
+ * → **The host that does not answer is not a refusal** ✓ — it is the answer
+ *   "there is nothing there" ✓ (the same false ✓).
+ */
+export async function sshAuthenticates(
+  target: { host: string; port: number; username: string },
+  privateKey: Buffer,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const client = new Client();
+    let settled = false;
+    const done = (answer: boolean): void => {
+      if (settled) return;
+      settled = true;
+      client.end();
+      resolve(answer);
+    };
+    client.once('ready', () => done(true));
+    client.once('error', () => done(false));
+    try {
+      client.connect({ ...target, privateKey, readyTimeout: 6000 });
+    } catch {
+      done(false);
+    }
+  });
 }
 
 /**
@@ -161,6 +243,8 @@ export class SshConnection implements Connection {
 
   private client: Client | undefined;
   private readonly opts: SshConnectOptions;
+  /** **Which credential this connection carries** ✓ (the failure names it ✓) */
+  private readonly credential: CredentialKind;
   /** The most recent link error. Lets the layers above check the connection health */
   lastError: Error | undefined;
 
@@ -171,6 +255,12 @@ export class SshConnection implements Connection {
   ) {
     this.id = profile.id;
     this.opts = sshArgs(profile);
+    this.credential =
+      this.opts.privateKey !== undefined
+        ? 'key'
+        : this.opts.password !== undefined
+          ? 'password'
+          : 'none';
   }
 
   capabilities(): ConnectionCapabilities {
@@ -194,11 +284,7 @@ export class SshConnection implements Connection {
         if (this.client) {
           this.lastError = err;
         } else {
-          reject(
-            makeError('CONN_OPEN_FAILED', `cannot reach the SSH host ${this.opts.host}:${this.opts.port}`, {
-              detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level },
-            }),
-          );
+          reject(sshOpenError(err, this.opts, this.credential));
         }
       };
       client.once('ready', onReady);

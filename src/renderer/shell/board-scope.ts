@@ -54,18 +54,30 @@ export function boardOfSession(
 /**
  * The sessions of one board ✓.
  *
- * → **No board → every session** ✓ (nothing to scope it by ✓).
- * → The sessions that belong to no board (the local shell ✓ · the guest ✓)
- *   stay with the board scope of `null` ✓ → hmm ✗ — they are shown when no
- *   board is chosen ✓ and hidden when one is ✓ (**one board at a time** ✓).
+ * → **The board that is current ✓ and the machines ✓** — a machine (the
+ *   local shell ✓ · the guest ✓) is **not a board** ✓ → its session cannot
+ *   leak into a board ✓ → and it must be visible ✓ (the user opened it ✓ →
+ *   nothing happens ✗ — found on 2026-11-21 ✓).
+ * → **The sessions of the other boards are not on this page** ✓ — one board
+ *   at a time ✓ (the fake board's terminal used to show up on the 3588's
+ *   page ✓) → they stay in the sidebar ✓ (a serial port is exclusive ✓ →
+ *   they have to stay closable ✓).
+ * → **No board is current** → the page belongs to no board ✓ → only the
+ *   machines are on it ✓ (never the sessions of every board ✓).
  */
 export function sessionsOfBoard(
   sessions: readonly TerminalTab[],
   connections: readonly ConnectionInfo[],
   board: string | null,
 ): TerminalTab[] {
-  if (board === null) return [...sessions];
-  return sessions.filter((session) => boardOfSession(connections, session) === board);
+  return sessions.filter((session) => {
+    const owner = boardOfSession(connections, session);
+    // → **A session that belongs to no board** ✓ (the local shell ✓ · the
+    //   guest ✓) → it is shown whatever board is current ✓.
+    if (owner === null) return true;
+    if (board === null) return false;
+    return owner === board;
+  });
 }
 
 /**

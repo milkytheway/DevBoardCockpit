@@ -74,20 +74,27 @@ describe('the board scope · the terminal page', () => {
   const sessions = [
     { sessionId: 's-real', profileId: 'board-adb', label: 'Board · ADB' },
     { sessionId: 's-fake', profileId: 'fake-board', label: 'fake board' },
+    { sessionId: 's-local', profileId: 'local', label: 'Local machine' },
   ];
 
-  it('**only the sessions of the current board are shown** ✓', () => {
-    const shown = sessionsOfBoard(sessions, [REAL, FAKE], 'atk-01');
-    expect(shown.map((session) => session.sessionId)).toEqual(['s-real']);
+  it('**only the sessions of the current board are shown** ✓ (plus the machines ✓)', () => {
+    const shown = sessionsOfBoard(sessions, [REAL, FAKE, LOCAL], 'atk-01');
+    expect(shown.map((session) => session.sessionId)).toEqual(['s-real', 's-local']);
   });
 
   it('**the terminal of the other board is not on this board** ✓', () => {
-    const shown = sessionsOfBoard(sessions, [REAL, FAKE], 'fake-board');
-    expect(shown.map((session) => session.sessionId)).toEqual(['s-fake']);
+    const shown = sessionsOfBoard(sessions, [REAL, FAKE, LOCAL], 'fake-board');
+    expect(shown.map((session) => session.sessionId)).toEqual(['s-fake', 's-local']);
   });
 
-  it('**no board → everything** ✓ (there is nothing to scope it by ✓)', () => {
-    expect(sessionsOfBoard(sessions, [REAL, FAKE], null)).toHaveLength(2);
+  it('**the terminal of a machine is shown whatever board is current** ✓ (it belongs to no board ✓ → it cannot leak into one ✓)', () => {
+    const shown = sessionsOfBoard(sessions, [REAL, FAKE, LOCAL], 'atk-01');
+    expect(shown.map((session) => session.sessionId)).toContain('s-local');
+  });
+
+  it('**no board → the machines only** ✓ (the sessions of the other boards are not on this page ✓)', () => {
+    const shown = sessionsOfBoard(sessions, [REAL, FAKE, LOCAL], null);
+    expect(shown.map((session) => session.sessionId)).toEqual(['s-local']);
   });
 
   it('**the connections of the board are the ones that belong to it** ✓', () => {
