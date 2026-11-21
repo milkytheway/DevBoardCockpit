@@ -31,7 +31,7 @@ export interface TargetRegistryOptions {
   /** Find a profile by id (the ones the host loaded; not finding it means there is no such target) */
   profileFor: (profileId: string) => ConnectionProfile | undefined;
   /** Build the connection (the host provides it: it knows the adb path, the fake device and the like) */
-  createConnection: (profile: ConnectionProfile) => Connection;
+  createConnection: (profile: ConnectionProfile) => Connection | Promise<Connection>;
   /** The default deadline of a transaction (milliseconds) — a long step has to pass a bigger one itself */
   deadlineMs?: number;
 }
@@ -148,7 +148,7 @@ export class TargetRegistry {
         detail: { profileId, transport: profile.transport },
       });
     }
-    const connection = this.opts.createConnection(profile);
+    const connection = await this.opts.createConnection(profile);
     await connection.open();
     return connection;
   }

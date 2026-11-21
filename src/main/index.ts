@@ -39,6 +39,8 @@ import {
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
+import { listPacksIn } from './tags/binding';
+import { prepareProfile } from './board/prepare';
 import { createCardWiring } from './cards/wiring';
 import { runWizardForHost } from './wizard/wiring';
 import { ActionAudit } from './actions/audit';
@@ -149,8 +151,34 @@ function listProfiles(): ConnectionProfile[] {
 const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'));
 const adbPath = resolveAdbPath(settings);
 
-/** The log handed over by the connection manager — one per session, so input and output land in the same place */
-function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Connection {
+/**
+ * The models a board of this pack has to report ✓.
+ *
+ * → The board pack's own match rules ✓ (`match.models` ✓) → **the pack is
+ *   the authority on what its board calls itself** ✓ → the detection uses
+ *   them to tell "this is our board" from "this is some other device that
+ *   happens to be plugged in" ✓.
+ */
+function expectedModelsFor(boardPackId: string | null | undefined): string[] {
+  if (typeof boardPackId !== 'string' || boardPackId.length === 0) return [];
+  const packs = listPacksIn([join(app.getAppPath(), 'profiles', 'boards'), userBoardsDir()]);
+  const pack = packs.find((candidate) => candidate.id === boardPackId);
+  return pack?.match?.models ?? [];
+}
+
+/**
+ * The log handed over by the connection manager — one per session, so input and output land in the same place.
+ *
+ * → **Asynchronous** ✓ — before the connection is built, the machine-specific
+ *   values of the profile are **detected** ✓ (the board's serial number ✓ ·
+ *   its address ✓) → the published profiles carry placeholders for them ✓
+ *   (a documented address ✓ · an all-zero serial ✓) → **without the
+ *   detection every shipped connection points nowhere** ✓.
+ */
+async function createConnectionFor(
+  profile: ConnectionProfile,
+  log: SessionLog,
+): Promise<Connection> {
   // Compile-time constant: in a production build the whole fake-device routing block is dead code (see above).
   if (!__COCKPIT_FAKE_BUILD__) return createConnection(profile, log, { adbPath });
   const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
@@ -167,7 +195,16 @@ function createConnectionFor(profile: ConnectionProfile, log: SessionLog): Conne
       detail: { profileId: profile.id },
     });
   }
-  return createConnection(profile, log, { adbPath });
+  // → **The values of this machine are detected before the connection is built** ✓
+  // → and the repaired profile is written into the user directory ✓ → the
+  //   next start reads the right values ✓ (no detection, no delay ✓).
+  const prepared = await prepareProfile(profile, {
+    adbPath,
+    expectedModels: expectedModelsFor(profile.board_pack),
+    userProfilesDir: userProfilesDir(),
+    log: (message) => console.log(message),
+  });
+  return createConnection(prepared, log, { adbPath });
 }
 
 /**

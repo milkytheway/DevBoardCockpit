@@ -29,6 +29,7 @@ import { describeError, runtimeText } from './format';
 import { downloadFile, uploadFile, type FileTransferHost } from './files';
 import { slotKey } from './layout-utils';
 import { secondaryGroupsFor } from './nav';
+import { currentBoard, sessionsOfBoard } from './board-scope';
 import { applyTheme, readStoredTheme, readXtermTheme, type XtermTheme } from './theme';
 import {
   interpolate,
@@ -528,7 +529,14 @@ export function Shell(): JSX.Element {
 
             {page === 'terminal' ? (
               <TerminalPage
-                sessions={terminal.sessions}
+                // → **Only the sessions of the board that is current** ✓
+                //   (the terminal of one board must not show up under
+                //   another one ✓ — the machine can have several boards ✓)
+                sessions={sessionsOfBoard(
+                  terminal.sessions,
+                  connections,
+                  currentBoard(connections),
+                )}
                 activeSessionId={terminal.activeSessionId}
                 xtermTheme={xtermTheme}
                 terminalSubscribe={terminal.terminalSubscribe}

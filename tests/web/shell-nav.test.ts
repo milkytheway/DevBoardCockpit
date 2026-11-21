@@ -109,7 +109,7 @@ describe('Shell · the sessions of the terminal page', () => {
       sessions: [{ sessionId: 's-1', profileId: 'board-serial', label: 'Board · Serial' }],
       activeSessionId: 's-1',
     });
-    const group = secondaryGroupsFor('terminal', ctx).find((g) => g.id === 'sessions');
+    const group = secondaryGroupsFor('terminal', ctx).find((g) => g.id.startsWith('sessions'));
     expect(group).toBeDefined();
     const item = group!.items[0]!;
     expect(item.sessionId).toBe('s-1');
@@ -121,7 +121,7 @@ describe('Shell · the sessions of the terminal page', () => {
     const ctx = context({
       sessions: [{ sessionId: 's-2', profileId: 'board-adb', label: 'Board · ADB' }],
     });
-    const group = secondaryGroupsFor('files', ctx).find((g) => g.id === 'sessions');
+    const group = secondaryGroupsFor('files', ctx).find((g) => g.id.startsWith('sessions'));
     expect(group).toBeDefined();
     expect(group!.items[0]?.onClose).toBeTypeOf('function');
   });

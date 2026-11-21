@@ -37,7 +37,10 @@ export interface WizardWiringOptions {
   /** The user data directory (the session logs are here ✓) */
   userDataDir: string;
   /** Build the connection ✓ (the real one by default ✓) */
-  createConnection?: (profile: ConnectionProfile, log: SessionLog) => ReturnType<typeof createConnection>;
+  createConnection?: (
+    profile: ConnectionProfile,
+    log: SessionLog,
+  ) => ReturnType<typeof createConnection> | Promise<ReturnType<typeof createConnection>>;
   /** Build the session log ✓ */
   createLog?: (label: string, transport: string) => SessionLog;
 }

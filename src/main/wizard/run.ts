@@ -116,7 +116,7 @@ export function boardIdOf(name: string): string {
  */
 export interface WizardDeps {
   /** Build the connection ✓ */
-  createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection;
+  createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection | Promise<Connection>;
   /** Build the session log ✓ */
   createLog: (label: string, transport: string) => SessionLog;
   /** Where the generic pack is ✓ */
@@ -231,7 +231,7 @@ export async function runWizard(
 
   let connection: Connection;
   try {
-    connection = deps.createConnection(profile, log);
+    connection = await deps.createConnection(profile, log);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {

@@ -300,6 +300,12 @@ function iconFor(groupId: string): JSX.Element {
     case 'settings':
       return <GearIcon size={14} />;
     default:
+      // → **The groups that are named after a board** ✓ (`connections:atk-01` ✓
+      //   · `sessions:fake-board` ✓) → the terminal pictogram ✓ (they are
+      //   connections and sessions ✓).
+      if (groupId.startsWith('connections:') || groupId.startsWith('sessions:')) {
+        return <TerminalIcon size={14} />;
+      }
       return <GridIcon size={14} />;
   }
 }

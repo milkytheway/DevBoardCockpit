@@ -1,6 +1,12 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import { cardLook, CARD_GROUPS, type CardLook } from './cards';
+import {
+  boardOfSession,
+  boardsIn,
+  currentBoard,
+  machineConnections,
+} from './board-scope';
 import { pick, type Localised } from './i18n';
 import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
@@ -161,36 +167,107 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
  * "Connections" are the profiles you can attach to; "sessions" are the
  * terminals that are actually running. One profile can have several
  * sessions, so the two lists are not the same thing.
+ *
+ * ── every group says which board it is** ✓
+ *
+ * → A board has three connections ✓ and the machine may have **several
+ *   boards** ✓ (the real one ✓ and the synthetic one ✓) → a flat list puts
+ *   the terminal of one board **under the other** ✓ → the user cannot tell
+ *   whose terminal they are looking at ✓.
+ * → So the connections and the sessions are **grouped by board** ✓ and the
+ *   group heading carries the board's identity ✓ (`device_key` ✓ — **not an
+ *   invented name** ✓).
+ * → The connections that are not boards (the host's own shell ✓ · the guest
+ *   ✓) are a group of their own ✓ — they are **machines** ✓.
  */
 function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
-  const connections: SecondaryItem[] = ctx.connections.map((connection) => ({
-    id: connection.id,
-    label: { 'zh-Hans': connection.label, en: connection.label },
-    hint: {
-      'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-      en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
-    },
-    onSelect: () => ctx.onOpenSession(connection.id),
-  }));
-  const sessions: SecondaryItem[] = ctx.sessions.map((session) => ({
-    id: session.sessionId,
-    label: { 'zh-Hans': session.label, en: session.label },
-    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
-    tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
-    sessionId: session.sessionId,
-    onSelect: () => ctx.onSelectSession(session.sessionId),
-    // **A session has to be closable**: a serial or SSH connection is exclusive,
-    // and without a way to close it the port stays held.
-    onClose: () => ctx.onCloseSession(session.sessionId),
-  }));
-  return [
-    {
-      id: 'connections',
-      title: { 'zh-Hans': '连接方式', en: 'Connections' },
-      items: connections,
-    },
-    { id: 'sessions', title: { 'zh-Hans': '会话', en: 'Sessions' }, items: sessions },
-  ];
+  const groups: SecondaryGroup[] = [];
+
+  const boardTitle = (board: string): Localised => ({
+    'zh-Hans': `板子 · ${board}`,
+    en: `Board · ${board}`,
+  });
+  const machineTitle: Localised = { 'zh-Hans': '机器', en: 'Machines' };
+
+  // ── The connections, one group per board ✓ ──
+  // → **Only the board that is current** ✓ (plus the machines ✓) → a
+  //   connection of another board would open a session that the page does
+  //   not show ✓ → that is confusing ✗ → **you switch the board first** ✓
+  //   (the picker at the top ✓).
+  const board = currentBoard(ctx.connections);
+  for (const key of board === null ? boardsIn(ctx.connections) : [board]) {
+    const items: SecondaryItem[] = ctx.connections
+      .filter(
+        (connection) =>
+          connection.boardPack !== null && connection.deviceKey === key,
+      )
+      .map((connection) => ({
+        id: connection.id,
+        label: { 'zh-Hans': connection.label, en: connection.label },
+        hint: {
+          'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+          en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+        },
+        onSelect: () => ctx.onOpenSession(connection.id),
+      }));
+    groups.push({ id: `connections:${key}`, title: boardTitle(key), items });
+  }
+  const machines = machineConnections(ctx.connections);
+  if (machines.length > 0) {
+    groups.push({
+      id: 'connections:machines',
+      title: machineTitle,
+      items: machines.map((connection) => ({
+        id: connection.id,
+        label: { 'zh-Hans': connection.label, en: connection.label },
+        hint: {
+          'zh-Hans': `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+          en: `${connection.transport}${connection.boardPack ? ` · ${connection.boardPack}` : ''}`,
+        },
+        onSelect: () => ctx.onOpenSession(connection.id),
+      })),
+    });
+  }
+
+  // ── The sessions, one group per board ✓ ──
+  for (const board of boardsIn(ctx.connections)) {
+    const items: SecondaryItem[] = ctx.sessions
+      .filter((session) => boardOfSession(ctx.connections, session) === board)
+      .map((session) => ({
+        id: session.sessionId,
+        label: { 'zh-Hans': session.label, en: session.label },
+        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
+        tone:
+          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+        sessionId: session.sessionId,
+        onSelect: () => ctx.onSelectSession(session.sessionId),
+        // **A session has to be closable**: a serial or SSH connection is exclusive,
+        // and without a way to close it the port stays held.
+        onClose: () => ctx.onCloseSession(session.sessionId),
+      }));
+    groups.push({ id: `sessions:${board}`, title: boardTitle(board), items });
+  }
+  const machineSessions = ctx.sessions.filter(
+    (session) => boardOfSession(ctx.connections, session) === null,
+  );
+  if (machineSessions.length > 0) {
+    groups.push({
+      id: 'sessions:other',
+      title: { 'zh-Hans': '其他会话', en: 'Other sessions' },
+      items: machineSessions.map((session) => ({
+        id: session.sessionId,
+        label: { 'zh-Hans': session.label, en: session.label },
+        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
+        tone:
+          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+        sessionId: session.sessionId,
+        onSelect: () => ctx.onSelectSession(session.sessionId),
+        onClose: () => ctx.onCloseSession(session.sessionId),
+      })),
+    });
+  }
+
+  return groups;
 }
 
 /**

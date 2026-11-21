@@ -64,8 +64,15 @@ export interface TagRuntimeOptions {
    *   `profiles/loader.ts`).
    */
   userPacksDir?: string;
-  /** Build the connection */
-  createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection;
+  /**
+   * Build the connection.
+   *
+   * → **It may be asynchronous** ✓ — before the connection is built, the
+   *   machine-specific values of the profile are detected ✓ (the board's
+   *   serial number ✓ · its address ✓) → that is a question for the outside
+   *   world ✓ → it cannot be answered synchronously ✓.
+   */
+  createConnection: (profile: ConnectionProfile, log: SessionLog) => Connection | Promise<Connection>;
   /** Build the session log */
   createLog: (label: string, transport: string) => SessionLog;
 }
@@ -134,7 +141,7 @@ export class TagRuntime {
 
     // 1) Build the connection
     const log = this.opts.createLog(`tags-${profile.id}`, profile.transport);
-    const connection = this.opts.createConnection(profile, log);
+    const connection = await this.opts.createConnection(profile, log);
     try {
       await connection.open();
     } catch (err) {

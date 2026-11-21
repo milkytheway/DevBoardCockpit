@@ -43,8 +43,15 @@ export interface TerminalManagerOptions {
    * manager's `onData`) have to end up in the same place. Both sides used to
    * build one each, with the same label, so one session landed in two files
    * and the connection's copy never got its closing line.
+   *
+   * → **It may be asynchronous** ✓ — before the connection is built, the
+   *   machine-specific values of the profile are **detected** ✓ (the board's
+   *   serial number ✓ · its address ✓) → that is a question for the outside
+   *   world ✓ (`adb` ✓) → it cannot be answered synchronously ✓.
+   * → A test double returns the connection straight away ✓ (a promise is
+   *   awaited ✓ → both work ✓).
    */
-  createConnection(profile: ConnectionProfile, log: SessionLog): Connection;
+  createConnection(profile: ConnectionProfile, log: SessionLog): Connection | Promise<Connection>;
   /**
    * Builds a session log.
    *
@@ -125,7 +132,7 @@ export class TerminalManager {
 
     let connection: Connection;
     try {
-      connection = this.opts.createConnection(profile, log);
+      connection = await this.opts.createConnection(profile, log);
       await connection.open();
     } catch (err) {
       // It cannot connect: the log must not be left with an unfinished half
