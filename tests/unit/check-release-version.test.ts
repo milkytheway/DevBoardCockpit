@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkReleaseVersion,
+  releaseTag,
   versionOfTag,
 } from '../../scripts/check-release-version';
 
@@ -32,5 +33,23 @@ describe('the release version', () => {
   it('**a manual run (no tag) needs a version of the shape x.y.z** ✓', () => {
     expect(checkReleaseVersion('0.1.0', undefined)).toBeNull();
     expect(checkReleaseVersion('0.1.0-beta', undefined)).toContain('x.y.z');
+  });
+
+  /**
+   * **Where the tag comes from.**
+   *
+   * → The workflow puts the tag in the environment ✓ (`RELEASE_TAG` ✓) —
+   *   because the argument after `--` can be **swallowed by `npm.ps1`**
+   *   under PowerShell ✓ (AGENTS.md ✓).
+   * → Without the environment the name of the **branch** would be read ✓ →
+   *   "master" is not a version ✓ → a correct run would fail ✗.
+   */
+  it('**the tag comes from the environment before the name of the branch** ✓', () => {
+    expect(releaseTag([], { RELEASE_TAG: 'v0.1.0', GITHUB_REF_NAME: 'master' })).toBe('v0.1.0');
+    // → **The branch is the last resort** ✓ (a tag push ✓ — the name of the
+    //   tag is the name of the ref ✓).
+    expect(releaseTag([], { GITHUB_REF_NAME: 'v0.1.0' })).toBe('v0.1.0');
+    // → **The argument wins** ✓ (a person who calls it by hand ✓).
+    expect(releaseTag(['node', 'script.ts', 'v0.2.0'], { RELEASE_TAG: 'v0.1.0' })).toBe('v0.2.0');
   });
 });

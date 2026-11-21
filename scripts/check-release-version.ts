@@ -14,6 +14,9 @@
  * Usage: `npm run release:check -- [tag]`
  *   → without a tag it checks that the version looks like a release version
  *     ✓ (`x.y.z` ✓ — a manual run has no tag ✓).
+ *   → the tag can also come from the environment ✓ (`RELEASE_TAG` ✓ — the
+ *     workflow sets it ✓, because the argument after `--` can be swallowed by
+ *     `npm.ps1` under PowerShell ✓).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,6 +53,25 @@ export function checkReleaseVersion(
   return null;
 }
 
+/**
+ * The tag of the release ✓.
+ *
+ * → **The environment comes before the branch name** ✓ — `RELEASE_TAG` ✓ is
+ *   what the workflow sets ✓ (the tag of a tag push ✓ · the version of the
+ *   package on a manual run ✓).
+ * → **Why the argument is not the only way** ✓: under PowerShell ✓
+ *   `npm.ps1` swallows the arguments after `--` ✓ (AGENTS.md ✓) → the
+ *   argument can arrive empty ✓ → then the **name of the branch** ✓ would be
+ *   read ✓ → the guard would compare "master" with "0.1.0" ✓ and fail a run
+ *   that is perfectly correct ✓ (found on 2026-11-22 ✓).
+ */
+export function releaseTag(
+  argv: readonly string[] = process.argv,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return argv[2] ?? env['RELEASE_TAG'] ?? env['GITHUB_REF_NAME'];
+}
+
 /** The version of the package ✓ */
 export function packageVersion(root: string = ROOT): string {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version?: string };
@@ -57,7 +79,7 @@ export function packageVersion(root: string = ROOT): string {
 }
 
 function main(): void {
-  const tag = process.argv[2] ?? process.env['GITHUB_REF_NAME'];
+  const tag = releaseTag();
   const version = packageVersion();
   const problem = checkReleaseVersion(version, tag);
   if (problem !== null) {

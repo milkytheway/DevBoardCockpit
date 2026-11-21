@@ -55,8 +55,14 @@ jobs:
 
       # → **The tag and the package have to agree** ✓ — otherwise the release
       #   says one version ✓ and the installer carries another ✓.
+      # → **The tag travels in the environment** ✓ and not behind `--` ✓ —
+      #   under PowerShell ✓ `npm.ps1` swallows the arguments after `--` ✓
+      #   (AGENTS.md ✓) → then the **name of the branch** ✓ would be read ✓ →
+      #   and a correct run would fail ✗.
       - name: The version of the tag must be the version of the package
-        run: npm run release:check -- "${{ steps.version.outputs.tag }}"
+        run: npm run release:check
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
 
       # → **The installer** ✓ (NSIS ✓ — a setup.exe ✓).
       - name: Build the installer
