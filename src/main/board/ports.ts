@@ -39,6 +39,16 @@ export async function probeHostPort(
   port.on('data', (buf: Buffer) => {
     received += decoder.write(buf);
   });
+  // → **The port reports failures as an 'error' event** ✓ (it cannot be
+  //   opened ✗ · the driver says no ✗) → **an 'error' event without a
+  //   listener throws** ✗ and that throw lands inside the promise chain ✗ →
+  //   it comes out as **a rejection that nobody handles** ✗ (seen on
+  //   2026-11-22 ✓ — the serial HAL listens to its own port ✗ but this probe
+  //   does not ✗).
+  // → The listener only keeps the event from becoming an uncaught throw ✓ —
+  //   the failure itself is reported by the promise below ✓ (the caller tells
+  //   "nobody answered" from "I could not even ask" ✓).
+  port.on('error', () => undefined);
   await port.open();
   try {
     port.write('\r');
