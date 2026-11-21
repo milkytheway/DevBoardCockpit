@@ -1,14 +1,37 @@
 # DevBoard Cockpit
 
-A Windows desktop workbench for embedded Linux boards.
+**SCADA / HMI software for embedded boards** — tags are data sources, cards are graphic elements, and the configuration engineer is an AI.
 
-It standardises a board's capabilities as **semantic tags**, visualisation and control as **cards**, and extension through **MCP**, so that an AI agent running on the host can build instruments and switches on demand.
+A Windows desktop workbench for embedded Linux boards: it standardises a
+board's capabilities as **tags**, visualisation and control as **cards**, and
+extension through **MCP**, so that an AI agent running on the host can build
+instruments and switches on demand.
 
-In essence this is SCADA / HMI software for embedded boards: tags are data sources, cards are graphic elements, and the configuration engineer is an AI.
+Watching the readings of a board, putting them and the switches on screen,
+running a whole job in one go, and moving to another board without touching
+the code — all in one window.
 
 [中文](README.md)
 
 ---
+
+## What it does
+
+| What you want | How it helps |
+|---|---|
+| **Watch the board** | its capabilities are standardised as **tags**: CPU, memory, temperature, frequency, NPU - whatever the model, the interface speaks the same names |
+| **Put the readings and the switches on screen** | a **card** is a bit of HTML and JavaScript: it says which tags it wants and which permissions it needs, the host fetches, draws and acts |
+| **Get a whole job done** | a **flow pack** writes a pipeline of steps (compile → flash → run → look), and it can cross machines |
+| **Let the AI build a new instrument** | **MCP**: the host opens the tags, the actions, the cards and the flows to the agent. Say "give me a panel that watches the NPU load" and it writes a card and installs it |
+| **Move to another board** | a **board pack** says what this model has, where to read it and which actions are dangerous. Another board, no code change |
+| **No board at hand** | the **fake board** ships with the installer. The interface can be looked at without any hardware, and it says that the data is synthetic |
+
+## The interface
+
+On the left the **board picker** and the connections of that board, in the
+middle the **workbench** with the cards, on the right the details and the
+parameters. Moving to another board is one choice on the left - the cards in
+the middle do not move.
 
 ## Download and install
 
@@ -24,34 +47,6 @@ the directory you want it in, and it puts a shortcut on the desktop.
 | After the install | the first start asks for the address of the board and the serial port (or use the wizard); what you fill in is kept in `%LOCALAPPDATA%\DevBoardCockpit\`, and the uninstaller does not delete it |
 | The fake board | the installer carries it, so the interface can be looked at without any hardware (it says that the data is synthetic) |
 
-## Structure
-
-| Layer | Contents | Location |
-|---|---|---|
-| Contract | Tag vocabulary, board pack format, card manifest, workflow pack format, MCP tool set | `docs/spec/` |
-| Device facts | Measured paths and behavioural constraints of the ATK-DLRK3588 | `docs/02-device-facts.md` |
-| Implementation | Electron main process, card host, tag runtime, workflow engine, MCP server | `src/` |
-| Assets | Built-in cards, board packs, workflow packs, connection profiles | `cards/` `profiles/` |
-
-The main process owns all device I/O, tag sampling, action execution and permission decisions. The renderer only draws. Cards run in isolated iframes and reach a whitelisted API only.
-
-## Repository layout
-
-```
-docs/spec/               Contract: tag vocabulary, board pack, card manifest, MCP tools, workflow pack
-docs/tutorial/           Methodology tutorials
-docs/02-device-facts.md  Measured device facts
-src/main/                Device I/O, tag runtime, action execution, card host, MCP server
-src/renderer/            User interface
-src/shared/              Types and theme shared by both processes
-cards/                   Built-in cards
-profiles/                Board packs, workflow packs, connection profiles
-fixtures/                Real-device samples (golden test vectors, append-only)
-scripts/                 Build, validation, generation and probing tools
-tests/                   Unit, integration and end-to-end tests
-```
-
----
 ## Getting started
 
 Prerequisites: Node.js 20.19 or later; Windows. Development requires the Visual Studio build tools to compile `node-pty` and `serialport`.
@@ -104,6 +99,35 @@ A **board pack** is a YAML file declaring the tag sources, actions and auto-dete
 A **workflow pack** is a YAML file declaring how to complete a multi-step task, possibly across machines.
 
 An AI agent on the host reaches every capability through MCP, which exposes 20 tools covering tag reads, action execution, and card and workflow management. The MCP server listens on a local port when the application starts; the port and bearer token are written to `mcp.json` in the user data directory, which the agent reads to connect.
+
+## How it is built
+
+### Structure
+
+| Layer | Contents | Location |
+|---|---|---|
+| Contract | Tag vocabulary, board pack format, card manifest, workflow pack format, MCP tool set | `docs/spec/` |
+| Device facts | Measured paths and behavioural constraints of the ATK-DLRK3588 | `docs/02-device-facts.md` |
+| Implementation | Electron main process, card host, tag runtime, workflow engine, MCP server | `src/` |
+| Assets | Built-in cards, board packs, workflow packs, connection profiles | `cards/` `profiles/` |
+
+The main process owns all device I/O, tag sampling, action execution and permission decisions. The renderer only draws. Cards run in isolated iframes and reach a whitelisted API only.
+
+### Repository layout
+
+```
+docs/spec/               Contract: tag vocabulary, board pack, card manifest, MCP tools, workflow pack
+docs/tutorial/           Methodology tutorials
+docs/02-device-facts.md  Measured device facts
+src/main/                Device I/O, tag runtime, action execution, card host, MCP server
+src/renderer/            User interface
+src/shared/              Types and theme shared by both processes
+cards/                   Built-in cards
+profiles/                Board packs, workflow packs, connection profiles
+fixtures/                Real-device samples (golden test vectors, append-only)
+scripts/                 Build, validation, generation and probing tools
+tests/                   Unit, integration and end-to-end tests
+```
 
 ## Development
 
