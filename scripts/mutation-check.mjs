@@ -2750,6 +2750,14 @@ const selected = FILTERS.length
   ? MUTATIONS.filter((m) => onThisPlatform(m) && FILTERS.some((f) => m.name.includes(f)))
   : MUTATIONS.filter(onThisPlatform);
 
+// → **A guard that belongs to another platform says so** ✓ (a silent skip
+//   would look like a guard that passed ✓).
+for (const m of MUTATIONS) {
+  if (m.only !== undefined && m.only !== PLATFORM) {
+    console.log(`– ${m.name.split(' ')[0]} is not judged here (it belongs to ${m.only} ✓)`);
+  }
+}
+
 if (selected.length === 0) {
   console.error(`no mutation matches: ${FILTERS.join(', ')}`);
   console.error('the id of a mutation is the token in front of its name (C1, M7, M40b, …)');
