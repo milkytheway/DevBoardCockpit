@@ -112,6 +112,19 @@ overwriting there is the point ✓.)
 does not fit the schema is an error, not a profile that fails later ✓.
 → **The result must not contain `${` any more** ✓.
 
+### 4.4 The values may be **detected** ✓
+
+→ The **person is the authority** ✓ — but the host may **propose** ✓:
+the board's serial number (`adb devices` ✓) · the address the board reports
+about itself (`adb shell ip -4 addr show` ✓) · the serial port (**the one
+that answers** ✓ — a port that exists proves nothing ✓).
+→ **Exactly one candidate → it may be filled in** ✓.
+→ **Several candidates → the person says which one** ✓ (the board setup ✓).
+→ **No candidate → it is reported** ✓ — never invented ✓.
+→ **A connection without a board pack never receives a board's address** ✓
+(the host's own shell ✓ · the guest machine ✓ — it has an address of its
+own ✓).
+
 ---
 
 ## 5 · The rules
@@ -134,6 +147,7 @@ does not fit the schema is an error, not a profile that fails later ✓.
 | 14 | Installing a kit does not overwrite an existing profile ✓ | installing is "fill in what is missing" ✓ |
 | 15 | Installing a kit is a **host-local action** ✓ — it is not an MCP tool ✓ | the MCP tool set is closed ✓ (§3 has two exceptions ✓ — this is not one of them ✓) |
 | 16 | `apiVersion` is **not bumped** ✓ (`devboard/v1` has not shipped with any implementation ✓) | the version discipline of the contract layer ✓ |
+| 17 | The machine-specific values may be **detected** ✓ — but **only when there is exactly one candidate** ✓ | the detection is a proposal ✓ · several candidates are a question for the person ✓ · none are reported ✓ |
 
 ---
 
