@@ -33,16 +33,19 @@ export interface PersistResult {
 /**
  * Write the profile into the user directory ✓.
  *
- * → **Never overwrites** ✓ (an existing file there is the person's own ✓).
+ * → **Never overwrites** ✓ (an existing file there is the person's own ✓)
+ *   — **unless the person says so** ✓ (`overwrite` ✓ · the board setup is
+ *   exactly that ✓).
  * → Written through a temporary file ✓ (a half-written file would be read
  *   back as "no profile" ✓ — the same rule the permission store follows ✓).
  */
 export function persistProfile(
   profile: ConnectionProfile,
   userProfilesDir: string,
+  opts: { overwrite?: boolean } = {},
 ): PersistResult {
   const path = join(userProfilesDir, `${profile.id}.json`);
-  if (existsSync(path)) {
+  if (existsSync(path) && opts.overwrite !== true) {
     return { written: false, path, reason: 'the user directory already has a profile with this id' };
   }
   mkdirSync(userProfilesDir, { recursive: true });

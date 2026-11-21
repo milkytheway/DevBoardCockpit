@@ -63,6 +63,8 @@ export const api: CockpitApi = {
   workflowsCancel: (runId: string) => invoke(IPC.workflowsCancel, runId),
   // **The board setup wizard** ✓ — **host only** ✓ (neither the cards nor an agent get it ✓)
   wizardRun: (input) => invoke(IPC.wizardRun, input),
+  boardDetect: () => invoke(IPC.boardDetect),
+  boardApply: (values) => invoke(IPC.boardApply, values),
   permissionsList: () => invoke(IPC.permissionsList),
   permissionsSet: (actor, op, allowed) => invoke(IPC.permissionsSet, actor, op, allowed),
   onCardEvent: (cb) => {

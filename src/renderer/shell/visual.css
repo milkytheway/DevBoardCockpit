@@ -1774,6 +1774,41 @@ body {
   color: var(--ui-dim);
 }
 
+/* ── The board setup (the values of this machine ✓) ── */
+.board-setup__actions {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.board-setup__grid {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.board-setup__field {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.board-setup__field > span {
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
+.board-setup__list {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
 .shortcut-list {
   display: flex;
   flex-direction: column;

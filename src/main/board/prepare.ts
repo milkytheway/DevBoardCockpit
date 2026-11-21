@@ -21,6 +21,7 @@
  *   a board** ✓ → the message has to name the placeholder ✓.
  */
 import { makeError } from '../../shared/errors';
+import type { BoardValues } from '../../shared/board-setup';
 import type { ConnectionProfile } from '../profiles/schema';
 import { isPlaceholderHost, isPlaceholderSerial, listAdbDevices, type AdbDevice } from './detect';
 import { persistProfile } from './persist';
@@ -128,6 +129,39 @@ export async function prepareProfile(
     );
   }
   return profile;
+}
+
+/**
+ * **Fill the values the person confirmed** ✓.
+ *
+ * → The detection found them ✓ (or the person typed them ✓) → they go into
+ *   the profile ✓ → **only the fields that belong to that transport** ✓
+ *   (the adb connection has no port ✓ · the ssh connection has no serial ✓).
+ * → The nested address ✓ (`options.ssh.host` ✓ — the guest reaches the board
+ *   through it ✓) is filled in for **every** connection of the board ✓.
+ */
+export function applyValues(profile: ConnectionProfile, values: BoardValues): ConnectionProfile {
+  // → **A connection without a board pack is not a board's connection** ✓
+  //   (the host's own shell ✓ · **the guest machine** ✓) → it keeps its own
+  //   address ✓ → **the address belongs to the board** ✓.
+  if (typeof profile.board_pack !== 'string' || profile.board_pack.length === 0) {
+    return profile;
+  }
+  const options: Record<string, unknown> = { ...profile.options };
+  if (profile.transport === 'adb' && values.adbSerial.length > 0) {
+    options['serial'] = values.adbSerial;
+  }
+  if (profile.transport === 'ssh' && values.address.length > 0) {
+    options['host'] = values.address;
+  }
+  if (profile.transport === 'serial' && values.serialPort.length > 0) {
+    options['port'] = values.serialPort;
+  }
+  const nested = options['ssh'];
+  if (typeof nested === 'object' && nested !== null && values.address.length > 0) {
+    options['ssh'] = { ...(nested as Record<string, unknown>), host: values.address };
+  }
+  return { ...profile, options };
 }
 
 /** The changes of a preparation ✓ (for the interface ✓) */

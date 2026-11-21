@@ -39,9 +39,17 @@ import {
 import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
-import { listPacksIn } from './tags/binding';
-import { prepareProfile } from './board/prepare';
-import { hostPortProbe } from './board/ports';
+import { listPacksIn, matchPack } from './tags/binding';
+import { applyValues, prepareProfile } from './board/prepare';
+import { hostPortProbe, listHostPorts } from './board/ports';
+import {
+  listAdbDevices,
+  probeSerialPorts,
+  readBoardIPv4,
+  readBoardModel,
+} from './board/detect';
+import { persistProfile } from './board/persist';
+import { parseBoardValues } from '../shared/board-setup';
 import { createCardWiring } from './cards/wiring';
 import { runWizardForHost } from './wizard/wiring';
 import { ActionAudit } from './actions/audit';
@@ -882,6 +890,65 @@ function guard(what: string, fn: () => void): void {
     console.error(`[${what}] ${err instanceof Error ? err.message : String(err)}`);
   }
 }
+
+// ── The board setup (the values of this machine ✓) ──────────────────────
+/**
+ * **What does this machine see of the board?** ✓
+ *
+ * → It only looks ✓ — **nothing is written** ✓.
+ * → The adb devices ✓ · the model the board reports ✓ · the address it
+ *   reports about itself ✓ · the serial ports ✓ (**and which one answers**
+ *   ✓ — that is the only honest way to tell the console from a device that
+ *   happens to have a COM port ✓).
+ * → **The board pack** the model belongs to ✓ (the pack is the authority on
+ *   what its board calls itself ✓).
+ */
+handle(IPC.boardDetect, async () => {
+  const devices = await listAdbDevices({ adbPath });
+  const ready = devices.filter((device) => device.state === 'device');
+  const serial = ready.length === 1 ? (ready[0]?.serial ?? null) : null;
+  const model = serial === null ? null : await readBoardModel(serial, { adbPath });
+  const address = serial === null ? null : await readBoardIPv4(serial, { adbPath });
+
+  // → The ports of this machine ✓ (the native module may be missing ✓ → then
+  //   there are simply no ports to offer ✓).
+  let ports: { path: string; answered: boolean }[] = [];
+  try {
+    const all = await listHostPorts();
+    const { answering } = await probeSerialPorts(all, 1500000, hostPortProbe, 600);
+    ports = all.map((port) => ({ path: port.path, answered: answering.includes(port.path) }));
+  } catch (err) {
+    console.warn(`[board] the serial ports cannot be listed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const packs = listPacksIn([join(app.getAppPath(), 'profiles', 'boards'), userBoardsDir()]);
+  const boardPack = model === null ? null : (packs.find((pack) => matchPack(pack, model))?.id ?? null);
+  return { adbDevices: devices, model, address, ports, boardPack };
+});
+
+/**
+ * **Write the values the person confirmed** ✓.
+ *
+ * → Into the **user directory** ✓ (the built-in profiles stay read-only ✓)
+ *   → the user's copy wins ✓ (`profiles/loader.ts` ✓).
+ * → **It replaces** ✓ — this is the person saying "this is my board" ✓ (the
+ *   automatic repair never overwrites ✓).
+ * → **Only the connections of that board pack** ✓ (the values belong to one
+ *   board ✓ — the guest machine keeps its own address ✓).
+ */
+handle(IPC.boardApply, async (raw) => {
+  const values = parseBoardValues(raw);
+  const written: string[] = [];
+  const kept: string[] = [];
+  for (const profile of listProfiles()) {
+    if (profile.board_pack !== values.boardPack) continue;
+    const updated = applyValues(profile, values);
+    const result = persistProfile(updated, userProfilesDir(), { overwrite: true });
+    (result.written ? written : kept).push(profile.id);
+  }
+  console.log(`[board] the confirmed values were written: ${written.join(', ') || '(none)'}`);
+  return { written, kept };
+});
 
 // ── File transfer ───────────────────────────────────────────────
 handle(IPC.connectionsList, () =>

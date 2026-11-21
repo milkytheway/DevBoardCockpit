@@ -10,6 +10,7 @@ import type { AppErrorPayload } from './errors';
 import type { TagReading } from './tag-reading';
 import type { RuntimeStatus } from './runtime-status';
 import type { LayoutState } from './layout';
+import type { BoardApplyResult, BoardDetection, BoardValues } from './board-setup';
 
 export const IPC = {
   terminalOpen: 'terminal:open',
@@ -137,6 +138,25 @@ export const IPC = {
    *   user's directories).
    */
   wizardRun: 'wizard:run',
+
+  /**
+   * **What does this machine see of the board?** ✓
+   *
+   * → The published connection profiles carry **placeholders** ✓ → the
+   *   person has to see what was found ✓ (the adb devices ✓ · the address
+   *   the board reports ✓ · the serial ports ✓) → and to say which one is
+   *   right ✓ when there is more than one candidate ✓.
+   */
+  boardDetect: 'board:detect',
+  /**
+   * **Write the confirmed values** ✓.
+   *
+   * → It writes into the **user directory** ✓ (the built-in profiles stay
+   *   read-only ✓) → the user's copy wins ✓.
+   * → **It replaces what is there** ✓ — this is the person saying "this is
+   *   my board" ✓ (the automatic repair never overwrites ✓).
+   */
+  boardApply: 'board:apply',
 } as const;
 
 /**
@@ -419,6 +439,18 @@ export interface CockpitApi {
    *
    * → Host-only: neither cards nor agents can reach it.
    */
+  /**
+   * Detects what this machine can see of the board ✓.
+   *
+   * → **It only looks** ✓ — nothing is written ✓.
+   */
+  boardDetect(): Promise<BoardDetection>;
+  /**
+   * Writes the confirmed values into the user directory ✓.
+   *
+   * → **It replaces** ✓ — this is the person saying "this is my board" ✓.
+   */
+  boardApply(values: BoardValues): Promise<BoardApplyResult>;
   wizardRun(input: {
     port: string;
     baudrate: number;

@@ -625,6 +625,10 @@ export function Shell(): JSX.Element {
                 onPermission={setPermission}
                 locale={locale}
                 onLocale={changeLocale}
+                // → **The board setup writes the profiles** ✓ → the
+                //   connections change ✓ → the list is refreshed ✓.
+                onBoardApplied={refreshConnections}
+                reportError={reportError}
               />
             ) : null}
           </div>

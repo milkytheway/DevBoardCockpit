@@ -3,6 +3,7 @@ import { LOCALES, LOCALE_NAMES, useT, type Locale, type Localised } from '../i18
 import type { ViewDensity } from '../../../shared/layout';
 import type { PermissionActor, PermissionRow } from '../../../shared/ipc-contract';
 import { PaletteIcon } from '../Icons';
+import { BoardSetup } from '../BoardSetup';
 
 /**
  * **Interface wording** —— every string the user can read is in this table ✓.
@@ -122,6 +123,8 @@ export function SettingsPage({
   onPermission,
   locale,
   onLocale,
+  onBoardApplied,
+  reportError,
 }: {
   theme: ThemeMode;
   onTheme: (mode: ThemeMode) => void;
@@ -139,6 +142,10 @@ export function SettingsPage({
   locale: Locale;
   /** Change it. */
   onLocale: (locale: Locale) => void;
+  /** **The board setup** ✓ (the values of this machine ✓) */
+  onBoardApplied?: () => void;
+  /** The error channel of the shell ✓ */
+  reportError?: (message: string) => void;
 }): JSX.Element {
   const t = useT();
   // The master switches only touch **card** grants: the agent side keeps its
@@ -234,6 +241,8 @@ export function SettingsPage({
           </div>
           <p className="settings-note">{t(strings.languageNote)}</p>
         </section>
+
+        <BoardSetup onApplied={onBoardApplied} reportError={reportError} />
 
         <section className="settings-card">
           <header className="settings-card__head">
