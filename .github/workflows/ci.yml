@@ -55,6 +55,37 @@ jobs:
       - name: Check the links of the contract
         run: npm run check:links
 
+  # ── The packaging ──
+  #
+  # → **The installed application is a different thing than the source tree**
+  #   ✓ → the asar has to hold the cards ✓ the connection profiles ✓ the
+  #   native modules ✓ → and **that is invisible until it is installed** ✓
+  #   (the build is green ✓ the tests are green ✓ → and the installed
+  #   application has not one card ✗).
+  # → So the packaging is a criterion that runs **on every push** ✓ — not
+  #   only when a release is made ✓.
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the installer
+        run: npm run dist
+
+      - name: The artefact is complete
+        run: npm run check:package
+
   # ── The tests that need the real application ──
   #
   # → The unit tests run the **modules** ✓ — the e2e runs the **application**

@@ -10,6 +10,20 @@ In essence this is SCADA / HMI software for embedded boards: tags are data sourc
 
 ---
 
+## Download and install
+
+**Using the software does not need a development environment.** Open the
+[Releases](https://github.com/milkytheway/DevBoardCockpit/releases) page,
+download `DevBoardCockpit-<version>-setup.exe` (Windows x64) and run it: pick
+the directory you want it in, and it puts a shortcut on the desktop.
+
+| | |
+|---|---|
+| **It is not signed** | Windows SmartScreen asks once: "More info" → "Run anyway" |
+| Checking the download | the release carries `SHA256SUMS.txt` |
+| After the install | the first start asks for the address of the board and the serial port (or use the wizard); what you fill in is kept in `%LOCALAPPDATA%\DevBoardCockpit\`, and the uninstaller does not delete it |
+| The fake board | the installer carries it, so the interface can be looked at without any hardware (it says that the data is synthetic) |
+
 ## Structure
 
 | Layer | Contents | Location |
@@ -103,6 +117,22 @@ npm run check:package       # Validate build artefacts
 ```
 
 Tests do not require hardware. Paths that do are covered separately by `npm run probe:board -- --profile <profile>`.
+
+### Cutting a release
+
+```bash
+npm version patch        # or minor / major - it changes the version of package.json
+git tag v0.1.0           # the tag and package.json have to agree (the CI checks)
+git push --follow-tags   # the CI builds the installer and puts it on the release
+```
+
+The CI does three things: it checks that the tag and the version agree, it
+builds the NSIS installer, it checks that the artefact is complete (the cards,
+the connection profiles, the workflow packs and the native modules are all in
+the asar), and it attaches `setup.exe` and `SHA256SUMS.txt` to the release of
+that version.
+
+It can also be built here: `npm run dist` puts it in `release/`.
 
 ## Hardware requirements
 

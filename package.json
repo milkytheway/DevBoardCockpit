@@ -38,6 +38,7 @@
     "dist": "electron-vite build && tsx scripts/check-build.ts && electron-builder --win --publish never",
     "dist:dir": "electron-vite build && tsx scripts/check-build.ts && electron-builder --dir --publish never",
     "check:package": "tsx scripts/check-package.ts",
+    "release:check": "tsx scripts/check-release-version.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",

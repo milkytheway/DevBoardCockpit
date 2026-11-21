@@ -304,8 +304,14 @@ function main(): void {
         .join(', ') || 'none — `files` is short of `profiles/**/*`',
   });
 
-  // ── No fake device in the production package (**synthetic data may not
-  //    enter the production package**) ───────────────────────────────
+  // ── The fake device **ships** with the package (the user decided it on
+  //    2026-11-21 ✓ — the interface labels it as synthetic data ✓) ──
+  //
+  // → **The marker is looked for in the whole asar** ✓ and not only in
+  //   `out/main/index.js` ✓ — the bundler **splits the code into chunks** ✓
+  //   and the fake device ended up in one of them ✓ → a check that only
+  //   looked at the entry bundle reported "it is not in the package" ✓
+  //   while it was ✓ (found on 2026-11-22 ✓ — the guard was stale ✓).
   const mainBundle = readAsarFile(asarPath, header, 'out/main/index.js');
   // ── **Is the code in the package the one on the disk** (added on
   //    2026-11-19) ─────────────────────────────────────────────────
@@ -328,7 +334,8 @@ function main(): void {
       ? bundleCmp.detail
       : `${bundleCmp.detail} — **this one catches "the old code was installed"**`,
   });
-  const fakeInPackage = mainBundle?.toString('utf8').includes(FAKE_DEVICE_MARKER) ?? false;
+  // → **The whole asar** ✓ (the marker may be in any chunk ✓)
+  const fakeInPackage = readFileSync(asarPath).includes(FAKE_DEVICE_MARKER);
   checks.push({
     what: 'the fake device ships with the package (the user decided it on 2026-11-21 ✓ — the interface labels it as synthetic data ✓)',
     ok: fakeInPackage,
@@ -378,7 +385,7 @@ function main(): void {
   }
 
   console.log(
-    `✓ the self-check of the packaged artefact passed (${cardManifests.length} built-in cards · the native modules are unpacked · no fake device · the code in the package is the newest one)`,
+    `✓ the self-check of the packaged artefact passed (${cardManifests.length} built-in cards · the native modules are unpacked · the fake device ships · the code in the package is the newest one)`,
   );
 }
 

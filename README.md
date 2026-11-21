@@ -10,6 +10,20 @@
 
 ---
 
+## 下载安装
+
+**只想用这个软件的人不需要装开发环境** ✓ —— 到
+[Releases](https://github.com/milkytheway/DevBoardCockpit/releases) 页面下载
+`DevBoardCockpit-<版本>-setup.exe` ✓（Windows x64 ✓）→ 双击安装 ✓
+（可以自己选安装目录 ✓ · 会建桌面快捷方式 ✓）。
+
+| 事项 | 说明 |
+|---|---|
+| **没有代码签名** ✓ | Windows SmartScreen 会拦一下 ✓ → "更多信息" → "仍要运行" ✓ |
+| 校验 | 旁边有 `SHA256SUMS.txt` ✓ → 下载后可以核对 ✓ |
+| 装好之后 | 第一次打开要**填板子的地址、串口** ✓（或者用向导 ✓）→ 填的值存在 `%LOCALAPPDATA%\DevBoardCockpit\` ✓（卸载不会删它 ✓） |
+| 假板子 | 安装包里带着**假板子** ✓ —— 没有硬件也能先看看界面 ✓（界面里会标明那是合成数据 ✓） |
+
 ## 构成
 
 | 层 | 内容 | 位置 |
@@ -99,6 +113,20 @@ npm run check:package       # 校验打包产物
 ```
 
 测试不依赖硬件。涉及真机的路径由 `npm run probe:board -- --profile <profile>` 单独覆盖。
+
+### 发一个版本
+
+```bash
+npm version patch        # 或者 minor / major —— 改的是 package.json 的 version
+git tag v0.1.0           # 标签的版本必须和 package.json 的一样（CI 会查）
+git push --follow-tags   # 推上去之后 CI 构建安装包并挂到 Releases
+```
+
+CI 会做三件事 ✓：核对标签和版本 ✓ → 构建 NSIS 安装包 ✓ → 校验产物完整（卡片、连接
+profile、流程包、原生模块都在 asar 里 ✓）→ 把 `setup.exe` 和 `SHA256SUMS.txt` 挂到
+那个版本的 Release 上 ✓。
+
+本地也可以直接构建 ✓：`npm run dist` ✓ → `release/` ✓。
 
 ## 硬件依赖
 
