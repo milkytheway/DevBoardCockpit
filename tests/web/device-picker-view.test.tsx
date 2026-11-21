@@ -43,10 +43,15 @@ const CONNECTIONS: ConnectionInfo[] = [
   conn('ubuntu-ssh', 'ubuntu-ssh', 'Ubuntu · SSH', { boardPack: null, transport: 'ssh' }),
 ];
 
-function open(): HTMLElement {
+function open(onAddBoard?: () => void): HTMLElement {
   render(
     <LocaleContext.Provider value="en">
-      <DevicePicker connections={CONNECTIONS} onSelect={() => undefined} busy={false} />
+      <DevicePicker
+        connections={CONNECTIONS}
+        onSelect={() => undefined}
+        onAddBoard={onAddBoard}
+        busy={false}
+      />
     </LocaleContext.Provider>,
   );
   fireEvent.click(screen.getByRole('button', { name: /Board/ }));
@@ -111,5 +116,14 @@ describe('The device picker (boards only)', () => {
       </LocaleContext.Provider>,
     );
     expect(screen.getByRole('button', { name: /Board/ }).textContent).toContain('No board');
+  });
+
+  it('offers the board wizard from the board menu instead of the main navigation', () => {
+    const onAddBoard = vi.fn();
+    open(onAddBoard);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add board' }));
+
+    expect(onAddBoard).toHaveBeenCalledTimes(1);
   });
 });

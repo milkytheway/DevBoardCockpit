@@ -10,7 +10,6 @@ import {
   GaugeIcon,
   LayersIcon,
   MemoryIcon,
-  PlusIcon,
   RefreshIcon,
   SearchIcon,
   ThermometerIcon,
@@ -24,18 +23,9 @@ import {
  */
 const strings = {
   title: { 'zh-Hans': '卡片库', en: 'Card library' },
-  subtitleTail: {
-    'zh-Hans': '卡片是文件，改一行就热更新',
-    en: 'cards are files, change one line and they hot reload',
-  },
   cardsCount: { 'zh-Hans': '张卡片', en: 'cards' },
   degradedCount: { 'zh-Hans': '张降级', en: 'degraded' },
   rescan: { 'zh-Hans': '重新扫描', en: 'Rescan' },
-  aiCardTitle: {
-    'zh-Hans': 'AI 造卡依赖 M7 的 MCP 工具集',
-    en: 'AI card creation depends on the M7 MCP tool set',
-  },
-  aiCard: { 'zh-Hans': 'AI 造卡 · M7', en: 'AI card creation · M7' },
 
   // ── List ──
   found: { 'zh-Hans': '已发现', en: 'Found' },
@@ -46,20 +36,11 @@ const strings = {
     en: 'No cards yet. Put a card folder into the user card directory and the hot plug finds it on its own.',
   },
   emptyNoMatch: { 'zh-Hans': '没有匹配的卡片。', en: 'No card matches.' },
-  hintCardsAreFolders: { 'zh-Hans': '卡片是文件夹，不是插件。', en: 'A card is a folder, not a plugin.' },
-  hintAiCard: {
-    'zh-Hans': 'AI 造卡 · M7 起；现在先读 docs/spec/03 的 manifest 格式。',
-    en: 'AI card creation starts at M7; for now read the manifest format in docs/spec/03.',
-  },
 
   // ── Details ──
   degradedInvalid: { 'zh-Hans': '降级 · 校验错误', en: 'Degraded · validation error' },
   validationPassed: { 'zh-Hans': '校验通过', en: 'Validation passed' },
-  previewBody: {
-    'zh-Hans': '卡片的实际渲染发生在工作台。这里展示实例元信息与沙箱边界——不是又一个 iframe。',
-    en: 'The card itself renders on the workbench. This pane shows the instance metadata and the sandbox boundary — not another iframe.',
-  },
-  storageByHost: { 'zh-Hans': '存储 · 宿主代管', en: 'Storage · held by the host' },
+  storageByHost: { 'zh-Hans': '宿主存储', en: 'Host storage' },
   connection: { 'zh-Hans': '连接', en: 'Connection' },
   notConnectedV1: {
     'zh-Hans': '未连接（v1 单连接）',
@@ -69,26 +50,26 @@ const strings = {
   entry: { 'zh-Hans': '入口', en: 'Entry' },
   discoveredBy: { 'zh-Hans': '发现方式', en: 'Discovered by' },
   discoveredByValue: {
-    'zh-Hans': '用户卡片目录 / 内置卡片目录（宿主扫描）',
-    en: 'User card directory / built-in card directory (host scan)',
+    'zh-Hans': '用户目录 / 内置目录',
+    en: 'User / built-in',
   },
   permissions: { 'zh-Hans': '权限', en: 'Permissions' },
   permissionsValue: {
-    'zh-Hans': 'manifest 声明，宿主在 main 过滤 · 本页不猜',
-    en: 'Declared by the manifest, filtered by the host in main · this page does not guess',
+    'zh-Hans': 'Manifest',
+    en: 'Manifest',
   },
   hotReload: { 'zh-Hans': '热更新', en: 'Hot reload' },
   hotReloadValue: {
-    'zh-Hans': '文件变化 → 校验 → 重载 iframe',
-    en: 'File change → validation → reload the iframe',
+    'zh-Hans': '文件变化后自动重载',
+    en: 'Reloads on file change',
   },
   placeOnWorkbench: { 'zh-Hans': '放到工作台', en: 'Put on the workbench' },
   openDetail: { 'zh-Hans': '打开详情', en: 'Open details' },
 
   // ── Empty details ──
   blankBody: {
-    'zh-Hans': '卡片是文件。把文件夹放进用户卡片目录就会出现在这里；改一行文件就热更新。',
-    en: 'A card is a file. Drop a folder into the user card directory and it shows up here; change one line and it hot reloads.',
+    'zh-Hans': '从用户卡片目录或内置目录扫描。',
+    en: 'Scanned from the user and built-in card directories.',
   },
   installCards: { 'zh-Hans': '安装卡片 · 目录扫描', en: 'Install cards · directory scan' },
 } satisfies Record<string, Localised>;
@@ -154,22 +135,13 @@ export function LibraryPage({
           <span className="page-head__eyebrow">CARD LIBRARY</span>
           <h1 className="page-head__title">{t(strings.title)}</h1>
           <p className="page-head__sub">
-            {cards.length} {t(strings.cardsCount)} · {degraded} {t(strings.degradedCount)} · {t(strings.subtitleTail)}
+            {cards.length} {t(strings.cardsCount)} · {degraded} {t(strings.degradedCount)}
           </p>
         </div>
         <div className="page-head__actions">
           <button type="button" className="btn btn--ghost btn--sm" onClick={onRefresh}>
             <RefreshIcon size={14} />
             {t(strings.rescan)}
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary btn--sm"
-            disabled
-            title={t(strings.aiCardTitle)}
-          >
-            <PlusIcon size={14} />
-            {t(strings.aiCard)}
           </button>
         </div>
       </header>
@@ -225,10 +197,6 @@ export function LibraryPage({
               </li>
             ) : null}
           </ul>
-          <div className="library__hint">
-            <p>{t(strings.hintCardsAreFolders)}</p>
-            <p className="dim">{t(strings.hintAiCard)}</p>
-          </div>
         </aside>
 
         <section className="library__detail">
@@ -272,7 +240,6 @@ export function LibraryPage({
                   </span>
                   <div>
                     <h3>{t(cardLook(selected.cardId).note)}</h3>
-                    <p>{t(strings.previewBody)}</p>
                   </div>
                 </div>
                 <div className="library__preview-pills">

@@ -27,19 +27,11 @@ import { useT, type Localised } from './i18n';
 
 /** **Interface wording** —— every string the user can read is in this table ✓. */
 const strings = {
-  title: { 'zh-Hans': '这台机器上的板子', en: 'The board on this machine' },
-  head: {
-    'zh-Hans': '序列号、地址、串口 —— 这三样只有你知道，探测只是帮填',
-    en: 'Serial number, address, serial port — only you know them; the detection only helps you fill them in',
-  },
-  note: {
-    'zh-Hans': '探测到的值会写进用户目录（%LOCALAPPDATA%\\DevBoardCockpit\\profiles\\targets），覆盖内置的那份；内置的始终保留原样。',
-    en: 'The confirmed values are written into the user directory (%LOCALAPPDATA%\\DevBoardCockpit\\profiles\\targets), which overrides the built-in copy; the built-in one keeps its values.',
-  },
   detect: { 'zh-Hans': '探测', en: 'Detect' },
   detecting: { 'zh-Hans': '探测中…', en: 'Detecting…' },
   apply: { 'zh-Hans': '保存', en: 'Save' },
   applying: { 'zh-Hans': '写入中…', en: 'Writing…' },
+  notDetected: { 'zh-Hans': '尚未探测', en: 'Not detected' },
   adbSerial: { 'zh-Hans': '板子序列号', en: 'Board serial number' },
   address: { 'zh-Hans': '板子地址', en: 'Board address' },
   serialPort: { 'zh-Hans': '串口', en: 'Serial port' },
@@ -55,10 +47,10 @@ const strings = {
   saved: { 'zh-Hans': '已写入 {count} 个连接', en: 'Written into {count} connections' },
   savedNone: { 'zh-Hans': '没有写入任何连接', en: 'Nothing was written' },
   noBoardPack: {
-    'zh-Hans': '这块板子的型号还没有对应的板型包 —— 先用向导接这块板',
-    en: 'No board pack claims the model of this board — attach it with the wizard first',
+    'zh-Hans': '没有匹配的板型包',
+    en: 'No matching board pack',
   },
-  failed: { 'zh-Hans': '没成：{detail}', en: 'It did not work: {detail}' },
+  failed: { 'zh-Hans': '失败：{detail}', en: 'Failed: {detail}' },
 } satisfies Record<string, Localised>;
 
 export function BoardSetup({
@@ -134,15 +126,12 @@ export function BoardSetup({
   };
 
   return (
-    <section className="settings-card">
-      <header className="settings-card__head">
-        <div>
-          <h2>{t(strings.title)}</h2>
-          <p>{t(strings.head)}</p>
-        </div>
-      </header>
-
-      <div className="board-setup__actions">
+    <div className="board-setup">
+      <div className="board-setup__toolbar">
+        <span className="board-setup__state">
+          {detection?.model ?? t(strings.notDetected)}
+        </span>
+        <div className="board-setup__actions">
         <button
           type="button"
           className="btn btn--ghost"
@@ -159,11 +148,11 @@ export function BoardSetup({
         >
           {busy ? t(strings.applying) : t(strings.apply)}
         </button>
+        </div>
       </div>
 
       {detection !== null ? (
         <>
-          <h3 className="settings-card__sub">{t(strings.adbSerial)}</h3>
           <div className="board-setup__grid">
             <label className="board-setup__field">
               <span>{t(strings.adbSerial)}</span>
@@ -216,7 +205,7 @@ export function BoardSetup({
             </label>
           </div>
 
-          <h3 className="settings-card__sub">{t(strings.devices)}</h3>
+          <h3 className="settings-subhead">{t(strings.devices)}</h3>
           <ul className="board-setup__list">
             {detection.adbDevices.length === 0 ? (
               <li>{t(strings.none)}</li>
@@ -229,16 +218,15 @@ export function BoardSetup({
             )}
           </ul>
 
-          <h3 className="settings-card__sub">{t(strings.model)}</h3>
-          <p className="settings-note">
+          <h3 className="settings-subhead">{t(strings.model)}</h3>
+          <p className="settings-inline-value">
             {detection.model ?? t(strings.none)}
             {detection.boardPack === null ? ` · ${t(strings.noBoardPack)}` : ''}
           </p>
         </>
       ) : null}
 
-      {message !== null ? <p className="settings-note">{message}</p> : null}
-      <p className="settings-note">{t(strings.note)}</p>
-    </section>
+      {message !== null ? <p className="settings-feedback">{message}</p> : null}
+    </div>
   );
 }

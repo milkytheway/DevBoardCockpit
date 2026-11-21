@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>启动日志</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="log">
+      <div class="log__actions">
+        <button id="run" class="log__run" type="button">获取启动日志</button>
+        <span id="note" class="log__note">就绪</span>
+      </div>
+      <div class="log__where">
+        <span class="log__where-label">存到板子上的位置</span>
+        <code id="path" class="log__where-path">/userdata/boot.log</code>
+      </div>
+      <ol id="steps" class="log__steps"></ol>
+      <p class="log__hint">
+        日志是内核开机以来打的消息（U-Boot 那段只在串口滚动屏里，断电就没了）。
+        板子上的文件用「文件」页取回来 —— 那一页自己挑通道，不用先开终端。
+      </p>
+    </main>
+    <script type="module" src="./card.js"></script>
+  </body>
+</html>

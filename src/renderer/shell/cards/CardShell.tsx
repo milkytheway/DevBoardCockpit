@@ -9,10 +9,9 @@ import { pick, useLocale, useT, type Localised } from '../i18n';
 
 
 const strings = {
-  notConnected: { 'zh-Hans': '未连接', en: 'not connected' },
   degraded: { 'zh-Hans': '降级运行', en: 'degraded' },
   running: { 'zh-Hans': '运行中', en: 'running' },
-  dragHint: { 'zh-Hans': '拖动改变位置，单击看详情', en: 'Drag to move, click for the details' },
+  cardHandle: { 'zh-Hans': '移动卡片', en: 'Move card' },
   cardMenu: { 'zh-Hans': '卡片菜单', en: 'Card menu' },
   viewDetail: { 'zh-Hans': '查看详情', en: 'View the details' },
   removeCard: { 'zh-Hans': '从主区拿走', en: 'Take it out of the work area' },
@@ -85,7 +84,7 @@ export function CardShell({
           className="cockpit-card__handle"
           data-cockpit-drag-handle="true"
           data-card-id={info.cardId}
-          title={t(strings.dragHint)}
+          aria-label={`${t(strings.cardHandle)} · ${pick(look.name, locale)}`}
           onPointerDown={(event) => {
             downRef.current = { x: event.clientX, y: event.clientY };
           }}
@@ -110,12 +109,6 @@ export function CardShell({
           </span>
           <span className="cockpit-card__titles">
             <span className="cockpit-card__title">{pick(look.name, locale)}</span>
-            <span className="cockpit-card__sub">
-              {pick(look.note, locale)}
-              {info.connectionId
-                ? ` · ${info.connectionId.slice(0, 10)}`
-                : ` · ${pick(strings.notConnected, locale)}`}
-            </span>
           </span>
         </div>
         <span

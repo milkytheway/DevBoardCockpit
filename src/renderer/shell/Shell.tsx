@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
+import { BoardWizardDialog } from './BoardWizardDialog';
 import { CommandPalette, type Command } from './CommandPalette';
 import { DetailPanel } from './detail/DetailPanel';
 import { DevicePicker } from './DevicePicker';
@@ -9,7 +10,6 @@ import { LibraryPage } from './pages/LibraryPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TerminalPage } from './pages/TerminalPage';
-import { WizardPage } from './pages/WizardPage';
 import { WorkbenchPage } from './pages/WorkbenchPage';
 import { ChevronIcon } from './Icons';
 import { Rail } from './Rail';
@@ -42,6 +42,7 @@ import {
 } from './i18n';
 import type { ActivityLevel, DetailTarget, PageId } from './types';
 import { useTerminal } from './useTerminal';
+import { useFileEndpoint } from './useFileEndpoint';
 
 /**
  * The shell: the frame around every page.
@@ -76,7 +77,6 @@ const PAGE_TITLE: Record<PageId, Localised> = {
   files: { 'zh-Hans': '文件传输', en: 'File transfer' },
   logs: { 'zh-Hans': '运行日志', en: 'Run log' },
   library: { 'zh-Hans': '卡片库', en: 'Card library' },
-  wizard: { 'zh-Hans': '向导', en: 'Wizard' },
   settings: { 'zh-Hans': '设置', en: 'Settings' },
 };
 
@@ -99,7 +99,7 @@ const strings = {
   openFiles: { 'zh-Hans': '打开文件', en: 'Open the files' },
   openLogs: { 'zh-Hans': '打开日志', en: 'Open the logs' },
   openLibrary: { 'zh-Hans': '打开卡片库', en: 'Open the card library' },
-  openWizard: { 'zh-Hans': '打开接板向导', en: 'Open the board wizard' },
+  openWizard: { 'zh-Hans': '添加开发板', en: 'Add a board' },
   openSettings: { 'zh-Hans': '打开设置', en: 'Open the settings' },
   lightTheme: { 'zh-Hans': '切换到浅色主题', en: 'Switch to the light theme' },
   darkTheme: { 'zh-Hans': '切换到深色主题', en: 'Switch to the dark theme' },
@@ -165,6 +165,7 @@ export function Shell(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<DetailTarget>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [activityFilter, setActivityFilter] = useState<'all' | ActivityLevel>('all');
   const [transferNote, setTransferNote] = useState<string | null>(null);
   const [xtermTheme, setXtermTheme] = useState<XtermTheme>(readXtermTheme);
@@ -189,6 +190,10 @@ export function Shell(): JSX.Element {
   const broker = useBroker();
   const terminal = useTerminal(connections, reportError, log, locale);
   const tagStream = useTagStream();
+  // → **The link that carries the files** ✓ — the host picks it ✓ (ADB →
+  //   SSH → serial ✓) → **the files page does not need a terminal** ✓.
+  const boardKey = currentBoard(connections);
+  const fileEndpoint = useFileEndpoint(page === 'files', boardKey);
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
   // is re-read from the CSS variables after the styles have been applied.
@@ -280,6 +285,12 @@ export function Shell(): JSX.Element {
    *   changed ✓).
    */
   const [selecting, setSelecting] = useState(false);
+  const closeWizard = useCallback(() => {
+    setWizardOpen(false);
+    window.setTimeout(() => {
+      document.querySelector<HTMLButtonElement>('.device-picker__trigger')?.focus();
+    }, 0);
+  }, []);
   const selectDevice = useCallback(
     (deviceKey: string) => {
       setSelecting(true);
@@ -380,7 +391,14 @@ export function Shell(): JSX.Element {
       { id: 'page-files', label: strings.openFiles, run: go('files') },
       { id: 'page-logs', label: strings.openLogs, run: go('logs') },
       { id: 'page-library', label: strings.openLibrary, run: go('library') },
-      { id: 'page-wizard', label: strings.openWizard, run: go('wizard') },
+      {
+        id: 'add-board',
+        label: strings.openWizard,
+        run: () => {
+          setWizardOpen(true);
+          close();
+        },
+      },
       { id: 'page-settings', label: strings.openSettings, run: go('settings') },
       {
         id: 'toggle-theme',
@@ -423,6 +441,7 @@ export function Shell(): JSX.Element {
         placedSlotKeys: [...placedKeys],
         sessions: terminal.sessions,
         activeSessionId: terminal.activeSessionId,
+        fileEndpoint: fileEndpoint.endpoint,
         activity,
         activityFilter,
         onActivityFilter: setActivityFilter,
@@ -450,9 +469,6 @@ export function Shell(): JSX.Element {
     ],
   );
 
-  const activeConnection = terminal.activeSession
-    ? (connections.find((connection) => connection.id === terminal.activeSession?.profileId) ?? null)
-    : null;
   const statusText = runtimeText(runtime, connections);
   const secondaryStatus = {
     ...statusText,
@@ -461,7 +477,7 @@ export function Shell(): JSX.Element {
 
   return (
     <LocaleContext.Provider value={locale}>
-    <div className={`app-shell${page === 'wizard' ? ' is-wizard' : ''}`}>
+    <div className="app-shell">
       {/* The native title bar is hidden; this strip is the window's drag
           handle and the native min/max/close buttons float over it.
           **The board picker is here** ✓ — it is the topmost row of the
@@ -472,6 +488,7 @@ export function Shell(): JSX.Element {
         <DevicePicker
           connections={connections}
           onSelect={selectDevice}
+          onAddBoard={() => setWizardOpen(true)}
           busy={selecting}
         />
         {/* **The running workflows + the only "stop"** ✓ — contract `05` §8.A
@@ -486,14 +503,14 @@ export function Shell(): JSX.Element {
 
       <div className="app-body">
         <Rail page={page} onPage={goPage} onOpenPalette={() => setPaletteOpen(true)} />
-        {secondaryOpen ? (
+        {page !== 'settings' && secondaryOpen ? (
           <Secondary
             title={PAGE_TITLE[page]}
             status={secondaryStatus}
             groups={secondary}
             onCollapse={() => setSecondaryOpen(false)}
           />
-        ) : (
+        ) : page !== 'settings' ? (
           <button
             type="button"
             className="secondary-reopen"
@@ -503,12 +520,12 @@ export function Shell(): JSX.Element {
           >
             <ChevronIcon size={14} />
           </button>
-        )}
+        ) : null}
 
         <main className={`app-main${density === 'compact' ? ' is-compact' : ''}`}>
           <ErrorBar message={error} onDismiss={() => setError(null)} />
 
-          <div className="app-scroll">
+          <div className={`app-scroll${page === 'settings' ? ' app-scroll--settings' : ''}`}>
             {page === 'workbench' ? (
               <WorkbenchPage
                 cards={placedCards}
@@ -549,14 +566,17 @@ export function Shell(): JSX.Element {
 
             {page === 'files' ? (
               <FilesPage
-                sessionId={terminal.activeSession?.sessionId ?? null}
-                capabilities={activeConnection?.capabilities ?? null}
+                endpoint={fileEndpoint.endpoint}
+                busy={fileEndpoint.busy}
+                error={fileEndpoint.error}
+                onRetry={fileEndpoint.refresh}
                 note={transferNote}
                 onPush={(file, remotePath) => {
-                  const session = terminal.activeSession;
-                  if (session === null) return;
+                  // → **The link the host picked** ✓ (not a terminal session ✓)
+                  const link = fileEndpoint.endpoint;
+                  if (link === null) return;
                   setTransferNote(t(strings.uploading, { name: file.name }));
-                  void uploadFile(FILE_HOST, session.sessionId, file, remotePath)
+                  void uploadFile(FILE_HOST, link.id, file, remotePath)
                     .then(() => {
                       setTransferNote(t(strings.pushed, { name: file.name, path: remotePath }));
                       log('info', t(strings.pushed, { name: file.name, path: remotePath }));
@@ -597,17 +617,6 @@ export function Shell(): JSX.Element {
                 onPlaceOnWorkbench={(card) => {
                   handlePlace(card);
                   setPage('workbench');
-                }}
-              />
-            ) : null}
-
-            {page === 'wizard' ? (
-              <WizardPage
-                run={(input) => window.cockpit.wizardRun(input)}
-                onInstalled={() => {
-                  refreshConnections();
-                  refresh();
-                  log('info', t(strings.wizardInstalled));
                 }}
               />
             ) : null}
@@ -671,6 +680,18 @@ export function Shell(): JSX.Element {
           }}
         />
       </div>
+
+      {wizardOpen ? (
+        <BoardWizardDialog
+          run={(input) => window.cockpit.wizardRun(input)}
+          onInstalled={() => {
+            refreshConnections();
+            refresh();
+            log('info', t(strings.wizardInstalled));
+          }}
+          onClose={closeWizard}
+        />
+      ) : null}
 
       <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
     </div>

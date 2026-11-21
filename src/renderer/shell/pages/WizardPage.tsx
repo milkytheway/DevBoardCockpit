@@ -30,6 +30,8 @@ export interface WizardPageProps {
   run: (input: WizardRequest) => Promise<WizardRunResult>;
   /** Called once after a pack lands, so the shell can refresh connections/cards. */
   onInstalled?: () => void;
+  /** Closes the independent setup surface. */
+  onClose?: () => void;
 }
 
 const BAUD_RATES = [1500000, 115200, 921600, 460800, 230400, 57600, 9600] as const;
@@ -41,10 +43,11 @@ const BAUD_RATES = [1500000, 115200, 921600, 460800, 230400, 57600, 9600] as con
  * the active locale ✓.
  */
 const strings = {
-  title: { 'zh-Hans': '接板向导', en: 'Board setup wizard' },
+  title: { 'zh-Hans': '添加开发板', en: 'Add board' },
 
   // ── Stage track ──
-  stageParameters: { 'zh-Hans': '参数', en: 'Parameters' },
+  stageParameters: { 'zh-Hans': '详情', en: 'Details' },
+  stageConnecting: { 'zh-Hans': '连接', en: 'Connect' },
   stageFirstTruth: { 'zh-Hans': '建立第一个真相', en: 'Establish the first truth' },
   stageMetaOps: { 'zh-Hans': '试元操作', en: 'Try the meta operations' },
   stageGenerate: { 'zh-Hans': '生成包', en: 'Generate the pack' },
@@ -58,20 +61,20 @@ const strings = {
   metaOpsTitle: { 'zh-Hans': '试 13 个元操作', en: 'Try the 13 meta operations' },
   firstPackTitle: { 'zh-Hans': '生成初版包', en: 'Generate the first pack' },
   firstTruthDetail: {
-    'zh-Hans': '打开串口，先让板子回一句话。它回了，这条路才算成立。',
-    en: 'Open the serial port and get one line back from the board. Once it answers, this path is real.',
+    'zh-Hans': '正在等待板卡响应',
+    en: 'Waiting for the board',
   },
   metaOpsDetail: {
-    'zh-Hans': '逐个确认这块板有没有这些能力。全部试完才会生成包。',
-    en: 'Confirm one by one whether this board has these capabilities. The pack is generated only after every one of them has been tried.',
+    'zh-Hans': '正在检测板卡能力',
+    en: 'Checking board capabilities',
   },
   firstPackDetail: {
-    'zh-Hans': '绿的留下，红的删掉，然后把包和它的来路写进用户目录。',
-    en: 'The green ones stay and the red ones are dropped, then the pack and where it came from are written into the user directory.',
+    'zh-Hans': '正在生成板型包',
+    en: 'Generating the board pack',
   },
 
   // ── Result headline ──
-  resultOk: { 'zh-Hans': '这块板现在有自己的包了', en: 'This board now has its own pack' },
+  resultOk: { 'zh-Hans': '开发板已添加', en: 'Board added' },
   resultPortUnopenable: { 'zh-Hans': '串口打不开', en: 'The serial port will not open' },
   resultNoReply: { 'zh-Hans': '板子没说话', en: 'The board did not answer' },
   resultConnectionDead: { 'zh-Hans': '那条连接一次都没通', en: 'That connection never came up' },
@@ -119,7 +122,9 @@ const strings = {
   },
 
   // ── Form ──
-  howToConnect: { 'zh-Hans': '怎么连', en: 'How to connect' },
+  boardDetails: { 'zh-Hans': '开发板', en: 'Board' },
+  connectionDetails: { 'zh-Hans': '连接', en: 'Connection' },
+  howToConnect: { 'zh-Hans': '方式', en: 'Method' },
   channelGroup: { 'zh-Hans': '连接通道', en: 'Connection channel' },
   serial: { 'zh-Hans': '串口', en: 'Serial port' },
   serialChannelNote: {
@@ -155,7 +160,7 @@ const strings = {
     'zh-Hans': '之后它会成为包名和板的 id，中文也可以用；名字只影响叫法，不影响探到的能力。',
     en: 'It becomes the pack name and the board id afterwards; Chinese is fine. The name only affects what it is called, not the capabilities that are probed.',
   },
-  start: { 'zh-Hans': '开始接板', en: 'Start setup' },
+  start: { 'zh-Hans': '开始接板', en: 'Connect board' },
   starting: { 'zh-Hans': '正在接板…', en: 'Setting up…' },
   oneCallNote: {
     'zh-Hans': '一次调用跑完全程；中途不用再点，宿主的超时与重试都在里面。',
@@ -178,8 +183,8 @@ const strings = {
   countAvailable: { 'zh-Hans': '个可用', en: 'available' },
   countUnavailable: { 'zh-Hans': '个不可用', en: 'unavailable' },
   unavailableNote: {
-    'zh-Hans': '不可用的能力不会写进包里；这不是失败，是这块板没有它们。',
-    en: 'Unavailable capabilities are not written into the pack; this is not a failure, the board simply does not have them.',
+    'zh-Hans': '不可用能力已省略',
+    en: 'Unavailable capabilities omitted',
   },
   packLandedAt: { 'zh-Hans': '包落在', en: 'Pack landed at' },
   copy: { 'zh-Hans': '复制', en: 'Copy' },
@@ -191,17 +196,16 @@ const strings = {
   },
   boardIdLabel: { 'zh-Hans': '板的 id ·', en: 'Board id ·' },
   caveat: {
-    'zh-Hans': '这是自动探出来的初版包：说得准的是事实（有没有、几个），说不准的是命名与语义 —— 哪个温区是 SoC、哪根线是这一路，得让 agent 到板子上补。先用它把板子接上，再慢慢把包改准。',
-    en: 'This is the first pack, probed automatically: what it states as fact (whether a capability exists, how many) is reliable, while the naming and the semantics are not — which thermal zone is the SoC and which wire carries this rail has to be filled in by the agent on the board. Use it to get the board connected first, then make the pack more accurate.',
+    'zh-Hans': '这是自动探出来的初版包；名称与语义可稍后校准。',
+    en: 'This is an auto-detected first pack; names and semantics can be refined later.',
   },
-  anotherBoard: { 'zh-Hans': '再配一块', en: 'Set up another board' },
+  anotherBoard: { 'zh-Hans': '再配一块', en: 'Add another' },
+  close: { 'zh-Hans': '完成', en: 'Done' },
 } satisfies Record<string, Localised>;
 
 const STAGES: readonly Localised[] = [
   strings.stageParameters,
-  strings.stageFirstTruth,
-  strings.stageMetaOps,
-  strings.stageGenerate,
+  strings.stageConnecting,
   strings.stageResult,
 ];
 
@@ -275,12 +279,6 @@ function hintsFor(kind: WizardRunResult['kind'], hints: readonly string[]): Loca
   });
 }
 
-function failureStep(): number {
-  // Every failure we can name happens while trying to get the first truth:
-  // the port never opened, it opened but nothing came back, or the link died.
-  return 1;
-}
-
 function waitDetail(
   elapsedMs: number,
   t: (text: Localised) => string,
@@ -312,7 +310,7 @@ function waitDetail(
   };
 }
 
-export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
+export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.Element {
   const t = useT();
   const [transport, setTransport] = useState<Transport>('serial');
   const [port, setPort] = useState('');
@@ -343,16 +341,14 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
     phase === 'form'
       ? 0
       : phase === 'running'
-        ? waiting.index
+        ? 1
         : result !== null && !result.ok
-          ? failureStep()
-          : 4;
+          ? 1
+          : 2;
 
   const railState = (index: number): 'done' | 'current' | 'failed' | 'pending' => {
     if (phase === 'form') return index === 0 ? 'current' : 'pending';
-    if (phase === 'running') {
-      return index < waiting.index ? 'done' : index === waiting.index ? 'current' : 'pending';
-    }
+    if (phase === 'running') return index < 1 ? 'done' : index === 1 ? 'current' : 'pending';
     if (result?.ok) return 'done';
     if (index < stageIndex) return 'done';
     if (index === stageIndex) return 'failed';
@@ -430,69 +426,93 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
       : `${t(strings.stageCurrent)} ${stageIndex + 1} / ${STAGES.length}${t(strings.stageTail)}${stageText}`;
 
   return (
-    <div className="page page--wizard">
-      <div className="wizard-wrap">
-        <header className="page-head">
-          <div className="page-head__text">
-            <h1 className="page-head__title">{t(strings.title)}</h1>
-          </div>
-        </header>
-
-        <section className="wizard-card" aria-label={t(strings.title)}>
-          <div className="wizard-progress">
-            <div className="wizard-track" aria-hidden>
-              {STAGES.map((stage, index) => (
-                <span
-                  key={stage['zh-Hans']}
-                  className={`wizard-track__seg is-${railState(index)}`}
-                  title={t(stage)}
-                />
-              ))}
-            </div>
-            <p className={`wizard-stage${result !== null && !result.ok ? ' is-failed' : ''}`}>
-              {stageLabel}
-            </p>
-          </div>
-
-          {phase === 'done' && result !== null ? (
-            <WizardOutcome
-              result={result}
-              copyState={copyState}
-              onCopy={copyPath}
-              onRetry={startRun}
-              onAdjust={backToForm}
-              onReset={resetAll}
+    <section className="wizard-card" aria-label={t(strings.title)}>
+      <div className="wizard-progress">
+        <div className="wizard-track" aria-hidden>
+          {STAGES.map((stage, index) => (
+            <span
+              key={stage['zh-Hans']}
+              className={`wizard-track__seg is-${railState(index)}`}
+              title={t(stage)}
             />
-          ) : null}
+          ))}
+        </div>
+        <p className={`wizard-stage${result !== null && !result.ok ? ' is-failed' : ''}`}>
+          {stageLabel}
+        </p>
+      </div>
 
-          {phase === 'done' && runError !== null ? (
-            <div className="wizard-result" role="status">
-              <span className="state-chip state-chip--warn">{t(strings.didNotStart)}</span>
-              <h2 className="wizard-result__title">{t(strings.wizardNotFinished)}</h2>
-              <p className="wizard-failure__detail">{plain(runError)}</p>
-              <div className="wizard-result__actions">
-                <button type="button" className="btn btn--primary" onClick={startRun}>
-                  {t(strings.retry)}
-                </button>
-                <button type="button" className="btn btn--ghost" onClick={backToForm}>
-                  {t(strings.adjust)}
-                </button>
-              </div>
-            </div>
-          ) : null}
+      {phase === 'done' && result !== null ? (
+        <WizardOutcome
+          result={result}
+          copyState={copyState}
+          onCopy={copyPath}
+          onRetry={startRun}
+          onAdjust={backToForm}
+          onReset={resetAll}
+          onClose={onClose}
+        />
+      ) : null}
 
-          {phase !== 'done' ? (
-            <form
-              className="wizard-form"
-              aria-busy={phase === 'running'}
-              onSubmit={(event) => {
-                event.preventDefault();
-                startRun();
-              }}
-            >
+      {phase === 'done' && runError !== null ? (
+        <div className="wizard-result" role="status">
+          <span className="state-chip state-chip--warn">{t(strings.didNotStart)}</span>
+          <h2 className="wizard-result__title">{t(strings.wizardNotFinished)}</h2>
+          <p className="wizard-failure__detail">{plain(runError)}</p>
+          <div className="wizard-result__actions">
+            <button type="button" className="btn btn--primary" onClick={startRun}>
+              {t(strings.retry)}
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={backToForm}>
+              {t(strings.adjust)}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {phase !== 'done' ? (
+        <form
+          className={`wizard-form${phase === 'running' ? ' is-running' : ''}`}
+          aria-busy={phase === 'running'}
+          onSubmit={(event) => {
+            event.preventDefault();
+            startRun();
+          }}
+        >
+          <div className="wizard-form__grid">
+            <section className="wizard-form__section">
+              <header className="wizard-section-head">
+                <span className="wizard-section-head__index">01</span>
+                <h2>{t(strings.boardDetails)}</h2>
+              </header>
+              <label className="wizard-field">
+                <span className="wizard-label">{t(strings.boardName)}</span>
+                <input
+                  name="boardName"
+                  aria-label={t(strings.boardName)}
+                  value={boardName}
+                  placeholder={t(strings.boardNamePlaceholder)}
+                  disabled={phase === 'running'}
+                  autoComplete="off"
+                  spellCheck={false}
+                  data-wizard-autofocus
+                  onChange={(event) => setBoardName(event.target.value)}
+                />
+              </label>
+            </section>
+
+            <section className="wizard-form__section">
+              <header className="wizard-section-head">
+                <span className="wizard-section-head__index">02</span>
+                <h2>{t(strings.connectionDetails)}</h2>
+              </header>
               <div className="wizard-channel">
                 <span className="wizard-label">{t(strings.howToConnect)}</span>
-                <div className="segmented wizard-segmented" role="group" aria-label={t(strings.channelGroup)}>
+                <div
+                  className="segmented wizard-segmented"
+                  role="group"
+                  aria-label={t(strings.channelGroup)}
+                >
                   <button
                     type="button"
                     className={transport === 'serial' ? 'is-active' : undefined}
@@ -512,9 +532,6 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
                     ADB
                   </button>
                 </div>
-                <span className="wizard-channel__note">
-                  {transport === 'serial' ? t(strings.serialChannelNote) : t(strings.adbChannelNote)}
-                </span>
               </div>
 
               <div className="wizard-fields">
@@ -530,9 +547,6 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
                     spellCheck={false}
                     onChange={(event) => setPort(event.target.value)}
                   />
-                  <span className="wizard-hint">
-                    {transport === 'adb' ? t(strings.adbNoPort) : t(strings.portManual)}
-                  </span>
                 </label>
 
                 <label className="wizard-field">
@@ -546,6 +560,7 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
                     disabled={transport === 'adb' || phase === 'running'}
                     autoComplete="off"
                     spellCheck={false}
+                    aria-invalid={baud.length > 0 && !baudOk}
                     onChange={(event) => setBaud(event.target.value.replace(/[^\d]/g, ''))}
                   />
                   <datalist id="wizard-baudrates">
@@ -555,77 +570,54 @@ export function WizardPage({ run, onInstalled }: WizardPageProps): JSX.Element {
                       </option>
                     ))}
                   </datalist>
-                  <span className={`wizard-hint${baud.length > 0 && !baudOk ? ' is-warn' : ''}`}>
-                    {transport === 'adb'
-                      ? t(strings.adbNoBaud)
-                      : baud.length > 0 && !baudOk
-                        ? t(strings.baudPositive)
-                        : t(strings.baudManual)}
-                  </span>
+                  {baud.length > 0 && !baudOk ? (
+                    <span className="wizard-hint is-warn">{t(strings.baudPositive)}</span>
+                  ) : null}
                 </label>
               </div>
+            </section>
+          </div>
 
-              <label className="wizard-field">
-                <span className="wizard-label">{t(strings.boardName)}</span>
-                <input
-                  name="boardName"
-                  aria-label={t(strings.boardName)}
-                  value={boardName}
-                  placeholder={t(strings.boardNamePlaceholder)}
-                  disabled={phase === 'running'}
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => setBoardName(event.target.value)}
-                />
-                <span className="wizard-hint">{t(strings.boardNameHint)}</span>
-              </label>
+          <div className="wizard-actions">
+            <button
+              type="submit"
+              className="btn btn--primary wizard-start"
+              disabled={!canRun || phase === 'running'}
+            >
+              <LinkIcon size={14} />
+              {phase === 'running' ? t(strings.starting) : t(strings.start)}
+            </button>
+          </div>
+        </form>
+      ) : null}
 
-              <div className="wizard-actions">
-                <button
-                  type="submit"
-                  className="btn btn--primary wizard-start"
-                  disabled={!canRun || phase === 'running'}
-                >
-                  <LinkIcon size={14} />
-                  {phase === 'running' ? t(strings.starting) : t(strings.start)}
-                </button>
-                <p className="wizard-note">{t(strings.oneCallNote)}</p>
-              </div>
-            </form>
-          ) : null}
-
-          {phase === 'running' ? (
-            <div className="wizard-wait" role="status" aria-live="polite">
-              <div className="wizard-wait__head">
-                <span className="wizard-wait__dot" aria-hidden />
-                <strong className="wizard-wait__title">{waiting.title}</strong>
-                <span className="wizard-wait__elapsed">
-                  {Math.floor(elapsedMs / 1000)}s
-                </span>
-              </div>
-              <p className="wizard-wait__detail">{waiting.detail}</p>
-              <ol className="wizard-steps">
-                {WAIT_STEPS.map((step) => {
-                  const state =
-                    step.index < waiting.index
-                      ? 'done'
-                      : step.index === waiting.index
-                        ? 'active'
-                        : 'pending';
-                  return (
-                    <li key={step.label['zh-Hans']} className={`is-${state}`}>
-                      <span className="wizard-steps__dot" aria-hidden />
-                      {t(step.label)}
-                    </li>
-                  );
-                })}
-              </ol>
-              <p className="wizard-note">{t(strings.noProgressNote)}</p>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </div>
+      {phase === 'running' ? (
+        <div className="wizard-wait" role="status" aria-live="polite">
+          <div className="wizard-wait__head">
+            <span className="wizard-wait__dot" aria-hidden />
+            <strong className="wizard-wait__title">{waiting.title}</strong>
+            <span className="wizard-wait__elapsed">{Math.floor(elapsedMs / 1000)}s</span>
+          </div>
+          <p className="wizard-wait__detail">{waiting.detail}</p>
+          <ol className="wizard-steps">
+            {WAIT_STEPS.map((step) => {
+              const state =
+                step.index < waiting.index
+                  ? 'done'
+                  : step.index === waiting.index
+                    ? 'active'
+                    : 'pending';
+              return (
+                <li key={step.label['zh-Hans']} className={`is-${state}`}>
+                  <span className="wizard-steps__dot" aria-hidden />
+                  {t(step.label)}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -636,6 +628,7 @@ function WizardOutcome({
   onRetry,
   onAdjust,
   onReset,
+  onClose,
 }: {
   result: WizardRunResult;
   copyState: 'idle' | 'copied' | 'failed';
@@ -643,6 +636,7 @@ function WizardOutcome({
   onRetry: () => void;
   onAdjust: () => void;
   onReset: () => void;
+  onClose?: () => void;
 }): JSX.Element {
   const t = useT();
   if (!result.ok) {
@@ -733,7 +727,16 @@ function WizardOutcome({
       </p>
 
       <div className="wizard-result__actions">
-        <button type="button" className="btn btn--primary" onClick={onReset}>
+        {onClose ? (
+          <button type="button" className="btn btn--primary" onClick={onClose}>
+            {t(strings.close)}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={onClose ? 'btn btn--ghost' : 'btn btn--primary'}
+          onClick={onReset}
+        >
           {t(strings.anotherBoard)}
         </button>
         <button type="button" className="btn btn--ghost" onClick={onAdjust}>

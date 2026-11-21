@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { CardInstanceInfo } from '../../src/shared/ipc-contract';
 import type { RuntimeStatus } from '../../src/shared/runtime-status';
 import { secondaryGroupsFor, type SecondaryContext } from '../../src/renderer/shell/nav';
@@ -64,18 +64,19 @@ function cardItems(ctx: SecondaryContext) {
 }
 
 describe('Shell · the card catalogue (the work area is decided by the instance key)', () => {
-  it('the card that is placed in the work area is hinted as "already in the work area"', () => {
+  it('the placed card is marked by state and shows its card id, not an explanatory sentence', () => {
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-a')],
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint?.['zh-Hans']).toContain('已在主区');
+    expect(items[0]?.hint?.['zh-Hans']).toBe('cpu-curve');
     expect(items[0]?.tone).toBe('active');
+    expect(items[0]?.placed).toBe(true);
   });
 
-  it('the same card on another connection is not "already in the work area" (it has not been placed there yet)', () => {
+  it('the same card on another connection is not marked as placed', () => {
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-b')],
@@ -83,18 +84,22 @@ describe('Shell · the card catalogue (the work area is decided by the instance 
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint?.['zh-Hans']).toContain('点击摆进主区');
+    expect(items[0]?.hint?.['zh-Hans']).toBe('cpu-curve');
     expect(items[0]?.tone).toBe('default');
+    expect(items[0]?.placed).toBe(false);
   });
 
-  it('clicking a placed card a second time removes it — the hint says so (without it the removal would be silent)', () => {
+  it('clicking a placed card removes it; the minus action communicates the result', () => {
+    const onRemoveCard = vi.fn();
     const items = cardItems(
       context({
         cards: [card('cpu-curve', 'conn-a')],
         placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
+        onRemoveCard,
       }),
     );
-    expect(items[0]?.hint?.['zh-Hans']).toContain('撤下');
+    items[0]?.onSelect?.();
+    expect(onRemoveCard).toHaveBeenCalledTimes(1);
   });
 
   it('the card row carries a stable e2e hook (no class names)', () => {
@@ -117,13 +122,25 @@ describe('Shell · the sessions of the terminal page', () => {
     expect(item.onSelect).toBeTypeOf('function');
   });
 
-  it('the session row of the files page has a close button too', () => {
+  it('the files page names the link the host picked (a transfer that goes somewhere else is a surprise)', () => {
+    // → **The files page does not need a terminal session** ✓ → the host
+    //   picks the link ✓ → the sidebar says which one ✓.
     const ctx = context({
-      sessions: [{ sessionId: 's-2', profileId: 'board-adb', label: 'Board · ADB' }],
+      fileEndpoint: {
+        id: 'file-endpoint',
+        profileId: 'board-adb',
+        label: 'Board · ADB',
+        transport: 'adb',
+        capabilities: { exec: true, pty: false, files: true, exitCode: true },
+      },
     });
-    const group = secondaryGroupsFor('files', ctx).find((g) => g.id.startsWith('sessions'));
+    const group = secondaryGroupsFor('files', ctx).find((g) => g.id === 'endpoint');
     expect(group).toBeDefined();
-    expect(group!.items[0]?.onClose).toBeTypeOf('function');
+    expect(group!.items[0]?.label['zh-Hans']).toBe('Board · ADB');
+  });
+
+  it('the files page draws no group when there is no link (an empty group says nothing)', () => {
+    expect(secondaryGroupsFor('files', context({ fileEndpoint: null }))).toEqual([]);
   });
 });
 
@@ -206,15 +223,15 @@ describe('Shell · the terminal sidebar (one board at a time)', () => {
 });
 
 describe('Shell · the card catalogue (English)', () => {
-  it('the same hint has an English wording (the language option of the interface really switches the text)', () => {
+  it('the card label switches language while the id stays stable', () => {
     const items = cardItems(
       context({
         locale: 'en',
-        cards: [card('cpu-curve', 'conn-a')],
-        placedSlotKeys: [slotKey('cpu-curve', 'conn-a')],
+        cards: [card('cpu-usage', 'conn-a')],
+        placedSlotKeys: [slotKey('cpu-usage', 'conn-a')],
       }),
     );
-    expect(items[0]?.hint?.en).toContain('click to remove');
-    expect(items[0]?.label?.en).not.toContain('已在主区');
+    expect(items[0]?.hint?.en).toBe('cpu-usage');
+    expect(items[0]?.label?.en).toBe('CPU usage');
   });
 });

@@ -67,7 +67,6 @@ describe('The board setup wizard page', () => {
     const button = screen.getByRole('button', { name: '正在接板…' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('建立第一个真相');
-    expect(screen.getByRole('status').textContent).toContain('不编百分比');
   });
 
   it('the ADB submission carries neither the serial port nor the baud rate (the host ignores them, and the interface must not pretend they apply)', () => {
@@ -112,9 +111,9 @@ describe('The board setup wizard page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
 
-    expect(await screen.findByText('这块板现在有自己的包了')).toBeTruthy();
+    expect(await screen.findByText('开发板已添加')).toBeTruthy();
     expect(container.querySelector('.wizard-result__title')?.textContent).toBe(
-      '这块板现在有自己的包了',
+      '开发板已添加',
     );
     expect(container.querySelector('.wizard-result__summary')?.textContent).toContain('12');
     expect(container.querySelector('.wizard-result__summary')?.textContent).toContain('1');

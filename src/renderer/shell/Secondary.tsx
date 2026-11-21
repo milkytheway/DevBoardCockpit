@@ -6,6 +6,8 @@ import {
   GridIcon,
   LayersIcon,
   ListIcon,
+  MinusIcon,
+  PlusIcon,
   TerminalIcon,
 } from './Icons';
 import { CardGlyph } from './CardGlyph';
@@ -216,6 +218,16 @@ export function Secondary({
                                 </span>
                               ) : null}
                             </span>
+                            {item.cardId !== undefined ? (
+                              <span
+                                className={`secondary__card-action${
+                                  item.placed ? ' is-remove' : ' is-add'
+                                }`}
+                                aria-hidden
+                              >
+                                {item.placed ? <MinusIcon size={12} /> : <PlusIcon size={12} />}
+                              </span>
+                            ) : null}
                             {item.badge ? <span className="secondary__badge">{item.badge}</span> : null}
                           </button>
                           {item.onPin ? (

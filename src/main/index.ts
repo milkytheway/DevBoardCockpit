@@ -72,6 +72,7 @@ import { SHELL_CSP } from './shell-csp';
 import { listCardDirs, type CardRoot } from './cards/roots';
 import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
+import { FileEndpoint } from './files/endpoint';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
 import { deviceKeyOf } from './profiles/schema';
@@ -248,6 +249,29 @@ const connections = new Map<string, Connection>();
 
 const transfer = new TransferService({
   getConnection: (id) => connections.get(id),
+});
+
+/**
+ * **The link that carries the files** ✓ — the host picks it ✓.
+ *
+ * → **The file page does not need an open terminal** ✓ → the page asks for
+ *   this ✓ → the host probes the candidates ✓ (ADB → SSH → serial ✓ · the
+ *   previous one that is not there ✓ → the next one ✓).
+ * → **Only the board that is current** ✓ — the file transfer must not go to
+ *   another board ✗ (the fake one ✗ — the leak of 2026-11-21 ✓).
+ */
+const fileEndpoint = new FileEndpoint({
+  listProfiles,
+  currentDeviceKey: () => runtime.currentDeviceKey ?? null,
+  createConnection: (profile) =>
+    createConnectionFor(
+      profile,
+      new SessionLog({
+        label: `files-${profile.id}`,
+        transport: profile.transport,
+        dataDir: userDataDir(),
+      }),
+    ),
 });
 
 const terminal = new TerminalManager({
@@ -1020,6 +1044,20 @@ handle(IPC.devicesSelect, async (deviceKey) => {
     result.detail,
     { detail: { deviceKey: key } },
   );
+});
+
+handle(IPC.filesEndpoint, async () => {
+  const handle = await fileEndpoint.ensure();
+  // → The endpoint's connection lives in the same table as the sessions' ✓
+  //   (the transfer looks it up by id ✓).
+  connections.set(handle.id, handle.connection);
+  return {
+    id: handle.id,
+    profileId: handle.profile.id,
+    label: handle.profile.label,
+    transport: handle.profile.transport,
+    capabilities: handle.connection.capabilities(),
+  };
 });
 
 handle(IPC.filesList, (connectionId, remotePath) =>

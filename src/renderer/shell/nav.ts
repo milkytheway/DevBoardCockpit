@@ -1,4 +1,4 @@
-import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
+import type { CardInstanceInfo, ConnectionInfo, FileEndpointInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import { cardLook, CARD_GROUPS, type CardLook } from './cards';
 import {
@@ -97,6 +97,13 @@ export interface SecondaryContext {
   placedSlotKeys: string[];
   sessions: TerminalTab[];
   activeSessionId: string | null;
+  /**
+   * **The link that carries the files** ✓ (`null` = there is none ✓).
+   *
+   * → The files page does not need a terminal session ✓ → the host picks
+   *   the link ✓ → the sidebar says which one ✓.
+   */
+  fileEndpoint?: FileEndpointInfo | null;
   activity: ActivityEntry[];
   activityFilter: 'all' | ActivityLevel;
   onActivityFilter: (filter: 'all' | ActivityLevel) => void;
@@ -123,13 +130,7 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
     return {
       id: card.instanceId,
       label: look.name,
-      // **Say what the second click will do** —
-      // clicking a placed card again removes it; without saying so, that is a
-      // **silent deletion**.
-      hint: {
-        'zh-Hans': `${card.cardId} · ${isPlaced ? '已在主区 · 点击撤下' : '点击摆进主区'}`,
-        en: `${card.cardId} · ${isPlaced ? 'in the work area · click to remove' : 'click to place'}`,
-      },
+      hint: { 'zh-Hans': card.cardId, en: card.cardId },
       tone: isPlaced ? 'active' : 'default',
       cardId: card.cardId,
       cardTone: look.tone,
@@ -283,21 +284,34 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
  * The files page: file transfer needs a **live session** — the host keeps
  * connections by session id, not by profile id.
  */
+/**
+ * The files page: **the link the host picked** ✓.
+ *
+ * → The page used to list the **sessions** that could transfer files ✓ →
+ *   and it needed one of them to be open ✓ → **the page was empty until
+ *   the user opened a terminal** ✗.
+ * → Now **the host picks the link** ✓ (ADB → SSH → serial ✓) → the sidebar
+ *   says **which link it is** ✓ (a transfer that goes somewhere else is a
+ *   surprise ✗).
+ */
 function fileGroups(ctx: SecondaryContext): SecondaryGroup[] {
-  const sessions: SecondaryItem[] = ctx.sessions.map((session) => ({
-    id: session.sessionId,
-    label: { 'zh-Hans': session.label, en: session.label },
-    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
-    tone: session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
-    sessionId: session.sessionId,
-    onSelect: () => ctx.onSelectSession(session.sessionId),
-    onClose: () => ctx.onCloseSession(session.sessionId),
-  }));
+  const endpoint = ctx.fileEndpoint;
+  if (endpoint === undefined || endpoint === null) return [];
   return [
     {
-      id: 'sessions',
-      title: { 'zh-Hans': '对象（可传文件的会话）', en: 'Targets (sessions that can transfer files)' },
-      items: sessions,
+      id: 'endpoint',
+      title: { 'zh-Hans': '传输通道', en: 'Transfer link' },
+      items: [
+        {
+          id: endpoint.profileId,
+          label: { 'zh-Hans': endpoint.label, en: endpoint.label },
+          hint: {
+            'zh-Hans': `${endpoint.transport} · 主机自己挑的`,
+            en: `${endpoint.transport} · picked by the host`,
+          },
+          tone: 'active' as const,
+        },
+      ],
     },
   ];
 }
@@ -342,38 +356,6 @@ function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
   ];
 }
 
-function settingsGroups(ctx: SecondaryContext): SecondaryGroup[] {
-  return [
-    {
-      id: 'settings',
-      title: { 'zh-Hans': '设置', en: 'Settings' },
-      items: [
-        {
-          id: 'appearance',
-          label: { 'zh-Hans': '外观', en: 'Appearance' },
-          hint: { 'zh-Hans': '深色 / 浅色', en: 'Dark / light' },
-        },
-        {
-          id: 'cards',
-          label: { 'zh-Hans': '卡片目录', en: 'Card catalogue' },
-          hint: {
-            'zh-Hans': `${ctx.cards.length} 张已装`,
-            en: `${ctx.cards.length} installed`,
-          },
-        },
-        {
-          id: 'connections',
-          label: { 'zh-Hans': '连接', en: 'Connections' },
-          hint: {
-            'zh-Hans': `${ctx.connections.length} 个 profile`,
-            en: `${ctx.connections.length} profiles`,
-          },
-        },
-      ],
-    },
-  ];
-}
-
 /** The sidebar content for one page. */
 export function secondaryGroupsFor(page: PageId, ctx: SecondaryContext): SecondaryGroup[] {
   switch (page) {
@@ -388,7 +370,7 @@ export function secondaryGroupsFor(page: PageId, ctx: SecondaryContext): Seconda
     case 'library':
       return libraryGroups(ctx);
     case 'settings':
-      return settingsGroups(ctx);
+      return [];
     default:
       return [];
   }

@@ -1,0 +1,19 @@
+{
+  "apiVersion": "devboard/v1",
+  "kind": "Card",
+  "id": "boot-log",
+  "name": "启动日志",
+  "version": "1.0.0",
+  "description": "取板子开机时内核打的那段日志，存到板子上，再用文件传输把它取回来",
+  "entry": "index.html",
+  "requires": {
+    "workflows": ["boot-log.capture"]
+  },
+  "layout": { "w": 4, "h": 4, "min_w": 3, "min_h": 3 },
+  "permissions": {
+    "read": [],
+    "write": [],
+    "workflows": ["boot-log.capture"]
+  },
+  "actions": []
+}

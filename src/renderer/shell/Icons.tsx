@@ -101,6 +101,14 @@ export function PlusIcon(p: IconProps): JSX.Element {
   );
 }
 
+export function MinusIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 8h10" />
+    </svg>
+  );
+}
+
 export function RefreshIcon(p: IconProps): JSX.Element {
   return (
     <svg {...base(p)}>

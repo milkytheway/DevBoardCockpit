@@ -22,9 +22,11 @@ import { launchApp } from './harness';
 test('The wizard page · it runs in a real Electron', async () => {
   const { window, close } = await launchApp();
   try {
-    // ── ① the page opens ──
-    await window.getByRole('button', { name: '向导' }).click();
+    // ── ① the board dialog opens from the board selector ──
+    await window.getByRole('button', { name: /板子/ }).click();
+    await window.getByRole('button', { name: '添加开发板' }).click();
     await window.waitForTimeout(400);
+    await window.getByRole('dialog', { name: '添加开发板' }).waitFor();
     expect(await window.locator('.wizard-form').count()).toBeGreaterThan(0);
 
     // ── ② the real board · ADB → the successful state ──
@@ -36,7 +38,7 @@ test('The wizard page · it runs in a real Electron', async () => {
     // (not for a fixed number of seconds)
     await window.locator('.wizard-result__title').waitFor({ timeout: 60000 });
     const title = await window.locator('.wizard-result__title').textContent();
-    expect(title, 'the real board · ADB → success').toBe('这块板现在有自己的包了');
+    expect(title, 'the real board · ADB → success').toBe('开发板已添加');
 
     // The sentence about the first version may not be hidden
     expect(await window.locator('.wizard-result').textContent()).toContain('初版包');

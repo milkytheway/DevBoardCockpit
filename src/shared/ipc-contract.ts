@@ -22,6 +22,15 @@ export const IPC = {
   filesList: 'files:list',
   filesPush: 'files:push',
   filesPull: 'files:pull',
+  /**
+   * The link that carries the files ✓.
+   *
+   * → **The file page does not need an open terminal** ✓ → the host picks
+   *   the link itself ✓ (ADB → SSH → serial ✓) → this channel asks for it
+   *   ✓ and the host **probes** the candidates ✓ (the previous one that is
+   *   not there ✓ → the next one ✓).
+   */
+  filesEndpoint: 'files:endpoint',
   connectionsList: 'connections:list',
   /**
    * Switch to a given board (the board picker of the UI — the physical
@@ -354,6 +363,14 @@ export interface CockpitApi {
   filesList(connectionId: string, remotePath: string): Promise<FileEntry[]>;
   filesPush(connectionId: string, localPath: string, remotePath: string): Promise<{ remotePath: string }>;
   filesPull(connectionId: string, remotePath: string, localPath: string): Promise<{ localPath: string }>;
+  /**
+   * The link that carries the files ✓ — the host picks it ✓
+   * (ADB → SSH → serial ✓).
+   *
+   * → **The id is the key of the connection table of the host** ✓ — the
+   *   `files:list` / `files:push` / `files:pull` take it ✓.
+   */
+  filesEndpoint(): Promise<FileEndpointInfo>;
   connectionsList(): Promise<ConnectionInfo[]>;
   /**
    * Switch to a given board (the board picker of the UI).
@@ -489,12 +506,31 @@ export interface CockpitApi {
 }
 
 /** One usable connection: a summary of the profile plus its capability bits */
+/**
+ * **The link that carries the files** ✓ — what the host picked ✓.
+ *
+ * → The file page asks for it ✓ and does not need an open terminal ✓.
+ * → **Which link it is** ✓ (ADB ✓ · SSH ✓ · serial ✓) — the person sees it ✓
+ *   (a transfer that goes somewhere else is a surprise ✗).
+ */
+export interface FileEndpointInfo {
+  /** The id in the table of connections of the host ✓ (the transfer takes it ✓) */
+  id: string;
+  /** The profile it uses ✓ */
+  profileId: string;
+  /** The name of the connection ✓ */
+  label: string;
+  /** The channel it is ✓ */
+  transport: TransportKind;
+  /** The capability bits of the connection ✓ (the file browser needs them ✓) */
+  capabilities: ConnectionCapabilities;
+}
+
 export interface ConnectionInfo {
   id: string;
   label: string;
   transport: TransportKind;
-  boardPack: string | null;
-  /**
+  boardPack: string | null;  /**
    * The identity of this board (the physical board and the connection are
    * two separate layers — contract `docs/spec/02-board-pack.md` section
    * 10.2).

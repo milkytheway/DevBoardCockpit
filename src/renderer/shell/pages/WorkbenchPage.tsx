@@ -4,7 +4,7 @@ import type { ThemeName } from '../../../shared/theme/seed';
 import type { CardBroker } from '../../cards/broker';
 import { CardGrid } from '../cards/CardGrid';
 import { useT, type Localised } from '../i18n';
-import { ActivityIcon, GridIcon, LayersIcon, RefreshIcon } from '../Icons';
+import { GridIcon, LayersIcon, RefreshIcon } from '../Icons';
 
 /**
  * **Interface wording** —— every string the user can read is in this table ✓.
@@ -13,7 +13,7 @@ import { ActivityIcon, GridIcon, LayersIcon, RefreshIcon } from '../Icons';
  * the active locale ✓.
  */
 const strings = {
-  title: { 'zh-Hans': '总览', en: 'Overview' },
+  title: { 'zh-Hans': '工作台', en: 'Workbench' },
   densityGroup: { 'zh-Hans': '卡片密度', en: 'Card density' },
   comfortable: { 'zh-Hans': '舒适', en: 'Comfortable' },
   comfortableHint: { 'zh-Hans': '舒适：更大的卡片行高', en: 'Comfortable: taller card rows' },
@@ -22,13 +22,8 @@ const strings = {
   rescanHint: { 'zh-Hans': '重新扫描卡片目录', en: 'Rescan the card directories' },
   refresh: { 'zh-Hans': '刷新', en: 'Refresh' },
   cardLibrary: { 'zh-Hans': '卡片库', en: 'Card library' },
-  emptyTitle: { 'zh-Hans': '把仪表台拼出来', en: 'Assemble the dashboard' },
-  emptyBody: {
-    'zh-Hans': '卡片是文件，不是插件。去卡片库挑一张——CPU、内存、温度、板卡身份，或者让 AI 写一张新的。',
-    en: 'Cards are files, not plugins. Pick one in the card library — CPU, memory, temperature, board identity — or let the AI write a new one.',
-  },
+  emptyTitle: { 'zh-Hans': '还没有卡片', en: 'No cards yet' },
   openLibrary: { 'zh-Hans': '打开卡片库', en: 'Open the card library' },
-  layoutAutosaves: { 'zh-Hans': '布局自动保存', en: 'The layout saves itself' },
 } satisfies Record<string, Localised>;
 
 /**
@@ -126,15 +121,11 @@ export function WorkbenchPage({
             <GridIcon size={26} />
           </div>
           <h2>{t(strings.emptyTitle)}</h2>
-          <p>{t(strings.emptyBody)}</p>
           <div className="workbench-empty__actions">
             <button type="button" className="btn btn--primary" onClick={onOpenLibrary}>
               <LayersIcon size={15} />
               {t(strings.openLibrary)}
             </button>
-            <span className="workbench-empty__hint">
-              <ActivityIcon size={14} /> {t(strings.layoutAutosaves)}
-            </span>
           </div>
         </div>
       ) : (

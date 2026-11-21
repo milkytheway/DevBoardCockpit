@@ -9,6 +9,7 @@
   "requires": {
     "workflows": [
       "board-healthcheck.verify",
+      "boot-log.capture",
       "board-selfcheck.verify",
       "camera-capture.capture",
       "network-iperf.measure",
@@ -22,6 +23,7 @@
     "write": [],
     "workflows": [
       "board-healthcheck.verify",
+      "boot-log.capture",
       "board-selfcheck.verify",
       "camera-capture.capture",
       "network-iperf.measure",

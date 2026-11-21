@@ -23,6 +23,7 @@ device_key: ATK-DLRK3588
 
 # The workflow packs that drive this board ✓
 workflows:
+  - boot-log.capture
   - hello-kernel.build-run
   - hello-kernel.compile
   - hello-kernel.upload

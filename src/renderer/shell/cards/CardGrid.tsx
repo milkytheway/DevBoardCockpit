@@ -35,10 +35,7 @@ const SAVE_DEBOUNCE_MS = 300;
 
 /** The wording of the grid, in both languages. */
 const strings = {
-  empty: {
-    'zh-Hans': '主区还没有卡片。左边「卡片」里点一张，它就摆进来。',
-    en: 'No cards in the work area yet. Pick one under "Cards" on the left and it lands here.',
-  },
+  empty: { 'zh-Hans': '主区还没有卡片', en: 'No cards in the work area' },
 } satisfies Record<string, Localised>;
 
 const Grid = WidthProvider(GridLayout);

@@ -92,8 +92,15 @@ describe('The files page', () => {
       // The Chinese branch: the page has two wordings and the locale is pinned here.
       <LocaleContext.Provider value="zh-Hans">
         <FilesPage
-          sessionId="s1"
-          capabilities={CAPS}
+          endpoint={{
+            id: 's1',
+            profileId: 'board-adb',
+            label: 'Board · ADB',
+            transport: 'adb',
+            capabilities: CAPS,
+          }}
+          busy={false}
+          error={null}
           onPush={(file, remotePath) => {
             void uploadFile(host, 's1', file, remotePath);
           }}
@@ -113,18 +120,22 @@ describe('The files page', () => {
     expect(filesPush.mock.calls[0][1]).toBe('C:\\Users\\me\\a.txt');
   });
 
-  it('with no session it says that a session has to be opened first (instead of showing an empty page)', () => {
+  it('with no link it says so (instead of showing an empty page)', () => {
     render(
       // The Chinese branch: the page has two wordings and the locale is pinned here.
       <LocaleContext.Provider value="zh-Hans">
         <FilesPage
-          sessionId={null}
-          capabilities={null}
+          endpoint={null}
+          busy={false}
+          error={null}
           onPush={() => undefined}
           onPull={() => undefined}
         />
       </LocaleContext.Provider>,
     );
-    expect(screen.getByText(/会话/).textContent).toContain('会话');
+    // → **The page no longer waits for a terminal session** ✓ → it says
+    //   that there is no link ✓ (and how the host picks one ✓).
+    expect(document.querySelector('.page-empty')).toBeTruthy();
+    expect(screen.getByText(/ADB/)).toBeTruthy();
   });
 });

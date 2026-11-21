@@ -48,6 +48,9 @@ export const api: CockpitApi = {
     invoke(IPC.filesPush, connectionId, localPath, remotePath),
   filesPull: (connectionId, remotePath, localPath) =>
     invoke(IPC.filesPull, connectionId, remotePath, localPath),
+  // → **The host picks the link** ✓ (ADB → SSH → serial ✓) → the file page
+  //   does not need an open terminal ✓.
+  filesEndpoint: () => invoke(IPC.filesEndpoint),
   connectionsList: () => invoke(IPC.connectionsList),
   devicesSelect: (deviceKey) => invoke(IPC.devicesSelect, deviceKey),
   tagsReadings: () => invoke(IPC.tagsReadings),

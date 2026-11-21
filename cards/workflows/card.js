@@ -11,6 +11,7 @@ const stepsEl = document.getElementById('steps');
 
 const ALLOWED = new Set([
   'board-healthcheck.verify',
+  'boot-log.capture',
   'board-selfcheck.verify',
   'camera-capture.capture',
   'network-iperf.measure',

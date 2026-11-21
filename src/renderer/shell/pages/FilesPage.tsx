@@ -1,4 +1,4 @@
-import type { ConnectionCapabilities } from '../../../shared/ipc-contract';
+import type { FileEndpointInfo } from '../../../shared/ipc-contract';
 import { FileBrowser } from '../../files/FileBrowser';
 import { useT, type Localised } from '../i18n';
 import { FolderIcon } from '../Icons';
@@ -12,70 +12,94 @@ import { FolderIcon } from '../Icons';
 const strings = {
   title: { 'zh-Hans': '文件传输', en: 'File transfer' },
   readySubtitle: {
-    'zh-Hans': '本地 ↔ 板端 · 通过当前终端连接传输',
-    en: 'Local ↔ board · through the current terminal connection',
+    'zh-Hans': '本地 ↔ 板端 · 走 {link}（主机自己挑的通道）',
+    en: 'Local ↔ board · over {link} (the link the host picked)',
+  },
+  connectingSubtitle: {
+    'zh-Hans': '正在找一条能传文件的通道…',
+    en: 'Looking for a link that can carry files…',
   },
   notReadySubtitle: {
-    'zh-Hans': '传输要走一个终端连接：先在终端页开一个',
-    en: 'A transfer needs a terminal connection: open one on the terminal page first',
+    'zh-Hans': '还没有板子连着，传输无从谈起',
+    en: 'There is no board connected — a transfer needs one',
   },
-  emptyTitle: { 'zh-Hans': '还没有可传输的会话', en: 'No session to transfer with yet' },
+  emptyTitle: { 'zh-Hans': '还没有可传输的连接', en: 'No link to transfer with yet' },
   emptyBody: {
-    'zh-Hans': '在终端页开一个连接，回到这里就能看到两端的文件树。',
-    en: 'Open a connection on the terminal page and both file trees show up here.',
+    'zh-Hans': '主机按 ADB → SSH → 串口 的顺序自己挑一条能用的；上一个不通就试下一个。',
+    en: 'The host picks one itself, in the order ADB → SSH → serial; when one is not there it tries the next.',
   },
   emptyNote: {
-    'zh-Hans': '串口 / ADB / SSH：传输需要连接背后的文件能力。',
-    en: 'Serial / ADB / SSH: a transfer needs the file capability behind the connection.',
+    'zh-Hans': '串口不能传文件（事实 S7），所以它在最后。',
+    en: 'A serial line cannot carry files (fact S7) — that is why it is last.',
   },
+  failedTitle: { 'zh-Hans': '没有一条通道能用', en: 'No link works' },
+  retry: { 'zh-Hans': '再找一次', en: 'Look again' },
 } satisfies Record<string, Localised>;
 
 /**
- * The files page: transfer files with a live session.
+ * The files page: transfer files with the link the host picked.
  *
- * ── why it needs a **session**, not a profile ──
+ * ── why it does **not** need a terminal session ──
  *
- * The host keys its connection table by **session id** (`terminal:open`
- * creates one connection per session), and `files:list` / `files:push` /
- * `files:pull` take that id. So a file transfer needs an open terminal
- * session — which is why the sidebar lists sessions under "objects".
+ * → The host keeps its connections by session id ✓ — the page used to ask
+ *   the terminal for one ✓ → **the page was empty until the user opened a
+ *   terminal** ✗ ("the files are empty" ✓).
+ * → Now **the host picks the link** ✓ (ADB → SSH → serial ✓) and the page
+ *   only uses it ✓ — **no terminal, no session, no waiting** ✓.
  */
 export function FilesPage({
-  sessionId,
-  capabilities,
+  endpoint,
+  busy,
+  error,
   onPush,
   onPull,
+  onRetry,
   note,
 }: {
-  /** The session the transfer runs through (null = none open yet). */
-  sessionId: string | null;
-  capabilities: ConnectionCapabilities | null;
+  /** The link the host picked ✓ (`null` = there is none ✓) */
+  endpoint: FileEndpointInfo | null;
+  /** Is the host looking for one? ✓ */
+  busy: boolean;
+  /** Why there is none ✓ (the host said why ✓) */
+  error: string | null;
   onPush: (file: File, remotePath: string) => void;
   onPull: (connectionId: string, remotePath: string) => void;
+  /** Look for a link again ✓ (the board may have been plugged in ✓) */
+  onRetry?: () => void;
   note?: string | null;
 }): JSX.Element {
   const t = useT();
-  const ready = sessionId !== null && capabilities !== null;
+  const ready = endpoint !== null;
+  const subtitle = (): string => {
+    if (busy) return t(strings.connectingSubtitle);
+    if (ready) {
+      return t(strings.readySubtitle, { link: `${endpoint.label} · ${endpoint.transport}` });
+    }
+    return t(strings.notReadySubtitle);
+  };
   return (
     <div className="page page--files">
       <header className="page-head">
         <div className="page-head__text">
           <span className="page-head__eyebrow">FILES</span>
           <h1 className="page-head__title">{t(strings.title)}</h1>
-          <p className="page-head__sub">
-            {ready ? t(strings.readySubtitle) : t(strings.notReadySubtitle)}
-          </p>
+          <p className="page-head__sub">{subtitle()}</p>
         </div>
         <div className="page-head__actions">
           {note ? <span className="page-head__note">{note}</span> : null}
+          {error !== null ? (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onRetry}>
+              {t(strings.retry)}
+            </button>
+          ) : null}
         </div>
       </header>
 
       {ready ? (
         <div className="files-stage">
           <FileBrowser
-            connectionId={sessionId}
-            capabilities={capabilities}
+            connectionId={endpoint.id}
+            capabilities={endpoint.capabilities}
             listRemote={(connectionId, remotePath) =>
               window.cockpit.filesList(connectionId, remotePath)
             }
@@ -88,8 +112,8 @@ export function FilesPage({
           <span className="page-empty__icon" aria-hidden>
             <FolderIcon size={26} />
           </span>
-          <h2>{t(strings.emptyTitle)}</h2>
-          <p>{t(strings.emptyBody)}</p>
+          <h2>{error !== null ? t(strings.failedTitle) : t(strings.emptyTitle)}</h2>
+          {error !== null ? <p className="dim">{error}</p> : <p>{t(strings.emptyBody)}</p>}
           <p className="dim">{t(strings.emptyNote)}</p>
         </div>
       )}

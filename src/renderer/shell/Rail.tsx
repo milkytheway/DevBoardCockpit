@@ -3,7 +3,6 @@ import {
   GearIcon,
   GridIcon,
   LayersIcon,
-  LinkIcon,
   ListIcon,
   SearchIcon,
   TerminalIcon,
@@ -24,7 +23,6 @@ const ENTRIES: { id: PageId; label: Localised; icon: (props: { size?: number }) 
   { id: 'files', label: { 'zh-Hans': '文件', en: 'Files' }, icon: FolderIcon },
   { id: 'logs', label: { 'zh-Hans': '日志', en: 'Logs' }, icon: ListIcon },
   { id: 'library', label: { 'zh-Hans': '卡片库', en: 'Card library' }, icon: LayersIcon },
-  { id: 'wizard', label: { 'zh-Hans': '向导', en: 'Wizard' }, icon: LinkIcon },
   { id: 'settings', label: { 'zh-Hans': '设置', en: 'Settings' }, icon: GearIcon },
 ];
 
