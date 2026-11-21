@@ -20,6 +20,7 @@ const end = source.indexOf('\n];', start);
 const listText = source.slice(start + 'const MUTATIONS = ['.length, end);
 
 // → the helper of the script ✓ (it is the authority ✓)
+// eslint-disable-next-line no-unused-vars -- the mutants below use it ✓
 function replace(src, oldText, newText) {
   if (!src.includes(oldText)) {
     throw new Error(`the original text is not there: ${JSON.stringify(oldText.slice(0, 140))}`);

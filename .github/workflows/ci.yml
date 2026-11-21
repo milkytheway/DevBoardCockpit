@@ -116,6 +116,12 @@ jobs:
       - name: Install
         run: npm install
 
+      # → **Do the guards still point at the real code?** ✓ (a guard whose
+      #   text is gone ✓ proves nothing ✓) → it takes two seconds ✓ → the
+      #   whole check takes an hour ✓.
+      - name: The guards still apply
+        run: node scripts/check-stale-mutants.mjs
+
       # → The mutation check restores the sources itself ✓ (it writes them back
       #   ✓) → the job may end in any state ✓.
       - name: The mutation check
