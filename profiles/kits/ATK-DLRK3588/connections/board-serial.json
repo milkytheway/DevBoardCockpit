@@ -1,0 +1,19 @@
+{
+  "id": "board-serial",
+  "label": "Board · Serial",
+  "transport": "serial",
+  "board_pack": "rk3588-atk",
+  "device_key": "ATK-DLRK3588",
+  "options": {
+    "port": "${serial_port}",
+    "baudrate": 1500000,
+    "pty": true,
+    "prompt": "root@ATK-DLRK3588",
+    "commands": "serial",
+    "ssh": {
+      "host": "${board_host}",
+      "port": 22,
+      "username": "root"
+    }
+  }
+}

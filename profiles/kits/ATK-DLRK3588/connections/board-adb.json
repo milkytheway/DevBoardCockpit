@@ -1,0 +1,18 @@
+{
+  "id": "board-adb",
+  "label": "Board · ADB",
+  "transport": "adb",
+  "board_pack": "rk3588-atk",
+  "device_key": "ATK-DLRK3588",
+  "options": {
+    "pty": false,
+    "prompt": "root@ATK-DLRK3588",
+    "commands": "adb",
+    "serial": "${adb_serial}",
+    "ssh": {
+      "host": "${board_host}",
+      "port": 22,
+      "username": "root"
+    }
+  }
+}

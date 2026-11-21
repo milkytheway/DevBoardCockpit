@@ -1,0 +1,14 @@
+{
+  "id": "board-ssh",
+  "label": "Board · SSH",
+  "transport": "ssh",
+  "board_pack": "rk3588-atk",
+  "device_key": "ATK-DLRK3588",
+  "options": {
+    "host": "${board_host}",
+    "port": 22,
+    "username": "root",
+    "pty": true,
+    "commands": "ssh"
+  }
+}

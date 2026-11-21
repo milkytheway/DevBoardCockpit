@@ -42,6 +42,7 @@ const FILES: Record<string, string> = {
   '03': '03-card-manifest.md',
   '04': '04-mcp-tools.md',
   '05': '05-workflow-pack.md',
+  '06': '06-board-kit.md',
 };
 
 /**
@@ -222,7 +223,7 @@ function main(): void {
       }
       // ── R2 · a cross-file section reference that does not exist ───
       // → "`04` section 2.4" ✓ · "section 2.4 of `04`" ✓
-      for (const m of line.matchAll(/`(0[0-5])`\s*section\s+(\d+(?:\.\d+)*)/g)) {
+      for (const m of line.matchAll(/`(0[0-6])`\s*section\s+(\d+(?:\.\d+)*)/g)) {
         const target = FILES[m[1] ?? ''];
         const number = m[2] ?? '';
         const set = byFile.get(join(SPEC_DIR, target)) ?? new Set<string>();
@@ -235,7 +236,7 @@ function main(): void {
           });
         }
       }
-      for (const m of line.matchAll(/section\s+(\d+(?:\.\d+)*)\s+of\s+`(0[0-5])`/g)) {
+      for (const m of line.matchAll(/section\s+(\d+(?:\.\d+)*)\s+of\s+`(0[0-6])`/g)) {
         const number = m[1] ?? '';
         const target = FILES[m[2] ?? ''];
         const set = byFile.get(join(SPEC_DIR, target)) ?? new Set<string>();

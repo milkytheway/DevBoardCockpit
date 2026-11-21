@@ -1,0 +1,66 @@
+# The board kit of the ATK-DLRK3588 ✓
+#
+# → Everything one board model needs to be used ✓: the board pack that
+#   describes it ✓, the connections that reach it ✓, the workflow packs that
+#   drive it ✓ and the cards that show it ✓.
+# → **The machine-specific values are variables** ✓ — the person fills them
+#   once ✓ and the host writes a concrete connection profile ✓.
+#
+# Contract: `docs/spec/06-board-kit.md` ✓
+apiVersion: devboard/v1
+kind: BoardKit
+id: ATK-DLRK3588
+
+# What the board reports ✓ (the probe measured "ATK-DLRK3588 Board" ✓)
+model: ATK-DLRK3588
+match: substring
+
+# The board pack this kit is for ✓
+board_pack: rk3588-atk
+
+# The identity of the board ✓ (the interface groups the connections by it ✓)
+device_key: ATK-DLRK3588
+
+# The workflow packs that drive this board ✓
+workflows:
+  - hello-kernel.build-run
+  - hello-kernel.compile
+  - hello-kernel.upload
+  - hello-kernel.load
+  - meminfo-user.build-run
+  - board-healthcheck.verify
+  - board-selfcheck.verify
+  - network-iperf.measure
+  - storage-benchmark.measure
+  - camera-capture.capture
+
+# The cards that show this board ✓
+cards:
+  - board-actions
+  - board-hardware
+  - board-identity
+  - build-deploy
+  - core-load
+  - cpu-usage
+  - gpu-npu
+  - memory
+  - thermal
+
+# What the person has to fill in ✓
+variables:
+  serial_port:
+    type: string
+    label: The serial port of the board (COM3 / COM5 / …)
+    description: The debug console of the board is on UART2.
+    required: true
+    default: COM3
+  adb_serial:
+    type: string
+    label: The serial number of the board
+    description: The serial number that adb devices prints.
+    required: true
+  board_host:
+    type: string
+    label: The address of the board
+    description: The address the host reaches the board at (SSH and the guest relay).
+    required: true

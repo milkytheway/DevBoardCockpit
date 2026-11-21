@@ -53,7 +53,8 @@
     "mutation:audit": "node scripts/audit-mutants.mjs",
     "postinstall": "node scripts/ensure-native.mjs",
     "check:language": "tsx scripts/check-language.ts",
-    "check:links": "tsx scripts/check-links.ts"
+    "check:links": "tsx scripts/check-links.ts",
+    "kit:install": "tsx scripts/install-kit.ts"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",
