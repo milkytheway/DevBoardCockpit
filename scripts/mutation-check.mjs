@@ -2545,6 +2545,18 @@ const MUTATIONS = [
       ),
   },
   {
+    name: 'M240 the cells of the work area **follow the board** ✓ (**otherwise the cards disappear** ✓)',
+    file: 'src/main/cards/layout.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/layout.test.ts'],
+    expect: 'the cells are re-bound to the new connection',
+    apply: (s) =>
+      replace(
+        s,
+        '    if (!changed) return;',
+        '    if (true) return; // mutation: the cells do not follow the board',
+      ),
+  },
+  {
     name: 'M239 installing a card while the board is not there: **the check of the actions is skipped** ✓ (**the card is degraded** ✓ — contract §9 rule 5 ✓)',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
