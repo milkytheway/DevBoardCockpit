@@ -103,6 +103,40 @@ function probe(mod) {
   }
 }
 
+/**
+ * **The binary of Electron itself** ✓.
+ *
+ * → It is **not** a native module ✓ — it is a download ✓ (the GitHub
+ *   releases ✓) → and when that host cannot be reached ✓ the install script
+ *   of `electron` **gives up quietly** ✓ → `npm ci` **exits 0** ✓ → and the
+ *   application then says "Electron failed to install correctly" much later ✓
+ *   (found on 2026-11-21 ✓ — a fresh clone on a machine without access to
+ *   the releases ✓).
+ * → So it is checked **here** ✓ — where the message can still say what to
+ *   do ✓ (`ELECTRON_MIRROR` ✓).
+ */
+function probeElectron() {
+  const dir = join(process.cwd(), 'node_modules', 'electron');
+  if (!existsSync(join(dir, 'path.txt'))) {
+    return { ok: false, why: 'the binary of Electron is not there' };
+  }
+  if (!existsSync(join(dir, 'dist'))) {
+    return { ok: false, why: 'the binary of Electron was not unpacked' };
+  }
+  return { ok: true };
+}
+
+const electron = probeElectron();
+if (electron.ok) {
+  console.log('[electron] the binary is there ✓');
+} else {
+  console.error(`[electron] ${electron.why} — the application cannot start without it.`);
+  console.error('  It is downloaded from the GitHub releases. Behind a firewall:');
+  console.error('    set ELECTRON_MIRROR (or ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/)');
+  console.error('  and run `npm rebuild electron` (or delete node_modules/electron and run npm install again).');
+  process.exit(1);
+}
+
 const broken = [];
 for (const mod of MODULES) {
   const r = probe(mod);

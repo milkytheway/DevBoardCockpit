@@ -49,6 +49,12 @@ npm install
 npm run dev
 ```
 
+> The install downloads the binary of Electron from the GitHub releases. **When
+> that cannot be reached the install fails and says why** ✓ (otherwise the
+> application only complains much later, with "Electron failed to install
+> correctly" ✗). Behind a firewall: set `ELECTRON_MIRROR` ✓ and run
+> `npm rebuild electron` ✓.
+
 To build an installer:
 
 ```bash

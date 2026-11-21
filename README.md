@@ -49,6 +49,8 @@ npm install
 npm run dev
 ```
 
+> 安装时 Electron 的二进制从 GitHub releases 下载。**下载不到时安装会直接失败并说明原因** ✓（否则要等到启动应用时报 "Electron failed to install correctly" ✗）。在墙后面时设置 `ELECTRON_MIRROR` ✓ 再 `npm rebuild electron` ✓。
+
 构建安装包：
 
 ```bash
