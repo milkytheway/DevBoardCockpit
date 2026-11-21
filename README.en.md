@@ -40,7 +40,7 @@ tests/                   Unit, integration and end-to-end tests
 ---
 ## Getting started
 
-Prerequisites: Node.js 20 or later; Windows. Development requires the Visual Studio build tools to compile `node-pty` and `serialport`.
+Prerequisites: Node.js 20.19 or later; Windows. Development requires the Visual Studio build tools to compile `node-pty` and `serialport`.
 
 ```bash
 git clone <repository-url>

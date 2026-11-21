@@ -40,7 +40,7 @@ tests/                   单元、集成与端到端测试
 ---
 ## 快速开始
 
-前置条件：Node.js 20 或更高版本；Windows。开发环境需要 Visual Studio 生成工具，用于编译 `node-pty` 与 `serialport`。
+前置条件：Node.js 20.19 或更高版本；Windows。开发环境需要 Visual Studio 生成工具，用于编译 `node-pty` 与 `serialport`。
 
 ```bash
 git clone <repository-url>
