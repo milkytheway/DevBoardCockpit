@@ -20,8 +20,11 @@ jobs:
 
       # The native modules (node-pty, serialport) are compiled against the local
       # Electron ABI. The build tools are present on the Windows runner image.
+      # `npm ci` and not `npm install`: the lock file is what the repository
+      # says it ships — `npm install` may change it and install something
+      # else than the lock file says.
       - name: Install
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -73,7 +76,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm install
+        run: npm ci
 
       # → The e2e runs against a **real build** ✓ (`out/` ✓ — the harness
       #   starts the application from it ✓).
@@ -114,7 +117,7 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm install
+        run: npm ci
 
       # → **Do the guards still point at the real code?** ✓ (a guard whose
       #   text is gone ✓ proves nothing ✓) → it takes two seconds ✓ → the
