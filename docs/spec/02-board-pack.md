@@ -1069,7 +1069,7 @@ An unknown top-level field is an error ✓ (the same closed rule as rule 24 of s
   "options": {
     "serial": "0000000000000000",
     "pty": false,
-    "ssh": { "host": "192.168.5.100", "port": 22, "username": "root" }
+    "ssh": { "host": "192.0.2.100", "port": 22, "username": "root" }
   }
 }
 ```

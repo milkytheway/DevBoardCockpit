@@ -219,7 +219,7 @@ describe('the connection chain · the repair reaches the wire', () => {
     const prepared = await prepareProfile(profile, {
       userProfilesDir: dir,
       runner: runnerOf({
-        devices: 'f34dca7784396ab2\tdevice',
+        devices: 'a1b2c3d4e5f60718\tdevice',
         address: '    inet 192.168.5.100/24 scope global eth0',
         model: 'ATK-DLRK3588 Board',
       }),
@@ -258,7 +258,7 @@ describe('the connection chain · the repair reaches the wire', () => {
       {
         userProfilesDir: dir,
         runner: runnerOf({
-          devices: 'f34dca7784396ab2\tdevice',
+          devices: 'a1b2c3d4e5f60718\tdevice',
           address: '    inet 192.168.5.100/24 scope global eth0',
           model: 'ATK-DLRK3588 Board',
         }),

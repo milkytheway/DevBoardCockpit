@@ -43,7 +43,7 @@ const SERIAL: ConnectionProfile = {
 
 const VALUES = {
   boardPack: 'rk3588-atk',
-  adbSerial: 'f34dca7784396ab2',
+  adbSerial: 'a1b2c3d4e5f60718',
   address: '192.168.100.10',
   serialPort: 'COM7',
   keyFilename: 'C:\\Users\\me\\.ssh\\id_ed25519_board',
@@ -71,7 +71,7 @@ describe('the confirmed values · the payload', () => {
 describe('the confirmed values · the profiles', () => {
   it('**the adb connection gets the serial** ✓', () => {
     const profile = applyValues(ADB, VALUES);
-    expect(profile.options['serial']).toBe('f34dca7784396ab2');
+    expect(profile.options['serial']).toBe('a1b2c3d4e5f60718');
   });
 
   it('**the ssh connection gets the address** ✓', () => {

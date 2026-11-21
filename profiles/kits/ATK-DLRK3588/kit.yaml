@@ -52,9 +52,11 @@ variables:
   serial_port:
     type: string
     label: The serial port of the board (COM3 / COM5 / …)
-    description: The debug console of the board is on UART2.
+    description: >
+      The debug console of the board is on UART2. **There is no default** ✓ —
+      the port of this machine is not a fact of the board model ✓ (it is the
+      port the USB-UART driver picked ✓).
     required: true
-    default: COM3
   adb_serial:
     type: string
     label: The serial number of the board

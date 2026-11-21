@@ -54,19 +54,19 @@ const ADB_PROFILE: ConnectionProfile = {
 describe('the resolution · the adb serial', () => {
   it('**the pinned serial that is really there is left alone** ✓', async () => {
     const outcome = await resolveProfile(
-      { ...ADB_PROFILE, options: { ...ADB_PROFILE.options, serial: 'f34dca7784396ab2' } },
-      { runner: runnerOf({ devices: 'f34dca7784396ab2\tdevice' }) },
+      { ...ADB_PROFILE, options: { ...ADB_PROFILE.options, serial: 'a1b2c3d4e5f60718' } },
+      { runner: runnerOf({ devices: 'a1b2c3d4e5f60718\tdevice' }) },
     );
     expect(outcome.changes).toEqual([]);
-    expect(outcome.profile.options['serial']).toBe('f34dca7784396ab2');
+    expect(outcome.profile.options['serial']).toBe('a1b2c3d4e5f60718');
   });
 
   it('**exactly one board → its serial is filled in** ✓', async () => {
     const outcome = await resolveProfile(ADB_PROFILE, {
-      runner: runnerOf({ devices: 'f34dca7784396ab2\tdevice', model: 'ATK-DLRK3588 Board' }),
+      runner: runnerOf({ devices: 'a1b2c3d4e5f60718\tdevice', model: 'ATK-DLRK3588 Board' }),
       expectedModels: ['ATK-DLRK3588'],
     });
-    expect(outcome.profile.options['serial']).toBe('f34dca7784396ab2');
+    expect(outcome.profile.options['serial']).toBe('a1b2c3d4e5f60718');
     expect(outcome.changes.map((change) => change.field)).toContain('options.serial');
     expect(outcome.problems).toEqual([]);
   });
@@ -111,7 +111,7 @@ describe('the resolution · the address of the board', () => {
       },
       {
         runner: runnerOf({
-          devices: 'f34dca7784396ab2\tdevice',
+          devices: 'a1b2c3d4e5f60718\tdevice',
           address: '    inet 192.168.100.10/24 scope global eth0',
           model: 'ATK-DLRK3588 Board',
         }),
@@ -125,7 +125,7 @@ describe('the resolution · the address of the board', () => {
   it('**the nested address (the guest reaches the board through it) is replaced too** ✓', async () => {
     const outcome = await resolveProfile(ADB_PROFILE, {
       runner: runnerOf({
-        devices: 'f34dca7784396ab2\tdevice',
+        devices: 'a1b2c3d4e5f60718\tdevice',
         address: '    inet 192.168.100.10/24 scope global eth0',
         model: 'ATK-DLRK3588 Board',
       }),
@@ -163,7 +163,7 @@ describe('the resolution · the address of the board', () => {
       },
       {
         runner: runnerOf({
-          devices: 'f34dca7784396ab2\tdevice',
+          devices: 'a1b2c3d4e5f60718\tdevice',
           address: '    inet 192.168.100.10/24 scope global eth0',
         }),
       },
@@ -327,7 +327,7 @@ describe('the resolution · the address of a machine', () => {
     const outcome = await resolveProfile(GUEST, {
       runner: async () => {
         called = true;
-        return result('f34dca7784396ab2\tdevice');
+        return result('a1b2c3d4e5f60718\tdevice');
       },
       ssh: RECORDS,
       probeCredential: probeOf(''),

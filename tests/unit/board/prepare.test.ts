@@ -46,6 +46,20 @@ describe('the preparation · what has to be repaired', () => {
     expect(placeholderOf(SSH_PROFILE)).toMatch(/RFC 5737/);
   });
 
+  it('**the serial port that is not known yet is a placeholder** ✓ (the COM port of this machine does not travel with the repository ✓)', () => {
+    const serial: ConnectionProfile = {
+      id: 'board-serial',
+      label: 'Board · Serial',
+      transport: 'serial',
+      board_pack: 'rk3588-atk',
+      device_key: 'ATK-DLRK3588',
+      options: { port: '', baudrate: 1500000 },
+    };
+    expect(placeholderOf(serial)).toMatch(/serial port/);
+    // → **It has to be repaired** ✓ (otherwise the port is never looked for ✓)
+    expect(needsRepair(serial, [])).toBe(true);
+  });
+
   it('**a profile with real values has nothing to repair** ✓', () => {
     const profile: ConnectionProfile = {
       ...SSH_PROFILE,
@@ -62,12 +76,12 @@ describe('the preparation · what has to be repaired', () => {
       transport: 'adb',
       board_pack: 'rk3588-atk',
       device_key: 'atk-01',
-      options: { serial: 'f34dca7784396ab2' },
+      options: { serial: 'a1b2c3d4e5f60718' },
     };
     expect(needsRepair(profile, [{ serial: 'other', state: 'device', stateText: 'device' }])).toBe(
       true,
     );
-    expect(needsRepair(profile, [{ serial: 'f34dca7784396ab2', state: 'device', stateText: 'device' }])).toBe(
+    expect(needsRepair(profile, [{ serial: 'a1b2c3d4e5f60718', state: 'device', stateText: 'device' }])).toBe(
       false,
     );
   });
@@ -78,7 +92,7 @@ describe('the preparation · the repair', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-user-profiles-'));
     const prepared = await prepareProfile(SSH_PROFILE, {
       runner: runnerOf({
-        devices: 'f34dca7784396ab2\tdevice',
+        devices: 'a1b2c3d4e5f60718\tdevice',
         address: '    inet 192.168.100.10/24 scope global eth0',
         model: 'ATK-DLRK3588 Board',
       }),
@@ -132,7 +146,7 @@ describe('the preparation · the repair', () => {
     const prepared = await prepareProfile(guest, {
       runner: async () => {
         called = true;
-        return result('f34dca7784396ab2\tdevice');
+        return result('a1b2c3d4e5f60718\tdevice');
       },
       userProfilesDir: dir,
     });

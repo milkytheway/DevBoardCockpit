@@ -45,12 +45,12 @@ describe('the detection · the adb devices', () => {
         'List of devices attached',
         '* daemon not running; starting now at tcp:5037',
         '* daemon started successfully',
-        'f34dca7784396ab2\tdevice',
+        'a1b2c3d4e5f60718\tdevice',
         '',
       ].join('\n'),
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.serial).toBe('f34dca7784396ab2');
+    expect(rows[0]?.serial).toBe('a1b2c3d4e5f60718');
     expect(rows[0]?.state).toBe('device');
   });
 
@@ -83,21 +83,21 @@ describe('the detection · the address of the board', () => {
   });
 
   it('**the address is read from the board itself** ✓', async () => {
-    const address = await readBoardIPv4('f34dca7784396ab2', {
+    const address = await readBoardIPv4('a1b2c3d4e5f60718', {
       runner: runnerOf({ 'ip -4 addr show': '    inet 192.168.100.10/24 scope global eth0' }),
     });
     expect(address).toBe('192.168.100.10');
   });
 
   it('**no address → null** ✓ (not an invented one ✓)', async () => {
-    const address = await readBoardIPv4('f34dca7784396ab2', {
+    const address = await readBoardIPv4('a1b2c3d4e5f60718', {
       runner: runnerOf({ 'ip -4 addr show': '    inet 127.0.0.1/8 scope host lo' }),
     });
     expect(address).toBeNull();
   });
 
   it('**the model the board reports is read back** ✓', async () => {
-    const model = await readBoardModel('f34dca7784396ab2', {
+    const model = await readBoardModel('a1b2c3d4e5f60718', {
       runner: runnerOf({ 'device-tree/model': 'ATK-DLRK3588 Board\n' }),
     });
     expect(model).toBe('ATK-DLRK3588 Board');
@@ -115,7 +115,7 @@ describe('the detection · the placeholders', () => {
 
   it('**the all-zero serial is a placeholder** ✓', () => {
     expect(isPlaceholderSerial('0000000000000000')).toBe(true);
-    expect(isPlaceholderSerial('f34dca7784396ab2')).toBe(false);
+    expect(isPlaceholderSerial('a1b2c3d4e5f60718')).toBe(false);
   });
 });
 

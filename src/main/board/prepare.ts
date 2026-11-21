@@ -57,6 +57,16 @@ export function placeholderOf(profile: ConnectionProfile): string | null {
   if (typeof serial === 'string' && isPlaceholderSerial(serial)) {
     return `the serial ${serial}`;
   }
+  // → **The serial port of this machine is not known yet** ✓ → the shipped
+  //   profile names **no** port ✓ (the COM port of the machine that wrote it
+  //   must not travel with the repository ✓) → the board setup finds it ✓
+  //   ("a port that answers is the console" ✓).
+  if (profile.transport === 'serial') {
+    const port = options['port'];
+    if (typeof port === 'string' && port.length === 0) {
+      return 'the serial port';
+    }
+  }
   const host = options['host'];
   if (typeof host === 'string' && isPlaceholderHost(host)) {
     return `the host ${host} (a documentation address of RFC 5737)`;

@@ -5,7 +5,7 @@
   "board_pack": "rk3588-atk",
   "device_key": "ATK-DLRK3588",
   "options": {
-    "port": "COM3",
+    "port": "",
     "baudrate": 1500000,
     "pty": true,
     "prompt": "root@ATK-DLRK3588",
