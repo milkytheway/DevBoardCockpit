@@ -15,6 +15,7 @@ import type { HostWorkflowRun } from '../shared/ipc-contract';
 import { makeError, toAppErrorPayload } from '../shared/errors';
 import { PRELOAD_FILE } from '../shared/build-layout';
 import { capabilitiesFor, createConnection } from './hal/registry';
+import { FileHostKeyStore } from './hal/host-keys';
 import { fakeMode, fakeProfileIds, type FakeMode } from './hal/fake/profile';
 import { fakeRouteFor, profilesWithFake } from './hal/fake/wiring';
 import type { Connection } from './hal/connection';
@@ -72,32 +73,12 @@ import { SHELL_CSP } from './shell-csp';
 import { listCardDirs, type CardRoot } from './cards/roots';
 import { watchCardRoots } from './cards/watcher';
 import { TransferService } from './files/transfer';
-import { FileEndpoint } from './files/endpoint';
+import { FILE_ENDPOINT_ID, FileEndpoint } from './files/endpoint';
+import { BootLogCapture } from './boot-log/capture';
 import { uniqueDownloadPath } from './files/download-target';
 import type { ConnectionProfile } from './profiles/schema';
 import { deviceKeyOf } from './profiles/schema';
-import { SEEDS } from '../shared/theme/seed';
-
-/** Height of the native window-controls overlay (kept in sync with visual.css). */
-const TITLEBAR_HEIGHT = 40;
-
-/**
- * Colours for the native window controls (min / max / close) drawn over the
- * page. The canvas colour comes from the same seed the renderer uses, so the
- * overlay stays invisible against the shell in both themes.
- */
-function titleBarOverlay(theme: 'dark' | 'light'): {
-  color: string;
-  symbolColor: string;
-  height: number;
-} {
-  const seed = SEEDS[theme];
-  return {
-    color: seed['bg-0'],
-    symbolColor: seed['text-0'],
-    height: TITLEBAR_HEIGHT,
-  };
-}
+import { titleBarOverlay } from './window-overlay';
 
 /**
  * Electron main entry point.
@@ -120,6 +101,13 @@ function titleBarOverlay(theme: 'dark' | 'light'): {
 declare const __COCKPIT_FAKE_BUILD__: boolean;
 
 const FAKE_MODE: FakeMode = __COCKPIT_FAKE_BUILD__ ? fakeMode() : 'off';
+
+const FAKE_BOOT_LOG = [
+  '[    0.000000] Booting Linux on physical CPU 0x0000000000',
+  '[    0.181221] Kernel command line: console=ttyFIQ0 root=/dev/mmcblk0p6',
+  '[    1.502010] rk3588-pinctrl ff770000.pinctrl: probe success',
+  '[    8.394480] synthetic board boot complete',
+].join('\n');
 
 /**
  * The fake device's module — **loaded on demand** ✓.
@@ -150,9 +138,11 @@ function listProfiles(): ConnectionProfile[] {
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
-  // Compile-time constant: in a production build it is `false` → the block
-  // below is dead code → none of the fake device's wiring rules make it into
-  // the bundle (not even the factory for the fake profile).
+  // → **The fake device ships with the application** ✓ (the user decided it
+  //   on 2026-11-21 ✓ · AGENTS.md §8 ✓) → the flag is `true` in every
+  //   build ✓ → this block is **not** dead code ✓ (it used to be ✗ — the
+  //   comment said the fake was cut out of the production bundle ✓ and that
+  //   was wrong ✓).
   if (!__COCKPIT_FAKE_BUILD__) return profiles;
   // If the fake device failed to load, it is not listed: listing it and then
   // substituting a real local connection is worse than not listing it at all
@@ -164,6 +154,15 @@ function listProfiles(): ConnectionProfile[] {
 /** Host settings. Machine-specific adb paths are read here, not baked into the code (device fact list §2) */
 const settings = loadSettings(join(app.getAppPath(), 'profiles', 'settings.json'));
 const adbPath = resolveAdbPath(settings);
+/**
+ * **The keys of the hosts this machine has already seen** ✓ (trust on first
+ * use ✓).
+ *
+ * → They live in the **host's own data directory** ✓ — the person's
+ *   `~/.ssh/known_hosts` is for their ssh ✓ and the application does not
+ *   write into it ✗.
+ */
+const hostKeys = new FileHostKeyStore(join(userDataDir(), 'host-keys.json'));
 
 /**
  * The models a board of this pack has to report ✓.
@@ -193,7 +192,9 @@ async function createConnectionFor(
   profile: ConnectionProfile,
   log: SessionLog,
 ): Promise<Connection> {
-  // Compile-time constant: in a production build the whole fake-device routing block is dead code (see above).
+  // → **The fake device ships with the application** ✓ (AGENTS.md §8 ✓) →
+  //   the flag is `true` in every build ✓ → the routing below is **live**
+  //   code ✓ (it used to be described as dead ✗ — the comment was wrong ✓).
   if (!__COCKPIT_FAKE_BUILD__) return createConnection(profile, log, { adbPath });
   const route = fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null);
   if (route === 'fake' && fakeModule !== null) {
@@ -231,7 +232,7 @@ async function createConnectionFor(
     probeAddress: tcpAddressProbe,
     log: (message) => console.log(message),
   });
-  return createConnection(prepared, log, { adbPath });
+  return createConnection(prepared, log, { adbPath, hostKeys });
 }
 
 /**
@@ -272,6 +273,10 @@ const fileEndpoint = new FileEndpoint({
         dataDir: userDataDir(),
       }),
     ),
+  // → **A closed endpoint leaves the table** ✓ (otherwise the next transfer
+  //   runs on a connection that is not open any more ✓ — found on
+  //   2026-11-21 ✓).
+  onClosed: () => connections.delete(FILE_ENDPOINT_ID),
 });
 
 const terminal = new TerminalManager({
@@ -314,6 +319,60 @@ const runtime = new TagRuntime({
   userPacksDir: userBoardsDir(),
   createConnection: createConnectionFor,
   createLog: (label, transport) => new SessionLog({ label, transport, dataDir: userDataDir() }),
+});
+
+/**
+ * **What a card gets of the boot log** ✓ — **without the host path** ✓.
+ *
+ * → The capture lives in the host's data directory ✓ → **the absolute path
+ *   is a fact about the host** ✓ → a card is an arbitrary web page written
+ *   by an AI ✓ → **it does not get the paths of the host** ✓ (the same
+ *   rule as the reduced projection of the workflow status ✓ — contract `05`
+ *   §8·B·B5 ✓).
+ * → The host keeps the path ✓ (it needs it to find the newest capture ✓).
+ */
+function narrowBootLog(result: {
+  ok: true;
+  text: string;
+  hostPath: string;
+  capturedAt: string;
+  bytes: number;
+  durationMs: number;
+  complete: boolean;
+}): {
+  ok: true;
+  text: string;
+  capturedAt: string;
+  bytes: number;
+  durationMs: number;
+  complete: boolean;
+} {
+  // → **The path is left out** ✓ (it is a fact about the host ✓).
+  return {
+    ok: true,
+    text: result.text,
+    capturedAt: result.capturedAt,
+    bytes: result.bytes,
+    durationMs: result.durationMs,
+    complete: result.complete,
+  };
+}
+
+const bootLogCapture = new BootLogCapture({
+  listProfiles,
+  currentDeviceKey: () => runtime.currentDeviceKey ?? null,
+  createConnection: (profile) =>
+    createConnectionFor(
+      profile,
+      new SessionLog({
+        label: `boot-log-${profile.id}`,
+        transport: profile.transport,
+        dataDir: userDataDir(),
+      }),
+    ),
+  outputDir: userDataDir(),
+  syntheticForDevice: (deviceKey) =>
+    FAKE_MODE !== 'off' && fakeProfileIds().includes(deviceKey) ? FAKE_BOOT_LOG : null,
 });
 
 // Readings only ever come out through the TagStore (ADR-D22): the renderer cannot get a copy from anywhere else
@@ -687,6 +746,33 @@ const cards = createCardWiring({
       }
     },
   }),
+  bootLogFor: () => ({
+    capture: async () => {
+      if (!permissions.allows('card', 'workflow:boot-log.capture')) {
+        return { ok: false, reason: 'denied' };
+      }
+      try {
+        return narrowBootLog(await bootLogCapture.capture());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const reason = /busy|access|denied/i.test(message)
+          ? 'serial_busy'
+          : message.includes('serial_not_configured')
+            ? 'serial_not_configured'
+            : message.includes('board_not_connected')
+              ? 'board_not_connected'
+              : 'boot_log_failed';
+        return { ok: false, reason };
+      }
+    },
+    latest: async () => {
+      if (!permissions.allows('card', 'workflow:boot-log.capture')) {
+        return { ok: false, reason: 'denied' };
+      }
+      const latest = await bootLogCapture.latest();
+      return latest === null ? null : narrowBootLog(latest);
+    },
+  }),
   actionsFor: (cardId) => ({
     invoke: async (actionId: string, params: Record<string, unknown>) => {
       const action = runtime.actionDef(actionId);
@@ -1034,16 +1120,24 @@ handle(IPC.connectionsList, () =>
  */
 handle(IPC.devicesSelect, async (deviceKey) => {
   const key = String(deviceKey);
+  // → **The board that was in use before the switch** ✓ (the cells are bound
+  //   to it ✓ — they have to be re-bound ✓).
+  const before = runtime.status.profileId ?? null;
   const result = await selectDevice(listProfiles(), key, {
     start: (profile) => runtime.start(profile),
     currentProfileId: () => runtime.status.profileId ?? null,
   });
-  if (result.ok) return;
-  throw makeError(
-    result.reason === 'not_found' ? 'IPC_INVALID_PAYLOAD' : 'CONN_OPEN_FAILED',
-    result.detail,
-    { detail: { deviceKey: key } },
-  );
+  if (!result.ok) {
+    throw makeError(
+      result.reason === 'not_found' ? 'IPC_INVALID_PAYLOAD' : 'CONN_OPEN_FAILED',
+      result.detail,
+      { detail: { deviceKey: key } },
+    );
+  }
+  // → **The cells of the work area follow the board** ✓ (without it the
+  //   cards disappear from the main area ✓ — found on 2026-11-21 ✓).
+  const after = runtime.status.profileId ?? null;
+  if (before !== after) cards.layoutRebind(before, after);
 });
 
 handle(IPC.filesEndpoint, async () => {

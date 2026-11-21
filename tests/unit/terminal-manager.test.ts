@@ -81,7 +81,7 @@ describe('TerminalManager', () => {
     const mgr = mgrWith(conn);
     const { sessionId } = await mgr.open('p1');
     mgr.write(sessionId, 'ls\r');
-    expect(written).toEqual(['ls\r']);
+    expect(written).toEqual(['\r', 'ls\r']);
   });
 
   it('the pipe mode: the return key sends an LF to the remote side — the remote shell only accepts LF', async () => {
@@ -182,13 +182,17 @@ describe('the prompt of the pipe mode in the TerminalManager', () => {
       listProfiles: () => [
         { id: 'p1', label: 'p1', transport: 'adb', options: { prompt: 'root@board$ ' } },
       ],
-      createConnection: () => conn as never,
+      createConnection: () => ({ ...conn, transport: 'adb' }) as never,
       createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
     });
     const seen: string[] = [];
     mgr.onData((_id, chunk) => seen.push(chunk));
     await mgr.open('p1');
-    expect(seen.join('')).toContain('root@board$ ');
+    const plain = seen.join('').replace(
+      new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'),
+      '',
+    );
+    expect(plain).toContain('root@board$ ');
   });
 
   it('the pty mode draws no prompt — the remote side has one', async () => {

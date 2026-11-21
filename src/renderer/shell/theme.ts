@@ -37,11 +37,17 @@ export interface XtermTheme {
   black: string;
   brightBlack: string;
   green: string;
+  brightGreen: string;
   yellow: string;
+  brightYellow: string;
   red: string;
+  brightRed: string;
   blue: string;
+  brightBlue: string;
   cyan: string;
+  brightCyan: string;
   magenta: string;
+  brightMagenta: string;
   white: string;
   brightWhite: string;
 }
@@ -82,13 +88,19 @@ export function xtermThemeFromVars(vars: Record<string, string>): XtermTheme {
     black: v('--cockpit-bg', FALLBACK['bg-0']),
     brightBlack: v('--cockpit-text-faint', FALLBACK['text-2']),
     green: v('--cockpit-ok', FALLBACK['ok']),
+    brightGreen: v('--cockpit-ok', FALLBACK['ok']),
     yellow: v('--cockpit-warn', FALLBACK['warn']),
+    brightYellow: v('--cockpit-warn', FALLBACK['warn']),
     red: v('--cockpit-danger', FALLBACK['danger']),
+    brightRed: v('--cockpit-danger', FALLBACK['danger']),
     blue: v('--cockpit-accent', FALLBACK['accent']),
+    brightBlue: v('--cockpit-accent', FALLBACK['accent']),
     // **cyan is the teal series colour** — `--cockpit-series-3` is amber
     // (#D29922), so binding cyan to it painted amber text in the terminal.
     cyan: v('--cockpit-series-5', FALLBACK['series-5']),
+    brightCyan: v('--cockpit-series-5', FALLBACK['series-5']),
     magenta: v('--cockpit-accent-2', FALLBACK['accent-2']),
+    brightMagenta: v('--cockpit-accent-2', FALLBACK['accent-2']),
     white: v('--cockpit-text', FALLBACK['text-0']),
     brightWhite: v('--cockpit-text', FALLBACK['text-0']),
   };

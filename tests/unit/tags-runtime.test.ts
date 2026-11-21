@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -268,5 +268,131 @@ describe('TagRuntime · the readings going in and out', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * **The success is the commit** ✓ (found on 2026-11-21 ✓).
+ *
+ * → A failed start must not leave the runtime **claiming** a board ✓ →
+ *   `connections:list` marks the current board by that ✓ → and picking the
+ *   same board again would say "you are already on it" ✓ and never retry ✓.
+ * → `stop()` must clear the identity ✓ and the readings ✓ (the readings of
+ *   the old board must not stay under the new one ✓).
+ * → **A candidate that throws must not break the chain** ✓ (the backoff and
+ *   the next candidate have to run ✓).
+ */
+describe('TagRuntime · the commit', () => {
+  // → **A fresh pack directory per test** ✓ (the other block deletes it after
+  //   every test ✓ → the second one would find no pack ✓).
+  let dir: string;
+  beforeEach(() => {
+    dir = makePacksDir();
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('**a failed start leaves no board behind** ✓ (the identity is only written on success ✓)', async () => {
+    const runtime = new TagRuntime({
+      packsDir: dir,
+      createConnection: () =>
+        ({
+          open: async () => {
+            throw new Error('the board is not there');
+          },
+          close: async () => undefined,
+          ...fakeConnection(),
+        }) as never,
+      createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+    });
+
+    await runtime.start({ ...profile('tiny'), device_key: 'atk-01' });
+    expect(runtime.status.state).toBe('error');
+    // → **No board** ✓ — the runtime does not claim one it cannot reach ✓.
+    expect(runtime.status.profileId).toBeUndefined();
+    expect(runtime.currentDeviceKey).toBeUndefined();
+  });
+
+  it('**building the connection may throw** ✓ (it does not escape the runtime ✓)', async () => {
+    const runtime = new TagRuntime({
+      packsDir: dir,
+      createConnection: () => {
+        throw new Error('the placeholder could not be repaired');
+      },
+      createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+    });
+
+    const status = await runtime.start(profile('tiny'));
+    expect(status.state).toBe('error');
+    expect(status.detail).toContain('placeholder');
+    expect(status.profileId).toBeUndefined();
+  });
+
+  it('**stop() clears the identity** ✓ (the runtime does not keep claiming the old board ✓)', async () => {
+    const runtime = new TagRuntime({
+      packsDir: dir,
+      createConnection: () =>
+        ({ open: async () => undefined, close: async () => undefined, ...fakeConnection() }) as never,
+      createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+    });
+
+    await runtime.start({ ...profile('tiny'), device_key: 'atk-01' });
+    expect(runtime.currentDeviceKey).toBe('atk-01');
+    runtime.stop();
+    expect(runtime.currentDeviceKey).toBeUndefined();
+    expect(runtime.status.profileId).toBeUndefined();
+  });
+
+  it('**the readings of the old board do not survive the switch** ✓ (one board at a time ✓)', async () => {
+    const runtime = new TagRuntime({
+      packsDir: dir,
+      createConnection: () =>
+        ({ open: async () => undefined, close: async () => undefined, ...fakeConnection() }) as never,
+      createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+    });
+    const seen: string[] = [];
+    runtime.subscribe((reading) => seen.push(`${reading.tag}:${reading.status}`));
+
+    await runtime.start(profile('tiny'));
+    // → The sampler has written something ✓
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const before = runtime.readings().length;
+    expect(before).toBeGreaterThan(0);
+
+    runtime.stop();
+    // → **Every reading of the old board is `unavailable`** ✓ (the interface
+    //   must not show the numbers of the board that is gone ✓).
+    for (const reading of runtime.readings()) {
+      expect(reading.status).toBe('unavailable');
+      expect(reading.value).toBeNull();
+    }
+    // → And the listeners heard it ✓ (otherwise the interface keeps the old
+    //   numbers ✓).
+    expect(seen.some((entry) => entry.endsWith(':unavailable'))).toBe(true);
+  });
+
+  it('**the store is subscribed only once** ✓ (a second board must not double every reading ✓)', async () => {
+    const runtime = new TagRuntime({
+      packsDir: dir,
+      createConnection: () =>
+        ({ open: async () => undefined, close: async () => undefined, ...fakeConnection() }) as never,
+      createLog: () => ({ write: () => {}, close: () => {}, filePath: 'x' }) as never,
+    });
+    const seen: string[] = [];
+    runtime.subscribe((reading) => seen.push(reading.tag));
+
+    await runtime.start(profile('tiny'));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const afterFirst = seen.length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    // → The board is picked again ✓ → the store must not be subscribed twice ✓
+    await runtime.start(profile('tiny'));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const afterSecond = seen.length - afterFirst;
+    // → **The same order of magnitude** ✓ (not twice as much ✓)
+    expect(afterSecond).toBeLessThan(afterFirst * 3);
+    runtime.stop();
   });
 });

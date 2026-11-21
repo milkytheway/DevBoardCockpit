@@ -7,57 +7,65 @@
   </head>
   <body>
     <main class="bd">
-      <ol class="bd__steps" aria-label="编译上板流程">
-        <li class="bd__step is-active" data-phase="compile">
-          <button type="button" class="bd__step-btn" id="phase-compile">
-            <span class="bd__step-dot" aria-hidden>1</span>
-            <span class="bd__step-text">
-              <b>编译</b>
-              <small>只编译</small>
-            </span>
-          </button>
-        </li>
-        <li class="bd__step" data-phase="upload">
-          <button type="button" class="bd__step-btn" id="phase-upload">
-            <span class="bd__step-dot" aria-hidden>2</span>
-            <span class="bd__step-text">
-              <b>上传</b>
-              <small>传到板子</small>
-            </span>
-          </button>
-        </li>
-        <li class="bd__step" data-phase="run">
-          <button type="button" class="bd__step-btn" id="phase-run">
-            <span class="bd__step-dot" aria-hidden>3</span>
-            <span class="bd__step-text">
-              <b>运行</b>
-              <small>加载模块</small>
-            </span>
-          </button>
-        </li>
-      </ol>
+      <section class="bd__actions" aria-label="构建操作">
+        <article class="bd__action" data-phase="compile">
+          <div class="bd__action-copy">
+            <span class="bd__index">01</span>
+            <strong data-i18n="compile">编译</strong>
+            <span id="result-compile" class="bd__result">待执行</span>
+          </div>
+          <button id="phase-compile" class="bd__exec" type="button" data-i18n="compileAction">执行编译</button>
+        </article>
+        <article class="bd__action" data-phase="upload">
+          <div class="bd__action-copy">
+            <span class="bd__index">02</span>
+            <strong data-i18n="upload">上传</strong>
+            <span id="result-upload" class="bd__result">待执行</span>
+          </div>
+          <button id="phase-upload" class="bd__exec" type="button" data-i18n="uploadAction">执行上传</button>
+        </article>
+        <article class="bd__action" data-phase="run">
+          <div class="bd__action-copy">
+            <span class="bd__index">03</span>
+            <strong data-i18n="run">运行</strong>
+            <span id="result-run" class="bd__result">待执行</span>
+          </div>
+          <button id="phase-run" class="bd__exec" type="button" data-i18n="runAction">执行运行</button>
+        </article>
+      </section>
 
-      <div class="bd__form">
-        <label class="bd__field">
-          <span>构建目录</span>
-          <input id="build-dir" type="text" placeholder="/home/alientek/build" />
-        </label>
-        <label class="bd__field">
-          <span>项目</span>
-          <input id="project" type="text" placeholder="01-hello" />
-        </label>
-        <label class="bd__field">
-          <span>模块名</span>
-          <input id="module" type="text" placeholder="hello" />
-        </label>
-      </div>
+      <section class="bd__form" aria-label="构建参数">
+        <div class="bd__field">
+          <span id="label-build-dir" data-i18n="directory">目录</span>
+          <div class="bd__input-row">
+            <input id="build-dir" type="text" placeholder="/home/alientek/build" aria-labelledby="label-build-dir" />
+            <button id="choose-build-dir" class="bd__choose" type="button" aria-label="选择构建目录">选择</button>
+          </div>
+          <div id="menu-build-dir" class="bd__choice" data-choice-menu="build_dir" role="menu" hidden></div>
+        </div>
+        <div class="bd__field">
+          <span id="label-project" data-i18n="project">项目</span>
+          <div class="bd__input-row">
+            <input id="project" type="text" placeholder="01-hello" aria-labelledby="label-project" />
+            <button id="choose-project" class="bd__choose" type="button" aria-label="选择项目">选择</button>
+          </div>
+          <div id="menu-project" class="bd__choice" data-choice-menu="project" role="menu" hidden></div>
+        </div>
+        <div class="bd__field">
+          <span id="label-module" data-i18n="module">模块</span>
+          <div class="bd__input-row">
+            <input id="module" type="text" placeholder="hello" aria-labelledby="label-module" />
+            <button id="choose-module" class="bd__choose" type="button" aria-label="选择模块">选择</button>
+          </div>
+          <div id="menu-module" class="bd__choice" data-choice-menu="module" role="menu" hidden></div>
+        </div>
+      </section>
 
-      <div class="bd__bar">
-        <span id="note" class="bd__note">选择一步开始；留空用默认值</span>
-        <span id="state" class="bd__state" hidden>运行中</span>
-      </div>
-
-      <ol id="steps" class="bd__run" aria-label="本次运行的阶段"></ol>
+      <footer class="bd__status">
+        <span id="state" class="bd__state">空闲</span>
+        <span id="note" class="bd__note"></span>
+      </footer>
+      <ol id="steps" class="bd__run" aria-label="本次运行的阶段" hidden></ol>
     </main>
     <script type="module" src="./card.js"></script>
   </body>

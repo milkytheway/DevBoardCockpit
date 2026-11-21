@@ -5,6 +5,7 @@ import { SshConnection, sshCapabilities } from './ssh';
 import { capabilitiesFor } from './capabilities';
 import { loadSettings, resolveAdbPath, settingsPath } from '../util/settings';
 import type { ConnectionCapabilities, Connection } from './connection';
+import type { HostKeyStore } from './host-keys';
 import type { ConnectionProfile } from '../profiles/schema';
 import type { SessionLog } from '../logging/session-log';
 
@@ -54,7 +55,7 @@ export { capabilitiesFor };
 export function createConnection(
   profile: ConnectionProfile,
   log: SessionLog,
-  opts: { adbPath?: string } = {},
+  opts: { adbPath?: string; hostKeys?: HostKeyStore } = {},
 ): Connection {
   const adbPath = opts.adbPath ?? resolveAdbPath(loadSettings(settingsPath()));
   switch (profile.transport) {
@@ -63,7 +64,11 @@ export function createConnection(
     case 'adb':
       return new AdbConnection(profile, log, { adbPath });
     case 'ssh':
-      return new SshConnection(profile, log);
+      // → **The keys of the hosts** ✓ (trust on first use ✓ — the store
+      //   lives in the host's own data directory ✓).
+      return new SshConnection(profile, log, {
+        ...(opts.hostKeys === undefined ? {} : { hostKeys: opts.hostKeys }),
+      });
     case 'local':
       return new LocalConnection(profile, log);
   }

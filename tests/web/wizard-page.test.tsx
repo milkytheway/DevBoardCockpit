@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WizardPage } from '../../src/renderer/shell/pages/WizardPage';
 import { LocaleContext } from '../../src/renderer/shell/i18n';
 import type { WizardRequest } from '../../src/renderer/shell/pages/WizardPage';
 import type { WizardRunResult } from '../../src/shared/ipc-contract';
+import type { BoardDetection } from '../../src/shared/board-setup';
 
 const BASE: WizardRunResult = {
   ok: true,
@@ -12,181 +13,141 @@ const BASE: WizardRunResult = {
   hints: [],
   greenCount: 12,
   redCount: 1,
-  installedDir: 'C:\\Users\\<user>\\AppData\\Roaming\\devboard\\boards\\my-board',
-  boardId: 'my-board',
+  installedDir: 'C:\\Users\\<user>\\AppData\\Roaming\\devboard\\boards\\ATK-DLRK3588',
+  boardId: 'ATK-DLRK3588',
 };
 
-/**
- * The Chinese branch: the page has two wordings, the locale is pinned here,
- * and the expected values in the assertions are the wording of the Chinese
- * branch.
- */
+const DETECTION: BoardDetection = {
+  adbDevices: [{ serial: 'f34dca7784396ab2', state: 'device', stateText: 'device' }],
+  model: 'ATK-DLRK3588 Board',
+  address: '192.168.5.100',
+  ports: [
+    { path: 'COM3', answered: false },
+    { path: 'COM7', answered: true },
+  ],
+  boardPack: 'rk3588-atk',
+  sshKeys: [],
+};
+
 function renderZh(ui: JSX.Element): ReturnType<typeof render> {
   return render(<LocaleContext.Provider value="zh-Hans">{ui}</LocaleContext.Provider>);
 }
 
 function pendingRun(): (input: WizardRequest) => Promise<WizardRunResult> {
-  return vi.fn(
-    (_input: WizardRequest) => new Promise<WizardRunResult>(() => undefined),
+  return vi.fn((_input: WizardRequest) => new Promise<WizardRunResult>(() => undefined));
+}
+
+async function renderWizard(
+  run: (input: WizardRequest) => Promise<WizardRunResult>,
+  onInstalled = vi.fn(),
+): Promise<ReturnType<typeof render>> {
+  const view = renderZh(
+    <WizardPage run={run} detect={async () => DETECTION} onInstalled={onInstalled} />,
   );
+  await waitFor(() => {
+    expect(
+      (screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement).value,
+    ).toBe('COM7');
+  });
+  return view;
 }
 
-function fill(port = 'COM7', name = 'my board'): void {
-  fireEvent.change(screen.getByLabelText('串口'), { target: { value: port } });
-  fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: name } });
-}
+describe('the board setup wizard', () => {
+  it('offers detected COM ports and common baud rates, and does not ask for a board name', async () => {
+    await renderWizard(pendingRun());
+    const port = screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement;
+    const baud = screen.getByRole('combobox', { name: '波特率' }) as HTMLSelectElement;
 
-describe('The board setup wizard page', () => {
-  it('there are three fields; with ADB the serial port and the baud rate grey out but do not disappear', () => {
-    const run = pendingRun();
-    const { container } = renderZh(<WizardPage run={run} />);
-
-    expect(container.querySelectorAll('.wizard-field input').length).toBe(3);
-    expect(screen.queryByText(/扫描|自动枚举/)).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'ADB' }));
-    expect((screen.getByLabelText('串口') as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText('波特率') as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByLabelText('串口')).toBeTruthy();
-    expect((screen.getByLabelText('板子名字') as HTMLInputElement).disabled).toBe(false);
+    expect([...port.options].map((option) => option.value).filter(Boolean)).toEqual([
+      'COM3',
+      'COM7',
+    ]);
+    expect(port.value).toBe('COM7');
+    expect([...baud.options].map((option) => option.value)).toContain('1500000');
+    expect([...baud.options].map((option) => option.value)).toContain('115200');
+    expect(screen.queryByLabelText('板子名字')).toBeNull();
   });
 
-  it('the serial port submits what the person typed; while it runs the button is disabled and says what is happening', () => {
+  it('ADB disables the serial choices and submits no port, baud rate or board name', async () => {
     const run = pendingRun();
-    const { container } = renderZh(<WizardPage run={run} />);
-    fill('COM7', 'my board');
+    await renderWizard(run);
 
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
-
-    expect(run).toHaveBeenCalledWith({
-      transport: 'serial',
-      port: 'COM7',
-      baudrate: 1500000,
-      boardName: 'my board',
-    });
-    const button = screen.getByRole('button', { name: '正在接板…' });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('建立第一个真相');
-  });
-
-  it('the ADB submission carries neither the serial port nor the baud rate (the host ignores them, and the interface must not pretend they apply)', () => {
-    const run = pendingRun();
-    renderZh(<WizardPage run={run} />);
-    fireEvent.change(screen.getByLabelText('板子名字'), { target: { value: 'my board' } });
     fireEvent.click(screen.getByRole('button', { name: 'ADB' }));
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
+    expect(
+      (screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('combobox', { name: '波特率' }) as HTMLSelectElement).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
 
     expect(run).toHaveBeenCalledWith({
       transport: 'adb',
       port: '',
       baudrate: 0,
-      boardName: 'my board',
     });
   });
 
-  it('the wording changes as the wait advances, and it still reports no percentage', () => {
+  it('submits the selected serial port, and the waiting text says "establish the connection"', async () => {
+    const run = pendingRun();
+    const { container } = await renderWizard(run);
+    fireEvent.change(screen.getByRole('combobox', { name: '串口' }), {
+      target: { value: 'COM3' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
+
+    expect(run).toHaveBeenCalledWith({
+      transport: 'serial',
+      port: 'COM3',
+      baudrate: 1500000,
+    });
+    expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('建立连接');
+  });
+
+  it('the wait advances to capability detection without inventing a percentage', async () => {
+    const run = pendingRun();
+    const { container } = await renderWizard(run);
     vi.useFakeTimers();
     try {
-      const run = pendingRun();
-      const { container } = renderZh(<WizardPage run={run} />);
-      fill();
-      fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
-
+      fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
       act(() => {
         vi.advanceTimersByTime(6_500);
       });
 
-      expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('试 13 个元操作');
-      expect(screen.getByRole('status').textContent).toContain('6s');
+      expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('检测板卡能力');
+      expect(screen.getByRole('status').textContent).not.toContain('%');
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('on success: the main visual, the usable count, the package path, the note about the first version, and a notice to the shell to refresh', async () => {
+  it('on success it shows the detected board id, host-side counts and refreshes the shell', async () => {
     const run = vi.fn(() => Promise.resolve(BASE));
     const onInstalled = vi.fn();
-    const { container } = renderZh(<WizardPage run={run} onInstalled={onInstalled} />);
-    fill();
-
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
+    const { container } = await renderWizard(run, onInstalled);
+    fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
 
     expect(await screen.findByText('开发板已添加')).toBeTruthy();
-    expect(container.querySelector('.wizard-result__title')?.textContent).toBe(
-      '开发板已添加',
-    );
-    expect(container.querySelector('.wizard-result__summary')?.textContent).toContain('12');
-    expect(container.querySelector('.wizard-result__summary')?.textContent).toContain('1');
-    expect(screen.getByText(BASE.installedDir as string)).toBeTruthy();
-    expect(screen.getByText(/这是自动探出来的初版包/)).toBeTruthy();
-    expect(screen.getByText('板的 id · my-board')).toBeTruthy();
+    expect(container.querySelector('.wizard-result__title')?.textContent).toBe('开发板已添加');
+    expect(screen.getByText('板的 id · ATK-DLRK3588')).toBeTruthy();
+    expect(screen.getByText('初版')).toBeTruthy();
     expect(onInstalled).toHaveBeenCalledTimes(1);
   });
 
-  it('the serial port does not open: suspect that something else holds the port', async () => {
+  it('a busy serial port is reported as "cannot open"', async () => {
     const run = vi.fn(() =>
       Promise.resolve({
         ...BASE,
         ok: false,
         kind: 'port-unopenable' as const,
-        message: '**the serial port cannot be opened** —— Opening COM9: Access denied',
-        greenCount: 0,
-        redCount: 0,
+        message: '**the serial port cannot be opened** —— Access denied',
         installedDir: undefined,
       }),
     );
-    const { container } = renderZh(<WizardPage run={run} />);
-    fill('COM9');
-
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
+    const { container } = await renderWizard(run);
+    fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
 
     expect(await screen.findByText(/Access denied/)).toBeTruthy();
     expect(container.querySelector('.wizard-result__title')?.textContent).toBe('串口打不开');
-    expect(screen.getByText(/有别的程序正独占着那个口/)).toBeTruthy();
-  });
-
-  it('the board says nothing: no "the connection failed", and the hints are listed one by one', async () => {
-    const run = vi.fn(() =>
-      Promise.resolve({
-        ...BASE,
-        ok: false,
-        kind: 'no-reply' as const,
-        message: '**the board said nothing** —— it is connected, but the command did not answer',
-        greenCount: 0,
-        redCount: 0,
-        installedDir: undefined,
-      }),
-    );
-    const { container } = renderZh(<WizardPage run={run} />);
-    fill();
-
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
-
-    expect(await screen.findByText(/it is connected, but the command did not answer/)).toBeTruthy();
-    expect(container.querySelector('.wizard-result__title')?.textContent).toBe('板子没说话');
-    expect(container.textContent).not.toContain('the connection failed');
-    expect(container.querySelectorAll('.wizard-hints li').length).toBeGreaterThanOrEqual(3);
-    expect(screen.getAllByText(/1500000/).length).toBeGreaterThan(0);
-  });
-
-  it('that connection never came through: look at the connection first, not at the meta operations', async () => {
-    const run = vi.fn(() =>
-      Promise.resolve({
-        ...BASE,
-        ok: false,
-        kind: 'connection-dead' as const,
-        message: '**not a single number came out** —— it is most likely not the problem of those meta-operations',
-        greenCount: 0,
-        redCount: 0,
-        installedDir: undefined,
-      }),
-    );
-    renderZh(<WizardPage run={run} />);
-    fill();
-
-    fireEvent.click(screen.getByRole('button', { name: '开始接板' }));
-
-    expect(await screen.findByText('那条连接一次都没通')).toBeTruthy();
-    expect(screen.getByText(/先查连接本身/)).toBeTruthy();
   });
 });

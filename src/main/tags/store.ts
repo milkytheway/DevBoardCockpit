@@ -220,6 +220,39 @@ export class TagStore {
   }
 
   /**
+   * **The board changed** ✓ — the readings of the old board are gone ✓.
+   *
+   * → **Every tag of the old board becomes `unavailable`** ✓ and the
+   *   listeners hear it ✓ → the interface, the cards and the agent all drop
+   *   the old numbers ✓ → **"one board's information does not show up under
+   *   another board"** ✓ (found on 2026-11-21 ✓: the readings of the old
+   *   board stayed in the store ✓ and were read by everybody ✓).
+   * → The **history** is cleared as well ✓ (it is the history of that board
+   *   ✓ → it must not be the history of the new one ✓).
+   * → **The values are not kept** ✓ — `unavailable` carries no value ✓
+   *   (contract §2.1 ✓).
+   */
+  clear(): void {
+    const now = Date.now();
+    for (const reading of [...this.readings.values()]) {
+      const gone: TagReading = Object.freeze({
+        tag: reading.tag,
+        value: null,
+        unit: reading.unit,
+        status: 'unavailable' as const,
+        reason: 'device_absent' as const,
+        detail: 'the board that had this reading is no longer the one being sampled',
+        at: now,
+        seq: reading.seq + 1,
+      });
+      this.readings.set(reading.tag, gone);
+      for (const listener of this.listeners) listener(gone);
+    }
+    this.lastGood.clear();
+    this.samples.clear();
+  }
+
+  /**
    * Subscribe to the changes of the readings.
    *
    * The distribution happens here (ADR-D22: distribute only after

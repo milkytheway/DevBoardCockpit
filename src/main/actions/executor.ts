@@ -19,6 +19,17 @@ import type { AuditRow } from './audit';
  *                         → ⑤ Execute → ⑥ Readback → ⑦ Audit
  * ```
  *
+ * → **Where each step happens** ✓ (the comments are the design ✓):
+ *   ① **here** ✓ (the parameters are encoded by type ✓ — never interpolated ✓)
+ *   ② **here** ✓ (the floor is checked against the *encoded* command ✓)
+ *   ③ **in the session layer** ✓ (the manifest's declaration is the
+ *   permission ✓ — ADR-D46 ✓)
+ *   ④ **gone** ✓ (the confirmation chain was cut ✓ — ADR-D48 ✓)
+ *   ⑤ ⑥ ⑦ **here** ✓ (one exclusive transaction ✓ — SPEC-D22 ✓)
+ * → **The runtime does not check the floor a second time** ✓ (it used to ✓ —
+ *   the pack is the only place that knows what is dangerous ✓ — the runtime
+ *   would only repeat it ✓).
+ *
  * ── Execution and readback are one inseparable exclusive transaction
  *    (implementation decision records ADR-D23 / SPEC-D22) ──
  *

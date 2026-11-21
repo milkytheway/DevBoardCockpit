@@ -69,6 +69,8 @@ export interface CardSessionManagerDeps {
      * (the same shape as `actionsFor` ✓).
      */
   workflowsFor?: (cardId: string) => CardServices['workflows'];
+  /** Complete serial boot-log capture for the card. */
+  bootLogFor?: (cardId: string) => CardServices['bootLog'];
   /** The identity of the current connection (for `capabilities()`) */
   connectionInfo?: (connectionId: string | null) => { label: string; transport: string } | null;
 }
@@ -158,6 +160,20 @@ export class CardSessionManager {
       actions: this.deps.actionsFor?.(cardId) ?? emptyActions(),
       // **The workflow side** (plan 7 ✓) — while it is not wired up everything is **refused** ✓ (not "let it pass" ✗)
       workflows: this.deps.workflowsFor?.(cardId) ?? emptyWorkflows(),
+      bootLog: {
+        capture: async () => {
+          if (!(perms.workflows ?? []).includes('boot-log.capture')) {
+            return { ok: false, reason: 'denied' };
+          }
+          return this.deps.bootLogFor?.(cardId).capture() ?? { ok: false, reason: 'denied' };
+        },
+        latest: async () => {
+          if (!(perms.workflows ?? []).includes('boot-log.capture')) {
+            return { ok: false, reason: 'denied' };
+          }
+          return this.deps.bootLogFor?.(cardId).latest() ?? null;
+        },
+      },
       storage: this.deps.storageFor?.(cardId) ?? emptyStorage(),
       log: (level, message) => {
         this.deps.logFor?.(cardId)(level, message);

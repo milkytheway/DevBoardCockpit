@@ -114,8 +114,8 @@ const strings = {
     en: 'Pulled {remote} → {local}',
   },
   wizardInstalled: {
-    'zh-Hans': '接板向导生成了一个新包',
-    en: 'The board wizard produced a new pack',
+    'zh-Hans': '开发板已添加',
+    en: 'Board added',
   },
   diagnosticsCopied: {
     'zh-Hans': '已复制诊断 JSON 到剪贴板',
@@ -184,9 +184,10 @@ export function Shell(): JSX.Element {
   const { activity, log } = useActivity();
   const { connections, refresh: refreshConnections } = useConnections(reportError);
   const runtime = useRuntime();
-  const { cards, refresh } = useCards(reportError);
+  const { cards, refresh: refreshCards } = useCards(reportError);
   const { rows: permissionRows, set: setPermission } = usePermissions(reportError);
-  const { units, density, placeCard, removeCard, setUnits, setDensity } = useLayout(reportError);
+  const { units, density, placeCard, removeCard, setUnits, setDensity, refresh: refreshLayout } =
+    useLayout(reportError);
   const broker = useBroker();
   const terminal = useTerminal(connections, reportError, log, locale);
   const tagStream = useTagStream();
@@ -298,6 +299,13 @@ export function Shell(): JSX.Element {
         .devicesSelect(deviceKey)
         .then(() => {
           refreshConnections();
+          // → **The board changed** ✓ → the card instances belong to the new
+          //   board ✓ (they carry the connection id ✓) and the cells of the
+          //   work area were re-bound on the host ✓ → so both are read again
+          //   ✓ (without it the cards of the main area disappear ✓ — found
+          //   on 2026-11-21 ✓).
+          refreshCards();
+          refreshLayout();
           log('info', t(strings.switchedBoard, { board: deviceKey }));
         })
         .catch((cause: unknown) => {
@@ -305,7 +313,7 @@ export function Shell(): JSX.Element {
         })
         .finally(() => setSelecting(false));
     },
-    [log, refreshConnections, t],
+    [log, refreshCards, refreshConnections, refreshLayout, t],
   );
 
   // The cards that are **placed** in the main area right now.
@@ -412,7 +420,7 @@ export function Shell(): JSX.Element {
         id: 'refresh-cards',
         label: strings.rescanCards,
         run: () => {
-          refresh();
+          refreshCards();
           log('info', t(strings.rescanCards));
           close();
         },
@@ -429,7 +437,7 @@ export function Shell(): JSX.Element {
       });
     }
     return list;
-  }, [detail, goPage, log, refresh, t, theme, toggleTheme]);
+  }, [detail, goPage, log, refreshCards, t, theme, togglePin]);
 
   const secondary = useMemo(
     () =>
@@ -540,7 +548,7 @@ export function Shell(): JSX.Element {
                 onLayoutChange={setUnits}
                 onOpenLibrary={() => goPage('library')}
                 onDensity={setDensity}
-                onRefreshCards={refresh}
+                onRefreshCards={refreshCards}
               />
             ) : null}
 
@@ -613,7 +621,7 @@ export function Shell(): JSX.Element {
                 selectedCardId={detail?.kind === 'card' ? detail.card.instanceId : null}
                 onSelect={selectCard}
                 onOpenDetail={openDetail}
-                onRefresh={refresh}
+                onRefresh={refreshCards}
                 onPlaceOnWorkbench={(card) => {
                   handlePlace(card);
                   setPage('workbench');
@@ -629,7 +637,7 @@ export function Shell(): JSX.Element {
                 onDensity={setDensity}
                 cardsCount={cards.length}
                 connectionsCount={connections.length}
-                onRefreshCards={refresh}
+                onRefreshCards={refreshCards}
                 permissions={permissionRows}
                 onPermission={setPermission}
                 locale={locale}
@@ -684,9 +692,10 @@ export function Shell(): JSX.Element {
       {wizardOpen ? (
         <BoardWizardDialog
           run={(input) => window.cockpit.wizardRun(input)}
+          detect={() => window.cockpit.boardDetect()}
           onInstalled={() => {
             refreshConnections();
-            refresh();
+            refreshCards();
             log('info', t(strings.wizardInstalled));
           }}
           onClose={closeWizard}

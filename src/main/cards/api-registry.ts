@@ -96,6 +96,12 @@ export interface CardServices {
     /** Looks at the state of a run (**a reduced projection** ✓) */
     status(runId: string): Promise<unknown> | unknown;
   };
+  bootLog: {
+    /** Read the persistent boot log over serial without restarting the board. */
+    capture(): Promise<unknown> | unknown;
+    /** Read the latest host-side capture. */
+    latest(): Promise<unknown> | unknown;
+  };
 }
 
 export type CardApiHandler = (ctx: CardApiContext, args: Record<string, unknown>) => Promise<unknown> | unknown;
@@ -248,6 +254,20 @@ export function cardApis(): CardApiDef[] {
       permission: 'workflow',
       params: ['runId'],
       make: (services) => (_ctx, args) => services.workflows.status(String(args['runId'])),
+    },
+    {
+      name: 'bootLog.capture',
+      summary: 'Read the complete persistent boot log of the current board over its serial connection.',
+      permission: 'workflow',
+      params: [],
+      make: (services) => () => services.bootLog.capture(),
+    },
+    {
+      name: 'bootLog.latest',
+      summary: 'Read the latest complete serial boot log stored on the host.',
+      permission: 'workflow',
+      params: [],
+      make: (services) => () => services.bootLog.latest(),
     },
     {
       name: 'storage.get',

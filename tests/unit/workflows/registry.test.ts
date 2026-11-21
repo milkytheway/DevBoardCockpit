@@ -168,3 +168,35 @@ describe('the registry of the workflow packs — it takes a pack', () => {
     expect(reg.planOf('nobody')).toBeUndefined();
   });
 });
+
+/**
+ * **The registry notices a change** ✓ (found on 2026-11-21 ✓).
+ *
+ * → The registry was scanned **once at the start** ✓ → a workflow pack that
+ *   is added while the application runs was invisible ✓ (it was not in the
+ *   permission area ✓ and `validate_card` did not know it ✓).
+ */
+describe('the registry of the workflow packs — it notices a change', () => {
+  it('**a pack that is added while the application runs is found** ✓', () => {
+    write(builtinDir, 'demo.yaml', yamlOf(PACK));
+    const reg = registry();
+    reg.scan();
+    expect(reg.list()).toHaveLength(1);
+
+    // → **A new pack appears** ✓ → the next list sees it ✓.
+    write(userDir, 'second.yaml', yamlOf({ ...PACK, id: 'second.run', name: 'second' }));
+    expect(reg.list().map((p) => p.id).sort()).toEqual(['demo.run', 'second.run']);
+    expect(reg.get('second.run')).toBeDefined();
+  });
+
+  it('**a pack that is removed while the application runs is gone** ✓', () => {
+    write(builtinDir, 'demo.yaml', yamlOf(PACK));
+    const reg = registry();
+    reg.scan();
+    expect(reg.list()).toHaveLength(1);
+
+    rmSync(join(builtinDir, 'demo.yaml'), { force: true });
+    expect(reg.list()).toHaveLength(0);
+    expect(reg.get('demo.run')).toBeUndefined();
+  });
+});

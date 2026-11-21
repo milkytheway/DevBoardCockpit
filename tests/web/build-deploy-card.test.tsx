@@ -34,6 +34,10 @@ function installCockpit(overrides: Record<string, unknown> = {}): void {
       status: async () => ({ ok: true, state: 'done', stages: [] }),
       ...(overrides['workflows'] as Record<string, unknown> | undefined),
     },
+    storage: {
+      get: async () => undefined,
+      set: async () => ({ ok: true }),
+    },
   };
 }
 
@@ -56,12 +60,34 @@ async function flush(times = 6): Promise<void> {
 }
 
 const FLOWS = [
-  { id: 'hello-kernel.compile', name: 'Compile', version: '1.0.0', inputs: {} },
-  { id: 'hello-kernel.upload', name: 'Upload', version: '1.0.0', inputs: {} },
-  { id: 'hello-kernel.load', name: 'Load', version: '1.0.0', inputs: {} },
+  {
+    id: 'hello-kernel.compile',
+    name: 'Compile',
+    version: '1.0.0',
+    inputs: {
+      build_dir: { type: 'path', default: '/home/alientek/build' },
+      project: { type: 'string', default: '01-hello' },
+    },
+  },
+  {
+    id: 'hello-kernel.upload',
+    name: 'Upload',
+    version: '1.0.0',
+    inputs: {
+      build_dir: { type: 'path', default: '/home/alientek/build' },
+      project: { type: 'string', default: '01-hello' },
+    },
+  },
+  {
+    id: 'hello-kernel.load',
+    name: 'Load',
+    version: '1.0.0',
+    inputs: { module: { type: 'string', default: 'hello' } },
+  },
 ];
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/');
   mountCard();
   vi.resetModules();
   loaded = null;
@@ -82,6 +108,56 @@ describe('The "build and deploy" card', () => {
     expect(document.getElementById('build-dir')).not.toBeNull();
     expect(document.getElementById('project')).not.toBeNull();
     expect(document.getElementById('module')).not.toBeNull();
+  });
+
+  it('every path-like field has a choice button and the execution buttons say what they execute', async () => {
+    installCockpit();
+    await loadCard();
+    expect(document.getElementById('choose-build-dir')).not.toBeNull();
+    expect(document.getElementById('choose-project')).not.toBeNull();
+    expect(document.getElementById('choose-module')).not.toBeNull();
+    expect(document.getElementById('phase-compile')?.textContent).toContain(
+      '\u6267\u884c\u7f16\u8bd1',
+    );
+    expect(document.getElementById('phase-upload')?.textContent).toContain(
+      '\u6267\u884c\u4e0a\u4f20',
+    );
+    expect(document.getElementById('phase-run')?.textContent).toContain(
+      '\u6267\u884c\u8fd0\u884c',
+    );
+  });
+
+  it('the choice menu is filled by the workflow defaults', async () => {
+    installCockpit();
+    await loadCard();
+    (document.getElementById('choose-build-dir') as HTMLButtonElement).click();
+    const options = document.querySelectorAll('[data-choice-menu="build_dir"] [role="option"]');
+    expect([...options].map((option) => option.textContent)).toContain('/home/alientek/build');
+  });
+
+  it('choosing a value fills the field and remembers it on the host', async () => {
+    const set = vi.fn(async () => ({ ok: true }));
+    installCockpit();
+    ((window as unknown as { cockpit: { storage: { set: typeof set } } }).cockpit.storage.set) = set;
+    await loadCard();
+    (document.getElementById('choose-project') as HTMLButtonElement).click();
+    const option = document.querySelector(
+      '[data-choice-menu="project"] [role="option"]',
+    ) as HTMLButtonElement | null;
+    option?.click();
+    expect((document.getElementById('project') as HTMLInputElement).value).toBe('01-hello');
+    expect(set).toHaveBeenCalled();
+  });
+
+  it('contains no visible instructional sentence or empty-state explanation', async () => {
+    installCockpit();
+    await loadCard();
+    expect(document.body.textContent).not.toContain(
+      '\u9009\u62e9\u4e00\u6b65\u5f00\u59cb',
+    );
+    expect(document.body.textContent).not.toContain(
+      '\u8fd0\u884c\u540e\uff0c\u8fd9\u91cc\u5217\u51fa\u6bcf\u4e00\u6b65\u7684\u5224\u636e',
+    );
   });
 
   it('clicking compile calls the compile workflow, with the directory and the project', async () => {
@@ -123,9 +199,8 @@ describe('The "build and deploy" card', () => {
     await loadCard();
     (document.getElementById('phase-compile') as HTMLButtonElement).click();
     await flush();
-    // → **The cards speak Chinese** ✓ (the card protocol carries no locale ✓)
-    expect(document.getElementById('note')?.textContent).toMatch(/没有被授权/);
-    expect(document.querySelector('.bd__step.is-failed')).not.toBeNull();
+    expect(document.getElementById('note')?.textContent).toMatch(/未授权/);
+    expect(document.querySelector('.bd__action.is-failed')).not.toBeNull();
   });
 
   it('every stage distinguishes "it ran" from "it succeeded" (verified: false is not a success)', async () => {
@@ -156,6 +231,18 @@ describe('The "build and deploy" card', () => {
   it('a workflow the host does not have is reported as missing (the card must not pretend it has it)', async () => {
     installCockpit({ workflows: { list: async () => [] } });
     await loadCard();
-    expect(document.getElementById('note')?.textContent).toMatch(/宿主没有/);
+    expect(document.getElementById('note')?.textContent).toMatch(/缺少/);
+  });
+
+  it('uses English wording when the card URL carries the English locale', async () => {
+    window.history.replaceState({}, '', '/?lang=en');
+    installCockpit();
+    await loadCard();
+    expect(document.title).toBe('Build and deploy');
+    expect(document.getElementById('phase-compile')?.textContent).toBe('Run compile');
+    expect(document.getElementById('phase-upload')?.textContent).toBe('Run upload');
+    expect(document.getElementById('phase-run')?.textContent).toBe('Run program');
+    expect(document.getElementById('choose-build-dir')?.textContent).toBe('Choose');
+    expect(document.getElementById('state')?.textContent).toBe('Idle');
   });
 });

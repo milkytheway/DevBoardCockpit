@@ -1,12 +1,4 @@
-/* 编译上板 · 三步流程。Ant Design 的克制版：中性控件 + 单一强调色。 */
-
-:root {
-  color-scheme: dark light;
-}
-
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html,
 body {
@@ -16,11 +8,11 @@ body {
 
 body {
   padding: 10px 12px;
-  font-family: var(--cockpit-font-ui);
-  font-size: 12px;
+  overflow: hidden;
   color: var(--cockpit-text);
   background: transparent;
-  overflow: hidden;
+  font-family: var(--cockpit-font-ui);
+  font-size: 12px;
 }
 
 .bd {
@@ -31,255 +23,274 @@ body {
   min-height: 0;
 }
 
-/* ── steps ─────────────────────────────────────────────────────────── */
-
-.bd__steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bd__step {
-  position: relative;
+.bd__actions {
   display: flex;
-  min-width: 0;
-}
-
-.bd__step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: 17px;
-  left: calc(50% + 20px);
-  right: calc(-50% + 20px);
-  height: 1px;
-  background: color-mix(in oklab, var(--cockpit-border) 80%, transparent);
-}
-
-.bd__step-btn {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-width: 0;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
-}
-
-.bd__step-btn:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--cockpit-text) 6%, transparent);
-}
-
-.bd__step-btn:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.bd__step-dot {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in oklab, var(--cockpit-text) 26%, transparent);
-  background: color-mix(in oklab, var(--cockpit-surface) 70%, transparent);
-  font-family: var(--cockpit-font-mono);
-  font-size: 10px;
-  color: var(--cockpit-text-dim);
-}
-
-.bd__step-text {
-  display: flex;
-  min-width: 0;
   flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.25;
+  gap: 5px;
 }
 
-.bd__step-text b {
+.bd__action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 5px 4px 8px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--cockpit-surface) 48%, transparent);
+}
+
+.bd__action.is-running {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 52%, transparent);
+  background: color-mix(in oklab, var(--cockpit-accent) 9%, transparent);
+}
+
+.bd__action.is-done {
+  border-color: color-mix(in oklab, var(--cockpit-ok) 36%, transparent);
+}
+
+.bd__action.is-failed {
+  border-color: color-mix(in oklab, var(--cockpit-danger) 42%, transparent);
+}
+
+.bd__action-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.bd__index {
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  color: var(--cockpit-text-faint);
+}
+
+.bd__action strong {
   font-size: 12px;
   font-weight: 600;
-  color: var(--cockpit-text);
 }
 
-.bd__step-text small {
-  font-size: 9.5px;
+.bd__result {
+  margin-left: auto;
+  overflow: hidden;
   color: var(--cockpit-text-faint);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.bd__step.is-active .bd__step-btn {
-  border-color: color-mix(in oklab, var(--cockpit-accent) 55%, transparent);
-  background: color-mix(in oklab, var(--cockpit-accent) 12%, transparent);
+.bd__action.is-running .bd__result {
+  color: var(--cockpit-accent);
 }
 
-.bd__step.is-active .bd__step-dot {
-  border-color: var(--cockpit-accent);
-  background: var(--cockpit-accent);
-  color: var(--cockpit-bg);
-}
-
-.bd__step.is-done .bd__step-dot {
-  border-color: color-mix(in oklab, var(--cockpit-ok) 70%, transparent);
-  background: color-mix(in oklab, var(--cockpit-ok) 22%, transparent);
+.bd__action.is-done .bd__result {
   color: var(--cockpit-ok);
 }
 
-.bd__step.is-failed .bd__step-dot {
-  border-color: color-mix(in oklab, var(--cockpit-danger) 70%, transparent);
-  background: color-mix(in oklab, var(--cockpit-danger) 18%, transparent);
+.bd__action.is-failed .bd__result {
   color: var(--cockpit-danger);
 }
 
-/* ── form ──────────────────────────────────────────────────────────── */
+.bd__exec {
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-accent) 44%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--cockpit-accent) 12%, transparent);
+  color: var(--cockpit-accent);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.bd__exec:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--cockpit-accent) 20%, transparent);
+}
+
+.bd__exec:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bd__exec:focus-visible,
+.bd__choose:focus-visible,
+.bd__choice-option:focus-visible {
+  outline: 2px solid var(--cockpit-accent);
+  outline-offset: 2px;
+}
 
 .bd__form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 8px;
-}
-
-.bd__field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
+  gap: 7px;
 }
 
 .bd__field:first-child {
   grid-column: 1 / -1;
 }
 
-.bd__field span {
-  font-size: 10px;
+.bd__field {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bd__field > span {
   color: var(--cockpit-text-dim);
+  font-size: 9.5px;
 }
 
-.bd__field input {
-  width: 100%;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in oklab, var(--cockpit-text) 20%, transparent);
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--cockpit-surface) 65%, transparent);
+.bd__input-row {
+  display: flex;
+  min-width: 0;
+}
+
+.bd__input-row input {
+  min-width: 0;
+  flex: 1;
+  height: 27px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-radius: 7px 0 0 7px;
+  outline: 0;
+  background: color-mix(in oklab, var(--cockpit-surface) 62%, transparent);
   color: var(--cockpit-text);
-  font: inherit;
   font-family: var(--cockpit-font-mono);
-  font-size: 11px;
-  outline: none;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  font-size: 10px;
 }
 
-.bd__field input::placeholder {
+.bd__input-row input:focus {
+  border-color: var(--cockpit-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--cockpit-accent) 14%, transparent);
+}
+
+.bd__input-row input::placeholder {
   color: var(--cockpit-text-faint);
 }
 
-.bd__field input:focus {
-  border-color: var(--cockpit-accent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--cockpit-accent) 18%, transparent);
+.bd__choose {
+  height: 27px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in oklab, var(--cockpit-surface) 44%, transparent);
+  color: var(--cockpit-text-dim);
+  font: inherit;
+  font-size: 9.5px;
+  cursor: pointer;
 }
 
-/* ── status bar ────────────────────────────────────────────────────── */
+.bd__choose:hover:not(:disabled) {
+  color: var(--cockpit-text);
+  background: color-mix(in oklab, var(--cockpit-text) 7%, transparent);
+}
 
-.bd__bar {
+.bd__choice {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--cockpit-border);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--cockpit-text) 5%, transparent), transparent 24%),
+    var(--cockpit-bg-elevated);
+  box-shadow: 0 12px 28px -18px color-mix(in oklab, var(--cockpit-bg) 70%, transparent);
+}
+
+.bd__choice-option {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--cockpit-text-dim);
+  font-family: var(--cockpit-font-mono);
+  font-size: 9.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bd__choice-option:hover {
+  color: var(--cockpit-text);
+  background: color-mix(in oklab, var(--cockpit-accent) 10%, transparent);
+}
+
+.bd__choice-empty {
+  display: block;
+  padding: 5px 6px;
+  color: var(--cockpit-text-faint);
+  font-size: 9.5px;
+}
+
+.bd__status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
   min-height: 18px;
 }
 
+.bd__state {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cockpit-surface) 58%, transparent);
+  color: var(--cockpit-text-faint);
+  font-size: 9px;
+}
+
 .bd__note {
+  min-width: 0;
   overflow: hidden;
   color: var(--cockpit-text-dim);
-  font-size: 10.5px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.bd__state {
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--cockpit-accent) 40%, transparent);
-  background: color-mix(in oklab, var(--cockpit-accent) 14%, transparent);
-  color: var(--cockpit-accent);
-  font-size: 9.5px;
-  white-space: nowrap;
-}
-
-/* ── run timeline ──────────────────────────────────────────────────── */
-
 .bd__run {
   display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 3px;
   margin: 0;
   padding: 0;
-  overflow: auto;
   list-style: none;
 }
 
 .bd__run-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 20px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: color-mix(in oklab, var(--cockpit-surface) 45%, transparent);
-  font-size: 10.5px;
-  color: var(--cockpit-text-dim);
-}
-
-.bd__run-dot {
-  width: 12px;
-  text-align: center;
+  max-width: 130px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--cockpit-surface) 42%, transparent);
   color: var(--cockpit-text-faint);
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bd__run-id {
-  color: var(--cockpit-text);
-}
-
-.bd__run-kind {
-  color: var(--cockpit-text-faint);
-}
-
-.bd__run-why {
-  margin-left: auto;
-  color: var(--cockpit-danger);
-}
-
-.bd__run-item.is-ok .bd__run-dot {
+.bd__run-item.is-ok {
   color: var(--cockpit-ok);
 }
 
-.bd__run-item.is-warn .bd__run-dot {
+.bd__run-item.is-warn {
   color: var(--cockpit-warn);
 }
 
-.bd__run-item.is-bad .bd__run-dot {
-  color: var(--cockpit-danger);
-}
-
 .bd__run-item.is-bad {
-  background: color-mix(in oklab, var(--cockpit-danger) 8%, transparent);
-}
-
-.bd__run:empty::after {
-  content: '运行后，这里列出每一步的判据。';
-  color: var(--cockpit-text-faint);
-  font-size: 10px;
+  color: var(--cockpit-danger);
 }

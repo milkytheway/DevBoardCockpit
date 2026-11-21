@@ -123,6 +123,10 @@ function service(
   reg: WorkflowRegistry;
   audits: AuditRow[];
   deps: WorkflowRunDeps;
+  /** The profiles of the roles that a run took ✓ */
+  acquired: string[];
+  /** The profiles of the roles that a run gave back ✓ */
+  released: string[];
   /** Hands over one command that gets stuck */
   releaseOne: () => void;
   /** Waits until n commands are stuck */
@@ -175,6 +179,8 @@ function service(
       throw new Error('no session');
     },
   } as unknown as Connection;
+  const acquired: string[] = [];
+  const released: string[] = [];
   const deps: WorkflowRunDeps = {
     // (the connection stand-in: every target goes through the same fake connection — the unit tests of the workflow layer do not test the transport)
     targets: {
@@ -182,6 +188,14 @@ function service(
       runOn: async <T>(_id: string, fn: (c: Connection) => Promise<T>): Promise<T> => fn(conn),
       closeAll: async () => undefined,
       openCount: 0,
+      // → **The targets of a run are taken and given back** ✓ (the
+      //   connection of a target is closed when the last run is done ✓).
+      acquire: (ids: readonly string[]) => {
+        acquired.push(...ids);
+      },
+      release: async (ids: readonly string[]) => {
+        released.push(...ids);
+      },
     } as never,
     profileFor: (id: string) => profiles.get(id),
     audit: (row: AuditRow) => {
@@ -203,6 +217,8 @@ function service(
     reg,
     audits,
     deps,
+    acquired,
+    released,
     releaseOne: () => waiting.shift()?.(),
     auditCount: () => auditCalls,
     untilWaiting: async (n: number): Promise<void> => {
@@ -460,5 +476,29 @@ describe('the workflow service · a long task = run_id + polling', () => {
     }
     expect(audits.length).toBeGreaterThan(0);
     expect(audits[0]?.actor).toMatch(/^workflow:/);
+  });
+});
+
+/**
+ * **The targets of a run are given back** ✓ (found on 2026-11-21 ✓).
+ *
+ * → The connections of the workflow layer stayed open for good ✓ (the serial
+ *   line kept the console ✓ · the ssh session hung ✓) → `closeAll()` existed
+ *   ✓ but nobody called it ✓.
+ * → Now **every run takes its targets when it starts and gives them back
+ *   when it ends** ✓ → the last run that uses a connection closes it ✓.
+ */
+describe('WorkflowService · the targets', () => {
+  it('**a run takes its targets and gives them back** ✓', async () => {
+    const h = service();
+    const { runId } = h.svc.start('demo.run', { project: 'x' });
+    for (let i = 0; i < 50 && h.svc.status(runId).state === 'running'; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(h.svc.status(runId).state).toBe('done');
+    // → **The profiles of the roles were taken** ✓
+    expect(h.acquired.length).toBeGreaterThan(0);
+    // → **and given back** ✓ (the connection is closed then ✓)
+    expect(h.released).toEqual(h.acquired);
   });
 });

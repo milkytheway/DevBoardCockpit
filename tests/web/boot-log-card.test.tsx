@@ -1,55 +1,35 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { waitFor } from '@testing-library/react';
 
-/**
- * The "boot log" card (`cards/boot-log/card.js`).
- *
- * ── What it has to do ──
- *
- * → **Run the flow** ✓ (`boot-log.capture` ✓) — the card is the button ✓.
- * → **Show what every step said** ✓ (the verdict of each step ✓) — the
- *   same shape as the workflow card ✓.
- * → **Say where the log lands** ✓ — the card may not see the output of a
- *   workflow ✓ (contract `05` §8·B·B5 ✓) → the log is a **file on the
- *   board** ✓ → the file transfer fetches it ✓.
- */
 const REPO_ROOT = resolve(__dirname, '../..');
 const CARD_DIR = join(REPO_ROOT, 'cards', 'boot-log');
+const LOG_TEXT = [
+  '[    0.000000] Booting Linux on physical CPU 0x0000000000',
+  '[    1.502010] rk3588-pinctrl ff770000.pinctrl: probe success',
+].join('\n');
+const HOST_PATH = 'C:\\Users\\me\\AppData\\Local\\DevBoardCockpit\\boot-logs\\boot.log';
 
-const FLOWS = [
-  {
-    id: 'boot-log.capture',
-    name: 'Boot log',
-    version: '1.0.0',
-    inputs: { path: { type: 'path', required: false, default: '/userdata/boot.log' } },
-  },
-];
-
-/** Install a fake host API ✓ */
-function installCockpit(overrides: Record<string, unknown> = {}): {
-  run: ReturnType<typeof vi.fn>;
+function installCockpit(): {
+  capture: ReturnType<typeof vi.fn>;
+  latest: ReturnType<typeof vi.fn>;
 } {
-  const run = vi.fn(async () => ({ ok: true, runId: 'wf-1' }));
+  const capture = vi.fn(async () => ({
+    ok: true,
+    text: LOG_TEXT,
+    // → **The host path is not in the card's answer** ✓ (the host narrows it
+    //   ✓ — `narrowBootLog` ✓).
+    capturedAt: '2026-11-21T12:00:00.000Z',
+    bytes: LOG_TEXT.length,
+    durationMs: 22_000,
+    complete: true,
+  }));
+  const latest = vi.fn(async () => null);
   (window as unknown as { cockpit: unknown }).cockpit = {
-    workflows: {
-      list: async () => FLOWS,
-      run,
-      status: async () => ({
-        ok: true,
-        state: 'done',
-        current: null,
-        stages: [
-          { stepId: 'capture', kind: 'exec', ok: true, verified: true },
-          { stepId: 'store', kind: 'exec', ok: true, verified: true },
-          { stepId: 'assert-not-empty', kind: 'assert', ok: true, verified: true },
-        ],
-      }),
-      ...(overrides['workflows'] as Record<string, unknown> | undefined),
-    },
+    bootLog: { capture, latest },
   };
-  return { run };
+  return { capture, latest };
 }
 
 function mountCard(): void {
@@ -65,52 +45,131 @@ async function loadCard(): Promise<void> {
 }
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/');
   mountCard();
   vi.resetModules();
   loaded = null;
 });
 
 describe('the "boot log" card', () => {
-  it('the button and the place where the log lands are there', async () => {
+  it('has one explicit read action and a local log viewport', async () => {
     installCockpit();
     await loadCard();
-    expect(document.getElementById('run')).not.toBeNull();
-    // → **The path comes from the flow's default** ✓ (the card does not
-    //   invent it ✓).
-    await waitFor(() =>
-      expect(document.getElementById('path')?.textContent).toBe('/userdata/boot.log'),
+    expect(document.getElementById('run')?.textContent).toBe(
+      '\u83b7\u53d6\u542f\u52a8\u65e5\u5fd7',
     );
+    expect(document.getElementById('log-output')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('/userdata/boot.log');
   });
 
-  it('clicking the button runs the flow', async () => {
-    const { run } = installCockpit();
+  it('captures the complete serial boot log on the host', async () => {
+    const { capture } = installCockpit();
     await loadCard();
     (document.getElementById('run') as HTMLButtonElement).click();
-    await waitFor(() => expect(run).toHaveBeenCalledWith('boot-log.capture', {}));
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(document.getElementById('log-output')?.textContent).toContain('Booting Linux'),
+    );
+    expect((document.getElementById('log-dialog') as HTMLElement).hidden).toBe(false);
+    // → **The card does not get the path of the host** ✓ (the contract says a
+    //   card does not get the paths of the host ✓) → it shows **when** the
+    //   capture happened ✓.
+    expect(document.body.textContent).not.toContain('boot.log');
+    expect(document.getElementById('host-path')?.textContent).toContain('2026-11-21');
   });
 
-  it('the verdict of every step is shown', async () => {
-    installCockpit();
+  it('reopens the latest log in the dialog instead of fetching again', async () => {
+    const { capture, latest } = installCockpit();
+    latest.mockResolvedValue({
+      ok: true,
+      text: LOG_TEXT,
+      hostPath: HOST_PATH,
+      capturedAt: '2026-11-21T12:00:00.000Z',
+      bytes: LOG_TEXT.length,
+      durationMs: 120,
+      complete: true,
+    });
+    await loadCard();
+    await waitFor(() =>
+      expect(document.getElementById('run')?.textContent).toBe(
+        '\u6253\u5f00\u65e5\u5fd7',
+      ),
+    );
+    (document.getElementById('run') as HTMLButtonElement).click();
+    expect((document.getElementById('log-dialog') as HTMLElement).hidden).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('supports selecting the complete log text for copying', async () => {
+    const { capture } = installCockpit();
     await loadCard();
     (document.getElementById('run') as HTMLButtonElement).click();
-    await waitFor(() => expect(document.querySelectorAll('.log__step').length).toBe(3));
-    const steps = [...document.querySelectorAll('.log__step')].map((el) => el.textContent);
-    expect(steps[0]).toContain('capture');
-    expect(steps[2]).toContain('assert-not-empty');
+    await waitFor(() => expect(capture).toHaveBeenCalled());
+    (document.getElementById('select-all') as HTMLButtonElement).click();
+    expect(window.getSelection()?.toString()).toContain('Booting Linux');
   });
 
-  it('a refusal is reported as a refusal (the card must not pretend it ran)', async () => {
-    installCockpit({
-      workflows: {
-        list: async () => FLOWS,
-        run: async () => ({ ok: false, reason: 'denied' }),
-        status: async () => ({ ok: true, state: 'done', current: null, stages: [] }),
-      },
+  it('shows copy feedback inside the open log dialog', async () => {
+    const { capture } = installCockpit();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
     });
     await loadCard();
     (document.getElementById('run') as HTMLButtonElement).click();
-    // → **The card's wording** ✓ — it is Chinese ✓ (the `zh-Hans` half ✓
-    //   of the card's own text ✓) → the test pins it ✓.
-    await waitFor(() => expect(document.getElementById('note')?.textContent).toContain('没有被授权'));
+    await waitFor(() => expect(capture).toHaveBeenCalled());
+    (document.getElementById('copy') as HTMLButtonElement).click();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(LOG_TEXT));
+    await waitFor(() =>
+      expect(document.getElementById('copy')?.textContent).toBe('\u5df2\u590d\u5236'),
+    );
+  });
+
+  it('uses English wording when the host supplies the English locale', async () => {
+    window.history.replaceState({}, '', '/?lang=en');
+    installCockpit();
+    await loadCard();
+    expect(document.getElementById('log-title')?.textContent).toBe('Boot log');
+    expect(document.getElementById('run')?.textContent).toBe('Get boot log');
+    expect(document.getElementById('search')?.getAttribute('placeholder')).toBe('Filter log');
+    expect(document.getElementById('select-all')?.textContent).toBe('Select all');
+    expect(document.getElementById('copy')?.textContent).toBe('Copy');
+  });
+
+  it('shows the latest host-side log immediately when the card opens', async () => {
+    const { latest } = installCockpit();
+    latest.mockResolvedValue({
+      ok: true,
+      text: LOG_TEXT,
+      hostPath: HOST_PATH,
+      capturedAt: '2026-11-21T12:00:00.000Z',
+      bytes: LOG_TEXT.length,
+      durationMs: 22_000,
+      complete: true,
+    });
+    await loadCard();
+    await waitFor(() =>
+      expect(document.getElementById('log-output')?.textContent).toContain('Booting Linux'),
+    );
+  });
+
+  it('shows the host failure reason when the serial capture cannot start', async () => {
+    const { capture } = installCockpit();
+    capture.mockResolvedValue({ ok: false, reason: 'serial_busy' });
+    await loadCard();
+    (document.getElementById('run') as HTMLButtonElement).click();
+    await waitFor(() =>
+      expect(document.getElementById('note')?.textContent).toBe(
+        '\u4e32\u53e3\u5df2\u88ab\u5360\u7528',
+      ),
+    );
+  });
+
+  it('the old ADB dmesg workflow is not part of the card path', () => {
+    const source = readFileSync(join(CARD_DIR, 'card.js'), 'utf8');
+    expect(source).not.toContain('workflows.run');
+    expect(source).not.toContain("'boot_log'");
   });
 });

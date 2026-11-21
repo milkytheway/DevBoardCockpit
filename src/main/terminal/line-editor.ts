@@ -348,6 +348,7 @@ function isWide(cp: number): boolean {
  */
 export class PipeInput {
   readonly editor = new LineEditor();
+  private readonly prompt: string;
 
   /**
    * "The next prompt has not been drawn yet".
@@ -381,9 +382,30 @@ export class PipeInput {
    *
    * The order is right and the prompt is still there.
    */
-  private promptPending = false;
+  private promptPending: boolean;
 
-  constructor(private readonly prompt: string = '') {}
+  constructor(prompt: string = '') {
+    this.prompt = prompt.trim().length > 0 ? renderPipePrompt(prompt) : '';
+    this.promptPending = this.prompt.length > 0;
+  }
+
+  /** The first prompt shown when the terminal becomes visible. */
+  initialPrompt(): string {
+    this.promptPending = false;
+    return this.prompt;
+  }
+
+  /** Whether the prompt should be drawn once the remote output becomes quiet. */
+  get waitingForPrompt(): boolean {
+    return this.promptPending;
+  }
+
+  /** Draw the pending prompt once remote output has gone quiet. */
+  promptWhenIdle(): string {
+    if (!this.promptPending) return '';
+    this.promptPending = false;
+    return this.prompt;
+  }
 
   /**
    * Handles one piece of user input.
@@ -571,4 +593,21 @@ export class PipeInput {
     if (tail > 0) out += `\x1b[${tail}D`;
     return out;
   }
+}
+
+/**
+ * A complete, coloured prompt for pipe-mode terminals.
+ *
+ * The profile may only carry `root@ATK-DLRK3588`; without a separator the
+ * first typed character looks like part of the hostname. The prompt is rendered
+ * by the host in ADB pipe mode, so this is also the one place that gives it a
+ * stable terminal colour.
+ */
+export function renderPipePrompt(raw: string): string {
+  const base = raw.trimEnd();
+  if (base.length === 0) return '';
+  const ansiSgr = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+  const plain = base.replace(ansiSgr, '');
+  const complete = /[$#>]$/.test(plain) ? plain : `${plain} $`;
+  return `\x1b[1;36m${complete}\x1b[0m `;
 }

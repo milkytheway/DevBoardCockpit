@@ -36,7 +36,7 @@ describe('The two-tree FileBrowser', () => {
     expect(screen.getByTestId('tree-remote')).toBeTruthy();
   });
 
-  it('the remote tree is loaded on demand (lazy loading)', async () => {
+  it('the remote tree loads itself when the page opens', async () => {
     const listRemote = vi.fn(async () => remote);
     render(
       <FileBrowser
@@ -47,11 +47,7 @@ describe('The two-tree FileBrowser', () => {
         listRemote={listRemote}
       />,
     );
-    // The remote directory has to be asked from the host, so it must not happen while rendering
-    expect(listRemote).not.toHaveBeenCalled();
-    // The host is only asked once the remote tree is opened
-    fireEvent.click(screen.getByTestId('remote-refresh'));
-    await waitFor(() => expect(listRemote).toHaveBeenCalled());
+    await waitFor(() => expect(listRemote).toHaveBeenCalledWith('c1', '/'));
   });
 
   it('the remote entries are listed', async () => {
@@ -111,7 +107,7 @@ describe('The two-tree FileBrowser', () => {
     expect(remoteDir).toBe('/');
   });
 
-  it('when the connection cannot transfer, the entry is disabled and explained', () => {
+  it('when the connection cannot transfer, only a short unavailable status remains', () => {
     render(
       <FileBrowser
         connectionId="c1"
@@ -122,6 +118,7 @@ describe('The two-tree FileBrowser', () => {
       />,
     );
     expect(screen.getByTestId('file-push-disabled')).toBeTruthy();
+    expect(screen.getByText('\u6587\u4ef6\u4f20\u8f93\u4e0d\u53ef\u7528')).toBeTruthy();
     // The arrows must not be there either
     expect(screen.queryByTestId('push-button')).toBeNull();
     expect(screen.queryByTestId('pull-button')).toBeNull();

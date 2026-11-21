@@ -39,6 +39,13 @@ interface Word {
   quoted: boolean;
 }
 
+const FAKE_DMESG = [
+  '[    0.000000] Booting Linux on physical CPU 0x0000000000',
+  '[    0.181221] Kernel command line: console=ttyFIQ0 root=/dev/mmcblk0p6',
+  '[    1.502010] rk3588-pinctrl ff770000.pinctrl: probe success',
+  '',
+].join('\n');
+
 /** Finds the `)` that matches the `(` at the position of `open` (the brackets inside the quotes are skipped) */
 function findClosingParen(text: string, open: number): number {
   let depth = 0;
@@ -191,6 +198,8 @@ function evalStatement(device: FakeDevice, statement: string): string {
     }
     return out;
   }
+
+  if (command === 'dmesg') return FAKE_DMESG;
 
   // **Not understood → nothing at all**
   return '';

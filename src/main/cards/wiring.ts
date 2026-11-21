@@ -84,6 +84,7 @@ export interface CardWiringDeps {
      * same shape as `actionsFor` ✓).
      */
   workflowsFor?: (cardId: string) => CardServices['workflows'];
+  bootLogFor?: (cardId: string) => CardServices['bootLog'];
   /** The root directory of the storage */
   storageDir: string;
   /** The layout file (**the book of the host**: which card sits in which cell) */
@@ -112,6 +113,14 @@ export interface CardWiring {
   layoutGet: () => LayoutState;
   /** Stores the layout */
   layoutSet: (state: LayoutState) => void;
+  /**
+   * **The board changed** ✓ → the cells follow ✓.
+   *
+   * → Without it the cards of the main area **disappear** when the board is
+   *   switched ✓ (the cells are bound to the old connection id ✓ — found on
+   *   2026-11-21 ✓).
+   */
+  layoutRebind: (from: string | null, to: string | null) => void;
   /** Discovers the cards again (hot plug) */
   refresh: () => void;
   /** Attributes a CSP violation to the runtime log of a card */
@@ -158,6 +167,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     },
     ...(deps.actionsFor === undefined ? {} : { actionsFor: deps.actionsFor }),
     ...(deps.workflowsFor === undefined ? {} : { workflowsFor: deps.workflowsFor }),
+    ...(deps.bootLogFor === undefined ? {} : { bootLogFor: deps.bootLogFor }),
     connectionInfo: deps.connectionInfo,
   });
 
@@ -252,6 +262,7 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     //   ① read it (the v1/v2 files are still readable ✓ in `normalizeLayout`)
     //   ② when storing, **do not lose the cells of the cards that are not installed** (a card that is uninstalled and installed again keeps its position)
     layoutGet: () => layout.get(),
+    layoutRebind: (from, to) => layout.rebind(from, to),
     layoutSet: (input) => {
       const connectionId = deps.currentConnectionId();
       const installed = new Set(

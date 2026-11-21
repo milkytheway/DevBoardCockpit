@@ -12,26 +12,18 @@ import { FolderIcon } from '../Icons';
 const strings = {
   title: { 'zh-Hans': '文件传输', en: 'File transfer' },
   readySubtitle: {
-    'zh-Hans': '本地 ↔ 板端 · 走 {link}（主机自己挑的通道）',
-    en: 'Local ↔ board · over {link} (the link the host picked)',
+    'zh-Hans': '已连接 · {link}',
+    en: 'Connected · {link}',
   },
   connectingSubtitle: {
-    'zh-Hans': '正在找一条能传文件的通道…',
-    en: 'Looking for a link that can carry files…',
+    'zh-Hans': '正在连接…',
+    en: 'Connecting…',
   },
   notReadySubtitle: {
-    'zh-Hans': '还没有板子连着，传输无从谈起',
-    en: 'There is no board connected — a transfer needs one',
+    'zh-Hans': '未连接开发板',
+    en: 'No board connected',
   },
   emptyTitle: { 'zh-Hans': '还没有可传输的连接', en: 'No link to transfer with yet' },
-  emptyBody: {
-    'zh-Hans': '主机按 ADB → SSH → 串口 的顺序自己挑一条能用的；上一个不通就试下一个。',
-    en: 'The host picks one itself, in the order ADB → SSH → serial; when one is not there it tries the next.',
-  },
-  emptyNote: {
-    'zh-Hans': '串口不能传文件（事实 S7），所以它在最后。',
-    en: 'A serial line cannot carry files (fact S7) — that is why it is last.',
-  },
   failedTitle: { 'zh-Hans': '没有一条通道能用', en: 'No link works' },
   retry: { 'zh-Hans': '再找一次', en: 'Look again' },
 } satisfies Record<string, Localised>;
@@ -113,8 +105,7 @@ export function FilesPage({
             <FolderIcon size={26} />
           </span>
           <h2>{error !== null ? t(strings.failedTitle) : t(strings.emptyTitle)}</h2>
-          {error !== null ? <p className="dim">{error}</p> : <p>{t(strings.emptyBody)}</p>}
-          <p className="dim">{t(strings.emptyNote)}</p>
+          {error !== null ? <p className="dim">{error}</p> : null}
         </div>
       )}
     </div>

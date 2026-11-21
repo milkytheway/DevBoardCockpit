@@ -9,6 +9,7 @@ import { Session, TIMEOUT_EXIT_CODE } from './session';
 import { capabilitiesFor, transportDefaults } from './capabilities';
 import { readFileSync } from 'node:fs';
 import type { ConnectionCapabilities, Connection, ExecOptions, ExecResult } from './connection';
+import type { HostKeyStore } from './host-keys';
 
 /**
  * The SSH transport.
@@ -80,6 +81,16 @@ export function sshOpenError(
   credential: CredentialKind,
 ): AppError {
   const detail = { host: opts.host, port: opts.port, cause: err.message, level: err.level };
+  // → **The key of the host does not match** ✓ → somebody is in the middle
+  //   ✓ (or the machine was replaced ✓) → the connection is refused ✓.
+  if (/host verification/i.test(err.message)) {
+    return makeError(
+      'CONN_OPEN_FAILED',
+      `the key of the SSH host ${opts.host}:${opts.port} is not the one this machine knows — somebody may be in the middle (or the machine was replaced)`,
+      { detail },
+    );
+  }
+
   const refusal = err.level === 'client-authentication' || /authentication/i.test(err.message);
 
   if (refusal) {
@@ -140,6 +151,14 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
 export interface SshConnectionOptions {
   /** Inject the ssh2 client, used by tests */
   clientFactory?: (opts: SshConnectOptions) => Client;
+  /**
+   * **The keys of the hosts we have already seen** ✓ (trust on first use ✓).
+   *
+   * → Without it a successful authentication would prove **"the credential
+   *   was accepted"** ✓ but not **"the other side is the board"** ✓ → on a
+   *   shared network somebody could take the place of the board ✗.
+   */
+  hostKeys?: HostKeyStore;
 }
 
 /**
@@ -290,7 +309,25 @@ export class SshConnection implements Connection {
       client.once('ready', onReady);
       // A resident listener: it is not removed after the handshake
       client.on('error', onError);
-      client.connect(this.opts);
+      // → **The key of the other side is checked** ✓ (trust on first use ✓)
+      //   → a host whose key changed is **refused** ✓ (somebody is in the
+      //   middle ✓ — found on 2026-11-21 ✓).
+      const connectOptions: SshConnectOptions & { hostVerifier?: (key: Buffer) => boolean } = {
+        ...this.opts,
+      };
+      if (this.options.hostKeys !== undefined) {
+        const store = this.options.hostKeys;
+        connectOptions.hostVerifier = (key: Buffer): boolean => {
+          const given = key.toString('base64');
+          const known = store.known(this.opts.host, this.opts.port);
+          if (known === undefined) {
+            store.remember(this.opts.host, this.opts.port, given);
+            return true;
+          }
+          return known === given;
+        };
+      }
+      client.connect(connectOptions);
     });
 
     this.client = client;

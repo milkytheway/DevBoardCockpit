@@ -10,10 +10,6 @@ import { ListIcon } from '../Icons';
  */
 const strings = {
   title: { 'zh-Hans': '运行日志', en: 'Activity log' },
-  subtitleTail: {
-    'zh-Hans': '宿主自己的故事，不是板子的数据',
-    en: 'the story of the host, not the data of the board',
-  },
   entriesCount: { 'zh-Hans': '条记录', en: 'entries' },
   errorsCount: { 'zh-Hans': '条错误', en: 'errors' },
   levelInfo: { 'zh-Hans': '信息', en: 'Info' },
@@ -21,10 +17,6 @@ const strings = {
   levelError: { 'zh-Hans': '错误', en: 'Error' },
   emptyTitle: { 'zh-Hans': '还没有记录', en: 'Nothing recorded yet' },
   emptyFilterTitle: { 'zh-Hans': '这个筛选下没有记录', en: 'Nothing recorded under this filter' },
-  emptyBody: {
-    'zh-Hans': '打开终端、摆卡片、传文件——这些动作会出现在这里。',
-    en: 'Opening a terminal, placing a card, moving a file — those actions show up here.',
-  },
 } satisfies Record<string, Localised>;
 
 /**
@@ -59,7 +51,7 @@ export function LogsPage({
           <span className="page-head__eyebrow">ACTIVITY</span>
           <h1 className="page-head__title">{t(strings.title)}</h1>
           <p className="page-head__sub">
-            {activity.length} {t(strings.entriesCount)} · {errors} {t(strings.errorsCount)} · {t(strings.subtitleTail)}
+            {activity.length} {t(strings.entriesCount)} · {errors} {t(strings.errorsCount)}
           </p>
         </div>
       </header>
@@ -70,7 +62,6 @@ export function LogsPage({
             <ListIcon size={26} />
           </span>
           <h2>{activity.length === 0 ? t(strings.emptyTitle) : t(strings.emptyFilterTitle)}</h2>
-          <p>{t(strings.emptyBody)}</p>
         </div>
       ) : (
         <ol className="log-list">

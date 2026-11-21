@@ -29,6 +29,10 @@ function type(input: PipeInput, text: string): { toRemote: string; echo: string 
   return { toRemote, echo };
 }
 
+function plain(text: string): string {
+  return text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g'), '');
+}
+
 describe('the state of the line editor (the specification of the old project)', () => {
   it('the inserted character stays in the line and the cursor follows', () => {
     const ed = new LineEditor();
@@ -188,8 +192,8 @@ describe('the protocol of the pipe mode towards the remote side', () => {
 
     // The operator starts to type the next command, the prompt comes with it
     const r2 = input.input('x');
-    expect(r2.echo.startsWith('root@board$ ')).toBe(true);
-    expect(r2.echo).toContain('x');
+    expect(plain(r2.echo).startsWith('root@board$ ')).toBe(true);
+    expect(plain(r2.echo)).toContain('x');
   });
 
   it('Ctrl+C interrupts the remote side and clears the line', () => {
@@ -286,5 +290,15 @@ describe('the cases added by the third audit', () => {
     // Two columns are taken back (the display width), not one (the length in
 // UTF-16)
     expect(r.echo).toContain('\x1b[2D');
+  });
+});
+
+describe('the pipe prompt of ADB', () => {
+  it('is coloured, has a separating space and stays on the same line as the typed command', () => {
+    const input = new PipeInput('root@ATK-DLRK3588');
+    const r = input.input('pwd');
+    expect(r.echo).toContain('\x1b[');
+    expect(plain(r.echo)).toContain('root@ATK-DLRK3588 $ pwd');
+    expect(r.echo).not.toContain('\n');
   });
 });

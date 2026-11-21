@@ -73,6 +73,15 @@ export interface FileEndpointOptions {
   currentDeviceKey(): string | null;
   /** Builds a connection for a profile ✓ (the machine values are filled in here ✓) */
   createConnection(profile: ConnectionProfile): Promise<Connection>;
+  /**
+   * **The connection was closed** ✓ → the host takes it out of its table ✓.
+   *
+   * → Without it the table keeps a **closed** connection ✓ → the next
+   *   `files:list` runs a command on a connection that is not open ✓ → the
+   *   error says "the connection does not exist" ✗ (it does exist ✓ — it is
+   *   just closed ✓) → the message misleads ✗ (found on 2026-11-21 ✓).
+   */
+  onClosed?: (profileId: string) => void;
 }
 
 export interface FileEndpointHandle {
@@ -176,6 +185,14 @@ export class FileEndpoint {
     const current = this.current;
     this.current = undefined;
     if (current === undefined) return;
-    await current.connection.close().catch(() => undefined);
+    try {
+      await current.connection.close();
+    } catch {
+      // → A connection that does not close is not fatal ✓
+    } finally {
+      // → **The host is told** ✓ → it takes the closed connection out of its
+      //   table ✓ (otherwise the next transfer runs on a dead connection ✓).
+      this.opts.onClosed?.(current.profileId);
+    }
   }
 }

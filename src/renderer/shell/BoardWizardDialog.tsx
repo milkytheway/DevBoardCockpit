@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { WizardRunResult } from '../../shared/ipc-contract';
+import type { BoardDetection } from '../../shared/board-setup';
 import { CloseIcon } from './Icons';
 import { useT, type Localised } from './i18n';
 import { WizardPage, type WizardRequest } from './pages/WizardPage';
@@ -16,10 +17,12 @@ const strings = {
  */
 export function BoardWizardDialog({
   run,
+  detect,
   onInstalled,
   onClose,
 }: {
   run: (input: WizardRequest) => Promise<WizardRunResult>;
+  detect?: () => Promise<BoardDetection>;
   onInstalled?: () => void;
   onClose: () => void;
 }): JSX.Element {
@@ -109,7 +112,12 @@ export function BoardWizardDialog({
           </button>
         </header>
         <div className="wizard-dialog__body">
-          <WizardPage run={run} onInstalled={onInstalled} onClose={onClose} />
+          <WizardPage
+            run={run}
+            detect={detect}
+            onInstalled={onInstalled}
+            onClose={onClose}
+          />
         </div>
       </div>
     </div>

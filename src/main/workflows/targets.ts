@@ -45,12 +45,62 @@ export class TargetRegistry {
   private readonly queues = new Map<string, RoundTripQueue>();
   /** The connections that are being opened (to avoid opening two of the same line concurrently) */
   private readonly opening = new Map<string, Promise<Connection>>();
+  /**
+   * **How many runs use each connection** ✓.
+   *
+   * → A run **takes** its targets when it starts ✓ and **gives them back**
+   *   when it ends ✓ → the connection is closed when the last run that used
+   *   it is gone ✓.
+   * → Without this the connections of the workflows stayed open for good ✓
+   *   (the serial line kept the console ✓ · the ssh session hung ✓ — found
+   *   on 2026-11-21 ✓: `closeAll()` existed ✓ but nobody called it ✓).
+   * → **Two runs at once** ✓ (two different workflows ✓) → the connection
+   *   stays open until the **second** one is done ✓.
+   */
+  private readonly holders = new Map<string, number>();
 
   constructor(private readonly opts: TargetRegistryOptions) {}
 
   /** How many targets are open right now (for the diagnostics) */
   get openCount(): number {
     return this.connections.size;
+  }
+
+  /**
+   * **A run takes its targets** ✓ (the profiles of its roles ✓).
+   *
+   * → The connection is **not** opened here ✓ (a step opens it when it needs
+   *   it ✓) → this only says "somebody is using it" ✓.
+   */
+  acquire(profileIds: readonly string[]): void {
+    for (const profileId of profileIds) {
+      this.holders.set(profileId, (this.holders.get(profileId) ?? 0) + 1);
+    }
+  }
+
+  /**
+   * **A run gives its targets back** ✓ → the last one closes the connection
+   * ✓ (and the serial line is free again ✓).
+   */
+  async release(profileIds: readonly string[]): Promise<void> {
+    for (const profileId of profileIds) {
+      const count = (this.holders.get(profileId) ?? 1) - 1;
+      if (count > 0) {
+        this.holders.set(profileId, count);
+        continue;
+      }
+      this.holders.delete(profileId);
+      const connection = this.connections.get(profileId);
+      if (connection === undefined) continue;
+      this.connections.delete(profileId);
+      this.queues.delete(profileId);
+      try {
+        await connection.close();
+      } catch {
+        // → A target that does not close is not fatal ✓ (one target that
+        //   stays open must not throw away the account of the whole run ✓)
+      }
+    }
   }
 
   /**

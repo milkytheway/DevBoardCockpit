@@ -184,6 +184,26 @@ describe('the wizard · **the main flow**', () => {
     expect(boardIdOf('  ')).toBe('board');
   });
 
+  it('without a typed name the board identity comes from the detected model', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
+    try {
+      const { connection } = fakeConnection();
+      const r = await runWizard(
+        { port: 'COM3', baudrate: 1500000 },
+        deps(root, connection),
+      );
+      expect(r.ok, r.message).toBe(true);
+      expect(r.pack?.name).toBe('ATK-DLRK3588 Board');
+      expect(r.pack?.id).toBe('ATK-DLRK3588-Board');
+      const profile = JSON.parse(
+        readFileSync(join(root, 'profiles', 'board-ATK-DLRK3588-Board.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      expect(profile['label']).toBe('Board · ATK-DLRK3588 Board');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('**the port cannot be opened → it stops at once** (**it does not go on**)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
     try {

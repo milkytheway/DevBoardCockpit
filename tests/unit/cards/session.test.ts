@@ -33,12 +33,17 @@ function managerWith(
     run(id: string, inputs: Record<string, unknown>): unknown;
     status(runId: string): unknown;
   },
+  bootLogFor?: (cardId: string) => {
+    capture(): unknown;
+    latest(): unknown;
+  },
 ): CardSessionManager {
   return new CardSessionManager({
     runtime: runtime as never,
     permsFor: () => perms,
     now: () => 1000,
     ...(workflowsFor === undefined ? {} : { workflowsFor }),
+    ...(bootLogFor === undefined ? {} : { bootLogFor }),
   });
 }
 
@@ -132,6 +137,44 @@ describe('the session · the number of subscriptions has a limit (one card may n
       });
       expect(res.ok).toBe(true);
     }
+  });
+});
+
+describe('the session · complete boot-log capture', () => {
+  const capture = { capture: () => ({ ok: true, text: 'boot' }), latest: () => null };
+
+  it('requires the boot-log workflow permission in the card manifest', async () => {
+    const m = managerWith(
+      { readings: () => [], subscribe: () => () => undefined },
+      { read: [], write: [], workflows: [] },
+      undefined,
+      () => capture,
+    );
+    m.open('inst-1', 'boot-log', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'bootLog.capture',
+      args: {},
+    });
+    expect(res).toMatchObject({ ok: false, reason: 'denied' });
+  });
+
+  it('passes an authorised request through to the host serial capture', async () => {
+    const m = managerWith(
+      { readings: () => [], subscribe: () => () => undefined },
+      { read: [], write: [], workflows: ['boot-log.capture'] },
+      undefined,
+      () => capture,
+    );
+    m.open('inst-1', 'boot-log', 'board-a');
+    const res = await m.handle({
+      instanceId: 'inst-1',
+      id: 'r1',
+      method: 'bootLog.capture',
+      args: {},
+    });
+    expect(res).toMatchObject({ ok: true, value: { ok: true, text: 'boot' } });
   });
 });
 

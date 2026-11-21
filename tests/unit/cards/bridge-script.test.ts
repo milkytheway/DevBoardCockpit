@@ -54,6 +54,13 @@ describe('the card API registry', () => {
     expect(byName.get('workflows.run')?.scopeArg).toBe('id');
   });
 
+  it('the boot-log card can request a persistent serial capture on the host', () => {
+    const byName = apiByName();
+    expect(byName.has('bootLog.capture')).toBe(true);
+    expect(byName.has('bootLog.latest')).toBe(true);
+    expect(byName.get('bootLog.capture')?.permission).toBe('workflow');
+  });
+
   it('the permission of a read method is read, the one of storage and logging is none', () => {
     const byName = apiByName();
     expect(byName.get('tags.get')?.permission).toBe('read');

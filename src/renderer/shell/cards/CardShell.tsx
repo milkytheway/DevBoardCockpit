@@ -162,8 +162,8 @@ export function CardShell({
         theme) so the next request carries the new tokens; the card itself is
         stateless and re-subscribes through the broker.
       */}
-      <div className="cockpit-card__body" key={theme}>
-        <UserCard info={info} broker={broker} />
+      <div className="cockpit-card__body" key={`${theme}:${locale}`}>
+        <UserCard info={info} broker={broker} locale={locale} />
       </div>
     </section>
   );

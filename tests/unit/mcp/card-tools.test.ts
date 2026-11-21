@@ -137,6 +137,90 @@ describe('MCP · install_card', () => {
     expect(result.installed).toBe(true);
     expect(existsSync(join(cardsDir, 'demo', 'manifest.json'))).toBe(true);
   });
+
+  // ── **The id is a path segment** ✓ ──
+  //
+  // → The host deletes a whole directory tree here ✓ (rmSync recursive ✓)
+  //   and the id comes out of a file the agent wrote ✓ → an id that may
+  //   carry ".." ✓ is **a deletion outside the card root** ✓.
+  it('**an id that climbs out of the card root is refused** (**nothing outside is deleted** ✓)', () => {
+    // → The thing that must survive ✓ (the parent of the card root ✓ —
+    //   that is the user data directory ✓).
+    const precious = join(dir, 'precious');
+    mkdirSync(precious, { recursive: true });
+    writeFileSync(join(precious, 'keep.txt'), 'keep', 'utf8');
+
+    for (const id of ['..', '../..', '../../..', 'a/../../b']) {
+      writeCard(srcDir, { id });
+      const result = installCard(
+        { cardsRoot: cardsDir, registry: fakeRegistry([]) },
+        srcDir,
+      );
+      expect(result.installed, `the id "${id}" must be refused`).toBe(false);
+      expect(result.reason).toBe('invalid');
+    }
+    // → **Nothing outside the card root was touched** ✓
+    expect(existsSync(join(precious, 'keep.txt'))).toBe(true);
+    expect(readdirSync(cardsDir)).toEqual([]);
+  });
+
+  it('**an id that is not a name is refused** (the parser refuses it ✓ — the shape is closed ✓)', () => {
+    for (const id of ['Demo', 'demo card', 'demo.card', 'demo_card', '']) {
+      writeCard(srcDir, { id });
+      const result = installCard(
+        { cardsRoot: cardsDir, registry: fakeRegistry([]) },
+        srcDir,
+      );
+      expect(result.installed, `the id "${id}" must be refused`).toBe(false);
+    }
+    expect(readdirSync(cardsDir)).toEqual([]);
+  });
+
+  it('**a source that is far too big is refused** (**the copy is a denial of service otherwise** ✓)', () => {
+    writeCard(srcDir);
+    // → A file that is bigger than the limit ✓ → the install is refused ✓
+    //   **before** anything is copied ✓.
+    writeFileSync(join(srcDir, 'huge.bin'), Buffer.alloc(17 * 1024 * 1024), 'utf8');
+    const result = installCard(
+      { cardsRoot: cardsDir, registry: fakeRegistry([]) },
+      srcDir,
+    );
+    expect(result.installed).toBe(false);
+    expect(result.detail).toContain('too big');
+    expect(readdirSync(cardsDir)).toEqual([]);
+  });
+
+  it('**offline → the check of the actions is skipped and the card is degraded** ✓ (**the two entry points say the same thing** ✓)', () => {
+    writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot'] } });
+    const result = installCard(
+      {
+        cardsRoot: cardsDir,
+        registry: fakeRegistry([]),
+        // → **No board pack** ✓ → nothing could be verified ✓.
+        packActions: () => [],
+        hasBoardPack: () => false,
+      },
+      srcDir,
+    );
+    expect(result.installed).toBe(true);
+    expect(result.degraded).toBe(true);
+    expect(existsSync(join(cardsDir, 'demo', 'manifest.json'))).toBe(true);
+  });
+
+  it('**online → a missing action is still a refusal** ✓ (the board pack decides ✓)', () => {
+    writeCard(srcDir, { permissions: { read: ['cpu.usage'], write: ['system.reboot'] } });
+    const result = installCard(
+      {
+        cardsRoot: cardsDir,
+        registry: fakeRegistry([]),
+        packActions: () => [],
+        hasBoardPack: () => true,
+      },
+      srcDir,
+    );
+    expect(result.installed).toBe(false);
+    expect(result.reason).toBe('invalid');
+  });
 });
 
 describe('MCP · uninstall_card', () => {

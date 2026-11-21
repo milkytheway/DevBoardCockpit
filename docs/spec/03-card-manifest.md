@@ -560,6 +560,8 @@ This is the only place the API is defined. Section 4 and sections 7.1–7.6 are 
 | `cockpit.workflows.list()` | read | none (it lists only the workflows that are in the registry — there is no longer a layer of "the ones the user approved") |
 | `cockpit.workflows.run(id, inputs)` | write | this id is in `permissions.workflows` ✓ and the row in the permission area is on ✓ |
 | `cockpit.workflows.status(runId)` | read | the same (the card side is a reduced projection ✓ — section 8.B.B5 of `05` ✓) |
+| `cockpit.bootLog.capture()` | workflow | `permissions.workflows` must contain `boot-log.capture` and the permission-area switch must be on (SPEC-D31) |
+| `cockpit.bootLog.latest()` | workflow | the same permission — the latest serial capture stored on the host |
 | `cockpit.storage.get/set/remove/keys/clear` | storage | none (limited to the namespace of this card) |
 | `cockpit.log(level, message)` | logging | none |
 | `cockpit.notify(title, body)` | notification | none |
@@ -645,7 +647,7 @@ One card per directory. `entry` points at the entry file, the other files are lo
 | # | Rule |
 |---|---|
 | 1 | `apiVersion` is a known version |
-| 2 | `id` is globally unique and does not collide with an installed card |
+| 2 | `id` is globally unique, does not collide with an installed card, and **is a name of letters, digits and hyphens** (`^[a-z0-9][a-z0-9-]{0,63}$`) | The id is **the name of the card's directory** ✓ → the host builds a path from it ✓ → an id that may carry `..` ✓ is **a deletion outside the card root** ✓ (found on 2026-11-21 ✓: `install_card` deleted the user data directory because the manifest said `"id": ".."` ✓) → the shape is closed ✓ (decision record SPEC-D32 ✓) |
 | 3 | `requires` ⊆ `permissions` (a wish must not exceed the authorisation, judged by pattern coverage, section 2.2); `requires.workflows` ⊆ `permissions.workflows` (exact ids ✓) |
 | 4 | every tag name in `permissions.read` matches the core vocabulary or falls under `custom.*` |
 | 5 | every action id in `permissions.write` exists in the board pack of the current connection (this check is skipped when the board cannot be reached, and marked "not verified") |

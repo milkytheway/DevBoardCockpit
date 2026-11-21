@@ -118,7 +118,7 @@ describe('The settings page · the permission area', () => {
     const heads = [...container.querySelectorAll('.perm-group__head h3')].map(
       (node) => node.textContent,
     );
-    expect(heads).toEqual(['元操作', '流程', '宿主']);
+    expect(heads).toEqual(['设备操作', '流程', '系统']);
   });
 
   it('two switches per operation (card and agent)', () => {
@@ -174,7 +174,7 @@ describe('The settings page · the permission area', () => {
     // Two of them can be toggled in bulk (backlight, LED); the destructive one
     // (reboot) does not follow.
     expect(screen.getByText('1 / 2 条对卡片开放')).toBeTruthy();
-    const master = screen.getByRole('switch', { name: '为卡片打开元操作授权' });
+    const master = screen.getByRole('switch', { name: '为卡片打开设备操作授权' });
     expect(master.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(master);
     expect(onPermission).toHaveBeenCalledWith('card', 'action:backlight.set', true);

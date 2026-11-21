@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { makeError } from '../../shared/errors';
@@ -122,6 +122,11 @@ export function digestOf(content: string): string {
 export class WorkflowRegistry {
   private readonly warn: (message: string) => void;
   private packs = new Map<string, RegisteredWorkflow>();
+  /**
+   * **What the directories looked like the last time** ✓ (the names, the
+   * moments and the sizes ✓) → a change is noticed ✓.
+   */
+  private lastFingerprint = '';
 
   constructor(private readonly opts: WorkflowRegistryOptions) {
     this.warn = opts.warn ?? ((m: string) => console.warn(m));
@@ -130,6 +135,8 @@ export class WorkflowRegistry {
   /** Scan the directories and register again (a broken pack does not take the rest down — the same rule as the profile loader) */
   scan(): void {
     this.packs = new Map();
+    // → **The fingerprint is taken after the scan** ✓ (so the next check
+    //   does not scan again ✓).
 
     // The one scanned later overrides the one scanned earlier → the user directory goes last (the user's wins on the same id)
     for (const dir of this.opts.dirs) {
@@ -168,6 +175,9 @@ export class WorkflowRegistry {
         });
       }
     }
+    // → **What the directories looked like now** ✓ (the next check compares
+    //   against it ✓).
+    this.lastFingerprint = this.fingerprint();
   }
 
   /**
@@ -187,12 +197,60 @@ export class WorkflowRegistry {
 
   /** List everything (everything in the registry — there is no "approved" column any more) */
   list(): RegisteredWorkflow[] {
+    this.refreshIfChanged();
     return [...this.packs.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
   /** Get one pack by id (it checks nothing else — the caller decides whether to look) */
   get(id: string): RegisteredWorkflow | undefined {
+    this.refreshIfChanged();
     return this.packs.get(id);
+  }
+
+  /**
+   * **The fingerprint of the directories** ✓ — the names, the moments and the
+   * sizes of the pack files ✓.
+   *
+   * → It is much cheaper than a scan ✓ (no parsing ✓) → it says "something
+   *   changed" ✓.
+   */
+  private fingerprint(): string {
+    const parts: string[] = [];
+    for (const dir of this.opts.dirs) {
+      let files: string[];
+      try {
+        files = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const file of files.sort()) {
+        if (!/\.(ya?ml)$/i.test(file)) continue;
+        try {
+          const stat = statSync(join(dir, file));
+          parts.push(`${dir}/${file}:${stat.mtimeMs}:${stat.size}`);
+        } catch {
+          // → A file that cannot be read is not part of the fingerprint ✓
+        }
+      }
+    }
+    return parts.join('|');
+  }
+
+  /**
+   * **Rescans when the directories changed** ✓.
+   *
+   * → The registry was scanned **once at the start** ✓ → a workflow pack that
+   *   is added while the application runs was invisible ✓ (it was not in the
+   *   permission area ✓ and `validate_card` did not know it ✓ — found on
+   *   2026-11-21 ✓).
+   * → **The cards have a watcher** ✓ (the same idea ✓) → here the change is
+   *   noticed by a **cheap check** ✓ before the list and the lookup ✓.
+   */
+  private refreshIfChanged(): void {
+    const fingerprint = this.fingerprint();
+    if (fingerprint === this.lastFingerprint) return;
+    this.lastFingerprint = fingerprint;
+    this.scan();
   }
 
   /**

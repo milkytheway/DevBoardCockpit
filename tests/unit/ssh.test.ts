@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { sshCapabilities, sshArgs, sshOpenError, SshConnection } from '../../src/main/hal/ssh';
+import { MemoryHostKeyStore } from '../../src/main/hal/host-keys';
 
 describe('sshCapabilities', () => {
   it('SSH has a real pty and can transfer files', () => {
@@ -528,5 +529,89 @@ describe('the failure of an ssh connection', () => {
       'none',
     );
     expect(err.message).toMatch(/no credential/);
+  });
+});
+
+/**
+ * **The key of the host is checked** ✓ (trust on first use ✓).
+ *
+ * → A successful authentication proves **"the credential was accepted"** ✓ —
+ *   it does not prove **"the other side is the board"** ✓ → on a shared
+ *   network somebody could take the place of the board ✗ (found on
+ *   2026-11-21 ✓).
+ * → The first time a host is seen its key is **remembered** ✓ → the next
+ *   time it has to be **the same** ✓ → otherwise the connection is refused
+ *   ✓.
+ */
+describe('the ssh connection · the key of the host', () => {
+  /** A fake client that hands the key of the host to the verifier ✓ */
+  function clientWithHostKey(key: Buffer): {
+    client: unknown;
+    verifier: () => boolean | undefined;
+  } {
+    let captured: ((key: Buffer) => boolean) | undefined;
+    const listeners: Record<string, () => void> = {};
+    const client = {
+      once(evt: string, cb: () => void) {
+        listeners[evt] = cb;
+        return client;
+      },
+      off() {
+        return client;
+      },
+      on() {
+        return client;
+      },
+      connect(opts: { hostVerifier?: (key: Buffer) => boolean }) {
+        captured = opts.hostVerifier;
+        setTimeout(() => listeners['ready']?.(), 0);
+        return client;
+      },
+      end() {
+        return undefined;
+      },
+    };
+    return { client, verifier: () => captured?.(key) };
+  }
+
+  it('**the first time a host is seen its key is remembered** ✓', async () => {
+    const store = new MemoryHostKeyStore();
+    const fake = clientWithHostKey(Buffer.from('THE-HOST-KEY'));
+    const connection = new SshConnection(
+      { id: 's', label: 's', transport: 'ssh', options: { host: '192.168.5.100', port: 22 } },
+      { write: () => {}, close: () => {}, filePath: 'x' } as never,
+      { clientFactory: () => fake.client as never, hostKeys: store },
+    );
+    await connection.open();
+    expect(fake.verifier()).toBe(true);
+    expect(store.known('192.168.5.100', 22)).toBe(
+      Buffer.from('THE-HOST-KEY').toString('base64'),
+    );
+  });
+
+  it('**the same key again is accepted** ✓', async () => {
+    const store = new MemoryHostKeyStore();
+    store.remember('192.168.5.100', 22, Buffer.from('THE-HOST-KEY').toString('base64'));
+    const fake = clientWithHostKey(Buffer.from('THE-HOST-KEY'));
+    const connection = new SshConnection(
+      { id: 's', label: 's', transport: 'ssh', options: { host: '192.168.5.100', port: 22 } },
+      { write: () => {}, close: () => {}, filePath: 'x' } as never,
+      { clientFactory: () => fake.client as never, hostKeys: store },
+    );
+    await connection.open();
+    expect(fake.verifier()).toBe(true);
+  });
+
+  it('**a different key is refused** ✓ (somebody is in the middle ✓)', async () => {
+    const store = new MemoryHostKeyStore();
+    store.remember('192.168.5.100', 22, Buffer.from('THE-HOST-KEY').toString('base64'));
+    const fake = clientWithHostKey(Buffer.from('ANOTHER-KEY'));
+    const connection = new SshConnection(
+      { id: 's', label: 's', transport: 'ssh', options: { host: '192.168.5.100', port: 22 } },
+      { write: () => {}, close: () => {}, filePath: 'x' } as never,
+      { clientFactory: () => fake.client as never, hostKeys: store },
+    );
+    await connection.open();
+    expect(fake.verifier()).toBe(false);
   });
 });

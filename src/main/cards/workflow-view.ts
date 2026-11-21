@@ -62,6 +62,8 @@ export type CardWorkflowReason =
   | 'invalid_params'
   /** The same workflow is already running ✓ */
   | 'busy'
+  /** The run has not produced its outputs yet. */
+  | 'not_ready'
   /** Something else went wrong ✓ (the details stay in the host's log ✓) */
   | 'failed';
 

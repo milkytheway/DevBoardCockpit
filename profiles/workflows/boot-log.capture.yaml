@@ -1,32 +1,7 @@
-# Boot log — read what the board printed when it came up, and keep it on
-# the board
+# Boot log — read the persistent kernel and user-space boot records over the
+# serial console and keep the newest boot section on the host.
 #
-# ── What "the boot log" is here ──
-#
-# → **The messages of the kernel since the boot** ✓ (`dmesg` ✓ — the ring
-#   buffer ✓).
-# → **Not the whole console scrollback** ✗ — the messages of the bootloader
-#   (U-Boot ✓) are only in the **serial console's** scrollback ✓ and they
-#   are gone the moment the console is taken over ✓ → nobody can fetch them
-#   afterwards ✗.
-#   → So the honest thing is to say **what** this flow fetches ✓ (the kernel
-#   messages ✓) instead of calling it "the log" and letting the person
-#   expect the bootloader lines ✓.
-#
-# ── Why it is stored **on the board** ✓ ──
-#
-# → The card may not see the output of a workflow ✓ (contract `05` §8·B·B5
-#   ✓ — the details stay with the host and the agent ✓).
-# → So the log is written to a **file on the board** ✓ → and the **file
-#   transfer** fetches it ✓ (the file page ✓ — it picks its own link ✓).
-# → The two belong together ✓: the flow fills the file ✓ · the file page
-#   takes it away ✓.
-#
-# ── Measured basis (2026-11-21 · real board ATK-DLRK3588) ──
-#
-#   `dmesg` is on the board ✓ (`docs/02-device-facts.md` ✓ — the command
-#   list of the board ✓) and `/userdata` is writable ✓ (the camera capture
-#   writes there ✓).
+# The board is read only. This workflow never asks for a destructive action.
 
 apiVersion: devboard/v1
 kind: Workflow
@@ -34,51 +9,34 @@ kind: Workflow
 id: boot-log.capture
 name: Boot log
 version: 1.0.0
-description: Read the messages the kernel printed since the boot and store them in a file on the board, so that the file transfer can fetch them.
+description: Read the messages the kernel printed since the boot into a host-side workflow output.
 
-inputs:
-  path:
-    type: path
-    required: false
-    maxLength: 200
-    default: /userdata/boot.log
-    description: Where the boot log is stored on the board
+inputs: {}
 
 roles:
   target:
     purpose: The board whose boot log is read
-    profile: board-adb
+    profile: board-serial
 
 steps:
-  # ① Read the log ✓ — the output lands in a slot ✓ (the host keeps it ✓ —
-  #   the card does not see it ✓ — contract `05` §8·B·B5 ✓).
+  # Read both persistent syslog files. The first file rotates out the older
+  # records; the second contains the current boot.
   - id: capture
     kind: exec
     role: target
-    cmd: "dmesg"
+    cmd: "cat /var/log/messages.0 2>/dev/null; cat /var/log/messages 2>/dev/null"
     timeout_ms: 30000
     out: boot_log
     readback:
       kind: command_ok
 
-  # ② Write it to the board's disk ✓ — that is the file the transfer takes ✓.
-  - id: store
-    kind: exec
-    role: target
-    cmd: "dmesg > {input:path}"
-    timeout_ms: 30000
-    readback:
-      kind: command_ok
-
-  # ③ The file is really there and it is not empty ✓ — a board that booted
-  #   without a single message is a fact worth reporting ✓ (and the step is
-  #   red ✓ instead of pretending the log was captured ✓).
+  # At least one persistent log file has to exist.
   - id: assert-not-empty
     kind: assert
     role: target
     readback:
       kind: verify
       role: target
-      command: "test -s {input:path}"
+      command: "test -s /var/log/messages.0 || test -s /var/log/messages"
       timeout_ms: 10000
     on_mismatch: fail

@@ -127,6 +127,9 @@ export function buildMcpHost(wiring: McpHostWiring): McpHostDeps {
             cardsRoot: wiring.cardsRoot,
             registry: cards,
             packActions: () => runtime.actionDefs,
+            // → **Is a board pack bound?** ✓ (offline → the check of the actions is
+            //   skipped ✓ — contract §9 rule 5 ✓)
+            hasBoardPack: () => runtime.packId !== undefined,
             ...(wiring.builtinCardIds === undefined ? {} : { builtinIds: wiring.builtinCardIds }),
           },
         }),

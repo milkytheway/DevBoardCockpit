@@ -93,6 +93,14 @@ export class TagRuntime {
   private scheduler: PollScheduler | undefined;
   /** The sampler (a directed read needs it) */
   private sampler: TagSampler | undefined;
+  /**
+   * **The unsubscribe of the store subscription** ✓.
+   *
+   * → `stop()` cancels it ✓ — otherwise every board switch left another
+   *   subscription behind ✓ and every reading was broadcast N times ✓
+   *   (found on 2026-11-21 ✓).
+   */
+  private unsubscribe: (() => void) | undefined;
   private connection: Connection | undefined;
   private state: RuntimeState = 'idle';
   private detail: string | undefined;
@@ -131,63 +139,108 @@ export class TagRuntime {
    * "this board has no board pack" and "it cannot be reached" are two
    * different things, and the user has to see both (contract section 10:
    * "report 'this board has no board pack'").
+   *
+   * ── **The success is the commit** ✓ ──
+   *
+   * → **Nothing is written before the connection is up** ✓ → a failure
+   *   leaves the runtime with **no board** ✓ (not with the board that failed
+   *   ✓) → `connections:list` does not mark a board that is not there as the
+   *   current one ✓ → **the user can pick it again** ✓ (`selectDevice` would
+   *   otherwise say "you are already on that board" ✓ and never retry ✓).
+   * → **The identity, the pack and the state are written together** ✓ — they
+   *   describe one thing ✓ (the board that is being sampled ✓).
+   * → **`stop()` clears them** ✓ → the runtime never claims a board it is
+   *   not talking to ✓ (found on 2026-11-21 ✓).
    */
   async start(profile: ConnectionProfile): Promise<RuntimeStatus> {
     this.stop();
-    this.profileId = profile.id;
-    // Which board this is (the physical board and the connection are two layers — contract `spec/02` section 10.2)
-    this.deviceKey = deviceKeyOf(profile);
     this.detailCode = undefined;
 
-    // 1) Build the connection
-    const log = this.opts.createLog(`tags-${profile.id}`, profile.transport);
-    const connection = await this.opts.createConnection(profile, log);
+    // ── 1) Build the connection ✓ ──
+    // → **Inside the try** ✓: building it can throw ✓ (the machine layer
+    //   throws when a placeholder cannot be repaired ✓) → an exception here
+    //   used to break the whole fallback chain ✓ (the first candidate threw ✓
+    //   → the backoff never ran ✓ → the interface stayed "idle" without a
+    //   reason ✓).
+    let connection: Connection;
     try {
+      const log = this.opts.createLog(`tags-${profile.id}`, profile.transport);
+      connection = await this.opts.createConnection(profile, log);
       await connection.open();
     } catch (err) {
       this.state = 'error';
       this.detail = err instanceof Error ? err.message : String(err);
       // The error code comes with it: telling "is the serial line held by another program" relies on the closed codes, not on the message
       this.detailCode = err instanceof AppError ? err.code : undefined;
+      // → **No identity** ✓ (the board was not reached ✓ → the runtime is
+      //   not on it ✓).
+      this.profileId = undefined;
+      this.deviceKey = undefined;
+      this.pack = undefined;
       return this.status;
     }
-    this.connection = connection;
 
-    // 2) Bind the board pack (the connection names one first, otherwise it is detected by the model)
-    const binding = await resolvePack({
-      connection,
-      boardPackId: profile.board_pack ?? null,
-      packsDir: this.opts.packsDir,
-      userPacksDir: this.opts.userPacksDir,
-    });
+    // ── 2) Bind the board pack (the connection names one first, otherwise it is detected by the model) ──
+    let binding;
+    try {
+      binding = await resolvePack({
+        connection,
+        boardPackId: profile.board_pack ?? null,
+        packsDir: this.opts.packsDir,
+        userPacksDir: this.opts.userPacksDir,
+      });
+    } catch (err) {
+      await connection.close().catch(() => undefined);
+      this.state = 'error';
+      this.detail = err instanceof Error ? err.message : String(err);
+      this.detailCode = err instanceof AppError ? err.code : undefined;
+      this.profileId = undefined;
+      this.deviceKey = undefined;
+      this.pack = undefined;
+      return this.status;
+    }
     if (binding.pack === null) {
       this.state = 'no-pack';
       this.detail = binding.reason;
-      await this.closeConnection();
+      await connection.close().catch(() => undefined);
+      this.profileId = undefined;
+      this.deviceKey = undefined;
+      this.pack = undefined;
       return this.status;
     }
 
-    this.pack = binding.pack;
-
-    // 3) Validate (a pack that does not pass its own validator is not sampled)
+    // ── 3) Validate (a pack that does not pass its own validator is not sampled) ──
     const errs = errorsOf(validatePack(binding.pack));
     if (errs.length > 0) {
       this.state = 'error';
       this.detail = `board pack "${binding.pack.id}" did not pass validation: ${errs
         .map((e) => `rule ${e.rule} · ${e.path}`)
         .join('; ')}`;
-      await this.closeConnection();
+      await connection.close().catch(() => undefined);
+      this.profileId = undefined;
+      this.deviceKey = undefined;
+      this.pack = undefined;
       return this.status;
     }
 
-    // 4) Start the scheduler (every round trip goes through the queue, contract section 1.2.1)
+    // ── 4) **The commit** ✓ — everything that says "this is the board" is written here ✓ ──
+    this.connection = connection;
+    this.profileId = profile.id;
+    // Which board this is (the physical board and the connection are two layers — contract `spec/02` section 10.2)
+    this.deviceKey = deviceKeyOf(profile);
+    this.pack = binding.pack;
+
+    // ── 5) Start the scheduler (every round trip goes through the queue, contract section 1.2.1) ──
     const sampler = new TagSampler(binding.pack, connection, this.store);
     this.sampler = sampler;
     this.scheduler = new PollScheduler(binding.pack, sampler, this.queue);
     this.scheduler.start();
 
-    // The readings leave only through the TagStore (ADR-D22)
-    this.store.subscribe((reading) => {
+    // ── The readings leave only through the TagStore (ADR-D22) ──
+    // → **The unsubscribe is kept** ✓ → `stop()` cancels it ✓ (otherwise
+    //   every board switch left another subscription behind ✓ and every
+    //   reading was broadcast N times ✓ — found on 2026-11-21 ✓).
+    this.unsubscribe = this.store.subscribe((reading) => {
       for (const listener of this.listeners) listener(reading);
     });
 
@@ -346,11 +399,38 @@ export class TagRuntime {
     return this.store.get(tag);
   }
 
-  /** Stop: stop the scheduler, close the connection */
+  /**
+   * Stop: the scheduler, the connection, the subscription, the identity and
+   * the readings.
+   *
+   * → **The identity is cleared** ✓ (the profile ✓ · the device key ✓ · the
+   *   pack ✓) → the runtime never claims a board it is not talking to ✓
+   *   (found on 2026-11-21 ✓: a failed start left the failed board as "the
+   *   current one" ✓ → `connections:list` marked it ✓ → picking it again did
+   *   nothing ✓).
+   * → **The subscription is cancelled** ✓ (otherwise every board switch left
+   *   another one behind ✓ and every reading was broadcast N times ✓).
+   * → **The readings are cleared** ✓ — the readings of the old board must not
+   *   stay in the store ✓ (the interface ✓ · the cards ✓ · the agent ✓ all
+   *   read them ✓ → "one board's information does not show up under another
+   *   board" ✓).
+   */
   stop(): void {
     this.scheduler?.stop();
     this.scheduler = undefined;
     void this.closeConnection();
+    // → **The store is cleared first** ✓ — the listeners have to hear that
+    //   the readings of the old board are gone ✓ (the interface must not
+    //   keep the numbers of a board that is no longer there ✓) → and only
+    //   then the subscription is cancelled ✓ (otherwise the "they are gone"
+    //   would never be said ✓).
+    this.store.clear();
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    this.profileId = undefined;
+    this.deviceKey = undefined;
+    this.pack = undefined;
+    this.sampler = undefined;
     this.state = 'idle';
     this.detail = undefined;
     this.detailCode = undefined;
@@ -497,7 +577,22 @@ export async function startWithRetry(
   for (let round = 0; round <= RETRY_BACKOFF_MS.length; round += 1) {
     for (const candidate of candidates) {
       if (skipped.has(candidate.profileId)) continue;
-      const status = await runtime.start(candidate.profile);
+      // → **A candidate that throws does not break the chain** ✓ — the next
+      //   one is tried ✓ (the runtime does not throw ✓ · but a substitute
+      //   might ✓ · and one broken candidate must not stop the whole
+      //   fallback ✓ — found on 2026-11-21 ✓: the first candidate threw ✓ →
+      //   the backoff never ran ✓ → the interface stayed "idle" without a
+      //   reason ✓).
+      let status: RuntimeStatus;
+      try {
+        status = await runtime.start(candidate.profile);
+      } catch (err) {
+        last = {
+          state: 'error',
+          detail: err instanceof Error ? err.message : String(err),
+        };
+        continue;
+      }
       if (status.state === 'running') return status;
       last = status;
       if (isPortBusy(status.detail ?? '', status.detailCode)) {

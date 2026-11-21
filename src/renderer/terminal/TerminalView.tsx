@@ -112,11 +112,17 @@ export function TerminalView({
     const term = new Terminal({
       fontFamily: readToken('--cockpit-font-mono', 'Consolas, monospace'),
       fontSize: 13,
+      lineHeight: 1.3,
+      letterSpacing: 0,
+      cursorWidth: 2,
+      cursorStyle: 'bar',
+      cursorInactiveStyle: 'outline',
       convertEol: false,
-      cursorBlink: true,
+      cursorBlink: false,
       // The board may emit half a UTF-8 character or a bad byte; the terminal
       // handles that itself and must not crash
       scrollback: 2000,
+      minimumContrastRatio: 4.5,
       // **The resolved value has to be read out**: xterm paints the glyphs with
       // the canvas `fillStyle`, and the canvas **does not resolve CSS
       // variables** — passing 'var(--cockpit-bg)' fails silently.

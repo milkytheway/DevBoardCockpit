@@ -134,8 +134,8 @@ describe('The files page', () => {
       </LocaleContext.Provider>,
     );
     // → **The page no longer waits for a terminal session** ✓ → it says
-    //   that there is no link ✓ (and how the host picks one ✓).
+    //   that no board is connected.
     expect(document.querySelector('.page-empty')).toBeTruthy();
-    expect(screen.getByText(/ADB/)).toBeTruthy();
+    expect(screen.getByText('\u672a\u8fde\u63a5\u5f00\u53d1\u677f')).toBeTruthy();
   });
 });

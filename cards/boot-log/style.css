@@ -1,5 +1,3 @@
-/* The boot log card: one button, where the log lands, what every step said. */
-
 * { box-sizing: border-box; }
 
 html,
@@ -24,111 +22,217 @@ body {
   min-height: 0;
 }
 
+.log__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.log__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--cockpit-text-faint);
+}
+
+.log h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
 .log__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.log__state {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cockpit-text-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log__run {
-  flex: 0 0 auto;
-  height: 26px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 12px;
   border-radius: 7px;
   border: 1px solid color-mix(in oklab, var(--cockpit-accent) 60%, transparent);
   background: color-mix(in oklab, var(--cockpit-accent) 82%, transparent);
   color: var(--cockpit-bg);
   font: inherit;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 650;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .log__run:disabled {
-  opacity: 0.45;
+  opacity: 0.48;
   cursor: default;
 }
 
-.log__note {
-  min-width: 0;
-  color: var(--cockpit-text-faint);
-  font-size: 10.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.log__run:focus-visible,
+.log__icon:focus-visible,
+.log-dialog__tool:focus-visible {
+  outline: 2px solid var(--cockpit-accent);
+  outline-offset: 2px;
 }
 
-.log__where {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.log__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--cockpit-surface) 55%, transparent);
+  color: var(--cockpit-text-dim);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
 }
 
-.log__where-label {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  color: var(--cockpit-text-faint);
-}
-
-.log__where-path {
-  min-width: 0;
-  font-family: var(--cockpit-font-mono);
-  font-size: 10.5px;
+.log__icon:hover:not(:disabled) {
   color: var(--cockpit-text);
+}
+
+.log__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.log__meta,
+.log__path {
+  font-family: var(--cockpit-font-mono);
+  font-size: 9px;
+  color: var(--cockpit-text-faint);
+}
+
+.log__path {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.log__steps {
-  flex: 1 1 auto;
+.log-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  background: color-mix(in oklab, var(--cockpit-bg) 63%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.log-dialog[hidden] {
+  display: none;
+}
+
+.log-dialog__panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--cockpit-border);
+  border-radius: 10px;
+  background: var(--cockpit-bg-elevated);
+}
+
+.log-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+.log-dialog__head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.log-dialog__tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--cockpit-border);
+}
+
+.log__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--cockpit-surface) 55%, transparent);
+}
+
+.log__search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--cockpit-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.log__search:focus-within {
+  border-color: var(--cockpit-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--cockpit-accent) 16%, transparent);
+}
+
+.log-dialog__tool {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-text) 18%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--cockpit-surface) 55%, transparent);
+  color: var(--cockpit-text-dim);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.log__output {
   min-height: 0;
   margin: 0;
-  padding: 6px 0 0;
-  border-top: 1px solid var(--cockpit-border);
-  list-style: none;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.log__step {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--cockpit-text-dim);
-}
-
-.log__step::before {
-  content: '○';
-  font-size: 10px;
-  color: var(--cockpit-text-faint);
-}
-
-.log__step.is-ok::before { content: '✓'; color: var(--cockpit-ok); }
-.log__step.is-warn::before { content: '○'; color: var(--cockpit-warn); }
-.log__step.is-bad::before { content: '✕'; color: var(--cockpit-danger); }
-
-.log__step-id {
+  padding: 10px 12px;
+  overflow: auto;
+  color: var(--cockpit-text);
   font-family: var(--cockpit-font-mono);
   font-size: 10.5px;
-  color: var(--cockpit-text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
-.log__step.is-ok .log__step-id { color: var(--cockpit-ok); }
-.log__step.is-warn .log__step-id { color: var(--cockpit-warn); }
-.log__step.is-bad .log__step-id { color: var(--cockpit-danger); }
-
-.log__step-why {
-  font-size: 10.5px;
-  color: var(--cockpit-danger);
-}
-
-.log__hint {
-  margin: 0;
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--cockpit-text-faint);
+.log__output:focus-visible {
+  outline: 2px solid var(--cockpit-accent);
+  outline-offset: -2px;
 }

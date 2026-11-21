@@ -46,8 +46,8 @@ export interface WizardInput {
   port: string;
   /** The baud rate ✓ (not tried ✓ — the user has decided ✓) */
   baudrate: number;
-  /** What this board is called ✓ (it names the pack ✓) */
-  boardName: string;
+  /** Optional override; otherwise the model reported by the board names the pack. */
+  boardName?: string;
   /** The id of the board ✓ (derived from the name by default ✓) */
   boardId?: string;
   /**
@@ -108,6 +108,12 @@ export function boardIdOf(name: string): string {
     .replace(/\s+/g, '-')
     .replace(/^-+|-+$/g, '');
   return id.length > 0 ? id : 'board';
+}
+
+/** A display name from the first command's model output. */
+export function boardNameFromModel(detail: string, fallback: string): string {
+  const model = detail.replace(/\0/g, '').replace(/\s+/g, ' ').trim();
+  return model.length > 0 ? model : fallback;
 }
 
 /**
@@ -224,10 +230,13 @@ export async function runWizard(
   input: WizardInput,
   deps: WizardDeps,
 ): Promise<WizardResult> {
-  const boardId = input.boardId ?? boardIdOf(input.boardName);
-  const profile = serialProfileOf(input, boardId);
   const transport = input.transport ?? 'serial';
-  const log = deps.createLog(`wizard-${boardId}`, transport);
+  const provisionalName =
+    input.boardName?.trim() ||
+    (transport === 'adb' ? 'adb-board' : `serial-${input.port || 'board'}`);
+  const provisionalId = input.boardId ?? boardIdOf(provisionalName);
+  const profile = serialProfileOf(input, provisionalId);
+  const log = deps.createLog(`wizard-${provisionalId}`, transport);
 
   let connection: Connection;
   try {
@@ -269,6 +278,10 @@ export async function runWizard(
     };
   }
 
+  const boardName =
+    input.boardName?.trim() || boardNameFromModel(truth.detail, provisionalName);
+  const boardId = input.boardId ?? boardIdOf(boardName);
+
   // ── Try the generic meta-operations one by one ✓ ──
   const generic = loadBoardPack(deps.genericPackDir);
   const report = await probePack(generic, connection);
@@ -278,7 +291,7 @@ export async function runWizard(
   const result = instantiatePack({
     source: generic,
     targetId: boardId,
-    targetName: input.boardName,
+    targetName: boardName,
     outcomes: outcomesOf(report.readers),
     connection:
       transport === 'serial'
@@ -287,7 +300,7 @@ export async function runWizard(
   });
 
   // A profile is written first ✓ — otherwise this board cannot be selected in the interface ✓
-  writeProfile(deps.profilesRoot, boardId, input);
+  writeProfile(deps.profilesRoot, boardId, { ...input, boardName });
 
   const { dir } = installInstantiatedPack({
     pack: result.pack,
@@ -321,7 +334,7 @@ export function writeProfile(profilesRoot: string, boardId: string, input: Wizar
   const transport = input.transport ?? 'serial';
   const profile = {
     id: `board-${boardId}`,
-    label: `Board · ${input.boardName}`,
+    label: `Board · ${input.boardName ?? boardId}`,
     transport,
     board_pack: boardId,
     device_key: boardId,

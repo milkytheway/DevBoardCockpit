@@ -1,6 +1,6 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { parseManifest } from '../cards/manifest';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
+import { isSafeCardId, parseManifest } from '../cards/manifest';
 import type { CardRegistry } from '../cards/registry';
 /** The **minimal view** of an action (**only the few fields the installation needs** ✓ — not the whole definition ✓) */
 export interface PackActionView {
@@ -42,6 +42,18 @@ export interface CardToolDeps {
   registry: CardRegistry;
   /** The actions declared by the current board pack (**to judge "does this action exist"** ✓) */
   packActions?: () => PackActionView[];
+  /**
+   * **Is a board pack bound right now?** ✓
+   *
+   * → **No board → the check of the actions is skipped** ✓ (contract §9
+   *   rule 5 ✓: "this check is skipped when the board cannot be reached" ✓)
+   *   → the card is installed ✓ and marked **degraded** ✓ (nothing was
+   *   verified ✓).
+   * → Without this the host cannot tell "the pack does not declare it" ✗ from
+   *   "there is no pack at all" ✗ → **the two answers were the same** ✗
+   *   (found on 2026-11-21 ✓).
+   */
+  hasBoardPack?: () => boolean;
   /** The ids of the built-in cards (**a built-in card may not be deleted** ✓) */
   builtinIds?: string[];
 }
@@ -92,11 +104,70 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
   const cardId = manifest.id;
   const target = join(deps.cardsRoot, cardId);
 
+  // ── **The id must be a safe directory name** ✓ ──
+  //
+  // → The parser already rejects the other shapes ✓ → this is the **second
+  //   lock on the same door** ✓ → the host deletes a whole directory tree
+  //   here ✓ (rmSync recursive ✓) → the check has to be **before** that ✓
+  //   (found on 2026-11-21 ✓: `"id": ".."` deleted the user data directory
+  //   ✓).
+  if (!isSafeCardId(cardId)) {
+    return {
+      ok: false,
+      installed: false,
+      reason: 'invalid',
+      detail: `The card id "${cardId}" is not a name of letters, digits and hyphens`,
+    };
+  }
+
+  // ── **The target must be inside the card root** ✓ ──
+  //
+  // → The id is checked ✓ → this is the **third lock** ✓ → and it does not
+  //   trust the id at all ✓ (it looks at the path that was built ✓).
+  if (!isInside(deps.cardsRoot, target)) {
+    return {
+      ok: false,
+      installed: false,
+      reason: 'invalid',
+      detail: 'The card would be installed outside the card root',
+    };
+  }
+
+  // ── The source must be a directory that is not enormous ✓ ──
+  //
+  // → The path comes from the agent ✓ → it may point at anything on the
+  //   disk ✓ → **copying it is a copy of everything there** ✗ (a denial of
+  //   service ✓ · and the copy lands in the card root ✓ where the agent can
+  //   read it again ✓).
+  const size = measureDirectory(path);
+  if (!size.readable) {
+    return {
+      ok: false,
+      installed: false,
+      reason: 'invalid',
+      detail: 'The card directory cannot be read',
+    };
+  }
+  if (size.tooBig) {
+    return {
+      ok: false,
+      installed: false,
+      reason: 'invalid',
+      detail:
+        `The card is too big to install (${size.files} files, ${size.bytes} bytes — ` +
+        `the limit is ${MAX_CARD_FILES} files and ${MAX_CARD_BYTES} bytes)`,
+    };
+  }
+
   // ── **Do the actions this card wants to write really exist** ✓ (**the board pack has the last word** ✓) ──
   // → **They do not exist → it cannot be installed** ✓ (**installing a card that is half empty is not done** ✓ — contract §2.3 ✓)
+  // → **No board pack at all → the check is skipped** ✓ (contract §9 rule 5 ✓
+  //   — "this check is skipped when the board cannot be reached" ✓) → the
+  //   card is installed ✓ and it is **degraded** ✓ (nothing was verified ✓).
+  const offline = deps.hasBoardPack !== undefined && !deps.hasBoardPack();
   const known = new Set((deps.packActions?.() ?? []).map((a) => a.id));
   const missing = manifest.permissions.write.filter((id) => !known.has(id));
-  if (missing.length > 0) {
+  if (missing.length > 0 && !offline) {
     return {
       ok: false,
       installed: false,
@@ -106,7 +177,76 @@ export function installCard(deps: CardToolDeps, path: string): InstallCardResult
     };
   }
 
-  return doInstall(deps, path, target, cardId);
+  const installed = doInstall(deps, path, target, cardId);
+  if (!installed.ok) return installed;
+  // → **Offline → nothing was verified** ✓ → the card is degraded ✓ (the
+  //   same word as the other "not everything works" case ✓).
+  return { ...installed, degraded: offline, missing: [] };
+}
+
+/**
+ * **Is the target inside the root?** ✓
+ *
+ * → `relative` ✓ — an empty result means the target **is** the root ✓ (that
+ *   is not allowed either ✓ → the check below rejects it ✓).
+ */
+function isInside(root: string, target: string): boolean {
+  const relativePath = relative(root, target);
+  if (relativePath.length === 0) return false;
+  if (isAbsolute(relativePath)) return false;
+  return !relativePath.split(/[\\/]/).includes('..');
+}
+
+/** The limits of a card directory ✓ (a card is a few files ✓) */
+const MAX_CARD_FILES = 2000;
+const MAX_CARD_BYTES = 16 * 1024 * 1024;
+
+/**
+ * How big is the directory? ✓
+ *
+ * → `readable` = it could be walked ✓ · `tooBig` = it is over the limits ✓
+ *   (the walk stops there ✓ — it does not count a hundred gigabytes ✓).
+ */
+function measureDirectory(dir: string): {
+  files: number;
+  bytes: number;
+  readable: boolean;
+  tooBig: boolean;
+} {
+  let files = 0;
+  let bytes = 0;
+  let readable = true;
+  let tooBig = false;
+  const walk = (current: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      readable = false;
+      return;
+    }
+    for (const entry of entries) {
+      if (tooBig || !readable) return;
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+        continue;
+      }
+      files += 1;
+      try {
+        bytes += statSync(path).size;
+      } catch {
+        readable = false;
+        return;
+      }
+      if (files > MAX_CARD_FILES || bytes > MAX_CARD_BYTES) {
+        tooBig = true;
+        return;
+      }
+    }
+  };
+  walk(dir);
+  return { files, bytes, readable, tooBig };
 }
 
 /** **Really installs it** ✓ — copies the directory + reloads ✓ */

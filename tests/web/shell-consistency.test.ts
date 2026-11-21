@@ -40,6 +40,10 @@ describe('Theme · the terminal and the alias layer share one source', () => {
       expect(theme.yellow).toBe(vars['--cockpit-warn']);
       expect(theme.red).toBe(vars['--cockpit-danger']);
       expect(theme.magenta).toBe(vars['--cockpit-accent-2']);
+      expect(theme.brightGreen).toBe(vars['--cockpit-ok']);
+      expect(theme.brightYellow).toBe(vars['--cockpit-warn']);
+      expect(theme.brightRed).toBe(vars['--cockpit-danger']);
+      expect(theme.brightBlue).toBe(vars['--cockpit-accent']);
     }
   });
 

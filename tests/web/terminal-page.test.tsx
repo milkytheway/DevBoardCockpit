@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 /**
  * The fake xterm (the DOM test environment has no canvas ✓).
@@ -41,11 +42,17 @@ const THEME: XtermTheme = {
   black: '#000',
   brightBlack: '#555',
   green: '#0f0',
+  brightGreen: '#0f0',
   yellow: '#ff0',
+  brightYellow: '#ff0',
   red: '#f00',
+  brightRed: '#f00',
   blue: '#00f',
+  brightBlue: '#00f',
   cyan: '#0ff',
+  brightCyan: '#0ff',
   magenta: '#f0f',
+  brightMagenta: '#f0f',
   white: '#fff',
   brightWhite: '#fff',
 };
@@ -108,5 +115,24 @@ describe('the terminal page · the panes', () => {
   it('the empty state says so when there is no session', () => {
     renderPage([], null);
     expect(screen.getByText('还没有终端会话')).toBeTruthy();
+  });
+
+  it('the first render already shows the terminal bar and the pane (no blank first frame)', () => {
+    const html = renderToStaticMarkup(
+      <LocaleContext.Provider value="zh-Hans">
+        <TerminalPage
+          sessions={[{ sessionId: 's-first', profileId: 'board-adb', label: 'Board · ADB' }]}
+          activeSessionId="s-first"
+          xtermTheme={THEME}
+          terminalSubscribe={() => () => () => undefined}
+          onTerminalWrite={() => undefined}
+          onTerminalResize={() => undefined}
+          onSelectSession={() => undefined}
+          onCloseSession={() => undefined}
+        />
+      </LocaleContext.Provider>,
+    );
+    expect(html).toContain('terminal__bar');
+    expect(html).not.toContain('hidden=""');
   });
 });

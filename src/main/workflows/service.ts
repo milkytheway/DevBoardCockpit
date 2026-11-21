@@ -282,6 +282,32 @@ export class WorkflowService {
     startAt: number,
     signal?: AbortSignal,
   ): Promise<void> {
+    // → **The run takes its targets** ✓ (the profiles of its roles ✓) → and
+    //   gives them back when it is done ✓ → the last run that used a
+    //   connection closes it ✓ (the serial line is free again ✓ — found on
+    //   2026-11-21 ✓: the connections of the workflows stayed open for good
+    //   ✓).
+    const targets = [...new Set(Object.values(registered.pack.roles).map((role) => role.profile))];
+    // → **The optional call keeps the substitutes working** ✓ (a substitute
+    //   that does not count the holders ✓ simply keeps its connections open
+    //   ✓ — that is its own business ✓).
+    this.opts.runDeps.targets.acquire?.(targets);
+    try {
+      await this.runSteps(status, registered, inputs, startAt, signal);
+    } finally {
+      await this.opts.runDeps.targets.release?.(targets).catch(() => undefined);
+    }
+  }
+
+  /** The steps of one run ✓ (the body of `execute` ✓ — split out so that the
+   * targets can be given back in one place ✓) */
+  private async runSteps(
+    status: WorkflowRunStatus,
+    registered: { id: string; pack: WorkflowPack },
+    inputs: Record<string, unknown>,
+    startAt: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     try {
       const result: WorkflowRunResult = await runWorkflow(
         registered.pack,
@@ -351,11 +377,26 @@ export class WorkflowService {
     return [...this.order].reverse().map((id) => this.runs.get(id) as WorkflowRunStatus);
   }
 
-  /** Throw away the old run records (the memory must not grow endlessly) */
-
+  /**
+   * Throw away the old run records (the memory must not grow endlessly).
+   *
+   * → **Only the finished runs are thrown away** ✓ — a run that is still
+   *   going has an abort controller ✓ and the interface is still asking about
+   *   it ✓ → deleting it would make `cancel(runId)` say "no such run" ✓ and
+   *   the run would keep going without anyone being able to stop it ✗
+   *   (found on 2026-11-21 ✓).
+   * → **The oldest finished one goes first** ✓ (the order is kept ✓).
+   * → **Nothing is thrown away when everything is still running** ✓ (the
+   *   memory grows for a moment ✓ — that is better than losing a run ✓).
+   */
   private trim(): void {
     while (this.order.length > this.maxRuns) {
-      const oldest = this.order.shift();
+      const at = this.order.findIndex((id) => {
+        const run = this.runs.get(id);
+        return run !== undefined && run.state !== 'running';
+      });
+      if (at < 0) return;
+      const oldest = this.order.splice(at, 1)[0];
       if (oldest !== undefined) {
         this.runs.delete(oldest);
         this.aborts.delete(oldest);

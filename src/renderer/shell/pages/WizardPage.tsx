@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WizardRunResult } from '../../../shared/ipc-contract';
+import type { BoardDetection } from '../../../shared/board-setup';
 import { useT, type Localised } from '../i18n';
-import { AlertIcon, CopyIcon, LinkIcon } from '../Icons';
+import { CopyIcon, LinkIcon, RefreshIcon } from '../Icons';
 
 /**
  * **Attaching a board it has not seen before** (the person takes one step ✓).
@@ -21,13 +22,15 @@ type Phase = 'form' | 'running' | 'done';
 export interface WizardRequest {
   port: string;
   baudrate: number;
-  boardName: string;
+  boardName?: string;
   transport?: Transport;
 }
 
 export interface WizardPageProps {
   /** Injected by the shell so the page stays testable without `window.cockpit`. */
   run: (input: WizardRequest) => Promise<WizardRunResult>;
+  /** Reads the serial ports of this machine; the card sets no path by hand. */
+  detect?: () => Promise<BoardDetection>;
   /** Called once after a pack lands, so the shell can refresh connections/cards. */
   onInstalled?: () => void;
   /** Closes the independent setup surface. */
@@ -48,9 +51,9 @@ const strings = {
   // ── Stage track ──
   stageParameters: { 'zh-Hans': '详情', en: 'Details' },
   stageConnecting: { 'zh-Hans': '连接', en: 'Connect' },
-  stageFirstTruth: { 'zh-Hans': '建立第一个真相', en: 'Establish the first truth' },
-  stageMetaOps: { 'zh-Hans': '试元操作', en: 'Try the meta operations' },
-  stageGenerate: { 'zh-Hans': '生成包', en: 'Generate the pack' },
+  stageFirstTruth: { 'zh-Hans': '建立连接', en: 'Connect' },
+  stageMetaOps: { 'zh-Hans': '检测板卡能力', en: 'Detect capabilities' },
+  stageGenerate: { 'zh-Hans': '生成板卡配置', en: 'Generate board profile' },
   stageResult: { 'zh-Hans': '结果', en: 'Result' },
   stageStopped: { 'zh-Hans': '停在第', en: 'Stopped at step' },
   stageCurrent: { 'zh-Hans': '第', en: 'Step' },
@@ -58,147 +61,104 @@ const strings = {
   stageTail: { 'zh-Hans': ' 步 · ', en: ' · ' },
 
   // ── Waiting for a stage ──
-  metaOpsTitle: { 'zh-Hans': '试 13 个元操作', en: 'Try the 13 meta operations' },
-  firstPackTitle: { 'zh-Hans': '生成初版包', en: 'Generate the first pack' },
+  metaOpsTitle: { 'zh-Hans': '检测板卡能力', en: 'Detect board capabilities' },
+  firstPackTitle: { 'zh-Hans': '生成板卡配置', en: 'Generate the board profile' },
   firstTruthDetail: {
-    'zh-Hans': '正在等待板卡响应',
-    en: 'Waiting for the board',
+    'zh-Hans': '正在建立连接',
+    en: 'Establishing the connection',
   },
   metaOpsDetail: {
     'zh-Hans': '正在检测板卡能力',
-    en: 'Checking board capabilities',
+    en: 'Detecting board capabilities',
   },
   firstPackDetail: {
-    'zh-Hans': '正在生成板型包',
-    en: 'Generating the board pack',
+    'zh-Hans': '正在生成板卡配置',
+    en: 'Generating the board profile',
   },
 
   // ── Result headline ──
   resultOk: { 'zh-Hans': '开发板已添加', en: 'Board added' },
   resultPortUnopenable: { 'zh-Hans': '串口打不开', en: 'The serial port will not open' },
   resultNoReply: { 'zh-Hans': '板子没说话', en: 'The board did not answer' },
-  resultConnectionDead: { 'zh-Hans': '那条连接一次都没通', en: 'That connection never came up' },
+  resultConnectionDead: { 'zh-Hans': '连接未建立', en: 'Connection not established' },
 
   // ── Failure hints ──
   hintPortExclusive: {
-    'zh-Hans': '最常见的情况不是口选错，是有别的程序正独占着那个口（串口助手、终端、另一个 IDE）。',
-    en: 'Most of the time the port is not the wrong one — another program is holding it exclusively (a serial assistant, a terminal, another IDE).',
+    'zh-Hans': '关闭占用串口的程序',
+    en: 'Close the program holding the serial port',
   },
   hintPortCloseIt: {
-    'zh-Hans': '关掉占用它的程序，或者把那个程序里的串口断开，再重新试一次。',
-    en: 'Close the program that holds it, or disconnect the serial port inside that program, then try again.',
+    'zh-Hans': '重新建立连接',
+    en: 'Connect again',
   },
   hintPortConfirmDebug: {
-    'zh-Hans': '确认选的确实是板子的调试口，而不是另一个 USB 转串口。',
-    en: 'Make sure the port really is the debug port of the board, not another USB-to-serial adapter.',
+    'zh-Hans': '选择调试串口',
+    en: 'Choose the debug serial port',
   },
   hintBaudFirst: {
-    'zh-Hans': '先把波特率换成 1500000 —— 这块板要的就是这个速率，其他速率它不会回话。',
-    en: 'Set the baud rate to 1500000 first — this board needs exactly that rate, at any other rate it will not answer.',
+    'zh-Hans': '波特率 1500000',
+    en: 'Baud rate 1500000',
   },
   hintConfirmDebugPort: {
-    'zh-Hans': '确认串口号是板子的调试口，不是普通 USB 口或另一个设备的串口。',
-    en: 'Check that the port is the debug port of the board, not a plain USB port or the serial port of another device.',
+    'zh-Hans': '选择调试串口',
+    en: 'Choose the debug serial port',
   },
   hintCloseAssistant: {
-    'zh-Hans': '如果你刚打开过串口助手，先关掉它，确认回包没有被别的程序吃掉。',
-    en: 'If you just opened a serial assistant, close it and make sure another program is not swallowing the replies.',
+    'zh-Hans': '关闭串口助手',
+    en: 'Close the serial assistant',
   },
   hintNeedsPower: {
-    'zh-Hans': '板子要上电并停在 Linux 里；只插了 USB、系统没起来时，它不会说话。',
-    en: 'The board has to be powered on and sitting in Linux; with only USB plugged in and the system not up, it does not speak.',
+    'zh-Hans': '开发板上电',
+    en: 'Power on the board',
   },
   hintCheckLink: {
-    'zh-Hans': '先查连接本身：线有没有插稳、板子有没有上电、串口号在设备管理器里还在不在。',
-    en: 'Check the connection itself first: is the cable seated, is the board powered, does the port still show up in Device Manager.',
+    'zh-Hans': '检查数据线和供电',
+    en: 'Check the cable and power',
   },
   hintNotMetaOps: {
-    'zh-Hans': '先别怀疑元操作 —— 一条命令都没跑通时，问题一定在更下面。',
-    en: 'Do not suspect the meta operations yet — when not one command runs, the problem is further down.',
+    'zh-Hans': '检查物理连接',
+    en: 'Check the physical connection',
   },
   hintChangeCable: {
-    'zh-Hans': '换一条能确认可用的数据线，或者换一个 USB 口，再重新试一次。',
-    en: 'Try a data cable you know works, or a different USB port, and try again.',
+    'zh-Hans': '更换数据线或 USB 口',
+    en: 'Change the cable or USB port',
   },
 
   // ── Form ──
-  boardDetails: { 'zh-Hans': '开发板', en: 'Board' },
+  boardDetails: { 'zh-Hans': '自动识别', en: 'Auto detection' },
   connectionDetails: { 'zh-Hans': '连接', en: 'Connection' },
-  howToConnect: { 'zh-Hans': '方式', en: 'Method' },
+  howToConnect: { 'zh-Hans': '接口', en: 'Interface' },
   channelGroup: { 'zh-Hans': '连接通道', en: 'Connection channel' },
   serial: { 'zh-Hans': '串口', en: 'Serial port' },
-  serialChannelNote: {
-    'zh-Hans': '板子插着调试串口时选这个',
-    en: 'Pick this when the board sits on its debug serial port',
-  },
-  adbChannelNote: {
-    'zh-Hans': '板子已经能用 adb 连上时选这个',
-    en: 'Pick this when the board already answers over adb',
-  },
-  adbNoPort: {
-    'zh-Hans': 'ADB 不需要串口；这一项保持原样即可',
-    en: 'ADB needs no serial port; leave this field as it is',
-  },
-  portManual: { 'zh-Hans': '手动填，例如 COM3', en: 'Type it in, for example COM3' },
+  serialDetecting: { 'zh-Hans': '正在查找串口…', en: 'Finding serial ports…' },
+  serialNone: { 'zh-Hans': '未发现串口', en: 'No serial port found' },
+  serialAnswers: { 'zh-Hans': '有响应', en: 'Responds' },
+  refreshPorts: { 'zh-Hans': '刷新串口', en: 'Refresh serial ports' },
   baudRate: { 'zh-Hans': '波特率', en: 'Baud rate' },
-  thisBoardRate: { 'zh-Hans': '这块板是这个', en: 'this is the one for this board' },
-  adbNoBaud: {
-    'zh-Hans': 'ADB 不经过串口，这个值用不上',
-    en: 'ADB does not go through the serial port, so this value is unused',
-  },
-  baudPositive: {
-    'zh-Hans': '填一个正整数，例如 1500000',
-    en: 'Enter a positive integer, for example 1500000',
-  },
-  baudManual: {
-    'zh-Hans': '这块板是 1500000；其他板子按手册来',
-    en: 'This board is 1500000; other boards follow their manual',
-  },
-  boardName: { 'zh-Hans': '板子名字', en: 'Board name' },
-  boardNamePlaceholder: { 'zh-Hans': '我的 RK3588 板', en: 'My RK3588 board' },
-  boardNameHint: {
-    'zh-Hans': '之后它会成为包名和板的 id，中文也可以用；名字只影响叫法，不影响探到的能力。',
-    en: 'It becomes the pack name and the board id afterwards; Chinese is fine. The name only affects what it is called, not the capabilities that are probed.',
-  },
-  start: { 'zh-Hans': '开始接板', en: 'Connect board' },
-  starting: { 'zh-Hans': '正在接板…', en: 'Setting up…' },
-  oneCallNote: {
-    'zh-Hans': '一次调用跑完全程；中途不用再点，宿主的超时与重试都在里面。',
-    en: 'One call runs the whole way; there is nothing to click on the way, the host timeouts and retries are inside it.',
-  },
-  noProgressNote: {
-    'zh-Hans': '宿主一次调用跑完全程，不回传进度；这里按耗时说它正在做什么，不编百分比。',
-    en: 'The host runs the whole way in one call and reports no progress; this screen says what it is doing by elapsed time and invents no percentage.',
-  },
+  start: { 'zh-Hans': '建立连接', en: 'Connect' },
+  starting: { 'zh-Hans': '正在连接…', en: 'Connecting…' },
 
   // ── Failure and retry ──
   didNotStart: { 'zh-Hans': '没跑起来', en: 'Did not start' },
   wizardNotFinished: { 'zh-Hans': '向导没跑完', en: 'The wizard did not finish' },
   retry: { 'zh-Hans': '重新试一次', en: 'Try again' },
   adjust: { 'zh-Hans': '改参数', en: 'Change parameters' },
-  whatToCheck: { 'zh-Hans': '下一步查什么', en: 'What to check next' },
+  whatToCheck: { 'zh-Hans': '检查', en: 'Check' },
 
   // ── Success ──
   done: { 'zh-Hans': '成了', en: 'Done' },
   countAvailable: { 'zh-Hans': '个可用', en: 'available' },
   countUnavailable: { 'zh-Hans': '个不可用', en: 'unavailable' },
-  unavailableNote: {
-    'zh-Hans': '不可用能力已省略',
-    en: 'Unavailable capabilities omitted',
-  },
-  packLandedAt: { 'zh-Hans': '包落在', en: 'Pack landed at' },
+  initialPack: { 'zh-Hans': '初版', en: 'Initial' },
+  packLandedAt: { 'zh-Hans': '配置目录', en: 'Profile directory' },
   copy: { 'zh-Hans': '复制', en: 'Copy' },
   copied: { 'zh-Hans': '已复制', en: 'Copied' },
   copyFailed: { 'zh-Hans': '复制失败', en: 'Copy failed' },
   noPackLocation: {
-    'zh-Hans': '宿主没有回报包的位置；连接已经建好，可以从顶栏切过去。',
-    en: 'The host did not report where the pack landed; the connection is up, so you can switch to it from the top bar.',
+    'zh-Hans': '安装目录未返回',
+    en: 'Install directory unavailable',
   },
   boardIdLabel: { 'zh-Hans': '板的 id ·', en: 'Board id ·' },
-  caveat: {
-    'zh-Hans': '这是自动探出来的初版包；名称与语义可稍后校准。',
-    en: 'This is an auto-detected first pack; names and semantics can be refined later.',
-  },
   anotherBoard: { 'zh-Hans': '再配一块', en: 'Add another' },
   close: { 'zh-Hans': '完成', en: 'Done' },
 } satisfies Record<string, Localised>;
@@ -265,13 +225,9 @@ function detailOf(message: string): string {
  * The host's own hints come as plain text, so they are carried in both
  * branches unchanged; the fallback hints below are localised.
  */
-function hintsFor(kind: WizardRunResult['kind'], hints: readonly string[]): Localised[] {
+function hintsFor(kind: WizardRunResult['kind']): Localised[] {
   const seen = new Set<string>();
-  const merged: Localised[] = [
-    ...hints.map((hint) => ({ 'zh-Hans': plain(hint), en: plain(hint) })),
-    ...FALLBACK_HINTS[kind],
-  ];
-  return merged.filter((hint) => {
+  return FALLBACK_HINTS[kind].filter((hint) => {
     const text = hint['zh-Hans'];
     if (text.length === 0 || seen.has(text)) return false;
     seen.add(text);
@@ -310,12 +266,20 @@ function waitDetail(
   };
 }
 
-export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.Element {
+export function WizardPage({
+  run,
+  detect,
+  onInstalled,
+  onClose,
+}: WizardPageProps): JSX.Element {
   const t = useT();
   const [transport, setTransport] = useState<Transport>('serial');
   const [port, setPort] = useState('');
+  const [ports, setPorts] = useState<BoardDetection['ports']>([]);
+  const [detectedModel, setDetectedModel] = useState<string | null>(null);
+  const [detectBusy, setDetectBusy] = useState(false);
+  const [detectError, setDetectError] = useState(false);
   const [baud, setBaud] = useState('1500000');
-  const [boardName, setBoardName] = useState('');
   const [phase, setPhase] = useState<Phase>('form');
   const [result, setResult] = useState<WizardRunResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -330,10 +294,31 @@ export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.
     return () => window.clearInterval(timer);
   }, [phase]);
 
+  const loadPorts = (): void => {
+    if (detect === undefined || detectBusy) return;
+    setDetectBusy(true);
+    setDetectError(false);
+    void detect()
+      .then((found) => {
+        setPorts(found.ports);
+        setDetectedModel(found.model);
+        setPort((current) => {
+          if (found.ports.some((candidate) => candidate.path === current)) return current;
+          return found.ports.find((candidate) => candidate.answered)?.path ?? found.ports[0]?.path ?? '';
+        });
+      })
+      .catch(() => setDetectError(true))
+      .finally(() => setDetectBusy(false));
+  };
+
+  useEffect(() => {
+    loadPorts();
+  }, []);
+
   const baudNumber = Number(baud);
   const baudOk = Number.isInteger(baudNumber) && baudNumber > 0;
   const portOk = transport === 'adb' || port.trim().length > 0;
-  const canRun = boardName.trim().length > 0 && portOk && baudOk;
+  const canRun = portOk && baudOk;
   const elapsedMs = Math.max(0, now - startedAt.current);
   const waiting = waitDetail(elapsedMs, t);
 
@@ -370,7 +355,6 @@ export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.
       transport,
       port: transport === 'serial' ? port.trim() : '',
       baudrate: transport === 'serial' ? baudNumber : 0,
-      boardName: boardName.trim(),
     };
 
     void run(input)
@@ -404,7 +388,6 @@ export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.
     setTransport('serial');
     setPort('');
     setBaud('1500000');
-    setBoardName('');
   };
 
   const copyPath = (path: string): void => {
@@ -485,20 +468,10 @@ export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.
                 <span className="wizard-section-head__index">01</span>
                 <h2>{t(strings.boardDetails)}</h2>
               </header>
-              <label className="wizard-field">
-                <span className="wizard-label">{t(strings.boardName)}</span>
-                <input
-                  name="boardName"
-                  aria-label={t(strings.boardName)}
-                  value={boardName}
-                  placeholder={t(strings.boardNamePlaceholder)}
-                  disabled={phase === 'running'}
-                  autoComplete="off"
-                  spellCheck={false}
-                  data-wizard-autofocus
-                  onChange={(event) => setBoardName(event.target.value)}
-                />
-              </label>
+              <div className="wizard-detected">
+                <span className="wizard-label">{t(strings.boardDetails)}</span>
+                <strong>{detectedModel ?? '—'}</strong>
+              </div>
             </section>
 
             <section className="wizard-form__section">
@@ -537,42 +510,60 @@ export function WizardPage({ run, onInstalled, onClose }: WizardPageProps): JSX.
               <div className="wizard-fields">
                 <label className="wizard-field">
                   <span className="wizard-label">{t(strings.serial)}</span>
-                  <input
+                  <span className="wizard-select-row">
+                  <select
                     name="port"
                     aria-label={t(strings.serial)}
                     value={port}
-                    placeholder="COM3"
                     disabled={transport === 'adb' || phase === 'running'}
-                    autoComplete="off"
-                    spellCheck={false}
                     onChange={(event) => setPort(event.target.value)}
-                  />
+                    data-wizard-autofocus
+                  >
+                    <option value="">
+                      {detectBusy
+                        ? t(strings.serialDetecting)
+                        : ports.length === 0
+                          ? t(strings.serialNone)
+                          : '—'}
+                    </option>
+                    {ports.map((candidate) => (
+                      <option key={candidate.path} value={candidate.path}>
+                        {candidate.path}
+                        {candidate.answered ? ` · ${t(strings.serialAnswers)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--quiet"
+                    aria-label={t(strings.refreshPorts)}
+                    title={t(strings.refreshPorts)}
+                    disabled={detectBusy || phase === 'running'}
+                    onClick={loadPorts}
+                  >
+                    <RefreshIcon size={14} />
+                  </button>
+                  </span>
+                  {detectError ? (
+                    <span className="wizard-hint is-warn">{t(strings.serialNone)}</span>
+                  ) : null}
                 </label>
 
                 <label className="wizard-field">
                   <span className="wizard-label">{t(strings.baudRate)}</span>
-                  <input
+                  <select
                     name="baudrate"
                     aria-label={t(strings.baudRate)}
                     value={baud}
-                    inputMode="numeric"
-                    list="wizard-baudrates"
                     disabled={transport === 'adb' || phase === 'running'}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-invalid={baud.length > 0 && !baudOk}
-                    onChange={(event) => setBaud(event.target.value.replace(/[^\d]/g, ''))}
-                  />
-                  <datalist id="wizard-baudrates">
+                    onChange={(event) => setBaud(event.target.value)}
+                  >
                     {BAUD_RATES.map((rate) => (
                       <option key={rate} value={String(rate)}>
-                        {rate === 1500000 ? `${rate} · ${t(strings.thisBoardRate)}` : String(rate)}
+                        {String(rate)}
                       </option>
                     ))}
-                  </datalist>
-                  {baud.length > 0 && !baudOk ? (
-                    <span className="wizard-hint is-warn">{t(strings.baudPositive)}</span>
-                  ) : null}
+                  </select>
                 </label>
               </div>
             </section>
@@ -640,7 +631,7 @@ function WizardOutcome({
 }): JSX.Element {
   const t = useT();
   if (!result.ok) {
-    const hints = hintsFor(result.kind, result.hints);
+    const hints = hintsFor(result.kind);
     const detail = detailOf(result.message);
     return (
       <div className="wizard-result wizard-result--failed" role="status">
@@ -685,13 +676,6 @@ function WizardOutcome({
         {t(strings.countUnavailable)}
       </p>
 
-      {result.redCount > 0 ? (
-        <p className="wizard-result__warn">
-          <AlertIcon size={13} />
-          {t(strings.unavailableNote)}
-        </p>
-      ) : null}
-
       {result.installedDir !== undefined ? (
         <div className="wizard-installed">
           <span className="wizard-installed__label">{t(strings.packLandedAt)}</span>
@@ -717,14 +701,10 @@ function WizardOutcome({
 
       {result.boardId !== undefined ? (
         <p className="wizard-result__id">
+          <span className="state-chip state-chip--muted">{t(strings.initialPack)}</span>
           {t(strings.boardIdLabel)} {result.boardId}
         </p>
       ) : null}
-
-      <p className="wizard-caveat">
-        <AlertIcon size={13} />
-        <span>{t(strings.caveat)}</span>
-      </p>
 
       <div className="wizard-result__actions">
         {onClose ? (

@@ -143,6 +143,24 @@ function asString(ctx: Ctx, value: unknown, path: string): string {
   return value;
 }
 
+/**
+ * **The shape of a card id** ✓ — a **closed** one ✓.
+ *
+ * → The id is **the name of the card's directory** ✓ → the host builds a
+ *   path from it ✓ → an id that may carry ".." ✓ or a separator ✓ is
+ *   **a deletion outside the card root** ✓ (found on 2026-11-21 ✓:
+ *   `install_card` deleted the user data directory ✓ because the manifest
+ *   said `"id": ".."` ✓).
+ * → So the id is **a name** ✓ — lowercase ✓ · digits ✓ · hyphens ✓ — and
+ *   nothing else ✓ (contract §9 rule 2 ✓).
+ */
+export const CARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/** Is this id a safe directory name? ✓ */
+export function isSafeCardId(id: string): boolean {
+  return CARD_ID_PATTERN.test(id);
+}
+
 function asNumber(ctx: Ctx, value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     fail(ctx, `${path} must be a number`, { path });
@@ -239,10 +257,21 @@ export function parseManifest(raw: unknown, source: string): CardManifest {
   const kind = asString(ctx, obj['kind'], 'kind');
   if (kind !== 'Card') fail(ctx, `kind must be Card (got ${kind})`, { path: 'kind' });
 
+  // → **The id is a directory name** ✓ → it has to be a safe one ✓ (the
+  //   host deletes and writes paths built from it ✓).
+  const id = asString(ctx, obj['id'], 'id');
+  if (!isSafeCardId(id)) {
+    fail(
+      ctx,
+      `the id must be a name of letters, digits and hyphens (${CARD_ID_PATTERN.source}) — it is the name of a directory ✓`,
+      { path: 'id' },
+    );
+  }
+
   const manifest: CardManifest = {
     apiVersion: asString(ctx, obj['apiVersion'], 'apiVersion'),
     kind: 'Card',
-    id: asString(ctx, obj['id'], 'id'),
+    id,
     name: asString(ctx, obj['name'], 'name'),
     version: asString(ctx, obj['version'], 'version'),
     entry: asString(ctx, obj['entry'], 'entry'),

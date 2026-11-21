@@ -32,20 +32,16 @@ const strings = {
   searchPlaceholder: { 'zh-Hans': '按卡片 id 过滤…', en: 'Filter by card id…' },
   notConnected: { 'zh-Hans': '未连接', en: 'Not connected' },
   emptyNoCards: {
-    'zh-Hans': '还没有卡片。把卡片文件夹放进用户卡片目录，热插拔会自己发现它。',
-    en: 'No cards yet. Put a card folder into the user card directory and the hot plug finds it on its own.',
+    'zh-Hans': '还没有卡片',
+    en: 'No cards yet',
   },
-  emptyNoMatch: { 'zh-Hans': '没有匹配的卡片。', en: 'No card matches.' },
+  emptyNoMatch: { 'zh-Hans': '没有匹配的卡片', en: 'No card matches' },
 
   // ── Details ──
   degradedInvalid: { 'zh-Hans': '降级 · 校验错误', en: 'Degraded · validation error' },
   validationPassed: { 'zh-Hans': '校验通过', en: 'Validation passed' },
-  storageByHost: { 'zh-Hans': '宿主存储', en: 'Host storage' },
+  storageByHost: { 'zh-Hans': '本地存储', en: 'Local storage' },
   connection: { 'zh-Hans': '连接', en: 'Connection' },
-  notConnectedV1: {
-    'zh-Hans': '未连接（v1 单连接）',
-    en: 'Not connected (v1 has a single connection)',
-  },
   instance: { 'zh-Hans': '实例', en: 'Instance' },
   entry: { 'zh-Hans': '入口', en: 'Entry' },
   discoveredBy: { 'zh-Hans': '发现方式', en: 'Discovered by' },
@@ -67,10 +63,6 @@ const strings = {
   openDetail: { 'zh-Hans': '打开详情', en: 'Open details' },
 
   // ── Empty details ──
-  blankBody: {
-    'zh-Hans': '从用户卡片目录或内置目录扫描。',
-    en: 'Scanned from the user and built-in card directories.',
-  },
   installCards: { 'zh-Hans': '安装卡片 · 目录扫描', en: 'Install cards · directory scan' },
 } satisfies Record<string, Localised>;
 
@@ -226,14 +218,6 @@ export function LibraryPage({
               </header>
 
               <div className={`library__preview tone-${cardLook(selected.cardId).tone}`}>
-                <div className="library__preview-bar">
-                  <span className="live-dot live-dot--ok" />
-                  <span className="mono ellipsis" title={selected.url}>
-                    cockpit://card/{shortId(selected.instanceId)}/…
-                  </span>
-                  <span className="spacer" />
-                  <span className="dim">allow-scripts</span>
-                </div>
                 <div className="library__preview-body">
                   <span className="library__preview-icon" aria-hidden>
                     {lookIcon(selected.cardId, 40)}
@@ -242,16 +226,11 @@ export function LibraryPage({
                     <h3>{t(cardLook(selected.cardId).note)}</h3>
                   </div>
                 </div>
-                <div className="library__preview-pills">
-                  <span>opaque origin</span>
-                  <span>CSP · connect-src none</span>
-                  <span>{t(strings.storageByHost)}</span>
-                </div>
               </div>
 
               <dl className="kv kv--compact library__meta">
                 <dt>{t(strings.connection)}</dt>
-                <dd className="mono">{selected.connectionId ?? t(strings.notConnectedV1)}</dd>
+                <dd className="mono">{selected.connectionId ?? t(strings.notConnected)}</dd>
                 <dt>{t(strings.instance)}</dt>
                 <dd className="mono">{shortId(selected.instanceId)}</dd>
                 <dt>{t(strings.entry)}</dt>
@@ -291,7 +270,6 @@ export function LibraryPage({
             <div className="library__blank">
               <LayersIcon size={28} />
               <h2>{t(strings.title)}</h2>
-              <p>{t(strings.blankBody)}</p>
               <button type="button" className="btn btn--primary" disabled>
                 {t(strings.installCards)}
               </button>

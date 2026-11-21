@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectionCapabilities } from '../../shared/ipc-contract';
 import { useT, type Localised } from '../shell/i18n';
 
@@ -29,20 +29,16 @@ import { useT, type Localised } from '../shell/i18n';
 /** The wording of the browser, in both languages. */
 const strings = {
   noFileChannel: {
-    'zh-Hans': '这个连接不能传文件（串口没有文件通道）',
-    en: 'This connection cannot carry files (a serial port has no file channel)',
+    'zh-Hans': '文件传输不可用',
+    en: 'File transfer unavailable',
   },
   local: { 'zh-Hans': '本地', en: 'Local' },
-  chooseFile: { 'zh-Hans': '选文件（可拖进来）', en: 'Choose a file (or drop one here)' },
+  chooseFile: { 'zh-Hans': '选择文件', en: 'Choose file' },
   noneSelected: { 'zh-Hans': '未选择', en: 'Nothing selected' },
-  upload: { 'zh-Hans': '上传到远端', en: 'Upload to the remote' },
-  download: { 'zh-Hans': '从远端下载', en: 'Download from the remote' },
+  upload: { 'zh-Hans': '上传', en: 'Upload' },
+  download: { 'zh-Hans': '下载', en: 'Download' },
   up: { 'zh-Hans': '上一级', en: 'One level up' },
   refresh: { 'zh-Hans': '刷新', en: 'Refresh' },
-  refreshHint: {
-    'zh-Hans': '点「刷新」看远端目录',
-    en: 'Press "Refresh" to list the remote directory',
-  },
 } satisfies Record<string, Localised>;
 
 /** One entry of a remote directory (the same shape as `FileEntry` in `shared/ipc-contract`) */
@@ -146,6 +142,10 @@ export function FileBrowser({
   const refresh = useCallback(() => {
     void load(currentPath);
   }, [load, currentPath]);
+
+  useEffect(() => {
+    void load(remotePath);
+  }, [connectionId]);
 
   /** Enter a directory */
   const enter = useCallback(
@@ -298,9 +298,6 @@ export function FileBrowser({
               </li>
             ))}
           </ul>
-          {remote.length === 0 && !busy ? (
-            <p className="cockpit-tree__hint">{t(strings.refreshHint)}</p>
-          ) : null}
         </div>
       </div>
 

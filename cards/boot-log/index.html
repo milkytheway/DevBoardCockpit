@@ -7,20 +7,40 @@
   </head>
   <body>
     <main class="log">
-      <div class="log__actions">
-        <button id="run" class="log__run" type="button">获取启动日志</button>
-        <span id="note" class="log__note">就绪</span>
+      <header class="log__head">
+        <div>
+          <span class="log__eyebrow">KERNEL</span>
+          <h1 id="log-title">启动日志</h1>
+        </div>
+        <div class="log__actions">
+          <button id="refresh" class="log__icon" type="button" aria-label="重新获取" title="重新获取" hidden>↻</button>
+          <button id="run" class="log__run" type="button">获取启动日志</button>
+        </div>
+      </header>
+      <div class="log__summary">
+        <span id="note" class="log__state">就绪</span>
+        <span id="meta" class="log__meta"></span>
       </div>
-      <div class="log__where">
-        <span class="log__where-label">存到板子上的位置</span>
-        <code id="path" class="log__where-path">/userdata/boot.log</code>
-      </div>
-      <ol id="steps" class="log__steps"></ol>
-      <p class="log__hint">
-        日志是内核开机以来打的消息（U-Boot 那段只在串口滚动屏里，断电就没了）。
-        板子上的文件用「文件」页取回来 —— 那一页自己挑通道，不用先开终端。
-      </p>
+      <code id="host-path" class="log__path" title="the moment it was captured"></code>
     </main>
+
+    <section id="log-dialog" class="log-dialog" role="dialog" aria-modal="true" aria-labelledby="log-dialog-title" hidden>
+      <div class="log-dialog__panel">
+        <header class="log-dialog__head">
+          <h2 id="log-dialog-title">启动日志</h2>
+          <button id="close" class="log__icon" type="button" aria-label="关闭" title="关闭">×</button>
+        </header>
+        <div class="log-dialog__tools">
+          <label class="log__search">
+            <span aria-hidden>⌕</span>
+            <input id="search" type="search" placeholder="筛选日志" aria-label="筛选日志" />
+          </label>
+          <button id="select-all" class="log-dialog__tool" type="button">全选</button>
+          <button id="copy" class="log-dialog__tool" type="button">复制</button>
+        </div>
+        <pre id="log-output" class="log__output" tabindex="0" aria-label="启动日志内容">暂无日志</pre>
+      </div>
+    </section>
     <script type="module" src="./card.js"></script>
   </body>
 </html>

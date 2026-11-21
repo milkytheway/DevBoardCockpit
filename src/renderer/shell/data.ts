@@ -222,10 +222,27 @@ export function useLayout(reportError: ReportError): {
   removeCard: (card: CardInstanceInfo) => void;
   setUnits: (units: LayoutUnit[]) => void;
   setDensity: (density: ViewDensity) => void;
+  /** Reads the layout again ✓ (the board changed ✓ → the cells were re-bound ✓) */
+  refresh: () => void;
 } {
   const [layout, setLayout] = useState<LayoutState | null>(null);
   const layoutRef = useRef<LayoutState | null>(null);
   const report = useLatest(reportError);
+
+  /** Reads the layout again ✓ (the board changed ✓ → the cells were re-bound ✓) */
+  const refresh = useCallback(() => {
+    const api = window.cockpit;
+    if (!api) return;
+    void api
+      .layoutGet()
+      .then((loaded) => {
+        layoutRef.current = loaded;
+        setLayout(loaded);
+      })
+      .catch((cause: unknown) =>
+        report.current(cause instanceof Error ? cause.message : String(cause)),
+      );
+  }, [report]);
 
   useEffect(() => {
     const api = window.cockpit;
@@ -320,6 +337,7 @@ export function useLayout(reportError: ReportError): {
     removeCard,
     setUnits,
     setDensity,
+    refresh,
   };
 }
 

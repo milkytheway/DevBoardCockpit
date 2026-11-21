@@ -471,7 +471,7 @@ export interface CockpitApi {
   wizardRun(input: {
     port: string;
     baudrate: number;
-    boardName: string;
+    boardName?: string;
     /** Which transport to use — the default is serial */
     transport?: 'serial' | 'adb';
   }): Promise<WizardRunResult>;

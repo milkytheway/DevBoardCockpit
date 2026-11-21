@@ -90,6 +90,7 @@ export class TerminalManager {
   private readonly dataCbs: ((sessionId: string, chunk: string) => void)[] = [];
   private readonly exitCbs: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private readonly logs = new Map<string, SessionLog>();
+  private readonly promptTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly opts: TerminalManagerOptions) {}
 
@@ -181,7 +182,17 @@ export class TerminalManager {
       // for the after-the-fact review.
       log.write(chunk);
       for (const cb of this.dataCbs) cb(id, chunk);
+      const current = this.sessions.get(id);
+      if (current !== undefined && current.editor.waitingForPrompt) {
+        this.schedulePrompt(id, current);
+      }
     });
+
+    // The serial probe consumes its first reply before this subscription
+    // exists. One harmless bare line asks the console for a fresh prompt.
+    if (connection.transport === 'serial' && pty) {
+      session.write('\r');
+    }
 
     // → **What the host has to say about the link** ✓ ("the port opened but
     //   the board said nothing" ✓) → it is written into the terminal ✓
@@ -216,8 +227,8 @@ export class TerminalManager {
     this.opts.onConnectionOpen?.(id, connection);
 
     // The first prompt of pipe mode
-    if (!pty && prompt.length > 0) {
-      for (const cb of this.dataCbs) cb(id, prompt);
+    if (connection.transport === 'adb' && !pty) {
+      for (const cb of this.dataCbs) cb(id, editor.initialPrompt());
     }
     return { sessionId: id };
   }
@@ -243,6 +254,7 @@ export class TerminalManager {
     if (edit.echo.length > 0) {
       for (const cb of this.dataCbs) cb(sessionId, edit.echo);
     }
+    if (live.editor.waitingForPrompt) this.schedulePrompt(sessionId, live);
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
@@ -277,6 +289,9 @@ export class TerminalManager {
   ): Promise<void> {
     const live = this.sessions.get(sessionId);
     if (!live) return;
+    const promptTimer = this.promptTimers.get(sessionId);
+    if (promptTimer !== undefined) clearTimeout(promptTimer);
+    this.promptTimers.delete(sessionId);
     // The session is closed first: SSH flushes out the half character that
     // was in the decoder — it has to land before `=== session closed ===`.
     live.session.close();
@@ -319,6 +334,22 @@ export class TerminalManager {
 
   onExit(cb: (sessionId: string, exitCode: number | null) => void): void {
     this.exitCbs.push(cb);
+  }
+
+  /**
+   * Pipe mode has no remote prompt. Draw it once the reply has gone quiet,
+   * rather than before the output arrives.
+   */
+  private schedulePrompt(sessionId: string, live: LiveSession): void {
+    const previous = this.promptTimers.get(sessionId);
+    if (previous !== undefined) clearTimeout(previous);
+    const timer = setTimeout(() => {
+      this.promptTimers.delete(sessionId);
+      const prompt = live.editor.promptWhenIdle();
+      if (prompt.length === 0) return;
+      for (const cb of this.dataCbs) cb(sessionId, prompt);
+    }, 80);
+    this.promptTimers.set(sessionId, timer);
   }
 
   private require(sessionId: string): LiveSession {

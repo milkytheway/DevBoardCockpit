@@ -67,4 +67,26 @@ export class LayoutStore {
     // **The rename is atomic** (within the same filesystem)
     renameSync(tmp, file);
   }
+
+  /**
+   * **The board changed** ✓ → the cells follow ✓.
+   *
+   * → A cell is bound to `(cardId, connectionId)` ✓ → the instances of the
+   *   new board carry the **new** connection id ✓ → the cells of the old
+   *   one would not match any more ✓ → **the cards would disappear from the
+   *   main area** ✗ (found on 2026-11-21 ✓).
+   * → So the cells are **re-bound** ✓ — the position of a card is a fact
+   *   about the card ✓, not about the board it happened to be shown on ✓.
+   */
+  rebind(from: string | null, to: string | null): void {
+    const state = this.get();
+    let changed = false;
+    const units = state.units.map((unit) => {
+      if (unit.connectionId !== from) return unit;
+      changed = true;
+      return { ...unit, connectionId: to };
+    });
+    if (!changed) return;
+    this.set({ ...state, units, updatedAt: this.deps.now() });
+  }
 }

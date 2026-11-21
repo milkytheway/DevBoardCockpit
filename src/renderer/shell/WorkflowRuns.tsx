@@ -41,8 +41,8 @@ const strings = {
   finishing: { 'zh-Hans': '收尾', en: 'Finishing' },
   stop: { 'zh-Hans': '停', en: 'Stop' },
   stopTitle: {
-    'zh-Hans': '停掉这次运行（不承诺进程一定死 —— 那取决于传输）',
-    en: 'Stop this run (the process is not guaranteed to die — that depends on the transport)',
+    'zh-Hans': '停止运行',
+    en: 'Stop run',
   },
   elapsedSeconds: { 'zh-Hans': '{seconds} 秒', en: '{seconds} s' },
   elapsedMinutes: { 'zh-Hans': '{minutes} 分 {seconds} 秒', en: '{minutes} min {seconds} s' },

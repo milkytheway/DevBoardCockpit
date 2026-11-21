@@ -4,7 +4,7 @@
   "id": "boot-log",
   "name": "启动日志",
   "version": "1.0.0",
-  "description": "取板子开机时内核打的那段日志，存到板子上，再用文件传输把它取回来",
+  "description": "通过串口只读获取启动日志，在主机侧保存并显示",
   "entry": "index.html",
   "requires": {
     "workflows": ["boot-log.capture"]

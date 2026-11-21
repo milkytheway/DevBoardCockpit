@@ -123,6 +123,14 @@ const LOOKS: Record<string, CardLook> = {
     group: { 'zh-Hans': '系统', en: 'System' },
     tags: ['cpu.governor', 'custom.rk3588-atk.backlight.brightness'],
   },
+  'boot-log': {
+    name: { 'zh-Hans': '启动日志', en: 'Boot log' },
+    note: { 'zh-Hans': '内核启动信息', en: 'Kernel boot messages' },
+    icon: 'activity',
+    tone: 'cyan',
+    group: { 'zh-Hans': '系统', en: 'System' },
+    tags: [],
+  },
 };
 
 const FALLBACK: CardLook = {

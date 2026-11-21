@@ -74,7 +74,7 @@ export function wizardDeps(opts: WizardWiringOptions): WizardDeps {
  *   `WizardRunResult` ✓).
  */
 export async function runWizardForHost(
-  input: { port: string; baudrate: number; boardName: string; transport?: 'serial' | 'adb' },
+  input: { port: string; baudrate: number; boardName?: string; transport?: 'serial' | 'adb' },
   opts: WizardWiringOptions,
 ): Promise<{
   ok: boolean;

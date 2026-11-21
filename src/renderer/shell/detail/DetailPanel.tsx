@@ -37,10 +37,6 @@ const strings = {
   sessionTitle: { 'zh-Hans': '终端 · {label}', en: 'Terminal · {label}' },
   copyDiagnostics: { 'zh-Hans': '复制诊断', en: 'Copy diagnostics' },
   removeCard: { 'zh-Hans': '从主区拿走', en: 'Take it out of the work area' },
-  sessionManaged: {
-    'zh-Hans': '会话由二级栏管理',
-    en: 'The session is managed from the sidebar',
-  },
   samplingFrom: { 'zh-Hans': '采样来自 {connection}', en: 'Sampled from {connection}' },
   connectionNotReady: {
     'zh-Hans': '当前连接未就绪',
@@ -53,15 +49,13 @@ const strings = {
   },
   captureBehaviour: { 'zh-Hans': '采集行为', en: 'Capture behaviour' },
   unknownCard: {
-    'zh-Hans':
-      '这张卡不在内置映射里：宿主只把卡片文件交给 iframe，不向 renderer 暴露 manifest。 下面展示的是宿主公开的实时 tag 流，按最近一次采样排序。',
-    en: 'This card is not in the built-in mapping: the host hands the card file to the iframe and does not expose the manifest to the renderer. What follows is the live tag stream the host publishes, newest sample first.',
+    'zh-Hans': '自定义卡片 · 实时读数',
+    en: 'Custom card · live readings',
   },
   notSampled: { 'zh-Hans': '未采样', en: 'Not sampled' },
   observed: {
-    'zh-Hans':
-      '观测到 {count} 次采样 · 原始值来自 TagStore，卡片内的显示是它自己的加工',
-    en: '{count} samples observed · the raw values come from the TagStore; the card does its own rendering of them',
+    'zh-Hans': '{count} 次采样',
+    en: '{count} samples',
   },
   instance: { 'zh-Hans': '实例', en: 'Instance' },
   connection: { 'zh-Hans': '连接', en: 'Connection' },
@@ -69,29 +63,28 @@ const strings = {
   state: { 'zh-Hans': '状态', en: 'State' },
   notConnected: { 'zh-Hans': '未连接', en: 'Not connected' },
   degradedRun: {
-    'zh-Hans': '降级运行（manifest 有错）',
-    en: 'Degraded run (the manifest has errors)',
+    'zh-Hans': '运行异常',
+    en: 'Degraded',
   },
   healthy: { 'zh-Hans': '正常', en: 'Healthy' },
   sandbox: { 'zh-Hans': '沙箱', en: 'Sandbox' },
-  storageHosted: { 'zh-Hans': '存储 · 宿主代管', en: 'Storage · hosted by the host' },
+  storageHosted: { 'zh-Hans': '本地存储', en: 'Local storage' },
   latestRaw: { 'zh-Hans': '最新原始值', en: 'Latest raw values' },
   tagCountLabel: { 'zh-Hans': '{count} 个 tag', en: '{count} tags' },
   sampleStream: { 'zh-Hans': '采样流水', en: 'Sample stream' },
   entryCount: { 'zh-Hans': '{count} 条', en: '{count} entries' },
   noSamples: {
-    'zh-Hans': '还没有采样。等运行时连上，这里会按时间倒序长出来。',
-    en: 'No samples yet. Once the runtime connects, they grow here newest first.',
+    'zh-Hans': '还没有采样',
+    en: 'No samples yet',
   },
   streamHint: {
-    'zh-Hans':
-      '流水是 renderer 内存里的最近样本（每 tag 最多 120 条）；宿主侧的完整历史尚没有 IPC。',
-    en: 'The stream is the recent samples in the renderer memory (up to 120 per tag); the full history on the host side has no IPC yet.',
+    'zh-Hans': '最近 120 条',
+    en: 'Latest 120',
   },
   activity: { 'zh-Hans': '活动', en: 'Activity' },
   noActivity: {
-    'zh-Hans': '还没有这张卡的相关活动。宿主侧的卡片运行时日志在 M6 的日志面板里接。',
-    en: 'No activity for this card yet. The card runtime log on the host side lands in the M6 log panel.',
+    'zh-Hans': '没有相关活动',
+    en: 'No activity',
   },
   statusOk: { 'zh-Hans': '正常', en: 'Ok' },
   statusStale: { 'zh-Hans': '已过时', en: 'Stale' },
@@ -104,11 +97,8 @@ const strings = {
   secondsAgo: { 'zh-Hans': '{seconds} 秒前', en: '{seconds} s ago' },
   minutesAgo: { 'zh-Hans': '{minutes} 分钟前', en: '{minutes} min ago' },
   session: { 'zh-Hans': '会话', en: 'Session' },
+  connectionId: { 'zh-Hans': '连接标识', en: 'Connection ID' },
   name: { 'zh-Hans': '名称', en: 'Name' },
-  sessionHint: {
-    'zh-Hans': '终端输出在终端页；这里只显示会话身份。',
-    en: 'The terminal output is on the terminal page; only the session identity is shown here.',
-  },
 } satisfies Record<string, Localised>;
 
 export function DetailPanel({
@@ -239,9 +229,7 @@ export function DetailPanel({
           >
             {t(strings.removeCard)}
           </button>
-        ) : (
-          <span className="detail__foot-hint">{t(strings.sessionManaged)}</span>
-        )}
+        ) : null}
       </footer>
     </aside>
   );
@@ -538,12 +526,11 @@ function SessionDetail({
       <dl className="kv kv--compact">
         <dt>{t(strings.name)}</dt>
         <dd>{session.label}</dd>
-        <dt>profile</dt>
+        <dt>{t(strings.connectionId)}</dt>
         <dd className="mono">{session.profileId}</dd>
         <dt>{t(strings.session)}</dt>
         <dd className="mono">{session.sessionId.slice(0, 12)}</dd>
       </dl>
-      <p className="detail__hint">{t(strings.sessionHint)}</p>
     </section>
   );
 }

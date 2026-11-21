@@ -228,3 +228,60 @@ describe('the pure functions of the layout shape', () => {
     expect(state.units).toEqual([UNIT]);
   });
 });
+
+/**
+ * **The board changed** ✓ → the cells follow ✓.
+ *
+ * → A cell is bound to `(cardId, connectionId)` ✓ → the instances of the
+ *   new board carry the new connection id ✓ → the cells of the old one
+ *   would not match any more ✓ → **the cards would disappear from the main
+ *   area** ✓ (found on 2026-11-21 ✓).
+ */
+describe('the layout store · the board changes', () => {
+  it('**the cells are re-bound to the new connection** ✓', () => {
+    const { file, cleanup } = scene();
+    try {
+      const store = new LayoutStore({ file, now: () => 1000 });
+      store.set({
+        version: 3,
+        units: [{ ...UNIT, connectionId: 'board-adb' }],
+        density: 'comfortable',
+        updatedAt: 1000,
+      });
+
+      store.rebind('board-adb', 'other-board-adb');
+
+      const units = store.get().units;
+      expect(units).toHaveLength(1);
+      expect(units[0]?.connectionId).toBe('other-board-adb');
+      // → **The position is the position of the card** ✓ (it does not move ✓)
+      expect(units[0]?.x).toBe(UNIT.x);
+      expect(units[0]?.w).toBe(UNIT.w);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('**a cell of another board is not touched** ✓', () => {
+    const { file, cleanup } = scene();
+    try {
+      const store = new LayoutStore({ file, now: () => 1000 });
+      store.set({
+        version: 3,
+        units: [
+          { ...UNIT, cardId: 'a', connectionId: 'board-adb' },
+          { ...UNIT, cardId: 'b', connectionId: 'other-board' },
+        ],
+        density: 'comfortable',
+        updatedAt: 1000,
+      });
+
+      store.rebind('board-adb', 'new-board');
+      const units = store.get().units;
+      expect(units.find((u) => u.cardId === 'a')?.connectionId).toBe('new-board');
+      expect(units.find((u) => u.cardId === 'b')?.connectionId).toBe('other-board');
+    } finally {
+      cleanup();
+    }
+  });
+});

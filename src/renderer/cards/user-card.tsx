@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
+import type { Locale } from '../shell/i18n';
 import type { CardBroker } from './broker';
 
 /**
@@ -16,9 +17,11 @@ import type { CardBroker } from './broker';
 export function UserCard({
   info,
   broker,
+  locale,
 }: {
   info: CardInstanceInfo;
   broker: CardBroker;
+  locale: Locale;
 }): JSX.Element {
   const ref = useRef<HTMLIFrameElement | null>(null);
 
@@ -32,12 +35,16 @@ export function UserCard({
     };
   }, [broker, info.instanceId]);
 
+  const src = new URL(info.url);
+  src.searchParams.set('lang', locale);
+
   return (
     <iframe
       ref={ref}
       className="user-card"
       sandbox="allow-scripts"
-      src={info.url}
+      src={src.toString()}
+      lang={locale === 'en' ? 'en' : 'zh-CN'}
       title={info.cardId}
     />
   );

@@ -27,10 +27,6 @@ const strings = {
   layoutQuadHint: { 'zh-Hans': '最多四个会话同时看', en: 'Up to four sessions at once' },
   sessionsInPanes: { 'zh-Hans': '个会话在窗格里', en: 'sessions in the panes' },
   emptyTitle: { 'zh-Hans': '还没有终端会话', en: 'No terminal session yet' },
-  emptyBody: {
-    'zh-Hans': '左边「连接方式」里点一个连接就能开——会话会一直留着，切回来不丢历史。',
-    en: 'Pick a connection under "Connections" on the left to open one — the session stays open and keeps its history when you come back.',
-  },
   makeActive: { 'zh-Hans': '把这个会话设为当前会话', en: 'Make this the current session' },
   current: { 'zh-Hans': '当前', en: 'Current' },
   closeSession: { 'zh-Hans': '关闭会话', en: 'Close the session' },
@@ -84,6 +80,12 @@ export function TerminalPage({
   const [layout, setLayout] = useState<TerminalLayout>('single');
   const [paneIds, setPaneIds] = useState<string[]>([]);
   const capacity = CAPACITY[layout];
+  const initialPane =
+    activeSessionId !== null && sessions.some((session) => session.sessionId === activeSessionId)
+      ? activeSessionId
+      : (sessions[0]?.sessionId ?? null);
+  const visiblePaneIds =
+    paneIds.length > 0 ? paneIds : initialPane === null ? [] : [initialPane];
 
   useEffect(() => {
     setPaneIds((current) => {
@@ -117,7 +119,7 @@ export function TerminalPage({
         {sessions.length > 0 ? (
           <div className="page-head__actions">
             <span className="page-head__hint">
-              {paneIds.length} / {sessions.length} {t(strings.sessionsInPanes)}
+              {visiblePaneIds.length} / {sessions.length} {t(strings.sessionsInPanes)}
             </span>
             <div className="segmented" role="group" aria-label={t(strings.layoutGroup)}>
               {LAYOUTS.map((option) => (
@@ -143,17 +145,16 @@ export function TerminalPage({
             <TerminalIcon size={26} />
           </span>
           <h2>{t(strings.emptyTitle)}</h2>
-          <p>{t(strings.emptyBody)}</p>
         </div>
       ) : (
         <div
           className="terminal-grid"
           data-layout={layout}
-          data-panes={paneIds.length}
+          data-panes={visiblePaneIds.length}
           data-testid="terminal-grid"
         >
           {sessions.map((session) => {
-            const visible = paneIds.includes(session.sessionId);
+            const visible = visiblePaneIds.includes(session.sessionId);
             const isActive = session.sessionId === activeSessionId;
             return (
               <div
