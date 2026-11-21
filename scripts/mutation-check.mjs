@@ -2532,7 +2532,7 @@ const MUTATIONS = [
     name: 'M237 the readings of the old board **do not survive the switch** ✓',
     file: 'src/main/tags/store.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-runtime.test.ts'],
-    expect: 'the readings of the old board are unavailable',
+    expect: 'the readings of the old board do not survive the switch',
     apply: (s) =>
       replace(
         s,
