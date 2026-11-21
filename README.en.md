@@ -1,187 +1,83 @@
 # DevBoard Cockpit
 
-**SCADA / HMI software for embedded boards** — tags are data sources, cards are graphic elements, and the configuration engineer is an AI.
-
-A Windows desktop workbench for embedded Linux boards: it standardises a
-board's capabilities as **tags**, visualisation and control as **cards**, and
-extension through **MCP**, so that an AI agent running on the host can build
-instruments and switches on demand.
-
-Watching the readings of a board, putting them and the switches on screen,
-running a whole job in one go, and moving to another board without touching
-the code — all in one window.
+A Windows desktop workbench for embedded Linux boards. A standard set of board metrics exposes runtime state, composable cards build live instrumentation and controls, and workflow packs orchestrate build, deployment and verification tasks. The same capabilities are available to external agents through MCP.
 
 [中文](README.md)
 
----
+![DevBoard Cockpit workbench](docs/assets/devboard-cockpit-workbench.png)
 
-## What it does
+## Core capabilities
 
-| What you want | How it helps |
-|---|---|
-| **Watch the board** | its capabilities are standardised as **tags**: CPU, memory, temperature, frequency, NPU - whatever the model, the interface speaks the same names |
-| **Put the readings and the switches on screen** | a **card** is a bit of HTML and JavaScript: it says which tags it wants and which permissions it needs, the host fetches, draws and acts |
-| **Get a whole job done** | a **flow pack** writes a pipeline of steps (compile → flash → run → look), and it can cross machines |
-| **Let the AI build a new instrument** | **MCP**: the host opens the tags, the actions, the cards and the flows to the agent. Say "give me a panel that watches the NPU load" and it writes a card and installs it |
-| **Move to another board** | a **board pack** says what this model has, where to read it and which actions are dangerous. Another board, no code change |
-| **No board at hand** | the **fake board** ships with the installer. The interface can be looked at without any hardware, and it says that the data is synthetic |
+- **Standard runtime metrics**: CPU, cores, memory, GPU/NPU, temperature and frequency use consistent names and states for healthy, stale, unavailable, error and awaiting-sample conditions.
+- **Composable workbench**: live data, device controls and task entry points are organised as cards with grouping, pinning, drag-and-drop layout, resizing and hot reload.
+- **End-to-end development tasks**: terminal access, file transfer, compilation, upload, execution, board health checks, network tests and storage benchmarks.
+- **Multiple transports**: ADB, serial and SSH, with automatic selection of a working link for the current board.
+- **Board onboarding**: automatic serial-port and model detection generates a user board pack and connection profile. User-added boards can be removed from the board menu.
+- **Complete boot logs**: persistent kernel and user-space boot records are read over serial, stored on the host and displayed locally, avoiding the limited ADB kernel ring buffer.
+- **Permissions and verified state**: device actions and workflows are authorised separately, destructive actions are disabled by default, and control actions read the resulting board state instead of reporting an optimistic value.
+- **MCP integration**: external agents can read runtime metrics, invoke authorised actions and manage cards and workflows through the local MCP service.
+- **Hardware-free development**: the bundled synthetic board supports the complete working flow without physical hardware and is identified as synthetic data throughout the application.
 
-## The interface
+## Design and reliability
 
-On the left the **board picker** and the connections of that board, in the
-middle the **workbench** with the cards, on the right the details and the
-parameters. Moving to another board is one choice on the left - the cards in
-the middle do not move.
+- **Contract-driven**: runtime metrics, board packs, card manifests, workflows and MCP tools are defined in `docs/spec/`; the implementation maps to those contracts directly.
+- **Board-pack isolation**: cards and workflows remain independent of model-specific access details, which are declared by the board pack.
+- **Sandboxed cards**: cards run in isolated iframes with a whitelisted host API and a network-blocking Content Security Policy.
+- **Hot-reloadable extensions**: a card is an HTML, JavaScript and CSS directory; file changes apply without restarting the application.
+- **Auditable workflows**: multi-step tasks provide staged status, timeouts, cancellation and result verification, with cross-machine roles bound to connection profiles.
 
-## Download and install
+## Installation
 
-**Using the software does not need a development environment.** Open the
-[Releases](https://github.com/milkytheway/DevBoardCockpit/releases) page,
-download `DevBoardCockpit-<version>-setup.exe` (Windows x64) and run it: pick
-the directory you want it in, and it puts a shortcut on the desktop.
+Windows x64 installers are available on the [Releases](https://github.com/milkytheway/DevBoardCockpit/releases) page. The installer is not code-signed, so Windows SmartScreen may request confirmation. Each release also provides `SHA256SUMS.txt` for integrity verification.
 
-| | |
-|---|---|
-| **It is not signed** | Windows SmartScreen asks once: "More info" → "Run anyway" |
-| Checking the download | the release carries `SHA256SUMS.txt` |
-| After the install | the first start asks for the address of the board and the serial port (or use the wizard); what you fill in is kept in `%LOCALAPPDATA%\DevBoardCockpit\`, and the uninstaller does not delete it |
-| The fake board | the installer carries it, so the interface can be looked at without any hardware (it says that the data is synthetic) |
+Connection settings are stored in `%LOCALAPPDATA%\DevBoardCockpit\` and are not removed automatically during upgrade or uninstallation.
 
-## Getting started
+## Connecting a board
 
-Prerequisites: Node.js 20.19 or later; Windows. **No compiler is needed**: `node-pty` and `serialport` are NAPI modules, and the prebuilt binaries that ship with them work across the Node and the Electron versions. The install only compiles them when a prebuilt binary does not fit the machine, and that is the only case that needs the Visual Studio build tools (the "Desktop development with C++" workload).
+| Transport | Use | Main parameters |
+|---|---|---|
+| ADB | Debugging and file transfer | Board serial |
+| Serial | Debug console and boot logs | Port and baud rate |
+| SSH | Remote login and file transfer | Host, user and credential |
+
+The bundled ATK-DLRK3588 board kit defaults to 1500000 baud. For an unfamiliar board, the onboarding wizard probes the serial port and board model, then generates a board-specific profile from the generic board pack. See the [board setup tutorial](docs/tutorial/01-build-a-board-pack.en.md).
+
+## Extension model
+
+- **Cards**: HTML, JavaScript and CSS with declared tag, action and workflow permissions. See the [card design rules](docs/tutorial/03-card-design-rules.md).
+- **Board packs**: YAML definitions for board identity, tag sources, device actions and detection rules.
+- **Workflow packs**: YAML definitions for multi-step tasks, cross-machine roles, timeouts, cancellation and result verification.
+- **MCP**: a local MCP service starts with the application; its port and bearer token are written to `mcp.json` in the user data directory.
+
+## Local development
+
+Requirements: Windows and Node.js 20.19 or later.
 
 ```bash
-git clone <repository-url>
-cd DevBoardCockpit
 npm install
 npm run dev
 ```
 
-> The install downloads the binary of Electron from the GitHub releases. **When
-> that cannot be reached the install fails and says why** ✓ (otherwise the
-> application only complains much later, with "Electron failed to install
-> correctly" ✗). Behind a firewall: set `ELECTRON_MIRROR` ✓ and run
-> `npm rebuild electron` ✓.
-
-To build an installer:
+Common checks:
 
 ```bash
-npm run dist
+npm run lint
+npm run typecheck
+npm test
+npm run test:cards
 ```
-
-The result is `release/DevBoardCockpit-0.1.0-setup.exe`.
-
-## Connecting a board
-
-Three transports are configured independently. Connection profiles live in `profiles/targets/`:
-
-| Transport | Purpose | Required fields |
-|---|---|---|
-| ADB | Debugging, file transfer | `serial` (board serial number) |
-| Serial | Debug console | `port`, `baudrate` |
-| SSH | Remote login | `host`, `username`, credentials |
-
-`hostTools.adb` in `profiles/settings.json` points at the local adb executable. If unset, the application searches `PATH` and common install locations.
-
-The default baud rate for this board is 1500000.
-
-The application includes a **board setup wizard**: after choosing a transport and serial parameters, the wizard probes the board with the generic board pack (`profiles/boards/generic-linux/`), generates a matching board pack, and writes it to the user data directory. See the [tutorial](docs/tutorial/01-build-a-board-pack.en.md).
-
-## Extending
-
-All three extension paths require no change to the main process.
-
-A **card** is a directory of HTML, JavaScript and styles declaring the tags and workflows it needs. Drop it into the user card directory; it takes effect on hot reload. Follow the [card design rules](docs/tutorial/03-card-design-rules.md) when you write one: one claim per card, colour only for state, trends and details belong to the host's detail panel.
-
-A **board pack** is a YAML file declaring the tag sources, actions and auto-detection rules for one board model.
-
-A **workflow pack** is a YAML file declaring how to complete a multi-step task, possibly across machines.
-
-An AI agent on the host reaches every capability through MCP, which exposes 20 tools covering tag reads, action execution, and card and workflow management. The MCP server listens on a local port when the application starts; the port and bearer token are written to `mcp.json` in the user data directory, which the agent reads to connect.
-
-## How it is built
-
-### Structure
-
-| Layer | Contents | Location |
-|---|---|---|
-| Contract | Tag vocabulary, board pack format, card manifest, workflow pack format, MCP tool set | `docs/spec/` |
-| Device facts | Measured paths and behavioural constraints of the ATK-DLRK3588 | `docs/02-device-facts.md` |
-| Implementation | Electron main process, card host, tag runtime, workflow engine, MCP server | `src/` |
-| Assets | Built-in cards, board packs, workflow packs, connection profiles | `cards/` `profiles/` |
-
-The main process owns all device I/O, tag sampling, action execution and permission decisions. The renderer only draws. Cards run in isolated iframes and reach a whitelisted API only.
-
-### Repository layout
-
-```
-docs/spec/               Contract: tag vocabulary, board pack, card manifest, MCP tools, workflow pack
-docs/tutorial/           Methodology tutorials
-docs/02-device-facts.md  Measured device facts
-src/main/                Device I/O, tag runtime, action execution, card host, MCP server
-src/renderer/            User interface
-src/shared/              Types and theme shared by both processes
-cards/                   Built-in cards
-profiles/                Board packs, workflow packs, connection profiles
-fixtures/                Real-device samples (golden test vectors, append-only)
-scripts/                 Build, validation, generation and probing tools
-tests/                   Unit, integration and end-to-end tests
-```
-
-## Development
-
-```bash
-npm run lint          # ESLint
-npm run typecheck     # TypeScript
-npm test              # Vitest
-npm run test:cards    # Playwright, real Electron
-npm run validate:profiles   # Validate board packs
-npm run check:package       # Validate build artefacts
-```
-
-Tests do not require hardware. Paths that do are covered separately by `npm run probe:board -- --profile <profile>`.
-
-### Cutting a release
-
-```bash
-npm version patch        # or minor / major - it changes the version of package.json
-git tag v0.1.0           # the tag and package.json have to agree (the CI checks)
-git push --follow-tags   # the CI builds the installer and puts it on the release
-```
-
-The CI does three things: it checks that the tag and the version agree, it
-builds the NSIS installer, it checks that the artefact is complete (the cards,
-the connection profiles, the workflow packs and the native modules are all in
-the asar), and it attaches `setup.exe` and `SHA256SUMS.txt` to the release of
-that version.
-
-It can also be built here: `npm run dist` puts it in `release/`.
-
-## Hardware requirements
-
-Some features need real hardware:
-
-- Tag sampling requires the board to be reachable
-- The serial port must be free; when another process holds it, sampling times out
-- File transfer requires ADB or SSH; serial cannot transfer files
-- Some actions change board state, including rebooting
-
-Dangerous actions are switched individually in settings and are off by default.
 
 ## Documentation
 
-| Document | Contents |
-|---|---|
-| [Contract overview](docs/spec/00-overview.md) | Two main lines and the role of each document |
-| [Tag contract](docs/spec/01-tag-contract.md) | Vocabulary, namespaces, five states |
-| [Board pack format](docs/spec/02-board-pack.md) | Data sources, actions, validation rules |
-| [Card manifest](docs/spec/03-card-manifest.md) | Manifest structure, permissions, sandbox |
-| [MCP tool set](docs/spec/04-mcp-tools.md) | Tool definitions and return shapes |
-| [Workflow pack format](docs/spec/05-workflow-pack.md) | Step kinds, roles, cancellation semantics |
-| [Device facts](docs/02-device-facts.md) | Measured paths and behavioural constraints |
-| [Tutorial](docs/tutorial/01-build-a-board-pack.en.md) | Building a board pack for an unfamiliar board |
-| [Card design rules](docs/tutorial/03-card-design-rules.md) | The information budget, the colour discipline, the seven hard rules and a self-check list |
+- [Contract overview](docs/spec/00-overview.md)
+- [Tag contract](docs/spec/01-tag-contract.md)
+- [Board pack format](docs/spec/02-board-pack.md)
+- [Card manifest](docs/spec/03-card-manifest.md)
+- [MCP tools](docs/spec/04-mcp-tools.md)
+- [Workflow pack format](docs/spec/05-workflow-pack.md)
+- [Measured device facts](docs/02-device-facts.md)
+- [Board setup tutorial](docs/tutorial/01-build-a-board-pack.en.md)
+- [Card design rules](docs/tutorial/03-card-design-rules.md)
 
 ## License
 
