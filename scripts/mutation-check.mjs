@@ -2497,8 +2497,11 @@ const MUTATIONS = [
   {
     name: 'M234 the id of a card is **a name** ✓ (**it may not climb out of the card root** ✓)',
     file: 'src/main/cards/manifest.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: 'an id that climbs out of the card root is refused',
+    // → **The parser is the authority** ✓ (one implementation ✓) → its own
+    //   test says that an id of ".." does not parse ✓ → and the installation
+    //   never sees such an id ✓.
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/manifest.test.ts'],
+    expect: 'an id that is not a name',
     apply: (s) =>
       replace(
         s,
@@ -2511,11 +2514,18 @@ const MUTATIONS = [
     file: 'src/main/tags/runtime.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/tags-runtime.test.ts'],
     expect: 'a failed start leaves no board behind',
+    // → **The old code wrote the identity before the connection ✓ and never
+    //   cleared it again ✓** → the mutation has to do both ✓ (otherwise the
+    //   catch clears it again ✓ and nothing is left to see ✓).
     apply: (s) =>
       replace(
-        s,
-        '    this.stop();\n    this.detailCode = undefined;',
-        '    this.stop();\n    this.detailCode = undefined;\n    // mutation: it claims the board before it is connected\n    this.profileId = profile.id;\n    this.deviceKey = deviceKeyOf(profile);',
+        replace(
+          s,
+          '    this.stop();\n    this.detailCode = undefined;',
+          '    this.stop();\n    this.detailCode = undefined;\n    // mutation: it claims the board before it is connected\n    this.profileId = profile.id;\n    this.deviceKey = deviceKeyOf(profile);',
+        ),
+        '      this.profileId = undefined;\n      this.deviceKey = undefined;',
+        '      // mutation: the identity of a board that was not reached stays',
       ),
   },
   {
@@ -2526,8 +2536,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '    this.lastGood.clear();\n    this.samples.clear();',
-        '    // mutation: the readings of the old board stay',
+        "      status: 'unavailable' as const,",
+        "      status: 'ok' as const, // mutation: the readings of the old board stay",
       ),
   },
   {
