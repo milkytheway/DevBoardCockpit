@@ -2580,6 +2580,30 @@ const MUTATIONS = [
         '      // mutation: the targets are never given back',
       ),
   },
+  {
+    name: 'M241 the cells of the work area **follow the connection on every path** (✓ **the board that connects on its own counts** ✓)',
+    file: 'src/main/cards/wiring.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/cards/wiring.test.ts'],
+    expect: 'the cell has to follow the connection',
+    apply: (s) =>
+      replace(
+        s,
+        '      if (connectionId !== lastConnectionId) {',
+        '      if (false) { // mutation: the cells do not follow the connection',
+      ),
+  },
+  {
+    name: 'M242 the failure of the wizard **names the transport it used** (✓ **the ADB line has no serial port** ✓)',
+    file: 'src/main/wizard/run.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/wizard-run.test.ts'],
+    expect: 'the ADB failure may not talk about a serial port',
+    apply: (s) =>
+      replace(
+        s,
+        "    transport === 'adb'\n      ? `**the ADB connection failed**",
+        "    transport === 'adb' && false\n      ? `**the ADB connection failed**",
+      ),
+  },
 ];
 
 /** One replacement. It throws when the original text is not there — a mutation that does not apply is itself a failed guard */
