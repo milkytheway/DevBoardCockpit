@@ -122,6 +122,10 @@ export function DevicePicker({
                 role="option"
                 aria-selected={board.current}
                 className={`device-picker__item${board.current ? ' is-current' : ''}`}
+                // → **A stable e2e hook** ✓ (not a class name ✓ — the e2e
+                //   test picks the board by its identity ✓ and not by its
+                //   position ✓).
+                data-cockpit-board={board.deviceKey}
                 onClick={() => {
                   setOpen(false);
                   if (!board.current) onSelect(board.deviceKey);
