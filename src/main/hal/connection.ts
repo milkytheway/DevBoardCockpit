@@ -74,6 +74,16 @@ export interface Connection {
   capabilities(): ConnectionCapabilities;
   open(): Promise<void>;
   close(): Promise<void>;
+  /**
+   * **The most recent link error** ✓ — the connection that dropped says why
+   * ✓.
+   *
+   * → It was written into a field **nobody read** ✓ (the SSH and the serial
+   *   connection both had it ✓ · the interface never saw it ✓) →
+   *   **the terminal just said "the session ended"** ✓ → the user could not
+   *   tell a pulled cable from a refused port ✓ (found on 2026-11-21 ✓).
+   */
+  readonly lastError?: Error;
   exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /**
    * File transfer.

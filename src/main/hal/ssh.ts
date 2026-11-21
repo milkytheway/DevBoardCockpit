@@ -45,6 +45,14 @@ export interface SshConnectOptions {
   host: string;
   port: number;
   username?: string;
+  /**
+   * How long the handshake may take ✓ (in milliseconds ✓).
+   *
+   * → **The default of ssh2 is 20 seconds** ✓ → the interface says nothing
+   *   for 20 seconds ✓ → **it looks like the application is hanging** ✓
+   *   (found on 2026-11-21 ✓).
+   */
+  readyTimeout?: number;
   /** The private key (**content**, not a path — ssh2 wants the key itself ✓) */
   privateKey?: Buffer | string;
   password?: string;
@@ -66,6 +74,10 @@ export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
   return {
     host,
     port,
+    // **Without this the SSH handshake waits 20 seconds** ✓ (the default of
+    // ssh2 ✓) → the interface says nothing for 20 seconds ✓ → **it looks like
+    // the application is hanging** ✓ (found on 2026-11-21 ✓).
+    readyTimeout: 8000,
     ...(typeof username === 'string' ? { username } : {}),
     ...(typeof password === 'string' ? { password } : {}),
     // **The private key has to be read as content (Buffer), a path is not

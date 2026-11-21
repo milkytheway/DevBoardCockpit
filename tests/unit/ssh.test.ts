@@ -42,7 +42,15 @@ describe('sshArgs', () => {
       id: 's', label: 's', transport: 'ssh',
       options: { host: '192.168.100.10', port: 22, username: 'alientek' },
     });
-    expect(args).toEqual({ host: '192.168.100.10', port: 22, username: 'alientek' });
+    expect(args).toEqual({
+      host: '192.168.100.10',
+      port: 22,
+      // **Without it the handshake waits 20 seconds** ✓ (the default of ssh2 ✓)
+      // → the interface says nothing for 20 seconds ✓ → it looks like the
+      //   application is hanging ✓ (found on 2026-11-21 ✓).
+      readyTimeout: 8000,
+      username: 'alientek',
+    });
   });
 
   it('a missing host is an error (fact H1: when the connection fails, it has to name the host)', () => {

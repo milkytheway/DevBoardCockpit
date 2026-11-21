@@ -181,6 +181,14 @@ export class TerminalManager {
     // Without this, the interface keeps the tab and the user goes on typing
     // into a dead channel.
     session.onExit((exitCode: number | null) => {
+      // **The reason the link died goes into the log** ✓ — the connection
+      // says why ✓ (`lastError` ✓) → without it the terminal only said "the
+      // session ended" ✓ and the user could not tell a pulled cable from a
+      // refused port ✓ (found on 2026-11-21 ✓).
+      const reason = connection.lastError;
+      if (reason !== undefined) {
+        log.write(`the link died: ${reason.message}`);
+      }
       this.closeSession(id, exitCode, true);
     });
 
