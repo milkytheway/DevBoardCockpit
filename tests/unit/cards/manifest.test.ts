@@ -44,6 +44,14 @@ describe('the closed schema of a card manifest', () => {
     expect(manifest.layout).toEqual({ w: 3, h: 2, min_w: 2, min_h: 1 });
   });
 
+  it('**an id that is not a name → it is reported** (**the id is the name of a directory** ✓ — the host deletes and writes paths from it ✓)', () => {
+    // → `".."` would make the host delete the **user data directory** ✓
+    //   (found on 2026-11-21 ✓) → the shape of the id is closed ✓.
+    for (const id of ['..', '../..', 'a/b', 'Demo', 'demo card', 'demo.card', '']) {
+      expect(() => parseManifest({ ...valid(), id }, 'cpu-usage'), `the id "${id}"`).toThrow(/id/);
+    }
+  });
+
   it('one field too many at the top level → it is reported (the field is named)', () => {
     const raw = { ...valid(), network: true };
     expect(() => parseManifest(raw, 'cpu-usage')).toThrow(/network/);

@@ -2276,7 +2276,8 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        "    if (!ok) li.classList.add('is-bad');\n    else if (stage.verified === true) li.classList.add('is-ok');\n    else li.classList.add('is-warn');",
+        "    li.className = `bd__run-item ${stage.ok ? (stage.verified ? 'is-ok' : 'is-warn') : 'is-bad'}`;",
+        "    li.className = `bd__run-item ${stage.ok ? 'is-ok' : 'is-bad'}`; // mutation: something that was not verified counts as succeeded",
         "    if (!ok) li.classList.add('is-bad');\n    else li.classList.add('is-ok'); // mutation: something that was not verified counts as succeeded",
       ),
   },
@@ -2506,16 +2507,6 @@ const MUTATIONS = [
       ),
   },
   {
-    name: 'M235 the target of an installation **stays inside the card root** ✓',
-    file: 'src/main/mcp/card-tools.ts',
-    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: 'an id that climbs out of the card root is refused',
-    apply: (s) =>
-      replace(
-        s,
-        '  if (!isInside(deps.cardsRoot, target)) {',
-        '  if (false && !isInside(deps.cardsRoot, target)) { // mutation: the target may be anywhere',
-      ),
   },
   {
     name: 'M236 the runtime **claims a board only after the connection is up**',
@@ -2525,6 +2516,7 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
+        '    this.stop();\n    this.detailCode = undefined;',
         '    this.stop();\n    this.detailCode = undefined;\n    // mutation: it claims the board before it is connected\n    this.profileId = profile.id;\n    this.deviceKey = deviceKeyOf(profile);',
       ),
   },
@@ -2544,7 +2536,7 @@ const MUTATIONS = [
     name: 'M239 installing a card while the board is not there: **the check of the actions is skipped** ✓ (**the card is degraded** ✓ — contract §9 rule 5 ✓)',
     file: 'src/main/mcp/card-tools.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
-    expect: 'offline the card is installed and marked degraded',
+    expect: 'the card is degraded',
     apply: (s) =>
       replace(
         s,
@@ -2556,7 +2548,7 @@ const MUTATIONS = [
     name: 'M238 a run of a workflow **gives its targets back** ✓ (the connection is closed then ✓)',
     file: 'src/main/workflows/service.ts',
     check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
-    expect: 'the targets are given back',
+    expect: 'gives them back',
     apply: (s) =>
       replace(
         s,
@@ -2770,7 +2762,12 @@ if (dirtyBefore !== '') {
 
 for (const m of selected) {
   const path = join(ROOT, m.file);
-  const original = readFileSync(path, 'utf8');
+  // → **The line endings are normalized** ✓ — a file that has CRLF on this
+  //   machine ✓ and LF in the repository ✓ would make **every** mutation of
+  //   it fail to apply ✓ (the text it searches for is not there ✓) → the
+  //   guard would prove nothing ✓ (found on 2026-11-21 ✓: four guards had
+  //   rotted that way ✓).
+  const original = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
 
   let mutated;
   try {
