@@ -2452,7 +2452,7 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '  if (missing.length > 0) {',
+        '  if (missing.length > 0 && !offline) {',
         '  if (false) { // mutation: it installs an action that the board pack does not have',
       ),
   },
@@ -2488,8 +2488,80 @@ const MUTATIONS = [
     apply: (s) =>
       replace(
         s,
-        '          {boards.map((board) => (',
-        '          {connections.filter((c) => c.boardPack !== null).map((board) => ( // mutation: it lists the connections, not the boards',
+        '            {boards.map((board, index) => (',
+        '            {connections.filter((c) => c.boardPack !== null).map((board, index) => ( // mutation: it lists the connections, not the boards',
+      ),
+  },
+  // ── The findings of 2026-11-21 ✓ ──
+  {
+    name: 'M234 the id of a card is **a name** ✓ (**it may not climb out of the card root** ✓)',
+    file: 'src/main/cards/manifest.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: 'an id that climbs out of the card root is refused',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (!isSafeCardId(id)) {',
+        '  if (false && !isSafeCardId(id)) { // mutation: every id is allowed',
+      ),
+  },
+  {
+    name: 'M235 the target of an installation **stays inside the card root** ✓',
+    file: 'src/main/mcp/card-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: 'an id that climbs out of the card root is refused',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (!isInside(deps.cardsRoot, target)) {',
+        '  if (false && !isInside(deps.cardsRoot, target)) { // mutation: the target may be anywhere',
+      ),
+  },
+  {
+    name: 'M236 the runtime **claims a board only after the connection is up**',
+    file: 'src/main/tags/runtime.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-runtime.test.ts'],
+    expect: 'a failed start leaves no board behind',
+    apply: (s) =>
+      replace(
+        s,
+        '    this.stop();\n    this.detailCode = undefined;\n    // mutation: it claims the board before it is connected\n    this.profileId = profile.id;\n    this.deviceKey = deviceKeyOf(profile);',
+      ),
+  },
+  {
+    name: 'M237 the readings of the old board **do not survive the switch** ✓',
+    file: 'src/main/tags/store.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/tags-runtime.test.ts'],
+    expect: 'the readings of the old board are unavailable',
+    apply: (s) =>
+      replace(
+        s,
+        '    this.lastGood.clear();\n    this.samples.clear();',
+        '    // mutation: the readings of the old board stay',
+      ),
+  },
+  {
+    name: 'M239 installing a card while the board is not there: **the check of the actions is skipped** ✓ (**the card is degraded** ✓ — contract §9 rule 5 ✓)',
+    file: 'src/main/mcp/card-tools.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/mcp/card-tools.test.ts'],
+    expect: 'offline the card is installed and marked degraded',
+    apply: (s) =>
+      replace(
+        s,
+        '  if (missing.length > 0 && !offline) {',
+        '  if (missing.length > 0) { // mutation: offline does not skip the check',
+      ),
+  },
+  {
+    name: 'M238 a run of a workflow **gives its targets back** ✓ (the connection is closed then ✓)',
+    file: 'src/main/workflows/service.ts',
+    check: ['npx', 'vitest', 'run', 'tests/unit/workflows/service.test.ts'],
+    expect: 'the targets are given back',
+    apply: (s) =>
+      replace(
+        s,
+        '      await this.opts.runDeps.targets.release?.(targets).catch(() => undefined);',
+        '      // mutation: the targets are never given back',
       ),
   },
 ];

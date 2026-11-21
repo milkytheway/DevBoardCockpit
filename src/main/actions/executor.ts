@@ -21,14 +21,17 @@ import type { AuditRow } from './audit';
  *
  * → **Where each step happens** ✓ (the comments are the design ✓):
  *   ① **here** ✓ (the parameters are encoded by type ✓ — never interpolated ✓)
- *   ② **here** ✓ (the floor is checked against the *encoded* command ✓)
+ *   ② **here, and only for the readback's `verify` command** ✓ — the pack's
+ *      own command was judged by the **validator** when the pack was loaded ✓
+ *      (rule 16 ✓) and the **runtime does not check it again** ✓ (contract
+ *      `02` §5.2 ✓ — "it no longer re-checks" ✓).
+ *      → The verify command is given by the pack ✓ → it has to pass the
+ *      floor as well ✓ (otherwise a pack could run `rm -rf /` under the name
+ *      of "verification" ✗ — two independent reviews flagged this ✓).
  *   ③ **in the session layer** ✓ (the manifest's declaration is the
  *   permission ✓ — ADR-D46 ✓)
  *   ④ **gone** ✓ (the confirmation chain was cut ✓ — ADR-D48 ✓)
  *   ⑤ ⑥ ⑦ **here** ✓ (one exclusive transaction ✓ — SPEC-D22 ✓)
- * → **The runtime does not check the floor a second time** ✓ (it used to ✓ —
- *   the pack is the only place that knows what is dangerous ✓ — the runtime
- *   would only repeat it ✓).
  *
  * ── Execution and readback are one inseparable exclusive transaction
  *    (implementation decision records ADR-D23 / SPEC-D22) ──
