@@ -1,41 +1,91 @@
 /**
- * **What the host can see of the board on this machine.**
+ * **What this machine can see of the board** ✓.
  *
  * → The connection profiles of a published repository carry **placeholders**
- *   for the values that only one machine knows ✓ → the person has to be able
- *   to **see** what was found ✓ and to **say** which one is right ✓ when
- *   there is more than one candidate ✓.
+ *   for the values that only one machine knows ✓ → the person has to see
+ *   what was found ✓ (the adb devices ✓ · the addresses ✓ · the serial ports
+ *   ✓ · the private keys ✓) → and to say which one is right ✓ when there is
+ *   more than one candidate ✓.
+ * → **Every connection of this machine can be corrected** ✓ — the board's ✓
+ *   **and the guest machine's** ✓ (it has an address of its own ✓).
  */
-export interface BoardDetection {
-  /** The devices adb sees ✓ (the serial ✓ · the state ✓) */
-  adbDevices: { serial: string; state: string; stateText: string }[];
-  /** The model the board reports ✓ (`/proc/device-tree/model` ✓) */
-  model: string | null;
-  /** The address the board reports about itself ✓ */
-  address: string | null;
-  /** The serial ports of this machine ✓ (**which one answers** ✓) */
-  ports: { path: string; answered: boolean }[];
-  /** The board pack the detected model belongs to ✓ (`null` = no pack claims it ✓) */
-  boardPack: string | null;
+
+/** One adb device ✓ */
+export interface AdbDeviceInfo {
+  serial: string;
+  state: string;
+  stateText: string;
 }
 
-/** The values the person confirms ✓ */
-export interface BoardValues {
-  /** The board pack these values are for ✓ */
-  boardPack: string;
-  /** The serial number of the board (adb) ✓ */
-  adbSerial: string;
-  /** The address of the board ✓ */
+/** One serial port of this machine ✓ */
+export interface SerialPortInfo {
+  path: string;
+  /** Did the board answer there? ✓ (**a port that exists proves nothing** ✓) */
+  answered: boolean;
+}
+
+/** One candidate address ✓ */
+export interface AddressCandidate {
   address: string;
-  /** The serial port of the console ✓ */
-  serialPort: string;
+  /** Did the SSH port answer there? ✓ */
+  reachable: boolean;
+  /** Why not (when it did not ✓) */
+  detail: string | null;
 }
 
-/** What the apply did ✓ */
+/** One connection of this machine and the values it needs ✓ */
+export interface ConnectionValues {
+  /** The profile id ✓ */
+  id: string;
+  /** Its label ✓ */
+  label: string;
+  /** Its transport ✓ */
+  transport: string;
+  /** The board it belongs to ✓ (`null` = it belongs to no board ✓) */
+  boardPack: string | null;
+  /** The values it currently uses ✓ */
+  values: {
+    serial?: string;
+    host?: string;
+    port?: string;
+    username?: string;
+    key_filename?: string;
+  };
+  /** Where each value came from ✓ (`builtin` = it came with the profile ✓) */
+  sources: Record<string, string>;
+}
+
+export interface BoardDetection {
+  /** The adb devices ✓ */
+  adbDevices: AdbDeviceInfo[];
+  /** The model the board reports ✓ */
+  model: string | null;
+  /** The address of the board ✓ (**the one that answered** ✓) */
+  address: string | null;
+  /** **Every** candidate address ✓ and whether it answered ✓ */
+  addresses: AddressCandidate[];
+  /** The serial ports of this machine ✓ */
+  ports: SerialPortInfo[];
+  /** The private keys this machine has ✓ */
+  sshKeys: string[];
+  /** The board pack the detected model belongs to ✓ */
+  boardPack: string | null;
+  /** **Every connection of this machine** ✓ with the values it uses ✓ */
+  connections: ConnectionValues[];
+}
+
+/** The values the person confirms ✓ — **per connection** ✓ */
+export interface BoardApplyValue {
+  /** The profile id ✓ */
+  id: string;
+  /** The fields to set ✓ (**only the machine-specific ones** ✓) */
+  fields: Record<string, string>;
+}
+
 export interface BoardApplyResult {
-  /** The profiles that were written ✓ */
+  /** The connections that were written ✓ */
   written: string[];
-  /** The profiles that were left alone ✓ */
+  /** The connections that were left alone ✓ */
   kept: string[];
 }
 
@@ -45,16 +95,20 @@ export interface BoardApplyResult {
  * → **The renderer is not trusted** ✓ → every field is a string ✓ → the
  *   trimmed value ✓ → **an empty string means "not given"** ✓.
  */
-export function parseBoardValues(raw: unknown): BoardValues {
-  const source = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-  const text = (key: string): string => {
-    const value = source[key];
-    return typeof value === 'string' ? value.trim() : '';
-  };
-  return {
-    boardPack: text('boardPack'),
-    adbSerial: text('adbSerial'),
-    address: text('address'),
-    serialPort: text('serialPort'),
-  };
+export function parseBoardValues(raw: unknown): BoardApplyValue[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BoardApplyValue[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const source = entry as { id?: unknown; fields?: unknown };
+    if (typeof source.id !== 'string' || source.id.length === 0) continue;
+    const fields: Record<string, string> = {};
+    if (typeof source.fields === 'object' && source.fields !== null) {
+      for (const [key, value] of Object.entries(source.fields as Record<string, unknown>)) {
+        if (typeof value === 'string') fields[key] = value.trim();
+      }
+    }
+    out.push({ id: source.id, fields });
+  }
+  return out;
 }

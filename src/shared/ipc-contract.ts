@@ -10,7 +10,7 @@ import type { AppErrorPayload } from './errors';
 import type { TagReading } from './tag-reading';
 import type { RuntimeStatus } from './runtime-status';
 import type { LayoutState } from './layout';
-import type { BoardApplyResult, BoardDetection, BoardValues } from './board-setup';
+import type { BoardApplyResult, BoardDetection } from './board-setup';
 
 export const IPC = {
   terminalOpen: 'terminal:open',
@@ -450,7 +450,7 @@ export interface CockpitApi {
    *
    * → **It replaces** ✓ — this is the person saying "this is my board" ✓.
    */
-  boardApply(values: BoardValues): Promise<BoardApplyResult>;
+  boardApply(values: unknown): Promise<BoardApplyResult>;
   wizardRun(input: {
     port: string;
     baudrate: number;

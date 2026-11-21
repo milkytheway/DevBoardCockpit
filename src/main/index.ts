@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, protocol } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import {
   IPC,
   parseCardCspViolation,
@@ -40,16 +41,28 @@ import { loadSettings, resolveAdbPath } from './util/settings';
 import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { listPacksIn, matchPack } from './tags/binding';
-import { applyValues, prepareProfile } from './board/prepare';
+import { confirmValues, prepareProfile } from './board/prepare';
 import { hostPortProbe, listHostPorts } from './board/ports';
 import {
   listAdbDevices,
+  listSshKeys,
   probeSerialPorts,
   readBoardIPv4,
   readBoardModel,
 } from './board/detect';
-import { persistProfile } from './board/persist';
-import { parseBoardValues } from '../shared/board-setup';
+import {
+  MACHINE_FIELDS,
+  MachineValueStore,
+  applyMachineValues,
+  machineValuesPath,
+} from './board/machine-values';
+import { probeTcp } from './board/probe';
+import {
+  parseBoardValues,
+  type AddressCandidate,
+  type ConnectionValues,
+  type SerialPortInfo,
+} from '../shared/board-setup';
 import { createCardWiring } from './cards/wiring';
 import { runWizardForHost } from './wizard/wiring';
 import { ActionAudit } from './actions/audit';
@@ -140,11 +153,27 @@ async function loadFakeDevice(): Promise<void> {
  * The fake device (when it is on) is listed first — while debugging it is
  * always the one you see.
  */
+/**
+ * **The values of this machine** ✓ — the serial number ✓ · the address ✓ ·
+ * the port ✓ · the private key ✓.
+ *
+ * → They live in **one file** in the user data directory ✓ — **not** in a
+ *   copy of the profile ✓ (a copy overrides the whole profile ✓ → the next
+ *   fix to the shipped profile never reaches this machine ✓ → the
+ *   connection freezes ✓ — that is exactly how a stale address survived the
+ *   repair meant to replace it ✓).
+ */
+const machineValues = new MachineValueStore(machineValuesPath(userDataDir()));
+
 function listProfiles(): ConnectionProfile[] {
-  const profiles = loadProfiles({
+  const loaded = loadProfiles({
     builtinDir: builtinProfilesDir(app.getAppPath()),
     userDir: userProfilesDir(),
   });
+  // → **The store wins for the machine-specific fields** ✓ (it is the truth
+  //   about this machine ✓) · **the profile wins for everything else** ✓
+  //   (the label ✓ · the board ✓ · the transport ✓).
+  const profiles = applyMachineValues(loaded, machineValues);
   // Compile-time constant: in a production build it is `false` → the block
   // below is dead code → none of the fake device's wiring rules make it into
   // the bundle (not even the factory for the fake profile).
@@ -204,13 +233,15 @@ async function createConnectionFor(
       detail: { profileId: profile.id },
     });
   }
-  // → **The values of this machine are detected before the connection is built** ✓
-  // → and the repaired profile is written into the user directory ✓ → the
-  //   next start reads the right values ✓ (no detection, no delay ✓).
-  const prepared = await prepareProfile(profile, {
+  // → **The values of this machine are found before the connection is built** ✓
+  // → they are **verified** ✓ (the address has to answer ✓ · the port has to
+  //   answer ✓) → **a stale value cannot survive** ✓ → they are stored in
+  //   the machine-value store ✓ → the next start reads them ✓.
+  const outcome = await prepareProfile(profile, {
     adbPath,
     expectedModels: expectedModelsFor(profile.board_pack),
-    userProfilesDir: userProfilesDir(),
+    store: machineValues,
+    homeDir: homedir(),
     // → **The serial console is looked for** ✓ (the ports are asked which
     //   one is the console ✓ — **a port that answers is the console** ✓).
     // → It is only the **serial** connection that asks ✓ (the other two
@@ -218,7 +249,13 @@ async function createConnectionFor(
     ports: profile.transport === 'serial' ? hostPortProbe : undefined,
     log: (message) => console.log(message),
   });
-  return createConnection(prepared, log, { adbPath });
+  // → **What could not be found is said out loud** ✓ — the person has to
+  //   know why the connection will not work ✓ (and the address that was
+  //   tried ✓).
+  if (outcome.problems.length > 0) {
+    for (const problem of outcome.problems) console.warn(`[board] ${profile.id}: ${problem}`);
+  }
+  return createConnection(outcome.profile, log, { adbPath });
 }
 
 /**
@@ -908,11 +945,27 @@ handle(IPC.boardDetect, async () => {
   const ready = devices.filter((device) => device.state === 'device');
   const serial = ready.length === 1 ? (ready[0]?.serial ?? null) : null;
   const model = serial === null ? null : await readBoardModel(serial, { adbPath });
-  const address = serial === null ? null : await readBoardIPv4(serial, { adbPath });
+  const reported = serial === null ? null : await readBoardIPv4(serial, { adbPath });
+
+  // → **Every candidate address is tried** ✓ (the board may have several ✓)
+  //   → **the one whose SSH port answers is the address of the board** ✓
+  //   → the others are reported with the reason ✓ (the person sees what was
+  //   tried ✓ — **an address that is written down proves nothing** ✓).
+  const candidates = reported === null ? [] : [reported];
+  const addresses: AddressCandidate[] = [];
+  for (const candidate of candidates) {
+    const result = await probeTcp(candidate, 22, 1500);
+    addresses.push({
+      address: candidate,
+      reachable: result.ok,
+      detail: result.ok ? null : (result.error ?? 'no answer'),
+    });
+  }
+  const address = addresses.find((entry) => entry.reachable)?.address ?? null;
 
   // → The ports of this machine ✓ (the native module may be missing ✓ → then
   //   there are simply no ports to offer ✓).
-  let ports: { path: string; answered: boolean }[] = [];
+  let ports: SerialPortInfo[] = [];
   try {
     const all = await listHostPorts();
     const { answering } = await probeSerialPorts(all, 1500000, hostPortProbe, 600);
@@ -921,9 +974,45 @@ handle(IPC.boardDetect, async () => {
     console.warn(`[board] the serial ports cannot be listed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // → **The private keys of this machine** ✓ (the sanitising step removed
+  //   the key from the shipped profiles ✓ — the key is the person's ✓).
+  const sshKeys = await listSshKeys(homedir());
+
   const packs = listPacksIn([join(app.getAppPath(), 'profiles', 'boards'), userBoardsDir()]);
   const boardPack = model === null ? null : (packs.find((pack) => matchPack(pack, model))?.id ?? null);
-  return { adbDevices: devices, model, address, ports, boardPack };
+
+  // → **Every connection of this machine** ✓ — with the values it uses ✓ and
+  //   **where each value came from** ✓ (the person has to see that ✓).
+  // → **The fake device is not one of them** ✓ — it is synthetic data ✓ →
+  //   it has no serial number ✓ no address ✓ no port ✓ → listing it would
+  //   be an empty row ✓ (and the user asked for it to stay out of the other
+  //   board's interface ✓).
+  const connections: ConnectionValues[] = listProfiles()
+    .filter((profile) => fakeRouteFor(profile.id, FAKE_MODE, fakeModule !== null) === 'not-fake')
+    .map((profile) => {
+    const stored = machineValues.get(profile.id);
+    const values: ConnectionValues['values'] = {};
+    const sources: Record<string, string> = {};
+    for (const field of ['serial', 'host', 'port', 'username', 'key_filename'] as const) {
+      const entry = stored[field];
+      const fromStore = entry !== undefined;
+      const value = fromStore ? entry.value : profile.options[field];
+      if (typeof value === 'string' && value.length > 0) {
+        values[field] = value;
+        sources[field] = fromStore ? entry.source : 'builtin';
+      }
+    }
+      return {
+        id: profile.id,
+        label: profile.label,
+        transport: profile.transport,
+        boardPack: profile.board_pack ?? null,
+        values,
+        sources,
+      };
+    });
+
+  return { adbDevices: devices, model, address, addresses, ports, sshKeys, boardPack, connections };
 });
 
 /**
@@ -937,14 +1026,31 @@ handle(IPC.boardDetect, async () => {
  *   board ✓ — the guest machine keeps its own address ✓).
  */
 handle(IPC.boardApply, async (raw) => {
-  const values = parseBoardValues(raw);
+  const confirmed = parseBoardValues(raw);
   const written: string[] = [];
   const kept: string[] = [];
-  for (const profile of listProfiles()) {
-    if (profile.board_pack !== values.boardPack) continue;
-    const updated = applyValues(profile, values);
-    const result = persistProfile(updated, userProfilesDir(), { overwrite: true });
-    (result.written ? written : kept).push(profile.id);
+  for (const entry of confirmed) {
+    const profile = listProfiles().find((candidate) => candidate.id === entry.id);
+    if (profile === undefined) {
+      kept.push(entry.id);
+      continue;
+    }
+    // → **Only the machine-specific fields** ✓ (the serial number ✓ · the
+    //   address ✓ · the port ✓ · the key ✓ · the user name ✓) → **the
+    //   shipped profile stays the truth about the connection** ✓ → a later
+    //   fix to it reaches this machine ✓.
+    const fields: Record<string, unknown> = {};
+    for (const [field, value] of Object.entries(entry.fields)) {
+      if (value.length === 0) continue;
+      if (!MACHINE_FIELDS.includes(field)) continue;
+      fields[field] = value;
+    }
+    if (Object.keys(fields).length === 0) {
+      kept.push(entry.id);
+      continue;
+    }
+    confirmValues(machineValues, profile.id, fields, 'confirmed');
+    written.push(profile.id);
   }
   console.log(`[board] the confirmed values were written: ${written.join(', ') || '(none)'}`);
   return { written, kept };

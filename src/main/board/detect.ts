@@ -24,7 +24,9 @@
  * → **Nothing here writes anything** ✓ — writing is the resolver's business
  *   (`resolve.ts` ✓).
  */
-import { runProcess, type SpawnResult } from '../util/spawn';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { runProcess } from '../util/spawn';
 
 /** One device in the output of `adb devices`. */
 export interface AdbDevice {
@@ -37,11 +39,24 @@ export interface AdbDevice {
 }
 
 /** The runner — injected so that the tests never need adb. */
+/**
+ * What a runner has to hand back ✓.
+ *
+ * → **Only the three fields the detection reads** ✓ (the output ✓ · the
+ *   error output ✓ · the exit code ✓) → a test double does not have to
+ *   invent the rest of `SpawnResult` ✓.
+ */
+export interface ProcessOutput {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
 export type ProcessRunner = (
   command: string,
   args: string[],
   opts?: { timeoutMs?: number },
-) => Promise<SpawnResult>;
+) => Promise<ProcessOutput>;
 
 export interface DetectDeps {
   /** The adb executable (the machine-specific path comes from the settings ✓) */
@@ -128,6 +143,10 @@ export async function listAdbDevices(deps: DetectDeps = {}): Promise<AdbDevice[]
  * → **The loopback address is not one of them** ✓ (127.0.0.1 is the board
  *   talking to itself ✓ — it is never the address of the board on the
  *   network ✓).
+ * → **Every address is kept** ✓ (not just the first ✓) — a board can have
+ *   several ✓ (the wired one ✓ · the USB one ✓) and **which one the host
+ *   can reach is decided by trying** ✓ (`probe.ts` ✓), **not by the order
+ *   of the output** ✓.
  */
 export function parseIPv4(stdout: string): string[] {
   const found: string[] = [];
@@ -161,6 +180,151 @@ export async function readBoardIPv4(serial: string, deps: DetectDeps = {}): Prom
   } catch {
     return null;
   }
+}
+
+
+/**
+ * The hosts this machine has connected to ✓ — **from the user's own files** ✓.
+ *
+ * ── Why this exists ──
+ *
+ * → A **machine that is not a board** ✓ (the guest ✓) cannot be asked where
+ *   it is ✓ → there is nobody to ask ✓ → **the board cannot say it** ✓.
+ * → But the machine has **connected to it before** ✓ → that is written down
+ *   in **`~/.ssh/known_hosts`** ✓ (and in **`~/.ssh/config`** ✓) → **the
+ *   user's own record** ✓ → **not a guess** ✓.
+ * → The candidates are still **verified** ✓ (the port has to answer ✓) →
+ *   only the ones that answer are offered ✓.
+ *
+ * → **A hostname is resolved** ✓ (`localhost` → `127.0.0.1` ✓ · a name in
+ *   the hosts file ✓) — otherwise the candidate list would be full of names
+ *   that cannot be reached ✓.
+ */
+export function parseKnownHosts(content: string): string[] {
+  const out: string[] = [];
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    if (line.startsWith('#')) continue;
+    // → The format is `<hosts> <keytype> <key>` ✓ — the hosts come first ✓
+    //   (a hashed entry has no host name ✓ → it is skipped ✓).
+    const parts = line.split(/\s+/);
+    const hosts = parts[0] ?? '';
+    if (hosts.length === 0 || hosts.startsWith('|')) continue;
+    for (const host of hosts.split(',')) {
+      const name = host.trim();
+      if (name.length === 0) continue;
+      if (name.includes('*') || name.includes('?')) continue;
+      if (!out.includes(name)) out.push(name);
+    }
+  }
+  return out;
+}
+
+/**
+ * The `Host` lines of the ssh config ✓.
+ *
+ * → The format is `Host <name>` ✓ (a pattern may hold several names ✓) →
+ *   the patterns are skipped ✓ (a wildcard is not an address ✓).
+ */
+export function parseSshConfigHosts(content: string): string[] {
+  const out: string[] = [];
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.length === 0 || line.startsWith('#')) continue;
+    const match = /^Host\s+(.+)$/i.exec(line);
+    if (match === null) continue;
+    for (const name of (match[1] ?? '').split(/\s+/)) {
+      const host = name.trim();
+      if (host.length === 0) continue;
+      if (host.includes('*') || host.includes('?')) continue;
+      if (!out.includes(host)) out.push(host);
+    }
+  }
+  return out;
+}
+
+/**
+ * The hosts this machine has connected to ✓.
+ *
+ * → **`known_hosts`** ✓ · **`config`** ✓ · the **usual local names** ✓
+ *   (`localhost` ✓).
+ * → **A hostname is resolved** ✓ → the address is what can be tried ✓.
+ */
+export async function knownSshHosts(
+  homeDir: string,
+  deps: {
+    read?: (path: string) => string | null;
+    resolve?: (name: string) => Promise<string[]>;
+  } = {},
+): Promise<string[]> {
+  const read =
+    deps.read ??
+    ((path: string) => {
+      try {
+        return readFileSync(path, 'utf8');
+      } catch {
+        return null;
+      }
+    });
+  const names = new Set<string>();
+  const known = read(join(homeDir, '.ssh', 'known_hosts'));
+  if (known !== null) for (const name of parseKnownHosts(known)) names.add(name);
+  const config = read(join(homeDir, '.ssh', 'config'));
+  if (config !== null) for (const name of parseSshConfigHosts(config)) names.add(name);
+  names.add('localhost');
+
+  const resolve = deps.resolve ?? resolveHostNames;
+  const out: string[] = [];
+  for (const name of names) {
+    const addresses = await resolve(name);
+    for (const address of addresses) {
+      if (!out.includes(address)) out.push(address);
+    }
+  }
+  return out;
+}
+
+/** The addresses of a name ✓ (`localhost` → `127.0.0.1` ✓) */
+export async function resolveHostNames(name: string): Promise<string[]> {
+  if (name === 'localhost') return ['127.0.0.1'];
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return [name];
+  try {
+    const { lookup } = await import('node:dns/promises');
+    const found = await lookup(name, { all: true });
+    return found.map((entry) => entry.address);
+  } catch {
+    // → **A name that does not resolve is not a candidate** ✓ (it cannot be
+    //   tried ✓).
+    return [];
+  }
+}
+
+/**
+ * The private keys this machine has ✓.
+ *
+ * → **The key is a machine-specific value** ✓ (it lives in the user's home
+ *   ✓) → it belongs in the machine-value store ✓ and **not in a shipped
+ *   profile** ✓ (the sanitising step removed it from the profiles ✓ — and
+ *   that was right ✓ — but then nothing put it back ✓ → the SSH connection
+ *   had no credentials at all ✓).
+ * → **The usual names** ✓ are looked for ✓ (`id_ed25519` ✓ · `id_rsa` ✓ ·
+ *   `id_ecdsa` ✓ · `id_ed25519_sk` ✓) — **the order is the usual order** ✓
+ *   (the newest algorithm first ✓), **not a preference** ✓.
+ * → **The public key is not a private key** ✓ (`.pub` is skipped ✓).
+ */
+export async function listSshKeys(
+  homeDir: string,
+  deps: { exists?: (path: string) => boolean } = {},
+): Promise<string[]> {
+  const exists = deps.exists ?? ((path: string) => existsSync(path));
+  const names = ['id_ed25519', 'id_rsa', 'id_ecdsa', 'id_ed25519_sk'];
+  const found: string[] = [];
+  for (const name of names) {
+    const path = join(homeDir, '.ssh', name);
+    if (exists(path)) found.push(path);
+  }
+  return found;
 }
 
 /**

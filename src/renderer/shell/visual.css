@@ -1789,9 +1789,16 @@ body {
 
 .board-setup__field {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 140px 1fr auto;
   align-items: center;
   gap: 10px;
+}
+
+.board-setup__source {
+  font-size: 10px;
+  font-style: normal;
+  color: var(--ui-dim);
+  white-space: nowrap;
 }
 
 .board-setup__field > span {

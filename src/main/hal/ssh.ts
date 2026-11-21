@@ -58,6 +58,43 @@ export interface SshConnectOptions {
   password?: string;
 }
 
+/**
+ * The reason an SSH connection failed ✓ — **in the words of the person who
+ * has to act on it** ✓.
+ *
+ * ── Why this exists ──
+ *
+ * → The message used to be "cannot reach the SSH host X:22" ✓ **whatever
+ *   went wrong** ✓ → an authentication failure said the same thing ✓ → the
+ *   person went looking for a network problem ✓ that was not there ✓.
+ * → ssh2 says **where** it failed ✓ (`level` ✓):
+ *
+ * | level | What it means | What the person has to do |
+ * |---|---|---|
+ * | `client-socket` ✓ | the connection was refused ✓ · the host is down ✓ · the address is wrong ✓ | **the address** ✓ |
+ * | `client-dns` ✓ | the name does not resolve ✓ | **the address** ✓ |
+ * | `client-timeout` ✓ | the handshake did not finish ✓ | **the network** ✓ |
+ * | `client-authentication` ✓ | **the server refused our credentials** ✓ | **the key or the password** ✓ |
+ *
+ * → **The address and the credentials are two different problems** ✓ and the
+ *   message has to say which one it is ✓.
+ */
+export function sshFailureReason(level: string | undefined, cause: string): string {
+  const text = cause.trim();
+  switch (level) {
+    case 'client-authentication':
+      return `the board refused the credentials (${text}) — the private key or the password is wrong`;
+    case 'client-dns':
+      return `the address does not resolve (${text})`;
+    case 'client-timeout':
+      return `the handshake did not finish in time (${text})`;
+    case 'client-socket':
+      return `nothing answered on that address (${text}) — the address or the port is wrong`;
+    default:
+      return text.length > 0 ? text : 'the connection failed';
+  }
+}
+
 /** Parse the connection parameters from the profile. A missing host raises an error right away — when the connection fails it has to name the host. */
 export function sshArgs(profile: ConnectionProfile): SshConnectOptions {
   const host = profile.options['host'];
@@ -194,10 +231,16 @@ export class SshConnection implements Connection {
         if (this.client) {
           this.lastError = err;
         } else {
+          // → **The reason is in the message** ✓ — "cannot reach the host"
+          //   for an authentication failure sends the person looking for a
+          //   network problem that is not there ✓.
+          const reason = sshFailureReason(err.level, err.message);
           reject(
-            makeError('CONN_OPEN_FAILED', `cannot reach the SSH host ${this.opts.host}:${this.opts.port}`, {
-              detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level },
-            }),
+            makeError(
+              'CONN_OPEN_FAILED',
+              `the SSH connection to ${this.opts.host}:${this.opts.port} failed: ${reason}`,
+              { detail: { host: this.opts.host, port: this.opts.port, cause: err.message, level: err.level } },
+            ),
           );
         }
       };

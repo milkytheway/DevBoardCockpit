@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { CardInstanceInfo } from '../../src/shared/ipc-contract';
+import type { CardInstanceInfo, ConnectionInfo } from '../../src/shared/ipc-contract';
 import type { RuntimeStatus } from '../../src/shared/runtime-status';
 import { secondaryGroupsFor, type SecondaryContext } from '../../src/renderer/shell/nav';
 import { slotKey } from '../../src/renderer/shell/layout-utils';
@@ -24,6 +24,22 @@ import { slotKey } from '../../src/renderer/shell/layout-utils';
  * **the card could never be placed on the new connection again**.
  */
 
+function connection(
+  id: string,
+  deviceKey: string,
+  boardPack: string | null,
+): ConnectionInfo {
+  return {
+    id,
+    label: id,
+    transport: boardPack === null ? 'ssh' : 'adb',
+    boardPack,
+    deviceKey,
+    current: false,
+    capabilities: { exec: true, pty: false, files: false, exitCode: true },
+  };
+}
+
 function card(cardId: string, connectionId: string | null): CardInstanceInfo {
   return {
     instanceId: `${cardId}@${connectionId ?? 'none'}`,
@@ -40,6 +56,7 @@ function context(overrides: Partial<SecondaryContext> = {}): SecondaryContext {
   return {
     locale: 'zh-Hans',
     runtime: RUNTIME,
+    focusBoard: null,
     connections: [],
     cards: [],
     placedSlotKeys: [],
@@ -108,6 +125,8 @@ describe('Shell · the sessions of the terminal page', () => {
     const ctx = context({
       sessions: [{ sessionId: 's-1', profileId: 'board-serial', label: 'Board · Serial' }],
       activeSessionId: 's-1',
+      focusBoard: 'ATK-DLRK3588',
+      connections: [connection('board-serial', 'ATK-DLRK3588', 'rk3588-atk')],
     });
     const group = secondaryGroupsFor('terminal', ctx).find((g) => g.id.startsWith('sessions'));
     expect(group).toBeDefined();
@@ -115,6 +134,30 @@ describe('Shell · the sessions of the terminal page', () => {
     expect(item.sessionId).toBe('s-1');
     expect(item.onClose).toBeTypeOf('function');
     expect(item.onSelect).toBeTypeOf('function');
+  });
+
+  it('**the connections of another board never appear on this board** ✓ (with a hundred boards the list must not grow ✓)', () => {
+    const ctx = context({
+      focusBoard: 'ATK-DLRK3588',
+      connections: [
+        connection('board-serial', 'ATK-DLRK3588', 'rk3588-atk'),
+        connection('fake-board', 'FAKE-BOARD', 'rk3588-atk'),
+      ],
+    });
+    const groups = secondaryGroupsFor('terminal', ctx);
+    const ids = groups.flatMap((group) => group.items.map((item) => item.id));
+    expect(ids).toContain('board-serial');
+    expect(ids).not.toContain('fake-board');
+  });
+
+  it('**a group with no rows is not drawn** ✓ (an empty group is noise ✓)', () => {
+    const ctx = context({
+      focusBoard: 'ATK-DLRK3588',
+      connections: [connection('board-serial', 'ATK-DLRK3588', 'rk3588-atk')],
+    });
+    for (const group of secondaryGroupsFor('terminal', ctx)) {
+      expect(group.items.length).toBeGreaterThan(0);
+    }
   });
 
   it('the session row of the files page has a close button too', () => {

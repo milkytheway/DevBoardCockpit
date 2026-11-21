@@ -280,12 +280,20 @@ export function Shell(): JSX.Element {
    *   changed ✓).
    */
   const [selecting, setSelecting] = useState(false);
+  // → **The board the interface is working with** ✓ — what the person picked
+  //   ✓ (the picker at the top ✓). The terminal page follows it ✓ → **the
+  //   connections of another board never appear there** ✓ (with a hundred
+  //   boards the list does not grow ✓).
+  const [focusBoard, setFocusBoard] = useState<string | null>(null);
   const selectDevice = useCallback(
     (deviceKey: string) => {
       setSelecting(true);
       void window.cockpit
         .devicesSelect(deviceKey)
         .then(() => {
+          // → **The focus follows the pick** ✓ — even when the connection
+          //   fails ✓ (the person is working with that board ✓).
+          setFocusBoard(deviceKey);
           refreshConnections();
           log('info', t(strings.switchedBoard, { board: deviceKey }));
         })
@@ -418,6 +426,10 @@ export function Shell(): JSX.Element {
       secondaryGroupsFor(page, {
         locale,
         runtime,
+        // → **The board the interface is working with** ✓ (the picker ✓) —
+        //   the terminal page follows it ✓ → the connections of another board
+        //   never appear there ✓.
+        focusBoard,
         connections,
         cards,
         placedSlotKeys: [...placedKeys],
@@ -439,6 +451,7 @@ export function Shell(): JSX.Element {
       activityFilter,
       cards,
       connections,
+      focusBoard,
       handlePlace,
       handleRemove,
       page,
