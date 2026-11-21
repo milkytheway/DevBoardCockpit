@@ -85,6 +85,15 @@ export interface McpServerDeps {
      */
   permissions: PermissionStore;
   /**
+     * **The version of the application** ✓ — **the one the agent sees** ✓
+     * (`serverInfo.version` ✓ · the specification §"Initialization" ✓).
+     *
+     * → **It is required** ✓ — **the version is not written in here** ✓: a
+     *   second copy of it ✓ is a version that lies ✓ (the next release would
+     *   carry the version of the one before ✓ · and the agent believes it ✓).
+     */
+  version: string;
+  /**
      * **The host dependencies of the read-side tools** ✓.
      *
      * → **Optional** ✓: without them there are only the four workflow tools ✓
@@ -96,8 +105,11 @@ export interface McpServerDeps {
 export class McpServer {
   private readonly tools: Map<string, McpToolImpl>;
   private readonly toolDefs: McpToolDef[];
+  /** **The version the agent sees** ✓ (**the one the application gives** ✓ — not a copy of it ✓) */
+  private readonly version: string;
 
   constructor(deps: McpServerDeps) {
+    this.version = deps.version;
     this.tools = buildTools(deps);
     // **Without the host dependencies the read-side tools are not listed** ✓ (**a tool that cannot be called is not listed** ✓ — the requirement of contract §7.4 ✓)
     this.toolDefs =
@@ -154,7 +166,7 @@ export class McpServer {
         return {
           protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: { tools: {} },
-          serverInfo: { name: 'devboard-cockpit', version: '0.1.0' },
+          serverInfo: { name: 'devboard-cockpit', version: this.version },
         };
       case 'tools/list':
         return { tools: this.listTools() };

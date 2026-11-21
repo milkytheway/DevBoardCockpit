@@ -591,6 +591,10 @@ async function startMcpServer(): Promise<void> {
       // implementation decision record ADR-D47 ✓ · ADR-D48 ✓)
       permissions,
       workflows: workflowService,
+      // **The version the agent sees** ✓ — **the one of this application** ✓
+      // (`app.getVersion()` ✓ — the packaged metadata ✓) → **not a copy of it
+      // in the code** ✓ (a copy drifts ✓ and the agent believes the old one ✓).
+      version: app.getVersion(),
       // Host dependencies of the read-side tools ✓ (see `src/main/mcp/host.ts` ✓)
       host: buildMcpHost({
         listProfiles: () => listProfiles(),

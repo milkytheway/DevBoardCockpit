@@ -26,6 +26,10 @@ import type { Connection, ExecResult } from '../../src/main/hal/connection';
  * that shape once — if any link of the chain does not fit, the agent cannot
  * connect.
  */
+
+/** **The version the server is given** ✓ (a value nobody would write into the code ✓) */
+const TEST_VERSION = '1.2.3';
+
 const PACK_YAML = `apiVersion: devboard/v1
 kind: Workflow
 id: demo.run
@@ -105,7 +109,7 @@ beforeEach(async () => {
   permissions = new PermissionStore(join(dir, 'permissions.json'));
   token = generateToken();
   server = await startMcpHttp({
-    mcp: new McpServer({ workflows: service, permissions: permissions, host: hostDeps() }),
+    mcp: new McpServer({ workflows: service, permissions: permissions, version: TEST_VERSION, host: hostDeps() }),
     token,
     host: '127.0.0.1',
     port: 0,

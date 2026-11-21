@@ -33,6 +33,12 @@ import type { Connection, ExecResult } from '../../../src/main/hal/connection';
  * - **the tool that passed on a confirmation request is gone**.
  */
 
+/**
+ * **The version the server is given** ✓ — a value nobody would write into the
+ * code ✓ → **a literal would fail the criterion** ✓.
+ */
+const TEST_VERSION = '1.2.3';
+
 let dir: string;
 let service: WorkflowService;
 let registry: WorkflowRegistry;
@@ -108,7 +114,7 @@ beforeEach(() => {
 });
 
 function server(): McpServer {
-  return new McpServer({ workflows: service, permissions: permissionsStore() });
+  return new McpServer({ workflows: service, permissions: permissionsStore(), version: TEST_VERSION });
 }
 
 /** **The unified permission area** ✓ (the gate of the agent side ✓) */
@@ -135,6 +141,7 @@ function serverWithHost(): McpServer {
   return new McpServer({
     workflows: service,
     permissions: permissionsStore(),
+    version: TEST_VERSION,
     host: {
       pack: () => null,
       readings: () => [],
@@ -180,6 +187,21 @@ describe('MCP · initialize', () => {
     const res = await call('initialize', { protocolVersion: '1999-01-01' });
     const result = res['result'] as Record<string, unknown>;
     expect(result['protocolVersion']).toBe('2025-06-18');
+  });
+
+  /**
+   * **The version the agent sees is the one of this application.**
+   *
+   * → The agent reads `serverInfo.version` ✓ and believes it ✓ → a version
+   *   written into the code ✓ is a version that lies ✓ (the next release
+   *   would carry the version of the one before ✓).
+   * → The criterion asks for **a version nobody would write in the code** ✓
+   *   (the one the test gives ✓) → **a literal would fail it** ✓.
+   */
+  it('**serverInfo carries the version the application gives** (**not a version written in here** ✓)', async () => {
+    const res = await call('initialize', { protocolVersion: '2025-06-18' });
+    const info = (res['result'] as Record<string, unknown>)['serverInfo'] as Record<string, unknown>;
+    expect(info['version']).toBe(TEST_VERSION);
   });
 });
 
@@ -274,7 +296,7 @@ describe('MCP · the permission area is the gate of the agent side', () => {
   it('**`run_workflow` is `denied` when the permission area does not allow it** ✓ (ADR-D47 ✓ · ADR-D48 ✓)', async () => {
     const store = permissionsStore();
     store.set('agent', 'workflow:demo.run', false);
-    const mcp = new McpServer({ workflows: service, permissions: store });
+    const mcp = new McpServer({ workflows: service, permissions: store, version: TEST_VERSION });
     const res = (await mcp.handle({
       jsonrpc: '2.0',
       id: 1,
