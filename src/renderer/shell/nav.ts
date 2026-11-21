@@ -1,7 +1,12 @@
 import type { CardInstanceInfo, ConnectionInfo } from '../../shared/ipc-contract';
 import type { RuntimeStatus } from '../../shared/runtime-status';
 import { cardLook, CARD_GROUPS, type CardLook } from './cards';
-import { boardOfSession, machineConnections } from './board-scope';
+import {
+  boardOfSession,
+  boardsIn,
+  currentBoard,
+  machineConnections,
+} from './board-scope';
 import { pick, type Localised } from './i18n';
 import { slotKey } from './layout-utils';
 import type { ActivityEntry, ActivityLevel, PageId, TerminalTab } from './types';
@@ -75,16 +80,6 @@ export interface SecondaryGroup {
 export interface SecondaryContext {
   /** The interface language. The sidebar builds its labels from it. */
   locale: import('./i18n').Locale;
-  /**
-   * **The board the interface is working with** ✓ (`null` = none ✓).
-   *
-   * → It is **what the person picked** ✓ (the picker at the top ✓) — not
-   *   "whichever connection happens to be sampling" ✓.
-   * → **Everything on the page follows it** ✓ → the connections of another
-   *   board **never appear here** ✓ (with a hundred boards the list does not
-   *   grow ✓).
-   */
-  focusBoard: string | null;
   runtime: RuntimeStatus;
   connections: ConnectionInfo[];
   cards: CardInstanceInfo[];
@@ -173,47 +168,38 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
  * terminals that are actually running. One profile can have several
  * sessions, so the two lists are not the same thing.
  *
- * ── the page belongs to ONE board ✓
+ * ── every group says which board it is** ✓
  *
  * → A board has three connections ✓ and the machine may have **several
- *   boards** ✓ (the real one ✓ and the synthetic one ✓) → a list that grows
- *   with the number of boards is a list nobody can read ✓ ("with a hundred
- *   boards you would show them all?" ✓).
- * → So: **the connections of the board that is current** ✓ and nothing else
- *   ✓ → **another board's connections never appear here** ✓ (you switch the
- *   board at the top ✓ — the picker is where the boards live ✓).
- * → The sessions of the current board ✓ are listed ✓ · **the sessions of
- *   the other boards** ✓ are one small group ✓ — they have to stay closable
- *   ✓ (a serial or SSH connection is exclusive ✓ → an unclosable session
- *   holds the port for good ✓).
- * → **A group with no rows is not drawn** ✓ (an empty "Board · fake-board"
- *   group is noise ✓ — and it is exactly what made the user think the fake
- *   board belonged to the other board ✓).
+ *   boards** ✓ (the real one ✓ and the synthetic one ✓) → a flat list puts
+ *   the terminal of one board **under the other** ✓ → the user cannot tell
+ *   whose terminal they are looking at ✓.
+ * → So the connections and the sessions are **grouped by board** ✓ and the
+ *   group heading carries the board's identity ✓ (`device_key` ✓ — **not an
+ *   invented name** ✓).
+ * → The connections that are not boards (the host's own shell ✓ · the guest
+ *   ✓) are a group of their own ✓ — they are **machines** ✓.
  */
 function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
   const groups: SecondaryGroup[] = [];
 
   const boardTitle = (board: string): Localised => ({
-    'zh-Hans': `连接方式 · ${board}`,
-    en: `Connections · ${board}`,
+    'zh-Hans': `板子 · ${board}`,
+    en: `Board · ${board}`,
   });
-  const sessionTitle = (board: string): Localised => ({
-    'zh-Hans': `会话 · ${board}`,
-    en: `Sessions · ${board}`,
-  });
-  const machineTitle: Localised = {
-    'zh-Hans': '机器（不属于任何板）',
-    en: 'Machines (not a board)',
-  };
+  const machineTitle: Localised = { 'zh-Hans': '机器', en: 'Machines' };
 
-  // ── The connections of the board that is current ✓ ──
-  // → **Only that board** ✓ (the other boards' connections are not here ✓).
-  const board = ctx.focusBoard;
-  if (board !== null) {
+  // ── The connections, one group per board ✓ ──
+  // → **Only the board that is current** ✓ (plus the machines ✓) → a
+  //   connection of another board would open a session that the page does
+  //   not show ✓ → that is confusing ✗ → **you switch the board first** ✓
+  //   (the picker at the top ✓).
+  const board = currentBoard(ctx.connections);
+  for (const key of board === null ? boardsIn(ctx.connections) : [board]) {
     const items: SecondaryItem[] = ctx.connections
       .filter(
         (connection) =>
-          connection.boardPack !== null && connection.deviceKey === board,
+          connection.boardPack !== null && connection.deviceKey === key,
       )
       .map((connection) => ({
         id: connection.id,
@@ -224,13 +210,8 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
         },
         onSelect: () => ctx.onOpenSession(connection.id),
       }));
-    if (items.length > 0) {
-      groups.push({ id: `connections:${board}`, title: boardTitle(board), items });
-    }
+    groups.push({ id: `connections:${key}`, title: boardTitle(key), items });
   }
-
-  // ── The machines ✓ (the host's own shell ✓ · the guest ✓) ──
-  // → They belong to **no** board ✓ → they are always available ✓.
   const machines = machineConnections(ctx.connections);
   if (machines.length > 0) {
     groups.push({
@@ -248,39 +229,41 @@ function terminalGroups(ctx: SecondaryContext): SecondaryGroup[] {
     });
   }
 
-  // ── The sessions ✓ ──
-  const sessionItem = (session: SecondaryContext['sessions'][number]): SecondaryItem => ({
-    id: session.sessionId,
-    label: { 'zh-Hans': session.label, en: session.label },
-    hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
-    tone:
-      session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
-    sessionId: session.sessionId,
-    onSelect: () => ctx.onSelectSession(session.sessionId),
-    // **A session has to be closable**: a serial or SSH connection is exclusive,
-    // and without a way to close it the port stays held.
-    onClose: () => ctx.onCloseSession(session.sessionId),
-  });
-
-  if (board !== null) {
-    const items = ctx.sessions
+  // ── The sessions, one group per board ✓ ──
+  for (const board of boardsIn(ctx.connections)) {
+    const items: SecondaryItem[] = ctx.sessions
       .filter((session) => boardOfSession(ctx.connections, session) === board)
-      .map(sessionItem);
-    if (items.length > 0) {
-      groups.push({ id: `sessions:${board}`, title: sessionTitle(board), items });
-    }
+      .map((session) => ({
+        id: session.sessionId,
+        label: { 'zh-Hans': session.label, en: session.label },
+        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
+        tone:
+          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+        sessionId: session.sessionId,
+        onSelect: () => ctx.onSelectSession(session.sessionId),
+        // **A session has to be closable**: a serial or SSH connection is exclusive,
+        // and without a way to close it the port stays held.
+        onClose: () => ctx.onCloseSession(session.sessionId),
+      }));
+    groups.push({ id: `sessions:${board}`, title: boardTitle(board), items });
   }
-
-  // ── The sessions of the other boards ✓ (one group ✓ — they stay closable ✓) ──
-  const otherSessions = ctx.sessions.filter((session) => {
-    const owner = boardOfSession(ctx.connections, session);
-    return owner !== board;
-  });
-  if (otherSessions.length > 0) {
+  const machineSessions = ctx.sessions.filter(
+    (session) => boardOfSession(ctx.connections, session) === null,
+  );
+  if (machineSessions.length > 0) {
     groups.push({
       id: 'sessions:other',
-      title: { 'zh-Hans': '其他板子的会话', en: 'Sessions of other boards' },
-      items: otherSessions.map(sessionItem),
+      title: { 'zh-Hans': '其他会话', en: 'Other sessions' },
+      items: machineSessions.map((session) => ({
+        id: session.sessionId,
+        label: { 'zh-Hans': session.label, en: session.label },
+        hint: { 'zh-Hans': session.sessionId.slice(0, 8), en: session.sessionId.slice(0, 8) },
+        tone:
+          session.sessionId === ctx.activeSessionId ? ('active' as const) : ('default' as const),
+        sessionId: session.sessionId,
+        onSelect: () => ctx.onSelectSession(session.sessionId),
+        onClose: () => ctx.onCloseSession(session.sessionId),
+      })),
     });
   }
 

@@ -1,278 +1,168 @@
 /**
  * **Preparing a connection for this machine.**
  *
- * ── What this does ──
+ * ── The one job of this module ──
  *
- * → The **profile** says what the connection is ✓ (the transport ✓ · the
- *   board ✓ · the label ✓).
- * → The **machine-value store** says which machine it reaches ✓ (the serial
- *   number ✓ · the address ✓ · the port ✓ · the private key ✓).
- * → This module **merges** them ✓ and, when a value is missing ✓ or **no
- *   longer true** ✓, **finds** it again ✓ and **writes it down** ✓.
+ * A published profile carries **placeholders** for the values that only one
+ * machine knows (the board's serial number ✓ · its address ✓). Before a
+ * connection is built, those placeholders are **detected** ✓ and the repaired
+ * profile is **written into the user directory** ✓ → from then on the
+ * application reads the right values ✓ (the user's copy wins ✓).
  *
- * ── Why not a copy of the profile in the user directory ──
+ * ── When nothing is wrong, nothing happens ──
  *
- * → A copy **overrides the whole profile** ✓ → the next fix to the shipped
- *   profile **never reaches that machine** ✓ → the connection **freezes** ✓
- *   (that is how a stale address survived the very repair meant to replace
- *   it ✓).
- * → The store holds **only the machine-specific fields** ✓ → the shipped
- *   profile stays the truth about the connection ✓.
+ * → A profile whose values are real is **not touched** ✓ → no adb call, no
+ *   write, no delay ✓.
  *
- * ── The rules ──
+ * ── When it cannot be repaired, it says so ──
  *
- * | # | Rule | Why |
- * |---|---|---|
- * | 1 | **Only a board's connections are detected** ✓ | the guest machine is not on the board's network ✓ → the board cannot say where it is ✓ |
- * | 2 | **A value is verified before it is used** ✓ | an address that is written down proves nothing ✓ (the port has to answer ✓) |
- * | 3 | **A value the person confirmed is never second-guessed** ✓ | it is their decision ✓ — the error says what was tried ✓ |
- * | 4 | **Several candidates → nothing is chosen** ✓ | the same "never guess" as everywhere else ✓ |
+ * → The old message was "cannot reach the SSH host 192.0.2.100:22" ✓ — a
+ *   **documented address** ✓ that the user cannot reach because **it is not
+ *   a board** ✓ → the message has to name the placeholder ✓.
  */
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { makeError } from '../../shared/errors';
+import type { BoardValues } from '../../shared/board-setup';
 import type { ConnectionProfile } from '../profiles/schema';
-import {
-  isPlaceholderHost,
-  isPlaceholderSerial,
-  probeSerialPorts,
-  type PortProbe,
-} from './detect';
-import { findMachineValues, forgetDetection, type FindDeps } from './find';
-import { probeTcp } from './probe';
-import { MachineValueStore, type ValueSource } from './machine-values';
+import { isPlaceholderHost, isPlaceholderSerial, listAdbDevices, type AdbDevice } from './detect';
+import { persistProfile } from './persist';
+import { resolveProfile, type ResolveDeps, type ProfileChange } from './resolve';
 
-export interface PrepareDeps extends FindDeps {
-  /** The store ✓ */
-  store: MachineValueStore;
-  /** The log ✓ */
+export interface PrepareDeps extends ResolveDeps {
+  /** Where the repaired profile is written ✓ */
+  userProfilesDir: string;
+  /** The log line ✓ (the changes are worth a line each ✓) */
   log?: (message: string) => void;
-  /** The models the board pack accepts ✓ */
-  expectedModels?: readonly string[];
 }
 
-/** The value of a field is missing or a placeholder ✓ */
-function isUnusable(value: unknown, placeholder: boolean): boolean {
-  if (typeof value !== 'string' || value.length === 0) return true;
-  return placeholder;
-}
-
-/** Is this the connection of a board? ✓ (the guest machine is not ✓) */
-export function isBoardConnection(profile: ConnectionProfile): boolean {
-  return typeof profile.board_pack === 'string' && profile.board_pack.length > 0;
-}
-
-/**
- * Does this profile still need a value that only this machine knows? ✓
- *
- * → The **adb** connection needs a serial ✓ · the **ssh** connection needs
- *   an address ✓ and a private key ✓ · the **serial** connection needs a
- *   port ✓.
- * → **A value that is stored is not missing** ✓ — even when it is stale ✓
- *   (a stale value is detected again when the verification finds that it
- *   does not answer ✓).
- * → **The host's own shell** ✓ (`local` ✓) needs nothing ✓ — it is the
- *   host itself ✓.
- */
-export function needsValue(
-  profile: ConnectionProfile,
-  store: MachineValueStore,
-): boolean {
-  const stored = store.get(profile.id);
+/** The value that is still a placeholder ✓ — `null` when nothing is ✓ */
+export function placeholderOf(profile: ConnectionProfile): string | null {
   const options = profile.options;
-  switch (profile.transport) {
-    case 'adb':
-      // → **Only a board's connections have a serial number** ✓.
-      if (!isBoardConnection(profile)) return false;
-      return (
-        stored['serial'] === undefined &&
-        isUnusable(options['serial'], isPlaceholderSerial(String(options['serial'] ?? '')))
-      );
-    case 'ssh':
-      return (
-        (stored['host'] === undefined &&
-          isUnusable(options['host'], isPlaceholderHost(String(options['host'] ?? '')))) ||
-        (stored['key_filename'] === undefined && stored['password'] === undefined)
-      );
-    case 'serial':
-      // → **Only a board's connections have a console** ✓.
-      if (!isBoardConnection(profile)) return false;
-      return stored['port'] === undefined && isUnusable(options['port'], false);
-    default:
-      return false;
+  const serial = options['serial'];
+  if (typeof serial === 'string' && isPlaceholderSerial(serial)) {
+    return `the serial ${serial}`;
   }
+  const host = options['host'];
+  if (typeof host === 'string' && isPlaceholderHost(host)) {
+    return `the host ${host} (a documentation address of RFC 5737)`;
+  }
+  const nested = options['ssh'];
+  if (typeof nested === 'object' && nested !== null) {
+    const nestedHost = (nested as Record<string, unknown>)['host'];
+    if (typeof nestedHost === 'string' && isPlaceholderHost(nestedHost)) {
+      return `the address ${nestedHost} (a documentation address of RFC 5737)`;
+    }
+  }
+  return null;
 }
 
 /**
- * The fields of one transport ✓ — **only those are stored** ✓.
+ * Does this profile have to be repaired?
  *
- * → The adb connection stores the serial number ✓ · the ssh connection the
- *   address ✓ the key ✓ the user name ✓ · the serial connection the port ✓.
- * → **Nothing else** ✓ (a value that another transport does not use is
- *   noise ✓).
+ * → **The adb connection** ✓: the pinned serial has to be **really there**
+ *   ✓ (a board that was swapped has a different serial ✓).
+ * → **The other connections** ✓: only a placeholder counts ✓ (their host
+ *   may be perfectly fine ✓).
  */
-export function fieldsOf(
-  transport: ConnectionProfile['transport'],
-  patch: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  switch (transport) {
-    case 'adb':
-      if (patch['serial'] !== undefined) out['serial'] = patch['serial'];
-      break;
-    case 'ssh':
-      for (const field of ['host', 'key_filename', 'username', 'port'] as const) {
-        if (patch[field] !== undefined) out[field] = patch[field];
-      }
-      break;
-    case 'serial':
-      if (patch['port'] !== undefined) out['port'] = patch['port'];
-      break;
-    default:
-      break;
+export function needsRepair(profile: ConnectionProfile, devices: readonly AdbDevice[]): boolean {
+  const options = profile.options;
+  const serial = options['serial'];
+  if (typeof serial === 'string' && serial.length > 0) {
+    if (isPlaceholderSerial(serial)) return true;
+    if (devices.length > 0 && !devices.some((device) => device.serial === serial)) return true;
   }
-  return out;
+  return placeholderOf(profile) !== null;
 }
 
 /**
- * **Is the stored value still true?** ✓
+ * Prepare the profile for this machine ✓.
  *
- * → **A value that is written down proves nothing** ✓ → the address has to
- *   answer ✓ → the port has to answer ✓.
- * → **A value the person confirmed is never second-guessed** ✓ (it is their
- *   decision ✓ — the error message names what was tried ✓).
- * → **A detected value that does not answer is detected again** ✓ → that is
- *   how a stale value stops being used ✓ (**the freeze is broken** ✓).
- */
-export async function staleValue(
-  profile: ConnectionProfile,
-  store: MachineValueStore,
-  deps: PrepareDeps,
-): Promise<boolean> {
-  if (profile.transport === 'local') return false;
-  const stored = store.get(profile.id);
-  if (profile.transport === 'ssh') {
-    const entry = stored['host'];
-    if (entry === undefined || entry.source === 'confirmed') return false;
-    const host = typeof entry.value === 'string' ? entry.value : '';
-    if (host.length === 0) return false;
-    const port = Number(profile.options['port'] ?? 22);
-    const probe = deps.probe ?? ((h: string, p: number) => probeTcp(h, p, 1500));
-    const result = await probe(host, port);
-    return !result.ok;
-  }
-  if (profile.transport === 'serial') {
-    const entry = stored['port'];
-    if (entry === undefined || entry.source === 'confirmed') return false;
-    if (deps.ports === undefined) return false;
-    const port = typeof entry.value === 'string' ? entry.value : '';
-    if (port.length === 0) return false;
-    const { answering, busy } = await probeSerialPorts(
-      [{ path: port }],
-      Number(profile.options['baudrate'] ?? 1500000),
-      deps.ports,
-    );
-    // → **A busy port is not a stale port** ✓ (another program holds it ✓).
-    if (busy.includes(port)) return false;
-    return !answering.includes(port);
-  }
-  return false;
-}
-
-/**
- * Fill in what this machine knows ✓ and merge it into the profile ✓.
- *
- * → **The store wins** for the machine-specific fields ✓ (it is the truth
- *   about this machine ✓) · **the profile wins** for everything else ✓.
- * → **A value that is missing is found** ✓ → written into the store ✓
- *   (source `detected` ✓) → used ✓.
- * → **A value that no longer answers is found again** ✓ (the stale value is
- *   replaced ✓ — **that is what breaks the freeze** ✓).
- * → **What could not be found is reported** ✓ — the person has to see it ✓.
+ * → **The repaired profile is written into the user directory** ✓ → the next
+ *   start reads the right values ✓ → no detection, no delay ✓.
+ * → **The user's own file is never overwritten** ✓ (`persist.ts` ✓).
  */
 export async function prepareProfile(
   profile: ConnectionProfile,
   deps: PrepareDeps,
-): Promise<{ profile: ConnectionProfile; problems: string[]; changes: string[] }> {
+): Promise<ConnectionProfile> {
   const log = deps.log ?? ((message: string) => console.log(message));
-  const problems: string[] = [];
-  const changes: string[] = [];
 
-  // ── The store is the truth about this machine ✓ ──
-  const stored = deps.store.get(profile.id);
-  const options: Record<string, unknown> = { ...profile.options };
-  for (const [field, entry] of Object.entries(stored)) {
-    options[field] = entry.value;
+  // → **A connection without a board pack is not a board's connection** ✓
+  //   (the host's own shell ✓ · **the guest machine** ✓) → it must never get
+  //   the board's address ✓ → **the address belongs to the board** ✓.
+  if (typeof profile.board_pack !== 'string' || profile.board_pack.length === 0) {
+    return profile;
   }
 
-  // ── Is a value missing **or stale**? ✓ ──
-  const missing = needsValue(profile, deps.store);
-  const stale = missing ? false : await staleValue(profile, deps.store, deps);
-  if (missing || stale) {
-    if (stale) {
-      log(`[board] ${profile.id}: the stored value does not answer any more → detecting again`);
-    }
-    const found = await findMachineValues({
-      ...deps,
-      force: stale,
-      // → **A board says where it is** ✓ · **a machine that is not a board**
-      //   cannot say ✓ → its candidates come from the user's own records ✓.
-      kind: isBoardConnection(profile) ? 'board' : 'machine',
-      expectedModels: deps.expectedModels ?? [],
-      homeDir: deps.homeDir ?? homedir(),
-    });
-    // → **Only the fields of this transport are stored** ✓ (the adb
-    //   connection has no port ✓ · the ssh connection has no serial ✓).
-    const patch = fieldsOf(profile.transport, found.patch);
-    if (Object.keys(patch).length > 0) {
-      deps.store.set(profile.id, patch, 'detected');
-      for (const [field, value] of Object.entries(patch)) {
-        options[field] = value;
-        const reason = found.reasons[field] ?? 'detected';
-        changes.push(`${field} → ${String(value)} (${reason})`);
-        log(`[board] ${profile.id}: ${field} → ${String(value)} (${reason})`);
-      }
-      // → **The next detection starts fresh** ✓ (the world may have changed ✓).
-      forgetDetection();
-    }
-    // → **The address of the board is also the address the guest uses** ✓
-    //   (`options.ssh.host` ✓ — the guest reaches the board through it ✓) →
-    //   it is filled in for the other transports too ✓.
-    if (patch['host'] !== undefined) {
-      const nested = options['ssh'];
-      if (typeof nested === 'object' && nested !== null) {
-        options['ssh'] = {
-          ...(nested as Record<string, unknown>),
-          host: patch['host'],
-        };
-      }
-    }
-    problems.push(...found.problems);
+  // ── The adb connection needs the device list to know whether its serial is stale ✓ ──
+  const devices =
+    profile.transport === 'adb' || placeholderOf(profile) !== null
+      ? await listAdbDevices(deps)
+      : [];
+
+  if (!needsRepair(profile, devices)) return profile;
+
+  const outcome = await resolveProfile(profile, { ...deps, devices });
+
+  for (const change of outcome.changes) {
+    log(`[board] ${profile.id}: ${change.field} "${change.from}" → "${change.to}" (${change.how})`);
   }
 
-  const merged: ConnectionProfile = { ...profile, options };
-  return { profile: merged, problems, changes };
+  // ── It worked → write it down ✓ ──
+  if (outcome.changes.length > 0) {
+    const written = persistProfile(outcome.profile, deps.userProfilesDir);
+    if (written.written) {
+      log(`[board] ${profile.id}: the repaired profile was written to ${written.path}`);
+    } else {
+      log(`[board] ${profile.id}: ${written.reason ?? 'the profile was not written'}`);
+    }
+    return outcome.profile;
+  }
+
+  // ── It did not work → the message has to say why ✓ ──
+  const placeholder = placeholderOf(profile);
+  if (placeholder !== null) {
+    const reasons = outcome.problems.length > 0 ? outcome.problems.join('; ') : 'nothing was detected';
+    throw makeError(
+      'CONN_OPEN_FAILED',
+      `${profile.id} still carries ${placeholder} — the published profile is a placeholder, the board has to be set up on this machine (${reasons})`,
+      { detail: { profileId: profile.id, placeholder, problems: outcome.problems } },
+    );
+  }
+  return profile;
 }
 
 /**
- * Write the values the person confirmed ✓.
+ * **Fill the values the person confirmed** ✓.
  *
- * → **The store** ✓ (not a profile copy ✓ — the shipped profile stays the
- *   truth about the connection ✓).
- * → The source is `confirmed` ✓ → it wins over a detected value ✓.
+ * → The detection found them ✓ (or the person typed them ✓) → they go into
+ *   the profile ✓ → **only the fields that belong to that transport** ✓
+ *   (the adb connection has no port ✓ · the ssh connection has no serial ✓).
+ * → The nested address ✓ (`options.ssh.host` ✓ — the guest reaches the board
+ *   through it ✓) is filled in for **every** connection of the board ✓.
  */
-export function confirmValues(
-  store: MachineValueStore,
-  profileId: string,
-  values: Record<string, unknown>,
-  source: ValueSource = 'confirmed',
-): void {
-  store.set(profileId, values, source);
+export function applyValues(profile: ConnectionProfile, values: BoardValues): ConnectionProfile {
+  // → **A connection without a board pack is not a board's connection** ✓
+  //   (the host's own shell ✓ · **the guest machine** ✓) → it keeps its own
+  //   address ✓ → **the address belongs to the board** ✓.
+  if (typeof profile.board_pack !== 'string' || profile.board_pack.length === 0) {
+    return profile;
+  }
+  const options: Record<string, unknown> = { ...profile.options };
+  if (profile.transport === 'adb' && values.adbSerial.length > 0) {
+    options['serial'] = values.adbSerial;
+  }
+  if (profile.transport === 'ssh' && values.address.length > 0) {
+    options['host'] = values.address;
+  }
+  if (profile.transport === 'serial' && values.serialPort.length > 0) {
+    options['port'] = values.serialPort;
+  }
+  const nested = options['ssh'];
+  if (typeof nested === 'object' && nested !== null && values.address.length > 0) {
+    options['ssh'] = { ...(nested as Record<string, unknown>), host: values.address };
+  }
+  return { ...profile, options };
 }
 
-/** Does the file exist? ✓ (the private key must be there ✓) */
-export function keyExists(path: string): boolean {
-  return existsSync(path);
-}
-
-/** The serial ports of this machine ✓ (injected in the tests ✓) */
-export type { PortProbe };
+/** The changes of a preparation ✓ (for the interface ✓) */
+export type { ProfileChange };

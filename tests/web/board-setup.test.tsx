@@ -2,66 +2,51 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BoardSetup } from '../../src/renderer/shell/BoardSetup';
 import { LocaleContext } from '../../src/renderer/shell/i18n';
-import type { BoardDetection } from '../../src/shared/board-setup';
+import type { CockpitApi } from '../../src/shared/ipc-contract';
 
 /**
- * **The board setup** ✓ — the values that belong to **this machine** ✓.
+ * **The board setup** — the values that belong to **this machine** ✓.
  *
- * | # | Criterion | Why |
+ * | # | Judgment | Why |
  * |---|---|---|
- * | 1 | The detected values **fill the fields** ✓ | the detection is a proposal ✓ · the person decides ✓ |
- * | 2 | The port list says **which port answers** ✓ | a port that exists proves nothing ✓ |
- * | 3 | **Saving** hands the values over ✓ | the person is the authority ✓ |
- * | 4 | Every connection of this machine is listed ✓ | the guest machine's address is as much the person's as the board's ✓ |
+ * | 1 | The detection only **looks** | the person decides what is written ✓ |
+ * | 2 | The detected values **fill the fields** | the detection is a proposal ✓ — the person may change it ✓ |
+ * | 3 | The port list says **which port answers** | a COM port that exists proves nothing ✓ — a port that answers is the console ✓ |
+ * | 4 | **Saving** hands the confirmed values over | the values are the person's ✓ |
+ * | 5 | **No board pack → the save is disabled** | without a pack the values belong to nothing ✓ |
  */
 
-const DETECTION: BoardDetection = {
+const DETECTION = {
   adbDevices: [{ serial: 'f34dca7784396ab2', state: 'device', stateText: 'device' }],
   model: 'ATK-DLRK3588 Board',
-  address: '192.168.5.100',
-  addresses: [
-    { address: '192.168.5.100', reachable: true, detail: null },
-    { address: '192.168.100.2', reachable: false, detail: 'timed out' },
-  ],
+  address: '192.168.100.10',
   ports: [
     { path: 'COM3', answered: false },
     { path: 'COM7', answered: true },
   ],
-  sshKeys: ['/home/u/.ssh/id_ed25519'],
   boardPack: 'rk3588-atk',
-  connections: [
-    {
-      id: 'board-ssh',
-      label: 'Board · SSH',
-      transport: 'ssh',
-      boardPack: 'rk3588-atk',
-      values: { host: '192.168.5.100', username: 'root' },
-      sources: { host: 'detected', username: 'builtin' },
-    },
-    {
-      id: 'ubuntu-ssh',
-      label: 'Ubuntu · SSH',
-      transport: 'ssh',
-      boardPack: null,
-      values: { host: '192.168.136.131', username: 'alientek' },
-      sources: { host: 'detected', username: 'builtin' },
-    },
-  ],
 };
 
-function renderSetup(onApplied = vi.fn()) {
+function apiMock(overrides: Partial<CockpitApi> = {}): {
+  detect: ReturnType<typeof vi.fn>;
+  apply: ReturnType<typeof vi.fn>;
+} {
   const detect = vi.fn(async () => DETECTION);
-  const apply = vi.fn(async (_values: unknown) => ({ written: ['board-ssh'], kept: [] }));
+  const apply = vi.fn(async () => ({ written: ['board-adb'], kept: [] }));
   (window as unknown as { cockpit: unknown }).cockpit = {
     boardDetect: detect,
     boardApply: apply,
-  };
-  const view = render(
+    ...overrides,
+  } as unknown as CockpitApi;
+  return { detect, apply };
+}
+
+function renderSetup(onApplied = vi.fn()) {
+  return render(
     <LocaleContext.Provider value="zh-Hans">
       <BoardSetup onApplied={onApplied} />
     </LocaleContext.Provider>,
   );
-  return { detect, apply, onApplied, view };
 }
 
 describe('the board setup', () => {
@@ -70,62 +55,65 @@ describe('the board setup', () => {
   });
 
   it('**the detection fills the fields** ✓ (the detection is a proposal ✓)', async () => {
+    apiMock();
     renderSetup();
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByDisplayValue('192.168.5.100')).toBeTruthy());
-    expect((screen.getByDisplayValue('192.168.136.131') as HTMLInputElement).value).toBe(
-      '192.168.136.131',
+    await waitFor(() => expect(screen.getByDisplayValue('f34dca7784396ab2')).toBeTruthy());
+    expect((screen.getByDisplayValue('192.168.100.10') as HTMLInputElement).value).toBe(
+      '192.168.100.10',
     );
+    // → **The port that answers is offered** ✓
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('COM7');
   });
 
   it('**the port list says which port answers** ✓', async () => {
+    apiMock();
     renderSetup();
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByText('COM7')).toBeTruthy());
-    expect(screen.getByText('COM3').parentElement?.textContent).toContain('没回应');
-    expect(screen.getByText('COM7').parentElement?.textContent).toContain('有回应');
-  });
-
-  it('**the addresses that were tried are shown with the reason** ✓', async () => {
-    renderSetup();
-    fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByText('192.168.100.2')).toBeTruthy());
-    expect(screen.getByText('192.168.100.2').parentElement?.textContent).toContain('timed out');
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
+    const options = screen.getAllByRole('option') as HTMLOptionElement[];
+    const com3 = options.find((option) => option.value === 'COM3');
+    const com7 = options.find((option) => option.value === 'COM7');
+    expect(com3?.textContent).toContain('没回应');
+    expect(com7?.textContent).toContain('有回应');
   });
 
   it('**saving hands the confirmed values over** ✓', async () => {
-    const { apply, onApplied } = renderSetup();
+    const { apply } = apiMock();
+    const onApplied = vi.fn();
+    renderSetup(onApplied);
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByDisplayValue('192.168.5.100')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
     fireEvent.click(screen.getByText('保存'));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
-    expect(apply.mock.calls[0]?.[0] as unknown).toEqual([
-      { id: 'board-ssh', fields: expect.objectContaining({ host: '192.168.5.100' }) },
-      { id: 'ubuntu-ssh', fields: expect.objectContaining({ host: '192.168.136.131' }) },
-    ]);
+    expect(apply.mock.calls[0]?.[0]).toMatchObject({
+      boardPack: 'rk3588-atk',
+      adbSerial: 'f34dca7784396ab2',
+      address: '192.168.100.10',
+      serialPort: 'COM7',
+    });
     await waitFor(() => expect(onApplied).toHaveBeenCalled());
   });
 
-  it('**the person may correct a value before saving** ✓', async () => {
-    const { apply } = renderSetup();
-    fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByDisplayValue('192.168.5.100')).toBeTruthy());
-    fireEvent.change(screen.getByDisplayValue('192.168.5.100'), {
-      target: { value: '10.0.0.9' },
-    });
-    fireEvent.click(screen.getByText('保存'));
-    await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
-    const payload = apply.mock.calls[0]?.[0] as unknown as {
-      id: string;
-      fields: Record<string, string>;
-    }[];
-    expect(payload.find((entry) => entry.id === 'board-ssh')?.fields['host']).toBe('10.0.0.9');
-  });
-
-  it('**every connection of this machine is listed** ✓ (the guest machine too ✓)', async () => {
+  it('**without a board pack the save is disabled** ✓ (the values would belong to nothing ✓)', async () => {
+    apiMock({
+      boardDetect: vi.fn(async () => ({ ...DETECTION, boardPack: null })),
+    } as unknown as Partial<CockpitApi>);
     renderSetup();
     fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByText(/Board · SSH/)).toBeTruthy());
-    expect(screen.getByText(/Ubuntu · SSH/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy());
+    const save = screen.getByText('保存') as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+  });
+
+  it('**a failing detection says so** ✓ (it does not fail silently ✓)', async () => {
+    apiMock({
+      boardDetect: vi.fn(async () => {
+        throw new Error('adb is not installed');
+      }),
+    } as unknown as Partial<CockpitApi>);
+    renderSetup();
+    fireEvent.click(screen.getByText('探测'));
+    await waitFor(() => expect(screen.getByText(/adb is not installed/)).toBeTruthy());
   });
 });
