@@ -53,6 +53,7 @@ export const api: CockpitApi = {
   filesEndpoint: () => invoke(IPC.filesEndpoint),
   connectionsList: () => invoke(IPC.connectionsList),
   devicesSelect: (deviceKey) => invoke(IPC.devicesSelect, deviceKey),
+  devicesDelete: (deviceKey) => invoke(IPC.devicesDelete, deviceKey),
   tagsReadings: () => invoke(IPC.tagsReadings),
   tagsStatus: () => invoke(IPC.tagsStatus),
   cardsList: () => invoke(IPC.cardsList),

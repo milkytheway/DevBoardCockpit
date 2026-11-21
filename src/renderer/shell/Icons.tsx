@@ -93,6 +93,14 @@ export function CloseIcon(p: IconProps): JSX.Element {
   );
 }
 
+export function TrashIcon(p: IconProps): JSX.Element {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.6 8h5.8l.6-8M6.7 7v3.2M9.3 7v3.2" />
+    </svg>
+  );
+}
+
 export function PlusIcon(p: IconProps): JSX.Element {
   return (
     <svg {...base(p)}>

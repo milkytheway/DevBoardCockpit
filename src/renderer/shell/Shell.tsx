@@ -90,6 +90,7 @@ const strings = {
   pinCard: { 'zh-Hans': '置顶卡片：{card}', en: 'Pinned the card: {card}' },
   unpinCard: { 'zh-Hans': '取消置顶卡片：{card}', en: 'Unpinned the card: {card}' },
   switchedBoard: { 'zh-Hans': '已切到板子：{board}', en: 'Switched to the board: {board}' },
+  deletedBoard: { 'zh-Hans': '已删除开发板：{board}', en: 'Deleted the board: {board}' },
   placedCard: {
     'zh-Hans': '把卡片摆进主区：{card}',
     en: 'Placed the card in the work area: {card}',
@@ -316,6 +317,23 @@ export function Shell(): JSX.Element {
     [log, refreshCards, refreshConnections, refreshLayout, t],
   );
 
+  const deleteDevice = useCallback(
+    async (deviceKey: string): Promise<void> => {
+      try {
+        await window.cockpit.devicesDelete(deviceKey);
+        refreshConnections();
+        refreshCards();
+        refreshLayout();
+        log('info', t(strings.deletedBoard, { board: deviceKey }));
+      } catch (cause: unknown) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        setError(message);
+        throw cause;
+      }
+    },
+    [log, refreshCards, refreshConnections, refreshLayout, t],
+  );
+
   // The cards that are **placed** in the main area right now.
   const placedKeys = useMemo(() => new Set(units.map((u) => slotKey(u.cardId, u.connectionId))), [
     units,
@@ -497,6 +515,7 @@ export function Shell(): JSX.Element {
           connections={connections}
           onSelect={selectDevice}
           onAddBoard={() => setWizardOpen(true)}
+          onDeleteBoard={deleteDevice}
           busy={selecting}
         />
         {/* **The running workflows + the only "stop"** ✓ — contract `05` §8.A

@@ -58,12 +58,54 @@ function context(overrides: Partial<SecondaryContext> = {}): SecondaryContext {
 }
 
 function cardItems(ctx: SecondaryContext) {
-  const group = secondaryGroupsFor('workbench', ctx).find((g) => g.id === 'cards');
-  expect(group).toBeDefined();
-  return group!.items;
+  return secondaryGroupsFor('workbench', ctx).flatMap((group) => group.items);
 }
 
 describe('Shell · the card catalogue (the work area is decided by the instance key)', () => {
+  it('draws semantic card groups instead of one collapsible cards group', () => {
+    const groups = secondaryGroupsFor(
+      'workbench',
+      context({
+        cards: [
+          card('cpu-usage', 'conn-a'),
+          card('core-load', 'conn-a'),
+          card('memory', 'conn-a'),
+          card('build-deploy', 'conn-a'),
+          card('own-card', 'conn-a'),
+        ],
+      }),
+    );
+    expect(groups.find((group) => group.id === 'cards')).toBeUndefined();
+    expect(groups.find((group) => group.id === 'cards:performance')?.items.map((item) => item.cardId)).toEqual(
+      expect.arrayContaining(['cpu-usage', 'core-load']),
+    );
+    expect(groups.find((group) => group.id === 'cards:memory')?.items.map((item) => item.cardId)).toEqual([
+      'memory',
+    ]);
+    expect(groups.find((group) => group.id === 'cards:system')?.items.map((item) => item.cardId)).toContain(
+      'build-deploy',
+    );
+    expect(groups.find((group) => group.id === 'cards:custom')?.items.map((item) => item.cardId)).toEqual([
+      'own-card',
+    ]);
+  });
+
+  it('a pinned card has its own group and is not duplicated in its semantic group', () => {
+    const groups = secondaryGroupsFor(
+      'workbench',
+      context({
+        cards: [card('cpu-usage', 'conn-a'), card('core-load', 'conn-a')],
+        pinnedCardIds: ['cpu-usage'],
+      }),
+    );
+    expect(groups.find((group) => group.id === 'cards:pinned')?.items.map((item) => item.cardId)).toEqual([
+      'cpu-usage',
+    ]);
+    expect(groups.find((group) => group.id === 'cards:performance')?.items.map((item) => item.cardId)).toEqual([
+      'core-load',
+    ]);
+  });
+
   it('the placed card is marked by state and shows its card id, not an explanatory sentence', () => {
     const items = cardItems(
       context({
@@ -137,6 +179,7 @@ describe('Shell · the sessions of the terminal page', () => {
     const group = secondaryGroupsFor('files', ctx).find((g) => g.id === 'endpoint');
     expect(group).toBeDefined();
     expect(group!.items[0]?.label['zh-Hans']).toBe('Board · ADB');
+    expect(group!.items[0]?.hint?.['zh-Hans']).toBe('adb');
   });
 
   it('the files page draws no group when there is no link (an empty group says nothing)', () => {

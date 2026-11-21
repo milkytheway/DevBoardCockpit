@@ -43,6 +43,7 @@ import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { listPacksIn, matchPack } from './tags/binding';
 import { applyValues, prepareProfile } from './board/prepare';
+import { removeUserBoard } from './board/remove';
 import { hostPortProbe, listHostPorts } from './board/ports';
 import { readSshRecords } from './board/ssh-records';
 import { tcpAddressProbe } from './board/detect';
@@ -1092,19 +1093,60 @@ handle(IPC.boardApply, async (raw) => {
 });
 
 // ── File transfer ───────────────────────────────────────────────
-handle(IPC.connectionsList, () =>
-  listProfiles().map((p) => ({
-    id: p.id,
-    label: p.label,
-    transport: p.transport,
-    boardPack: p.board_pack ?? null,
-    // This board's identifier ✓ (the physical board and the connection are two layers ✓ — contract `spec/02` §10.2 ✓)
-    deviceKey: deviceKeyOf(p),
-    // Is it the connection the runtime is currently using ✓ (that and 'is there a live connection' are two separate criteria ✓ — not conflated ✓)
-    current: runtime.status.profileId === p.id,
-    capabilities: capabilitiesFor(p),
-  })),
-);
+handle(IPC.connectionsList, () => {
+  const builtinKeys = new Set(
+    loadProfiles({
+      builtinDir: builtinProfilesDir(app.getAppPath()),
+      warn: () => undefined,
+    }).map(deviceKeyOf),
+  );
+  const fakeIds = new Set(fakeProfileIds());
+  return listProfiles().map((p) => {
+    const key = deviceKeyOf(p);
+    return {
+      id: p.id,
+      label: p.label,
+      transport: p.transport,
+      boardPack: p.board_pack ?? null,
+      deviceKey: key,
+      current: runtime.status.profileId === p.id,
+      deletable: !builtinKeys.has(key) && !fakeIds.has(p.id),
+      capabilities: capabilitiesFor(p),
+    };
+  });
+});
+
+handle(IPC.devicesDelete, (deviceKey) => {
+  const key = String(deviceKey);
+  const userProfiles = loadProfiles({
+    builtinDir: userProfilesDir(),
+    warn: () => undefined,
+  });
+  const deletingIds = userProfiles
+    .filter((profile) => deviceKeyOf(profile) === key)
+    .map((profile) => profile.id);
+  const live = terminal.liveProfileIds().filter((id) => deletingIds.includes(id));
+  if (live.length > 0) {
+    throw makeError(
+      'IPC_INVALID_PAYLOAD',
+      `close the terminal sessions of this board first: ${live.join(', ')}`,
+    );
+  }
+
+  const currentBefore = runtime.status.profileId ?? null;
+  const result = removeUserBoard({
+    deviceKey: key,
+    builtinProfilesDir: builtinProfilesDir(app.getAppPath()),
+    userProfilesDir: userProfilesDir(),
+    userBoardsDir: userBoardsDir(),
+  });
+  if (currentBefore !== null && deletingIds.includes(currentBefore)) {
+    runtime.stop();
+    cards.layoutRebind(currentBefore, null);
+  }
+  console.log(`[board] removed ${key}: ${result.removedProfiles.join(', ')}`);
+  return result;
+});
 
 /**
  * Switch to a given board ✓ (the interface's 'select board' ✓ — contract

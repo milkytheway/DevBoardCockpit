@@ -57,13 +57,6 @@ export interface SecondaryItem {
   placed?: boolean;
   /** The session id — the stable e2e hook (`data-cockpit-session-id`). */
   sessionId?: string;
-  /**
-   * A sub-heading inside the group. The card catalogue uses this to draw
-   * "Pinned" first, then the card's own bucket (performance / memory and
-   * temperature / ...).
-   * The group id itself stays `cards` so the rows keep their one data shape.
-   */
-  section?: Localised;
   /** Whether this card is pinned to the top of the catalogue. */
   pinned?: boolean;
   /** Toggle the pin. Drawn as a star outside the row button. */
@@ -117,11 +110,13 @@ export interface SecondaryContext {
   onTogglePin?: (cardId: string) => void;
 }
 
-/** The status block — the same on every page. */
 /** The card catalogue: every installed card, placed or not. */
-function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
+function cardCatalogue(ctx: SecondaryContext): SecondaryGroup[] {
   const placed = new Set(ctx.placedSlotKeys);
   const pinned = new Set(ctx.pinnedCardIds ?? []);
+  const groupOf = new Map(
+    ctx.cards.map((card) => [card.instanceId, cardLook(card.cardId).group['zh-Hans']]),
+  );
   const items: SecondaryItem[] = ctx.cards.map((card) => {
     const key = slotKey(card.cardId, card.connectionId);
     const isPlaced = placed.has(key);
@@ -136,7 +131,6 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
       cardTone: look.tone,
       cardIcon: look.icon,
       placed: isPlaced,
-      section: isPinned ? { 'zh-Hans': '置顶', en: 'Pinned' } : look.group,
       pinned: isPinned,
       onPin: ctx.onTogglePin ? () => ctx.onTogglePin?.(card.cardId) : undefined,
       onSelect: () => {
@@ -145,21 +139,27 @@ function cardCatalogue(ctx: SecondaryContext): SecondaryGroup {
       },
     };
   });
-  // Pinned first, then the card's own bucket, then name. Sorting happens in
-  // the data, so the renderer only has to draw the section headings.
   const pinnedLabel = { 'zh-Hans': '置顶', en: 'Pinned' };
-  const isPinnedSection = (section: Localised | undefined): boolean =>
-    section?.['zh-Hans'] === pinnedLabel['zh-Hans'];
-  items.sort((a, b) => {
-    const pin = Number(isPinnedSection(b.section)) - Number(isPinnedSection(a.section));
-    if (pin !== 0) return pin;
-    const group =
-      CARD_GROUPS.findIndex((g) => g['zh-Hans'] === a.section?.['zh-Hans']) -
-      CARD_GROUPS.findIndex((g) => g['zh-Hans'] === b.section?.['zh-Hans']);
-    if (group !== 0) return group;
-    return pick(a.label, ctx.locale).localeCompare(pick(b.label, ctx.locale), ctx.locale);
-  });
-  return { id: 'cards', title: { 'zh-Hans': '卡片', en: 'Cards' }, items };
+  const byLabel = (a: SecondaryItem, b: SecondaryItem): number =>
+    pick(a.label, ctx.locale).localeCompare(pick(b.label, ctx.locale), ctx.locale);
+  const groups: SecondaryGroup[] = [];
+  const pinnedItems = items.filter((item) => item.pinned).sort(byLabel);
+  if (pinnedItems.length > 0) {
+    groups.push({ id: 'cards:pinned', title: pinnedLabel, items: pinnedItems });
+  }
+  const groupIds = ['performance', 'memory', 'system', 'custom'];
+  for (const [index, group] of CARD_GROUPS.entries()) {
+    const groupItems = items
+      .filter(
+        (item) =>
+          item.pinned !== true && groupOf.get(item.id) === group['zh-Hans'],
+      )
+      .sort(byLabel);
+    if (groupItems.length > 0) {
+      groups.push({ id: `cards:${groupIds[index] ?? 'custom'}`, title: group, items: groupItems });
+    }
+  }
+  return groups;
 }
 
 /**
@@ -306,8 +306,8 @@ function fileGroups(ctx: SecondaryContext): SecondaryGroup[] {
           id: endpoint.profileId,
           label: { 'zh-Hans': endpoint.label, en: endpoint.label },
           hint: {
-            'zh-Hans': `${endpoint.transport} · 主机自己挑的`,
-            en: `${endpoint.transport} · picked by the host`,
+            'zh-Hans': endpoint.transport,
+            en: endpoint.transport,
           },
           tone: 'active' as const,
         },
@@ -360,7 +360,7 @@ function libraryGroups(ctx: SecondaryContext): SecondaryGroup[] {
 export function secondaryGroupsFor(page: PageId, ctx: SecondaryContext): SecondaryGroup[] {
   switch (page) {
     case 'workbench':
-      return [cardCatalogue(ctx)];
+      return cardCatalogue(ctx);
     case 'terminal':
       return terminalGroups(ctx);
     case 'files':

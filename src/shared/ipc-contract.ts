@@ -44,6 +44,7 @@ export const IPC = {
    *   separate discussion).
    */
   devicesSelect: 'devices:select',
+  devicesDelete: 'devices:delete',
   /**
    * The current snapshot of the tag readings.
    *
@@ -382,6 +383,8 @@ export interface CockpitApi {
    *   the connection id.
    */
   devicesSelect(deviceKey: string): Promise<void>;
+  /** Removes a user-added board. Shipped boards are protected by the host. */
+  devicesDelete(deviceKey: string): Promise<BoardDeleteResult>;
   /**
    * A snapshot of all current tag readings.
    *
@@ -547,7 +550,15 @@ export interface ConnectionInfo {
    *   connection, but it is not the one the runtime uses.
    */
   current: boolean;
+  /** Whether this board was added by the user and may be deleted. */
+  deletable?: boolean;
   capabilities: ConnectionCapabilities;
+}
+
+export interface BoardDeleteResult {
+  deviceKey: string;
+  removedProfiles: string[];
+  removedPack: boolean;
 }
 
 /** The kind of transport. Defined in shared — main and renderer both need it and must not each keep a copy */

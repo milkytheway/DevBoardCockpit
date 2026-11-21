@@ -1799,6 +1799,44 @@ body {
   color: var(--ui-dim);
 }
 
+.board-setup__field input,
+.board-setup__field select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ui-hairline);
+  border-radius: var(--ui-radius-control);
+  outline: none;
+  background: color-mix(in oklab, var(--cockpit-surface) 76%, transparent);
+  color: var(--ui-text);
+  font-family: var(--cockpit-font-mono);
+  font-size: 11.5px;
+}
+
+.board-setup__field select {
+  padding-right: 28px;
+}
+
+.board-setup__field option {
+  background: var(--cockpit-bg-elevated);
+  color: var(--ui-text);
+}
+
+.board-setup__field input:focus,
+.board-setup__field select:focus {
+  border-color: color-mix(in oklab, var(--cockpit-accent) 52%, var(--ui-hairline));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--cockpit-accent) 13%, transparent);
+}
+
+html[data-theme='dark'] .board-setup {
+  color-scheme: dark;
+}
+
+html[data-theme='light'] .board-setup {
+  color-scheme: light;
+}
+
 .board-setup__list {
   display: grid;
   gap: 4px;
@@ -2473,7 +2511,7 @@ html[data-theme='light'] .app-shell {
   padding: 12px 18px 22px;
 }
 
-/* ── sidebar: status collapsed to one line; cards gain sections ── */
+/* ── sidebar: status collapsed to one line; cards use semantic groups ── */
 .secondary__scroll {
   padding-top: 6px;
 }
@@ -2501,30 +2539,6 @@ html[data-theme='light'] .app-shell {
 .secondary__group--status .secondary__label {
   font-size: 11px;
   color: var(--ui-dim);
-}
-
-.secondary__section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 10px 0 3px;
-  padding: 0 8px;
-  list-style: none;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ui-faint);
-}
-
-li.secondary__section:first-child {
-  margin-top: 4px;
-}
-
-.secondary__section-hint {
-  letter-spacing: 0.04em;
-  font-weight: 500;
-  color: color-mix(in oklab, var(--cockpit-warn) 75%, var(--ui-faint));
 }
 
 .secondary__pin {
@@ -3168,7 +3182,7 @@ html[data-theme='light'] .cockpit-card {
 .secondary__status--danger .live-dot { background: var(--cockpit-danger); }
 .secondary__status--muted .live-dot { background: var(--cockpit-unavailable); }
 
-/* ── collapsible group and section headings ── */
+/* ── collapsible group headings ── */
 
 .secondary__title {
   display: flex;
@@ -3190,37 +3204,8 @@ html[data-theme='light'] .cockpit-card {
 .secondary__title:hover { color: var(--ui-text); }
 .secondary__title .secondary__count { margin-left: auto; }
 
-.secondary__section {
-  padding: 6px 12px 2px 14px;
-}
-
-.secondary__section-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  width: 100%;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: var(--ui-faint);
-  font: inherit;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-
-.secondary__section-toggle:hover { color: var(--ui-text); }
-
-.secondary__section-toggle .is-collapsed,
 .secondary__title .is-collapsed {
   transform: rotate(-90deg);
-}
-
-.secondary__section-hint {
-  margin-left: auto;
-  color: var(--cockpit-accent);
-  font-size: 9px;
-  letter-spacing: 0.04em;
 }
 
 .secondary__pin {
@@ -3369,7 +3354,9 @@ html[data-theme='light'] .cockpit-card {
    itself** ✓.) */
 .device-picker__trigger,
 .device-picker__menu,
-.device-picker__item {
+.device-picker__item,
+.device-picker__delete,
+.device-picker__confirm button {
   -webkit-app-region: no-drag;
 }
 
@@ -3434,6 +3421,13 @@ html[data-theme='light'] .cockpit-card {
   color: var(--ui-faint);
 }
 
+.device-picker__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 3px;
+}
+
 .device-picker__item {
   display: flex;
   align-items: center;
@@ -3448,6 +3442,61 @@ html[data-theme='light'] .cockpit-card {
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
+}
+
+.device-picker__delete {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-faint);
+  cursor: pointer;
+}
+
+.device-picker__delete:hover {
+  border-color: color-mix(in oklab, var(--cockpit-danger) 34%, var(--ui-hairline));
+  background: color-mix(in oklab, var(--cockpit-danger) 10%, transparent);
+  color: var(--cockpit-danger);
+}
+
+.device-picker__delete:focus-visible,
+.device-picker__confirm button:focus-visible {
+  outline: 2px solid var(--cockpit-accent);
+  outline-offset: 2px;
+}
+
+.device-picker__confirm {
+  display: grid;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 9px;
+  border: 1px solid color-mix(in oklab, var(--cockpit-danger) 34%, var(--ui-hairline));
+  border-radius: var(--ui-radius-control);
+  background: color-mix(in oklab, var(--cockpit-danger) 7%, var(--cockpit-bg-elevated));
+}
+
+.device-picker__confirm code {
+  overflow: hidden;
+  color: var(--ui-text);
+  font-family: var(--cockpit-font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-picker__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.device-picker__delete-error {
+  color: var(--cockpit-danger);
+  font-size: 11px;
 }
 
 .device-picker__item:hover {
@@ -3512,10 +3561,6 @@ html[data-theme='light'] .cockpit-card {
 
 .secondary__pin.is-pinned {
   color: var(--ui-dim);
-}
-
-.secondary__section-hint {
-  color: var(--ui-faint);
 }
 
 .cockpit-card.is-selected {

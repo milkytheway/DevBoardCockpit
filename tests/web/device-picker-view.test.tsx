@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ConnectionInfo } from '../../src/shared/ipc-contract';
 import { DevicePicker } from '../../src/renderer/shell/DevicePicker';
 import { LocaleContext } from '../../src/renderer/shell/i18n';
@@ -125,5 +125,29 @@ describe('The device picker (boards only)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add board' }));
 
     expect(onAddBoard).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers deletion only for a user-added board', async () => {
+    const onDeleteBoard = vi.fn(async () => undefined);
+    render(
+      <LocaleContext.Provider value="en">
+        <DevicePicker
+          connections={[
+            conn('shipped', 'SHIPPED', 'Shipped'),
+            conn('mine', 'MY-BOARD', 'Mine', { deletable: true }),
+          ]}
+          onSelect={() => undefined}
+          onDeleteBoard={onDeleteBoard}
+          busy={false}
+        />
+      </LocaleContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Board/ }));
+    expect(screen.queryByRole('button', { name: 'Delete SHIPPED' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete MY-BOARD' }));
+    expect(screen.getByRole('alertdialog', { name: 'Delete MY-BOARD' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(onDeleteBoard).toHaveBeenCalledWith('MY-BOARD'));
   });
 });

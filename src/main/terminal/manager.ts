@@ -183,7 +183,13 @@ export class TerminalManager {
       log.write(chunk);
       for (const cb of this.dataCbs) cb(id, chunk);
       const current = this.sessions.get(id);
-      if (current !== undefined && current.editor.waitingForPrompt) {
+      // A PTY prints and owns its prompt. Scheduling the host prompt here as
+      // well produced two prompts whenever the remote prompt itself arrived.
+      if (
+        current !== undefined &&
+        !current.pty &&
+        current.editor.waitingForPrompt
+      ) {
         this.schedulePrompt(id, current);
       }
     });

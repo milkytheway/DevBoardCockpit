@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ChevronIcon,
   FolderIcon,
@@ -44,11 +44,11 @@ export interface SecondaryStatus {
  * "Workbench · sampling". The list starts with the cards, which is what the page is
  * actually for.
  *
- * ── section headings collapse ──
+ * ── semantic group headings collapse ──
  *
- * Pinned and each card family are separate sections; clicking a heading folds
- * it. The folded set is remembered in localStorage, so the sidebar keeps the
- * shape the user left it in.
+ * Pinned and each card family are separate groups; clicking a heading folds
+ * that group. The folded set is remembered in localStorage, so the sidebar
+ * keeps the shape the user left it in.
  */
 const strings = {
   collapse: { 'zh-Hans': '收起二级栏', en: 'Collapse the secondary sidebar' },
@@ -61,9 +61,6 @@ const strings = {
   unpinShort: { 'zh-Hans': '取消置顶', en: 'Unpin' },
   close: { 'zh-Hans': '关闭 {name}', en: 'Close {name}' },
   closeSession: { 'zh-Hans': '关闭会话', en: 'Close the session' },
-  expandNamed: { 'zh-Hans': '展开 {name}', en: 'Expand {name}' },
-  collapseNamed: { 'zh-Hans': '折叠 {name}', en: 'Collapse {name}' },
-  pinned: { 'zh-Hans': '置顶', en: 'Pinned' },
   pageOptions: { 'zh-Hans': '页面选项', en: 'Page options' },
 };
 
@@ -81,7 +78,6 @@ export function Secondary({
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
   const t = useT();
   const locale = useLocale();
-  const pinnedLabel = { 'zh-Hans': '置顶', en: 'Pinned' };
 
   useEffect(() => {
     try {
@@ -149,40 +145,8 @@ export function Secondary({
                 <p className="secondary__empty">{t(strings.noOptions)}</p>
               ) : (
                 <ul className="secondary__list">
-                  {group.items.map((item, index) => {
-                    const previous = group.items[index - 1];
-                    const showSection =
-                      item.section !== undefined && item.section !== previous?.section;
-                    const sectionKey = `${group.id}:${item.section?.['zh-Hans'] ?? ''}`;
-                    const sectionCollapsed = collapsed.has(`section:${sectionKey}`);
-                    // A section hides **all of its rows**; the heading stays so
-                    // the group can be reopened. `item.section` is contiguous
-                    // (nav.ts sorts by it), so this only checks the current one.
-                    if (item.section !== undefined && sectionCollapsed) {
-                      return showSection ? (
-                        <li key={`${item.id}-heading`} className="secondary__section">
-                          <SectionHeading
-                            label={pick(item.section, locale)}
-                            pinned={item.section?.['zh-Hans'] === pinnedLabel['zh-Hans']}
-                            collapsed
-                            onToggle={() => toggle(`section:${sectionKey}`)}
-                          />
-                        </li>
-                      ) : null;
-                    }
-                    return (
-                      <Fragment key={item.id}>
-                        {showSection ? (
-                          <li className="secondary__section">
-                            <SectionHeading
-                              label={pick(item.section, locale)}
-                              pinned={item.section?.['zh-Hans'] === pinnedLabel['zh-Hans']}
-                              collapsed={false}
-                              onToggle={() => toggle(`section:${sectionKey}`)}
-                            />
-                          </li>
-                        ) : null}
-                        <li className="secondary__row">
+                  {group.items.map((item) => (
+                    <li key={item.id} className="secondary__row">
                           <button
                             type="button"
                             className={`secondary__item${item.tone === 'active' ? ' is-active' : ''}${
@@ -257,10 +221,8 @@ export function Secondary({
                               ✕
                             </button>
                           ) : null}
-                        </li>
-                      </Fragment>
-                    );
-                  })}
+                    </li>
+                  ))}
                 </ul>
               )}
             </section>
@@ -268,33 +230,6 @@ export function Secondary({
         })}
       </div>
     </aside>
-  );
-}
-
-function SectionHeading({
-  label,
-  pinned,
-  collapsed,
-  onToggle,
-}: {
-  label: string;
-  pinned: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
-}): JSX.Element {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      className="secondary__section-toggle"
-      onClick={onToggle}
-      aria-expanded={!collapsed}
-      title={collapsed ? t(strings.expandNamed, { name: label }) : t(strings.collapseNamed, { name: label })}
-    >
-      <ChevronIcon size={11} className={collapsed ? 'is-collapsed' : undefined} />
-      <span>{label}</span>
-      {pinned ? <span className="secondary__section-hint">{t(strings.pinned)}</span> : null}
-    </button>
   );
 }
 

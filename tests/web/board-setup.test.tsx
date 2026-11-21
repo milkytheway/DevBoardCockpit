@@ -17,7 +17,7 @@ import type { CockpitApi } from '../../src/shared/ipc-contract';
  */
 
 const DETECTION = {
-  adbDevices: [{ serial: 'f34dca7784396ab2', state: 'device', stateText: 'device' }],
+  adbDevices: [{ serial: 'a1b2c3d4e5f60718', state: 'device', stateText: 'device' }],
   model: 'ATK-DLRK3588 Board',
   address: '192.168.100.10',
   ports: [
@@ -61,8 +61,8 @@ describe('the board setup', () => {
   it('**the detection fills the fields** ✓ (the detection is a proposal ✓)', async () => {
     apiMock();
     renderSetup();
-    fireEvent.click(screen.getByText('探测'));
-    await waitFor(() => expect(screen.getByDisplayValue('f34dca7784396ab2')).toBeTruthy());
+    fireEvent.click(screen.getByText('检测'));
+    await waitFor(() => expect(screen.getByDisplayValue('a1b2c3d4e5f60718')).toBeTruthy());
     expect((screen.getByDisplayValue('192.168.100.10') as HTMLInputElement).value).toBe(
       '192.168.100.10',
     );
@@ -73,7 +73,7 @@ describe('the board setup', () => {
   it('**the port list says which port answers** ✓', async () => {
     apiMock();
     renderSetup();
-    fireEvent.click(screen.getByText('探测'));
+    fireEvent.click(screen.getByText('检测'));
     await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
     const options = [...(screen.getByRole('combobox', { name: '串口' }) as HTMLSelectElement).options];
     const com3 = options.find((option) => option.value === 'COM3');
@@ -86,13 +86,13 @@ describe('the board setup', () => {
     const { apply } = apiMock();
     const onApplied = vi.fn();
     renderSetup(onApplied);
-    fireEvent.click(screen.getByText('探测'));
+    fireEvent.click(screen.getByText('检测'));
     await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
     fireEvent.click(screen.getByText('保存'));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply.mock.calls[0]?.[0]).toMatchObject({
       boardPack: 'rk3588-atk',
-      adbSerial: 'f34dca7784396ab2',
+      adbSerial: 'a1b2c3d4e5f60718',
       address: '192.168.100.10',
       serialPort: 'COM7',
     });
@@ -104,7 +104,7 @@ describe('the board setup', () => {
       boardDetect: vi.fn(async () => ({ ...DETECTION, boardPack: null })),
     } as unknown as Partial<CockpitApi>);
     renderSetup();
-    fireEvent.click(screen.getByText('探测'));
+    fireEvent.click(screen.getByText('检测'));
     await waitFor(() => expect(screen.getByRole('combobox', { name: '串口' })).toBeTruthy());
     const save = screen.getByText('保存') as HTMLButtonElement;
     expect(save.disabled).toBe(true);
@@ -117,7 +117,7 @@ describe('the board setup', () => {
       }),
     } as unknown as Partial<CockpitApi>);
     renderSetup();
-    fireEvent.click(screen.getByText('探测'));
+    fireEvent.click(screen.getByText('检测'));
     await waitFor(() => expect(screen.getByText(/adb is not installed/)).toBeTruthy());
   });
 });

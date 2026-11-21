@@ -34,6 +34,8 @@ export interface Board {
   current: boolean;
   /** **How many connections this board has** ✓ (**information only** ✓ — **the interface does not let the user pick a connection** ✓) */
   connectionCount: number;
+  /** A user-added board can be removed; a shipped board cannot. */
+  deletable: boolean;
 }
 
 /**
@@ -56,12 +58,14 @@ export function boardsOf(connections: readonly ConnectionInfo[]): Board[] {
         boardPack: connection.boardPack,
         current: connection.current,
         connectionCount: 1,
+        deletable: connection.deletable === true,
       });
       continue;
     }
     // **Only the first `current` counts** ✓ (**two places claiming to be "current" means the data is confused** ✓)
     if (!entry.current && connection.current) entry.current = true;
     entry.connectionCount += 1;
+    entry.deletable = entry.deletable && connection.deletable === true;
   }
 
   const boards = [...byKey.values()];

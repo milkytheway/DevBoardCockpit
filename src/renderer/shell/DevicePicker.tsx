@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ConnectionInfo } from '../../shared/ipc-contract';
 import { boardsOf } from './devices';
 import { useT, type Localised } from './i18n';
-import { ChevronIcon, PlusIcon } from './Icons';
+import { ChevronIcon, PlusIcon, TrashIcon } from './Icons';
 
 /**
  * **Choosing a board** (the board and its connections are two layers ✓ —
@@ -38,11 +38,16 @@ const strings = {
   noBoards: { 'zh-Hans': '没有可用的板', en: 'No boards available' },
   current: { 'zh-Hans': '当前', en: 'Current' },
   addBoard: { 'zh-Hans': '添加开发板', en: 'Add board' },
+  deleteBoard: { 'zh-Hans': '删除 {name}', en: 'Delete {name}' },
+  delete: { 'zh-Hans': '删除', en: 'Delete' },
+  cancel: { 'zh-Hans': '取消', en: 'Cancel' },
+  deleteFailed: { 'zh-Hans': '删除失败', en: 'Delete failed' },
 } satisfies Record<string, Localised>;
 export function DevicePicker({
   connections,
   onSelect,
   onAddBoard,
+  onDeleteBoard,
   busy,
 }: {
   /** The connection list from the host (**with `deviceKey` and `current`** ✓) */
@@ -51,10 +56,15 @@ export function DevicePicker({
   onSelect: (deviceKey: string) => void;
   /** Opens the independent board setup dialog. */
   onAddBoard?: () => void;
+  /** Removes a user-added board. */
+  onDeleteBoard?: (deviceKey: string) => Promise<void>;
   /** Switching (**do not let the user click again** ✓) */
   busy: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const firstOptionRef = useRef<HTMLButtonElement | null>(null);
   const boards = boardsOf(connections);
@@ -77,6 +87,19 @@ export function DevicePicker({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  const confirmDelete = (): void => {
+    if (pendingDelete === null || onDeleteBoard === undefined || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    void onDeleteBoard(pendingDelete)
+      .then(() => {
+        setPendingDelete(null);
+        setOpen(false);
+      })
+      .catch(() => setDeleteError(t(strings.deleteFailed)))
+      .finally(() => setDeleteBusy(false));
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -115,31 +138,76 @@ export function DevicePicker({
               <p className="device-picker__empty">{t(strings.noBoards)}</p>
             ) : null}
             {boards.map((board, index) => (
-              <button
-                key={board.deviceKey}
-                ref={index === 0 ? firstOptionRef : undefined}
-                type="button"
-                role="option"
-                aria-selected={board.current}
-                className={`device-picker__item${board.current ? ' is-current' : ''}`}
-                // → **A stable e2e hook** ✓ (not a class name ✓ — the e2e
-                //   test picks the board by its identity ✓ and not by its
-                //   position ✓).
-                data-cockpit-board={board.deviceKey}
-                onClick={() => {
-                  setOpen(false);
-                  if (!board.current) onSelect(board.deviceKey);
-                }}
-                title={board.deviceKey}
-              >
-                <span className={`dot ${board.current ? 'dot--ok' : 'dot--muted'}`} aria-hidden />
-                <span className="device-picker__key mono">{board.deviceKey}</span>
-                {board.current ? (
-                  <span className="device-picker__now">{t(strings.current)}</span>
+              <div key={board.deviceKey} className="device-picker__row">
+                <button
+                  ref={index === 0 ? firstOptionRef : undefined}
+                  type="button"
+                  role="option"
+                  aria-selected={board.current}
+                  className={`device-picker__item${board.current ? ' is-current' : ''}`}
+                  data-cockpit-board={board.deviceKey}
+                  onClick={() => {
+                    setOpen(false);
+                    if (!board.current) onSelect(board.deviceKey);
+                  }}
+                  title={board.deviceKey}
+                >
+                  <span className={`dot ${board.current ? 'dot--ok' : 'dot--muted'}`} aria-hidden />
+                  <span className="device-picker__key mono">{board.deviceKey}</span>
+                  {board.current ? (
+                    <span className="device-picker__now">{t(strings.current)}</span>
+                  ) : null}
+                </button>
+                {board.deletable && onDeleteBoard ? (
+                  <button
+                    type="button"
+                    className="device-picker__delete"
+                    aria-label={t(strings.deleteBoard, { name: board.deviceKey })}
+                    title={t(strings.deleteBoard, { name: board.deviceKey })}
+                    onClick={() => {
+                      setPendingDelete(board.deviceKey);
+                      setDeleteError(null);
+                    }}
+                  >
+                    <TrashIcon size={13} />
+                  </button>
                 ) : null}
-              </button>
+              </div>
             ))}
           </div>
+          {pendingDelete !== null ? (
+            <div
+              className="device-picker__confirm"
+              role="alertdialog"
+              aria-label={t(strings.deleteBoard, { name: pendingDelete })}
+            >
+              <code>{pendingDelete}</code>
+              <div className="device-picker__confirm-actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={deleteBusy}
+                  onClick={() => {
+                    setPendingDelete(null);
+                    setDeleteError(null);
+                  }}
+                >
+                  {t(strings.cancel)}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger btn--sm"
+                  disabled={deleteBusy}
+                  onClick={confirmDelete}
+                >
+                  {t(strings.delete)}
+                </button>
+              </div>
+              {deleteError !== null ? (
+                <span className="device-picker__delete-error">{deleteError}</span>
+              ) : null}
+            </div>
+          ) : null}
           {onAddBoard ? (
             <>
               <div className="device-picker__separator" role="separator" />

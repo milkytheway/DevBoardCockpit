@@ -135,7 +135,7 @@ const LOOKS: Record<string, CardLook> = {
 
 const FALLBACK: CardLook = {
   name: { 'zh-Hans': '自定义卡片', en: 'Custom card' },
-  note: { 'zh-Hans': 'AI 生成 · 宿主隔离', en: 'AI generated · isolated by the host' },
+  note: { 'zh-Hans': '自定义', en: 'Custom' },
   icon: 'activity',
   tone: 'slate',
   group: { 'zh-Hans': '自定义', en: 'Custom' },

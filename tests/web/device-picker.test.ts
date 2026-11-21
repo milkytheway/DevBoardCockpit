@@ -35,6 +35,17 @@ function conn(
 }
 
 describe('Grouping by board', () => {
+  it('a shipped board and a user-added board keep separate deletion rights', () => {
+    const boards = boardsOf([
+      conn('shipped', 'SHIPPED'),
+      conn('mine', 'MY-BOARD', { deletable: true }),
+    ]);
+    expect(boards.map((board) => [board.deviceKey, board.deletable])).toEqual([
+      ['SHIPPED', false],
+      ['MY-BOARD', true],
+    ]);
+  });
+
   it('the several connections of one board collapse into one board', () => {
     const boards = boardsOf([
       conn('board-adb', 'atk-01', { label: 'Board · ADB' }),

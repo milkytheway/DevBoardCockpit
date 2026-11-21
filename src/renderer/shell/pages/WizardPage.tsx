@@ -52,23 +52,21 @@ const strings = {
   stageParameters: { 'zh-Hans': '详情', en: 'Details' },
   stageConnecting: { 'zh-Hans': '连接', en: 'Connect' },
   stageFirstTruth: { 'zh-Hans': '建立连接', en: 'Connect' },
-  stageMetaOps: { 'zh-Hans': '检测板卡能力', en: 'Detect capabilities' },
+  stageMetaOps: { 'zh-Hans': '检测开发板能力', en: 'Detect capabilities' },
   stageGenerate: { 'zh-Hans': '生成板卡配置', en: 'Generate board profile' },
   stageResult: { 'zh-Hans': '结果', en: 'Result' },
-  stageStopped: { 'zh-Hans': '停在第', en: 'Stopped at step' },
-  stageCurrent: { 'zh-Hans': '第', en: 'Step' },
-  /** "Step" is a Chinese word; in English the step is only the separator. */
-  stageTail: { 'zh-Hans': ' 步 · ', en: ' · ' },
+  stageStopped: { 'zh-Hans': '第', en: 'Step' },
+  stageFailedTail: { 'zh-Hans': ' 步失败 · ', en: ' failed · ' },
 
   // ── Waiting for a stage ──
-  metaOpsTitle: { 'zh-Hans': '检测板卡能力', en: 'Detect board capabilities' },
+  metaOpsTitle: { 'zh-Hans': '检测开发板能力', en: 'Detect board capabilities' },
   firstPackTitle: { 'zh-Hans': '生成板卡配置', en: 'Generate the board profile' },
   firstTruthDetail: {
-    'zh-Hans': '正在建立连接',
+    'zh-Hans': '正在建立串口连接',
     en: 'Establishing the connection',
   },
   metaOpsDetail: {
-    'zh-Hans': '正在检测板卡能力',
+    'zh-Hans': '正在检测开发板能力',
     en: 'Detecting board capabilities',
   },
   firstPackDetail: {
@@ -78,41 +76,41 @@ const strings = {
 
   // ── Result headline ──
   resultOk: { 'zh-Hans': '开发板已添加', en: 'Board added' },
-  resultPortUnopenable: { 'zh-Hans': '串口打不开', en: 'The serial port will not open' },
-  resultNoReply: { 'zh-Hans': '板子没说话', en: 'The board did not answer' },
+  resultPortUnopenable: { 'zh-Hans': '无法打开串口', en: 'Cannot open the serial port' },
+  resultNoReply: { 'zh-Hans': '开发板无响应', en: 'The board did not respond' },
   resultConnectionDead: { 'zh-Hans': '连接未建立', en: 'Connection not established' },
 
   // ── Failure hints ──
   hintPortExclusive: {
-    'zh-Hans': '关闭占用串口的程序',
+    'zh-Hans': '关闭占用该串口的程序',
     en: 'Close the program holding the serial port',
   },
   hintPortCloseIt: {
-    'zh-Hans': '重新建立连接',
+    'zh-Hans': '重新连接开发板',
     en: 'Connect again',
   },
   hintPortConfirmDebug: {
-    'zh-Hans': '选择调试串口',
+    'zh-Hans': '确认开发板调试串口',
     en: 'Choose the debug serial port',
   },
   hintBaudFirst: {
-    'zh-Hans': '波特率 1500000',
+    'zh-Hans': '波特率设为 1500000',
     en: 'Baud rate 1500000',
   },
   hintConfirmDebugPort: {
-    'zh-Hans': '选择调试串口',
+    'zh-Hans': '确认开发板调试串口',
     en: 'Choose the debug serial port',
   },
   hintCloseAssistant: {
-    'zh-Hans': '关闭串口助手',
+    'zh-Hans': '关闭串口调试工具',
     en: 'Close the serial assistant',
   },
   hintNeedsPower: {
-    'zh-Hans': '开发板上电',
+    'zh-Hans': '确认开发板已上电',
     en: 'Power on the board',
   },
   hintCheckLink: {
-    'zh-Hans': '检查数据线和供电',
+    'zh-Hans': '检查数据线与供电',
     en: 'Check the cable and power',
   },
   hintNotMetaOps: {
@@ -120,46 +118,47 @@ const strings = {
     en: 'Check the physical connection',
   },
   hintChangeCable: {
-    'zh-Hans': '更换数据线或 USB 口',
+    'zh-Hans': '更换数据线或 USB 端口',
     en: 'Change the cable or USB port',
   },
 
   // ── Form ──
-  boardDetails: { 'zh-Hans': '自动识别', en: 'Auto detection' },
-  connectionDetails: { 'zh-Hans': '连接', en: 'Connection' },
-  howToConnect: { 'zh-Hans': '接口', en: 'Interface' },
-  channelGroup: { 'zh-Hans': '连接通道', en: 'Connection channel' },
+  boardDetails: { 'zh-Hans': '设备信息', en: 'Device' },
+  detectedBoard: { 'zh-Hans': '检测结果', en: 'Detected' },
+  connectionDetails: { 'zh-Hans': '连接参数', en: 'Connection' },
+  howToConnect: { 'zh-Hans': '连接方式', en: 'Method' },
+  channelGroup: { 'zh-Hans': '连接方式', en: 'Connection method' },
   serial: { 'zh-Hans': '串口', en: 'Serial port' },
   serialDetecting: { 'zh-Hans': '正在查找串口…', en: 'Finding serial ports…' },
-  serialNone: { 'zh-Hans': '未发现串口', en: 'No serial port found' },
-  serialAnswers: { 'zh-Hans': '有响应', en: 'Responds' },
+  serialNone: { 'zh-Hans': '未检测到串口', en: 'No serial port found' },
+  serialAnswers: { 'zh-Hans': '已响应', en: 'Responds' },
   refreshPorts: { 'zh-Hans': '刷新串口', en: 'Refresh serial ports' },
   baudRate: { 'zh-Hans': '波特率', en: 'Baud rate' },
   start: { 'zh-Hans': '建立连接', en: 'Connect' },
   starting: { 'zh-Hans': '正在连接…', en: 'Connecting…' },
 
   // ── Failure and retry ──
-  didNotStart: { 'zh-Hans': '没跑起来', en: 'Did not start' },
-  wizardNotFinished: { 'zh-Hans': '向导没跑完', en: 'The wizard did not finish' },
-  retry: { 'zh-Hans': '重新试一次', en: 'Try again' },
-  adjust: { 'zh-Hans': '改参数', en: 'Change parameters' },
-  whatToCheck: { 'zh-Hans': '检查', en: 'Check' },
+  didNotStart: { 'zh-Hans': '未启动', en: 'Did not start' },
+  wizardNotFinished: { 'zh-Hans': '添加开发板失败', en: 'Could not add the board' },
+  retry: { 'zh-Hans': '重试', en: 'Retry' },
+  adjust: { 'zh-Hans': '修改参数', en: 'Edit parameters' },
+  whatToCheck: { 'zh-Hans': '检查项', en: 'Checks' },
 
   // ── Success ──
-  done: { 'zh-Hans': '成了', en: 'Done' },
-  countAvailable: { 'zh-Hans': '个可用', en: 'available' },
-  countUnavailable: { 'zh-Hans': '个不可用', en: 'unavailable' },
-  initialPack: { 'zh-Hans': '初版', en: 'Initial' },
+  done: { 'zh-Hans': '已完成', en: 'Done' },
+  countAvailable: { 'zh-Hans': '项可用', en: 'available' },
+  countUnavailable: { 'zh-Hans': '项不可用', en: 'unavailable' },
+  initialPack: { 'zh-Hans': '初始配置', en: 'Initial profile' },
   packLandedAt: { 'zh-Hans': '配置目录', en: 'Profile directory' },
   copy: { 'zh-Hans': '复制', en: 'Copy' },
   copied: { 'zh-Hans': '已复制', en: 'Copied' },
   copyFailed: { 'zh-Hans': '复制失败', en: 'Copy failed' },
   noPackLocation: {
-    'zh-Hans': '安装目录未返回',
+    'zh-Hans': '安装目录不可用',
     en: 'Install directory unavailable',
   },
-  boardIdLabel: { 'zh-Hans': '板的 id ·', en: 'Board id ·' },
-  anotherBoard: { 'zh-Hans': '再配一块', en: 'Add another' },
+  boardIdLabel: { 'zh-Hans': '开发板 ID ·', en: 'Board ID ·' },
+  anotherBoard: { 'zh-Hans': '添加另一块开发板', en: 'Add another board' },
   close: { 'zh-Hans': '完成', en: 'Done' },
 } satisfies Record<string, Localised>;
 
@@ -405,8 +404,8 @@ export function WizardPage({
   const stageText = t(STAGES[stageIndex]);
   const stageLabel =
     phase === 'done' && result !== null && !result.ok
-      ? `${t(strings.stageStopped)} ${stageIndex + 1} / ${STAGES.length}${t(strings.stageTail)}${stageText}`
-      : `${t(strings.stageCurrent)} ${stageIndex + 1} / ${STAGES.length}${t(strings.stageTail)}${stageText}`;
+      ? `${t(strings.stageStopped)} ${stageIndex + 1}/${STAGES.length}${t(strings.stageFailedTail)}${stageText}`
+      : `${stageIndex + 1} / ${STAGES.length} · ${stageText}`;
 
   return (
     <section className="wizard-card" aria-label={t(strings.title)}>
@@ -469,7 +468,7 @@ export function WizardPage({
                 <h2>{t(strings.boardDetails)}</h2>
               </header>
               <div className="wizard-detected">
-                <span className="wizard-label">{t(strings.boardDetails)}</span>
+                <span className="wizard-label">{t(strings.detectedBoard)}</span>
                 <strong>{detectedModel ?? '—'}</strong>
               </div>
             </section>

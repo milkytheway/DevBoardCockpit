@@ -18,7 +18,7 @@ const BASE: WizardRunResult = {
 };
 
 const DETECTION: BoardDetection = {
-  adbDevices: [{ serial: 'f34dca7784396ab2', state: 'device', stateText: 'device' }],
+  adbDevices: [{ serial: 'a1b2c3d4e5f60718', state: 'device', stateText: 'device' }],
   model: 'ATK-DLRK3588 Board',
   address: '192.168.5.100',
   ports: [
@@ -114,7 +114,7 @@ describe('the board setup wizard', () => {
         vi.advanceTimersByTime(6_500);
       });
 
-      expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('检测板卡能力');
+      expect(container.querySelector('.wizard-wait__title')?.textContent).toBe('检测开发板能力');
       expect(screen.getByRole('status').textContent).not.toContain('%');
     } finally {
       vi.useRealTimers();
@@ -129,8 +129,8 @@ describe('the board setup wizard', () => {
 
     expect(await screen.findByText('开发板已添加')).toBeTruthy();
     expect(container.querySelector('.wizard-result__title')?.textContent).toBe('开发板已添加');
-    expect(screen.getByText('板的 id · ATK-DLRK3588')).toBeTruthy();
-    expect(screen.getByText('初版')).toBeTruthy();
+    expect(screen.getByText('开发板 ID · ATK-DLRK3588')).toBeTruthy();
+    expect(screen.getByText('初始配置')).toBeTruthy();
     expect(onInstalled).toHaveBeenCalledTimes(1);
   });
 
@@ -148,6 +148,6 @@ describe('the board setup wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: '建立连接' }));
 
     expect(await screen.findByText(/Access denied/)).toBeTruthy();
-    expect(container.querySelector('.wizard-result__title')?.textContent).toBe('串口打不开');
+    expect(container.querySelector('.wizard-result__title')?.textContent).toBe('无法打开串口');
   });
 });

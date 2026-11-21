@@ -209,6 +209,23 @@ describe('the prompt of the pipe mode in the TerminalManager', () => {
     await mgr.open('p1');
     expect(seen).toEqual([]);
   });
+
+  it('the pty mode does not draw a second prompt after the remote prompt arrives', async () => {
+    const { conn, emit } = fakeConn({ pty: true });
+    const mgr = new TerminalManager({
+      listProfiles: () => [
+        { id: 'p1', label: 'p1', transport: 'serial', options: { prompt: 'root@board' } },
+      ],
+      createConnection: () => conn as never,
+      createLog: () => ({ write: vi.fn(), writeEvent: vi.fn(), close: vi.fn(), filePath: 'x' }) as never,
+    });
+    const seen: string[] = [];
+    mgr.onData((_id, chunk) => seen.push(chunk));
+    await mgr.open('p1');
+    emit('root@board:/# ');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(seen).toEqual(['root@board:/# ']);
+  });
 });
 
 describe('the cases added by the third audit', () => {

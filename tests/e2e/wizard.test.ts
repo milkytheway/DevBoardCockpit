@@ -39,7 +39,7 @@ test('The wizard page · it runs in a real Electron', async () => {
     const title = await window.locator('.wizard-result__title').textContent();
     expect(title, 'the real board · ADB → success').toBe('开发板已添加');
 
-    expect(await window.locator('.wizard-result').textContent()).toContain('初版');
+    expect(await window.locator('.wizard-result').textContent()).toContain('初始配置');
 
   } finally {
     await close();
