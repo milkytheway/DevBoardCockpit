@@ -78,7 +78,7 @@ export async function runWizardForHost(
   opts: WizardWiringOptions,
 ): Promise<{
   ok: boolean;
-  kind: 'ok' | 'port-unopenable' | 'no-reply' | 'connection-dead';
+  kind: 'ok' | 'port-unopenable' | 'no-reply' | 'connection-dead' | 'connection-failed';
   message: string;
   hints: string[];
   greenCount: number;
@@ -109,7 +109,12 @@ export async function runWizardForHost(
     kind: result.ok
       ? 'ok'
       : result.firstTruth.kind === 'port-unopenable'
-        ? 'port-unopenable'
+        ? // → **The transport decides the wording** ✓ — the ADB line has no
+          //   serial port ✓ → "the serial port cannot be opened" for an ADB
+          //   failure is a lie ✓ (found on 2026-11-22 ✓).
+          (input.transport ?? 'serial') === 'adb'
+          ? 'connection-failed'
+          : 'port-unopenable'
         : 'no-reply',
     message: result.message,
     // The hint of the transport goes first ✓ (it is the most accurate one ✓ — the serial line knows "the reply was swallowed" ✓)

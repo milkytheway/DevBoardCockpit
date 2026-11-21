@@ -145,6 +145,22 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
   const storage = new CardStorage({ dir: deps.storageDir });
   const log = new CardRuntimeLog({ now });
   const layout = new LayoutStore({ file: deps.layoutFile, now });
+
+  /**
+   * **The connection the cards are on** ✓ (the last one that was seen ✓).
+   *
+   * → The cells of the work area are bound to `(cardId, connectionId)` ✓
+   *   (contract `spec/03` §7 ✓) → the instances of the cards carry the
+   *   **current** connection ✓ → when the connection changes ✓ the cells have
+   *   to follow it ✓ (**otherwise the cards disappear from the main area** ✗
+   *   — the cell carries the old connection ✓ and the instance the new one ✓
+   *   → no key matches ✓).
+   * → It happens **here** ✓ because this is the place where the current
+   *   connection is read ✓ → **every** path that changes it comes through
+   *   here ✓ (the board connects on its own at start ✓ · the runtime tries
+   *   another channel ✓ · the person switches the board ✓).
+   */
+  let lastConnectionId: string | null = null;
   /** card id → the current instance id (used to notice "the instance changed") */
   const instanceByCard = new Map<string, string>();
 
@@ -207,6 +223,15 @@ export function createCardWiring(deps: CardWiringDeps): CardWiring {
     list: () => {
       const cards = registry.cards();
       const connectionId = deps.currentConnectionId();
+      // → **The connection changed** ✓ → the cells of the work area follow it ✓
+      //   (without this the cards disappear from the main area ✗ — found on
+      //   2026-11-22 ✓: the re-binding only happened when the person switched
+      //   the board by hand ✗, and the board that connects **on its own** at
+      //   start ✗ — the usual case ✓ — left the cells on the old connection ✗).
+      if (connectionId !== lastConnectionId) {
+        layout.rebind(lastConnectionId, connectionId);
+        lastConnectionId = connectionId;
+      }
       const out: CardInstanceInfo[] = [];
       for (const card of cards) {
         const { instanceId, url } = registry.instanceFor(card.cardId, connectionId);

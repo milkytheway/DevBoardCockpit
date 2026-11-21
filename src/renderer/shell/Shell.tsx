@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardInstanceInfo } from '../../shared/ipc-contract';
 import { BoardWizardDialog } from './BoardWizardDialog';
 import { CommandPalette, type Command } from './CommandPalette';
@@ -196,6 +196,22 @@ export function Shell(): JSX.Element {
   //   SSH → serial ✓) → **the files page does not need a terminal** ✓.
   const boardKey = currentBoard(connections);
   const fileEndpoint = useFileEndpoint(page === 'files', boardKey);
+
+  // → **The connection the runtime is on changed** ✓ → the instances of the
+  //   cards carry the new connection id ✓ and the host re-bound the cells of
+  //   the work area to it ✓ → so **both** are read again ✓.
+  // → Without it the cards of the main area disappear ✗ — the board that
+  //   connects **on its own** at start ✗ (the usual case ✓) changes the
+  //   connection id ✗ while the cells keep the old one ✗ → no key matches ✗
+  //   → the card is not placed any more ✗ (found on 2026-11-22 ✓).
+  const runtimeProfileId = runtime.profileId ?? null;
+  const lastProfileId = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastProfileId.current === runtimeProfileId) return;
+    lastProfileId.current = runtimeProfileId;
+    refreshCards();
+    refreshLayout();
+  }, [runtimeProfileId, refreshCards, refreshLayout]);
 
   // Theme is a document-level attribute; xterm needs concrete colours, so it
   // is re-read from the CSS variables after the styles have been applied.

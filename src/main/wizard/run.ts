@@ -231,6 +231,17 @@ export async function runWizard(
   deps: WizardDeps,
 ): Promise<WizardResult> {
   const transport = input.transport ?? 'serial';
+  /**
+   * **The sentence for a connection that could not be opened** ✓.
+   *
+   * → It names the **transport** ✓ — the ADB line has no serial port ✓ →
+   *   saying "the serial port cannot be opened" for an ADB failure is a lie ✓
+   *   (found on 2026-11-22 ✓: the wizard over ADB reported a serial port ✗).
+   */
+  const cannotOpen = (detail: string): string =>
+    transport === 'adb'
+      ? `**the ADB connection failed** ✓ —— ${detail}`
+      : `**the serial port cannot be opened** ✓ —— ${detail}`;
   const provisionalName =
     input.boardName?.trim() ||
     (transport === 'adb' ? 'adb-board' : `serial-${input.port || 'board'}`);
@@ -246,7 +257,7 @@ export async function runWizard(
     return {
       ok: false,
       firstTruth: { ok: false, kind: 'port-unopenable', detail: message },
-      message: `**the serial port cannot be opened** ✓ —— ${message}`,
+      message: cannotOpen(message),
     };
   }
 
@@ -258,7 +269,7 @@ export async function runWizard(
     return {
       ok: false,
       firstTruth: { ok: false, kind: 'port-unopenable', detail: message },
-      message: `**the serial port cannot be opened** ✓ —— ${message}`,
+      message: cannotOpen(message),
     };
   }
 
@@ -273,7 +284,7 @@ export async function runWizard(
       ...(truth.hint !== undefined ? { hint: truth.hint } : {}),
       message:
         truth.kind === 'port-unopenable'
-          ? `**the serial port cannot be opened** ✓ —— ${truth.detail}`
+          ? cannotOpen(truth.detail)
           : `**the board said nothing** ✓ —— ${truth.detail}`,
     };
   }

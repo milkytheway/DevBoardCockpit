@@ -205,7 +205,20 @@ export interface WizardRunResult {
   /** Whether it worked */
   ok: boolean;
   /** Which situation it is now */
-  kind: 'ok' | 'port-unopenable' | 'no-reply' | 'connection-dead';
+  kind:
+    | 'ok'
+    | 'port-unopenable'
+    | 'no-reply'
+    | 'connection-dead'
+    /**
+     * **The connection could not be opened** ✓ — and it is **not** a serial
+     * port ✓ (the ADB line has no port ✓).
+     *
+     * → The wording has to name the transport that failed ✓ — "the serial
+     *   port cannot be opened" for an ADB failure is a lie ✓ (found on
+     *   2026-11-22 ✓).
+     */
+    | 'connection-failed';
   /** One sentence (plain language — do not merge "connection failed" and "the board said nothing" into one sentence) */
   message: string;
   /** What to check next (an empty array means there is nothing to warn about) */

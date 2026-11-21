@@ -7,6 +7,7 @@ import { validatePack, errorsOf } from '../../src/main/tags/validator';
 import type { Connection, ExecResult } from '../../src/main/hal/connection';
 import type { ConnectionProfile } from '../../src/main/profiles/schema';
 import type { SessionLog } from '../../src/main/logging/session-log';
+import { makeError } from '../../src/shared/errors';
 
 /**
  * The **main flow of the wizard**, added on 2026-11-19.
@@ -220,6 +221,63 @@ describe('the wizard · **the main flow**', () => {
       expect(r.ok).toBe(false);
       expect(r.firstTruth.kind).toBe('port-unopenable');
       expect(r.installedDir, 'nothing was written, so nothing may be on disk').toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * **The failure names the transport it used.**
+ *
+ * ── The kind of bug it prevents ──
+ *
+ * → The wizard offers two lines ✓ (the serial line ✓ · ADB ✓) → but the
+ *   failure always said "the serial port cannot be opened" ✓ — **also for an
+ *   ADB run** ✓ → the ADB line has **no serial port** ✓ → the sentence is a
+ *   lie ✓ and it sends the person to the wrong place ✓ (found on
+ *   2026-11-22 ✓: the CI runner has no adb ✓ and the wizard answered with a
+ *   serial port ✗).
+ * → The wording has to follow the transport that failed ✓.
+ */
+describe('the wizard · **the failure names the transport it used**', () => {
+  function failingConnection(): Connection {
+    const { connection } = fakeConnection();
+    return {
+      ...connection,
+      async open(): Promise<void> {
+        throw makeError('CONN_OPEN_FAILED', 'the tool is not on the PATH');
+      },
+    };
+  }
+
+  it('**over ADB it does not talk about a serial port** (the ADB line has none ✓)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
+    try {
+      const r = await runWizard(
+        { port: '', baudrate: 1500000, transport: 'adb' },
+        deps(root, failingConnection()),
+      );
+      expect(r.ok).toBe(false);
+      expect(r.message, 'the ADB failure may not talk about a serial port').not.toContain(
+        'serial port',
+      );
+      expect(r.message).toContain('ADB');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('**over the serial line it names the port** (the serial line has no adb ✓)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wiz-run-'));
+    try {
+      const r = await runWizard(
+        { port: 'COM3', baudrate: 1500000 },
+        deps(root, failingConnection()),
+      );
+      expect(r.ok).toBe(false);
+      expect(r.message).toContain('serial port');
+      expect(r.message).not.toContain('ADB');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

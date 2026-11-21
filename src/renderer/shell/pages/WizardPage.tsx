@@ -79,6 +79,9 @@ const strings = {
   resultPortUnopenable: { 'zh-Hans': '无法打开串口', en: 'Cannot open the serial port' },
   resultNoReply: { 'zh-Hans': '开发板无响应', en: 'The board did not respond' },
   resultConnectionDead: { 'zh-Hans': '连接未建立', en: 'Connection not established' },
+  // → **The connection failed** ✓ — and it is not a serial port ✓ (the ADB
+  //   line has none ✓) → the title has to say so ✓.
+  resultConnectionFailed: { 'zh-Hans': '连接失败', en: 'The connection failed' },
 
   // ── Failure hints ──
   hintPortExclusive: {
@@ -120,6 +123,10 @@ const strings = {
   hintChangeCable: {
     'zh-Hans': '更换数据线或 USB 端口',
     en: 'Change the cable or USB port',
+  },
+  hintAdbInstalled: {
+    'zh-Hans': '确认已安装 adb 并在 PATH 中',
+    en: 'Check that adb is installed and on the PATH',
   },
 
   // ── Form ──
@@ -179,6 +186,7 @@ const RESULT_TITLE: Record<WizardRunResult['kind'], Localised> = {
   'port-unopenable': strings.resultPortUnopenable,
   'no-reply': strings.resultNoReply,
   'connection-dead': strings.resultConnectionDead,
+  'connection-failed': strings.resultConnectionFailed,
 };
 
 const FALLBACK_HINTS: Record<WizardRunResult['kind'], readonly Localised[]> = {
@@ -198,6 +206,13 @@ const FALLBACK_HINTS: Record<WizardRunResult['kind'], readonly Localised[]> = {
     strings.hintCheckLink,
     strings.hintNotMetaOps,
     strings.hintChangeCable,
+  ],
+  // → **The ADB line** ✓ — there is no port here ✓ → the hints are about the
+  //   tool and the cable ✓ (not about a serial port ✗).
+  'connection-failed': [
+    strings.hintAdbInstalled,
+    strings.hintChangeCable,
+    strings.hintPortCloseIt,
   ],
 };
 

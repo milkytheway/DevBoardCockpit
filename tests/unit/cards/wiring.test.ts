@@ -245,3 +245,81 @@ describe('the card wiring · the lifecycle of a session', () => {
     }
   });
 });
+
+/**
+ * **The cells of the work area follow the connection.**
+ *
+ * ── The kind of bug it prevents ──
+ *
+ * → A cell is bound to `(cardId, connectionId)` ✓ (contract `spec/03` §7 ✓)
+ *   and the instances of the cards carry the **current** connection ✓ → when
+ *   the connection changes ✓ the cell has to follow it ✓ (**otherwise the card
+ *   is not placed any more** ✗ → it disappears from the main area ✗).
+ * → The re-binding used to happen **only when the person switched the board
+ *   by hand** ✗ — and the board that connects **on its own** at start ✗ (the
+ *   usual case ✓) changed the connection id ✗ while the cells kept the old
+ *   one ✗ → the card was gone ✗ (found on 2026-11-22 ✓).
+ * → The path that matters is the one nobody clicks ✓: the runtime binds on
+ *   its own ✓ → the cells have to follow it ✓.
+ */
+describe('the card wiring · the cells of the work area follow the connection', () => {
+  it('**the board connects on its own → the cell follows it** (the card may not disappear ✗)', () => {
+    const fx = fixture();
+    try {
+      // → **Nothing is connected yet** ✓ (the runtime has not bound ✗)
+      let connectionId: string | null = null;
+      const wiring = wiringOf(fx, { connectionId: () => connectionId });
+      wiring.refresh();
+      // → The card is placed while nothing is connected ✓ (the cell carries
+      //   no connection ✓)
+      wiring.layoutSet({
+        version: 3,
+        units: [{ cardId: 'cpu-usage', connectionId: null, x: 2, y: 1, w: 3, h: 2 }],
+        density: 'comfortable',
+        promoted: null,
+        updatedAt: 0,
+      });
+      expect(wiring.layoutGet().units[0]?.connectionId).toBeNull();
+
+      // → **The board connects** ✓ (the runtime binds on its own ✓ — nobody
+      //   clicked anything ✗)
+      connectionId = 'board-a';
+      wiring.list();
+
+      expect(
+        wiring.layoutGet().units[0]?.connectionId,
+        'the cell has to follow the connection — otherwise the card is not placed any more',
+      ).toBe('board-a');
+      // → **The position is kept** ✓ (the position is a fact about the card ✓)
+      expect(wiring.layoutGet().units[0]).toMatchObject({ x: 2, y: 1, w: 3, h: 2 });
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('**the connection is lost → the cell follows it back** (the card stays in the work area ✓)', () => {
+    const fx = fixture();
+    try {
+      let connectionId: string | null = 'board-a';
+      const wiring = wiringOf(fx, { connectionId: () => connectionId });
+      wiring.refresh();
+      wiring.layoutSet({
+        version: 3,
+        units: [{ cardId: 'cpu-usage', connectionId: 'board-a', x: 0, y: 0, w: 3, h: 2 }],
+        density: 'comfortable',
+        promoted: null,
+        updatedAt: 0,
+      });
+
+      // → The page asks for the cards ✓ (the wiring sees the connection ✓)
+      wiring.list();
+
+      // → **The board is gone** ✓ (the connection failed ✗)
+      connectionId = null;
+      wiring.list();
+
+      expect(wiring.layoutGet().units[0]?.connectionId).toBeNull();    } finally {
+      fx.cleanup();
+    }
+  });
+});
