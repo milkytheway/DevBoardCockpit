@@ -206,35 +206,37 @@ export interface PortProbe {
  *
  * → **A port that says nothing is not the board's console** ✓ — that is the
  *   only honest criterion ✓ (the port existing proves nothing ✓).
- * → The ports that are held by another program are skipped ✓ (they cannot
- *   be opened ✓ → they are not the board's ✗ — well, they might be, but we
- *   cannot use them anyway ✓ → so they are reported separately ✓).
+ * → **A port that could not be opened is a third thing** ✓ — another program
+ *   holds it ✓ (the runtime's own connection ✗) → **it is not "silent"** ✓
+ *   → it must never make the application look for another port ✓ (the port
+ *   is the right one ✓ · it is just busy ✓ → the honest message is "the
+ *   port is busy" ✓).
  *
- * @returns the ports that answered ✓ — **one means "this is it" ✓ · several
- *   means "the user has to say which one" ✓ · none means "the console is
- *   not connected" ✓**
+ * @returns the ports that answered ✓ · the ports that stayed silent ✓ · the
+ *   ports that could not be opened ✓ — **one answering port means "this is
+ *   it" ✓ · several mean "the user has to say which one" ✓ · none mean "the
+ *   console is not connected" ✓**
  */
 export async function probeSerialPorts(
   ports: readonly { path: string }[],
   baudRate: number,
   probe: PortProbe,
   waitMs = 800,
-): Promise<{ answering: string[]; silent: string[] }> {
+): Promise<{ answering: string[]; silent: string[]; busy: string[] }> {
   const answering: string[] = [];
   const silent: string[] = [];
+  const busy: string[] = [];
   for (const port of ports) {
     let text = '';
     try {
       text = await probe.probe(port.path, baudRate, waitMs);
     } catch {
-      // **The port could not be opened** (held by another program ✗ · the
-      // driver is missing ✗) → it is not usable ✓ → it goes with the silent
-      // ones ✓ (the message says "could not be opened" ✗ → hmm ✓).
-      silent.push(port.path);
+      // **The port could not be opened** → another program holds it ✓
+      busy.push(port.path);
       continue;
     }
     if (text.trim().length > 0) answering.push(port.path);
     else silent.push(port.path);
   }
-  return { answering, silent };
+  return { answering, silent, busy };
 }

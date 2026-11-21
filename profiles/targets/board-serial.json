@@ -3,7 +3,7 @@
   "label": "Board · Serial",
   "transport": "serial",
   "board_pack": "rk3588-atk",
-  "device_key": "atk-01",
+  "device_key": "ATK-DLRK3588",
   "options": {
     "port": "COM3",
     "baudrate": 1500000,

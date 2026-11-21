@@ -151,6 +151,33 @@ describe('SerialConnection.exec', () => {
     expect(bytes.toString('utf8')).not.toContain('\uFFFD');
   });
 
+  it('**the terminal says so when the port does not answer** ✓ (an empty terminal with no explanation is the "I cannot type" report ✓)', async () => {
+    // A port that stays silent: it is not the console of the board ✓
+    const factory: SerialPortFactory = async () => ({
+      write() { /* nothing comes back */ },
+      onData() { /* no-op */ },
+      onError() { /* no-op */ },
+      async close() { /* no-op */ },
+    });
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+    await conn.openSession();
+    const notices = conn.drainNotices?.() ?? [];
+    expect(notices.join('')).toMatch(/COM3/);
+    // The reason is named: the console may be on another port ✓
+    expect(notices.join('')).toMatch(/another serial port/);
+    // The notices are drained once ✓ (they are not repeated forever ✓)
+    expect(conn.drainNotices?.() ?? []).toHaveLength(0);
+  });
+
+  it('**a port that answers says nothing** ✓ (the board is there ✓ → no noise ✓)', async () => {
+    const { factory } = fakeBoard();
+    const conn = new SerialConnection(profile, log as never, factory);
+    await conn.open();
+    await conn.openSession();
+    expect(conn.drainNotices?.() ?? []).toHaveLength(0);
+  });
+
   it('on a timeout it returns 124 and timedOut is true (fact S5)', async () => {
     // The fake board does not answer → only the timeout can help
     const factory: SerialPortFactory = async () => ({

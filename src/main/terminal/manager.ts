@@ -183,6 +183,14 @@ export class TerminalManager {
       for (const cb of this.dataCbs) cb(id, chunk);
     });
 
+    // → **What the host has to say about the link** ✓ ("the port opened but
+    //   the board said nothing" ✓) → it is written into the terminal ✓
+    //   **after** the subscription ✓ (a line written before it is lost ✓).
+    for (const notice of connection.drainNotices?.() ?? []) {
+      log.write(notice);
+      for (const cb of this.dataCbs) cb(id, notice);
+    }
+
     // The remote side exited on its own (exit typed / the cable pulled /
     // adbd disconnected) → close out the session and notify the interface.
     // Without this, the interface keeps the tab and the user goes on typing

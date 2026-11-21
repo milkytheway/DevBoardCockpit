@@ -238,26 +238,58 @@ export async function resolveProfile(
   //   for it ✓.
   if (deps.ports !== undefined && profile.transport === 'serial') {
     const baud = Number(options['baudrate'] ?? 1500000);
-    const ports = await deps.ports.list();
-    const { answering } = await probeSerialPorts(ports, baud, deps.ports);
     const current = optionString(options, 'port');
-    if (answering.length === 1) {
-      const found = answering[0] ?? '';
-      if (found.length > 0 && found !== current) {
-        options['port'] = found;
-        changes.push({
-          field: 'options.port',
-          from: current ?? '(not set)',
-          to: found,
-          how: 'the only serial port that answered',
-        });
-      }
-    } else if (answering.length > 1) {
-      problems.push(
-        `${answering.length} serial ports answered (${answering.join(', ')}) — the board setup has to say which one is the console`,
+    const all = await deps.ports.list();
+
+    // → **The configured port is asked first** ✓ (it is the one the profile
+    //   names ✓) → **it is only one port** ✓ (the other ports are only
+    //   opened when it stays silent ✓ — opening ports that belong to other
+    //   devices is none of our business ✓).
+    let state: 'answered' | 'silent' | 'busy' | 'unknown' = 'unknown';
+    if (current !== undefined) {
+      const one = await probeSerialPorts(
+        all.filter((port) => port.path === current),
+        baud,
+        deps.ports,
       );
+      if (one.answering.includes(current)) state = 'answered';
+      else if (one.busy.includes(current)) state = 'busy';
+      else state = 'silent';
+    }
+
+    if (state === 'answered' || state === 'busy') {
+      // → **The port answers** ✓ → it is the board's console ✓ → nothing to
+      //   change ✓.
+      // → **The port is busy** ✓ (another program holds it ✓ — the runtime's
+      //   own connection ✓) → **it is not "silent"** ✓ → the honest error is
+      //   "the port is busy" ✓ → **the application must not look for
+      //   another port** ✓.
     } else {
-      problems.push('no serial port answered — the console of the board is not connected (or the baud rate is wrong)');
+      const others = await probeSerialPorts(
+        all.filter((port) => port.path !== current),
+        baud,
+        deps.ports,
+      );
+      if (others.answering.length === 1) {
+        const found = others.answering[0] ?? '';
+        if (found.length > 0 && found !== current) {
+          options['port'] = found;
+          changes.push({
+            field: 'options.port',
+            from: current ?? '(not set)',
+            to: found,
+            how: 'the only serial port that answered',
+          });
+        }
+      } else if (others.answering.length > 1) {
+        problems.push(
+          `${others.answering.length} serial ports answered (${others.answering.join(', ')}) — the board setup has to say which one is the console`,
+        );
+      } else {
+        problems.push(
+          'no serial port answered — the console of the board is not connected (or the baud rate is wrong)',
+        );
+      }
     }
   }
 

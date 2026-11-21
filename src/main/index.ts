@@ -41,6 +41,7 @@ import { TerminalManager } from './terminal/manager';
 import { TagRuntime, pickCandidates, startWithRetry } from './tags/runtime';
 import { listPacksIn } from './tags/binding';
 import { prepareProfile } from './board/prepare';
+import { hostPortProbe } from './board/ports';
 import { createCardWiring } from './cards/wiring';
 import { runWizardForHost } from './wizard/wiring';
 import { ActionAudit } from './actions/audit';
@@ -202,6 +203,11 @@ async function createConnectionFor(
     adbPath,
     expectedModels: expectedModelsFor(profile.board_pack),
     userProfilesDir: userProfilesDir(),
+    // → **The serial console is looked for** ✓ (the ports are asked which
+    //   one is the console ✓ — **a port that answers is the console** ✓).
+    // → It is only the **serial** connection that asks ✓ (the other two
+    //   transports do not use a port ✓).
+    ports: profile.transport === 'serial' ? hostPortProbe : undefined,
     log: (message) => console.log(message),
   });
   return createConnection(prepared, log, { adbPath });

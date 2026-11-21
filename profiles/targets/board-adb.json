@@ -3,7 +3,7 @@
   "label": "Board · ADB",
   "transport": "adb",
   "board_pack": "rk3588-atk",
-  "device_key": "atk-01",
+  "device_key": "ATK-DLRK3588",
   "options": {
     "pty": false,
     "prompt": "root@ATK-DLRK3588",

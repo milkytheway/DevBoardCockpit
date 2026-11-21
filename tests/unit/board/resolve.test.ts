@@ -182,8 +182,8 @@ describe('the resolution · the serial port', () => {
     options: { port: 'COM3', baudrate: 1500000, pty: true },
   };
 
-  const probe = (answers: Record<string, string>): PortProbe => ({
-    list: async () => Object.keys(answers).map((path) => ({ path })),
+  const probe = (answers: Record<string, string>, list?: string[]): PortProbe => ({
+    list: async () => (list ?? Object.keys(answers)).map((path) => ({ path })),
     probe: async (path) => {
       const text = answers[path];
       if (text === undefined) throw new Error('the port could not be opened');
@@ -199,13 +199,34 @@ describe('the resolution · the serial port', () => {
     expect(outcome.profile.options['port']).toBe('COM7');
   });
 
+  it('**the configured port answers → nothing is changed** ✓ (it is the board console ✓)', async () => {
+    const outcome = await resolveProfile(SERIAL_PROFILE, {
+      runner: runnerOf({ devices: '' }),
+      ports: probe({ COM3: 'ATK-DLRK3588 login:', COM7: 'something else' }),
+    });
+    expect(outcome.profile.options['port']).toBe('COM3');
+    expect(outcome.changes).toEqual([]);
+  });
+
   it('**several answering ports → nothing is chosen** ✓', async () => {
     const outcome = await resolveProfile(SERIAL_PROFILE, {
       runner: runnerOf({ devices: '' }),
-      ports: probe({ COM3: 'hello', COM7: 'ATK-DLRK3588 login:' }),
+      ports: probe({ COM3: '', COM7: 'ATK-DLRK3588 login:', COM9: 'other board' }),
     });
     expect(outcome.profile.options['port']).toBe('COM3');
     expect(outcome.problems.join(' ')).toMatch(/2 serial ports answered/);
+  });
+
+  it('**a busy port is not a silent port** ✓ (the application must not look for another one ✓)', async () => {
+    // The port cannot be opened → another program holds it ✓ (the runtime's
+    // own connection ✓) → the honest error is "busy" ✓
+    const outcome = await resolveProfile(SERIAL_PROFILE, {
+      runner: runnerOf({ devices: '' }),
+      ports: probe({ COM7: 'ATK-DLRK3588 login:' }, ['COM3', 'COM7']),
+    });
+    expect(outcome.profile.options['port']).toBe('COM3');
+    expect(outcome.changes).toEqual([]);
+    expect(outcome.problems.join(' ')).not.toMatch(/serial ports answered/);
   });
 
   it('**no port answers → the problem says so** ✓', async () => {

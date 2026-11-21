@@ -84,6 +84,16 @@ export interface Connection {
    *   tell a pulled cable from a refused port ✓ (found on 2026-11-21 ✓).
    */
   readonly lastError?: Error;
+  /**
+   * The lines the host wants to show in the terminal ✓ (optional ✓).
+   *
+   * → **They are not from the board** ✓ — they are what the host has to
+   *   say about the link ✓ ("the port opened but the board said nothing" ✓).
+   * → They are **queued** ✓ and drained after the terminal has subscribed ✓
+   *   (a line that is written before the subscription is lost ✓ — the same
+   *   trap as the first output of a session ✓).
+   */
+  drainNotices?(): string[];
   exec(command: string, opts?: ExecOptions): Promise<ExecResult>;
   /**
    * File transfer.

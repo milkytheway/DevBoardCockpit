@@ -1,5 +1,4 @@
 import { StringDecoder } from 'node:string_decoder';
-import { SerialPort } from 'serialport';
 import { makeError } from '../../shared/errors';
 import type { SessionLog } from '../logging/session-log';
 import type { ConnectionProfile } from '../profiles/schema';
@@ -81,6 +80,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * not open, the main process crashes on the user's first keystroke.
  */
 export const realPortFactory: SerialPortFactory = async ({ path, baudRate }) => {
+  // → **The native module is loaded here and not at the top** ✓ — it is a
+  //   binary ✓ → **importing this file must not need it** ✓ (otherwise every
+  //   test that imports the serial transport needs the binary of the
+  //   platform it runs on ✓ → the tests cannot run where it is missing ✓).
+  const { SerialPort } = await import('serialport');
   const port = new SerialPort({ path, baudRate, autoOpen: false });
   // Bad bytes do not void the whole command (Fact A8) — a StringDecoder
   // reassembles across chunks, otherwise a multi-byte character split across
@@ -156,6 +160,18 @@ export class SerialConnection implements Connection {
    * `ls -l /tmpuptime; echo marker`).
    */
   private busy = false;
+  /**
+   * Did the port say **anything** since it was opened? ✓
+   *
+   * → The console of the board echoes what is typed ✓ (fact S2 ✓) → **a
+   *   port that stays silent is not the board's console** ✓ → the user has
+   *   to be told ✓ (otherwise the terminal is just empty and the input goes
+   *   nowhere ✓ — that is exactly the "a command line opened but I cannot
+   *   type" report of 2026-11-21 ✓).
+   */
+  private sawData = false;
+  /** The lines the host wants to show in the terminal ✓ */
+  private readonly notices: string[] = [];
 
   constructor(
     private readonly profile: ConnectionProfile,
@@ -199,6 +215,7 @@ export class SerialConnection implements Connection {
     }
 
     this.port.onData((chunk) => {
+      this.sawData = true;
       // Only feed the buffer of "this command". The buffer is cleared before
       // the command is sent, so it naturally holds only the reply of this
       // command — no index needed.
@@ -343,9 +360,46 @@ export class SerialConnection implements Connection {
     }
     // The interactive session holds the line until it closes
     this.busy = true;
-    return new SerialSession(this.port, this.log, () => {
+    const session = new SerialSession(this.port, this.log, () => {
       this.busy = false;
     });
+    await this.probeConsole(String(this.profile.options['port'] ?? ''));
+    return session;
+  }
+
+  /**
+   * **Does the board answer on this port?** ✓
+   *
+   * → The console echoes what is typed ✓ → an empty line ("\\r" ✓) makes
+   *   the board print a new prompt ✓ → **that is the answer** ✓.
+   * → **No answer in 600 ms** ✓ → the port is probably not the console ✓ →
+   *   the user is told ✓ (**not silently left with an empty terminal** ✓).
+   * → **It is not an error** ✓ — the port may be a device that only speaks
+   *   when spoken to ✓ → the connection stays open ✓.
+   */
+  private async probeConsole(port: string): Promise<void> {
+    if (!this.port) return;
+    this.sawData = false;
+    try {
+      this.port.write('\r');
+    } catch {
+      return;
+    }
+    const deadline = Date.now() + 600;
+    while (Date.now() < deadline && !this.sawData) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    if (this.sawData) return;
+    this.notices.push(
+      `\r\n[the port ${port} opened, but nothing came back in 600 ms — the console of the board may be on another serial port; the board setup can find it]\r\n`,
+    );
+  }
+
+  /** The lines the host wants to show in the terminal ✓ */
+  drainNotices(): string[] {
+    const out = [...this.notices];
+    this.notices.length = 0;
+    return out;
   }
 
   /** Wait for the marker to appear a second time. Returns the output text; undefined on timeout */

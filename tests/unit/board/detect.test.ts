@@ -139,9 +139,11 @@ describe('the detection · the serial ports', () => {
     expect(out.silent).toEqual(['COM3']);
   });
 
-  it('**a port that cannot be opened is not the console** ✓', async () => {
+  it('**a port that cannot be opened is a third thing** ✓ (another program holds it ✓)', async () => {
     const out = await probeSerialPorts([{ path: 'COM3' }], 1500000, probe({}));
     expect(out.answering).toEqual([]);
-    expect(out.silent).toEqual(['COM3']);
+    expect(out.silent).toEqual([]);
+    // → **busy is not silent** ✓ (the port is not "wrong" ✓ — it is held ✓)
+    expect(out.busy).toEqual(['COM3']);
   });
 });
