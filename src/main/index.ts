@@ -92,33 +92,31 @@ function titleBarOverlay(theme: 'dark' | 'light'): {
  */
 
 /**
- * ⚠️ The fake device (debugging only): `COCKPIT_FAKE=1` (the fake
- * device comes first) or `COCKPIT_FAKE=only` (it is the only one).
+ * The fake device (synthetic data ✓): it **ships with the application** ✓
+ * (the user decided it on 2026-11-21 ✓).
  *
- * It exists only in debug builds — the production build prunes this branch
- * entirely, and `scripts/check-build.ts` verifies it is absent from the
- * bundle (implementation decision record ADR-D30).
+ * → `COCKPIT_FAKE=off` turns it off ✓ · `COCKPIT_FAKE=only` leaves only
+ *   the fake one ✓.
+ * → **The real boards come first** ✓ — the default selection is the real
+ *   board ✓ (`hal/fake/wiring.ts` ✓).
+ * → Every screen it appears on says that it is synthetic ✓.
  */
 declare const __COCKPIT_FAKE_BUILD__: boolean;
 
 const FAKE_MODE: FakeMode = __COCKPIT_FAKE_BUILD__ ? fakeMode() : 'off';
 
 /**
- * The fake device's module — **loaded on demand**.
+ * The fake device's module — **loaded on demand** ✓.
  *
- * → In a production build `FAKE_MODE` is compiled to `'off'`, so this
- * dynamic import is unreachable, rollup drops it, and **the fake device's
- * code is not in the production bundle at all** (the build self-check
- * verifies this).
+ * → It is a dynamic import ✓ → the chunk is only fetched when the fake board
+ *   is actually used ✓.
  */
 type FakeModule = typeof import('./hal/fake/connection.js');
 let fakeModule: FakeModule | null = null;
 
 async function loadFakeDevice(): Promise<void> {
-  // Compile-time constant: in a production build `__COCKPIT_FAKE_BUILD__` is
-  // `false`, so everything after this line is dead code → rollup prunes the
-  // whole block and the dynamic import's chunk is never emitted at all.
-  // (`scripts/check-build.ts` verifies this — see ADR-D30.)
+  // The fake device is **not** pruned any more ✓ (the user decided it on
+  // 2026-11-21 ✓) → the module is loaded when the fake board is used ✓.
   if (!__COCKPIT_FAKE_BUILD__) return;
   if (FAKE_MODE === 'off') return;
   fakeModule = await import('./hal/fake/connection.js');

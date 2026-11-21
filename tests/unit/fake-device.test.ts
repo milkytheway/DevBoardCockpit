@@ -78,10 +78,12 @@ function makeHarness(
 }
 
 describe('the fake device · the switch and the profile', () => {
-  it('the environment variable is absent or holds something else → off', () => {
-    expect(fakeMode({})).toBe('off');
-    expect(fakeMode({ COCKPIT_FAKE: '   ' })).toBe('off');
-    expect(fakeMode({ COCKPIT_FAKE: 'maybe' })).toBe('off');
+  it('**it is on by default** ✓ (the user decided it on 2026-11-21 ✓) — `off` turns it off ✓', () => {
+    expect(fakeMode({})).toBe('on');
+    expect(fakeMode({ COCKPIT_FAKE: '   ' })).toBe('on');
+    expect(fakeMode({ COCKPIT_FAKE: 'maybe' })).toBe('on');
+    expect(fakeMode({ COCKPIT_FAKE: 'off' })).toBe('off');
+    expect(fakeMode({ COCKPIT_FAKE: '0' })).toBe('off');
   });
 
   it('1 / on / true → on; only → only it', () => {

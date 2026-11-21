@@ -23,8 +23,10 @@ export type FakeMode = 'off' | 'on' | 'only';
 export function fakeMode(env: NodeJS.ProcessEnv = process.env): FakeMode {
   const raw = (env['COCKPIT_FAKE'] ?? '').trim().toLowerCase();
   if (raw === 'only') return 'only';
-  if (raw === '1' || raw === 'on' || raw === 'true') return 'on';
-  return 'off';
+  if (raw === 'off' || raw === '0' || raw === 'false') return 'off';
+  // **On by default** ✓ (the user decided it on 2026-11-21 ✓ — the fake board
+  // ships with the application ✓) — `COCKPIT_FAKE=off` turns it off ✓.
+  return 'on';
 }
 
 /**

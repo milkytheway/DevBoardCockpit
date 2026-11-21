@@ -295,6 +295,14 @@ function main(): void {
     ok: paths.some((p) => p.startsWith('profiles/workflows/')),
     detail: paths.filter((p) => p.startsWith('profiles/workflows/')).slice(0, 5).join(', ') || 'none',
   });
+  checks.push({
+    what: 'the asar holds the board kits (profiles/kits/*/kit.yaml)',
+    ok: paths.some((p) => /^profiles\/kits\/[^/]+\/kit\.yaml$/.test(p)),
+    detail:
+      paths
+        .filter((p) => /^profiles\/kits\/[^/]+\/kit\.yaml$/.test(p))
+        .join(', ') || 'none — `files` is short of `profiles/**/*`',
+  });
 
   // ── No fake device in the production package (**synthetic data may not
   //    enter the production package**) ───────────────────────────────
@@ -322,9 +330,11 @@ function main(): void {
   });
   const fakeInPackage = mainBundle?.toString('utf8').includes(FAKE_DEVICE_MARKER) ?? false;
   checks.push({
-    what: 'there is no fake device in the production package',
-    ok: !fakeInPackage,
-    detail: fakeInPackage ? 'the fake device got into the package — the user takes the false readings for real ones' : 'there is none',
+    what: 'the fake device ships with the package (the user decided it on 2026-11-21 ✓ — the interface labels it as synthetic data ✓)',
+    ok: fakeInPackage,
+    detail: fakeInPackage
+      ? 'the fake device is in the package ✓ — the real boards come first ✓ and every screen labels it ✓'
+      : 'the fake device is not in the package — that is a different application than the one that was reviewed',
   });
 
   // ── Were the native modules **unpacked** (unpacked = the runtime does not

@@ -32,9 +32,10 @@ describe('the fake device · the rules of the wiring', () => {
     expect(profilesWithFake([REAL], 'off', true)).toEqual([REAL]);
   });
 
-  it('it is on → the fake profile comes first (during the debugging it is what you see)', () => {
+  it('**it is on → the real profiles come first** ✓ (the fake one is synthetic data ✓ — **the default selection has to be the real board** ✓)', () => {
     const out = profilesWithFake([REAL], 'on', true);
-    expect(out[0]?.id).toBe(FAKE_PROFILE_ID);
+    expect(out[0]?.id).toBe(REAL.id);
+    expect(out[1]?.id).toBe(FAKE_PROFILE_ID);
     expect(out).toHaveLength(2);
   });
 

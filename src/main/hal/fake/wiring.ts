@@ -40,7 +40,10 @@ export function profilesWithFake(
   if (!fakeReady) return profiles;
   // **The fake device can play several roles** (`COCKPIT_FAKE_PROFILES=build,target` ✓)
   const fakes = fakeProfileIds(env).map((id) => fakeProfile(id));
-  return mode === 'only' ? fakes : [...fakes, ...profiles];
+  // **The real boards come first** ✓ — the fake one is synthetic data ✓ and
+  // the default selection has to be the real board ✓ (the user decided it on
+  // 2026-11-21 ✓).
+  return mode === 'only' ? fakes : [...profiles, ...fakes];
 }
 
 /** What to do with a profile id. */

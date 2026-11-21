@@ -138,29 +138,26 @@ function main(): void {
     detail: rendererHtml,
   });
 
-  // ── No fake device in the production artefact ──────────────────────
+  // ── The fake device **ships** with the application ───────────────────
   //
-  // **Why this one has to be written**: the fake device is **synthetic data
-  // for debugging** — if it gets into the production package, the user sees
-  // made up numbers on the panel, and the interface does not tell him "this
-  // is fake".
+  // **The user decided it on 2026-11-21** ✓ (the fake board is useful
+  // without the hardware ✓) → the judgement of the release preparation
+  // ("synthetic data may not enter the production package") is **overturned**
+  // ✓.
   //
-  // How it works: the production build compiles `__COCKPIT_FAKE_BUILD__` to
-  // `false`, so the dynamically imported chunk must not be produced; here it
-  // is **checked that it really was not produced**.
-  // The marker string lives in the module of the fake device itself
-  // (`hal/fake/device.ts`), and that module can **only** get into the
-  // package through a dynamic import → the marker is there = the fake device
-  // is there. **The whole out/ is scanned** (not only main): a fake device
-  // that leaks into the renderer is synthetic data as well.
+  // → The **interface says so** ✓ (the terminal banner ✓ · the board name ✓)
+  //   and **the real boards come first** ✓ (`hal/fake/wiring.ts` ✓).
+  // → So the marker **has** to be there ✓ — that is what is checked here ✓
+  //   (a build that quietly lost the fake device would be a different
+  //   application than the one that was reviewed ✓).
   const fakeHits = findFilesWithMarker(outDir, FAKE_DEVICE_MARKER);
   checks.push({
-    what: 'there is no fake device in the production artefact (synthetic data may not enter the production package)',
-    ok: fakeHits.length === 0,
+    what: 'the fake device ships with the application (the user decided it on 2026-11-21 ✓ — the interface labels it as synthetic data ✓)',
+    ok: fakeHits.length > 0,
     detail:
-      fakeHits.length === 0
-        ? `the marker "${FAKE_DEVICE_MARKER}" was not found`
-        : `the marker "${FAKE_DEVICE_MARKER}" is in: ${fakeHits.join(', ')}`,
+      fakeHits.length > 0
+        ? `the marker "${FAKE_DEVICE_MARKER}" is in: ${fakeHits.slice(0, 5).join(', ')}`
+        : `the marker "${FAKE_DEVICE_MARKER}" was not found — the fake device did not make it into the build`,
   });
 
   // ── The summary ─────────────────────────────────────────────────

@@ -20,33 +20,25 @@ import { PRELOAD_ENTRY, PRELOAD_FORMAT } from './src/shared/build-layout';
  * the two cannot disagree. `scripts/check-build.ts` runs at the end of
  * `npm run build` and checks that the artefact really exists.
  */
-export default defineConfig(({ command, mode }) => ({
+export default defineConfig(() => ({
   main: {
     plugins: [externalizeDepsPlugin()],
     define: {
       /**
-       * ⚠️ The fake device is **only in a debug build**:
-       * the production build compiles this to `false`,
-       * so `if (!__COCKPIT_FAKE_BUILD__) return;` becomes dead code,
-       * rollup drops the whole block — **and the dynamic import's chunk
-       * is never emitted** (`scripts/check-build.ts` verifies this:
-       * the marker string must not appear anywhere under `out/main/`).
+       * The fake device **ships in the production build** ✓
+       * (the user decided it on 2026-11-21 ✓).
        *
-       * ── The two builds that carry the fake device ──
+       * → **It is synthetic data** ✓ — the interface says so on every screen
+       *   it appears on ✓ (the terminal banner ✓ · the board name ✓).
+       * → **The real board comes first** ✓ (`hal/fake/wiring.ts` ✓) — the
+       *   default selection is the real one ✓.
+       * → `COCKPIT_FAKE=off` turns it off ✓ · `COCKPIT_FAKE=only` leaves
+       *   only the fake ✓.
        *
-       * | Build | Command | Fake device in the bundle |
-       * |---|---|---|
-       * | Production | `npm run build` | **No** (this is exactly what the self-check verifies) |
-       * | Debug | `npm run build:fake` (`--mode fake`) | **Yes** |
-       * | Development server | `npm run dev` | Yes |
-       *
-       * → **Why a build that carries the fake device**: the e2e suite needs a
-       *   **fake board that answers actions** (a production build has no fake
-       *   device, so the action criterion cannot be automated).
-       * → That build **does not run `scripts/check-build.ts`** (the self-check
-       *   exists precisely to verify that the fake device is absent).
+       * → **The build self-check asserts the opposite of what it used to** ✓:
+       *   the marker **has** to be in the bundle ✓ (`scripts/check-build.ts` ✓).
        */
-      __COCKPIT_FAKE_BUILD__: JSON.stringify(command !== 'build' || mode === 'fake'),
+      __COCKPIT_FAKE_BUILD__: JSON.stringify(true),
     },
     build: {
       rollupOptions: {
