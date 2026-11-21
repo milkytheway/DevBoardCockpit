@@ -28,6 +28,7 @@ vi.mock('@xterm/addon-fit', () => ({
 }));
 
 import { TerminalPage } from '../../src/renderer/shell/pages/TerminalPage';
+import { LocaleContext } from '../../src/renderer/shell/i18n';
 import type { TerminalTab } from '../../src/renderer/shell/types';
 import type { XtermTheme } from '../../src/renderer/shell/theme';
 
@@ -60,18 +61,22 @@ const THEME: XtermTheme = {
  */
 function renderPage(sessions: TerminalTab[], activeSessionId: string | null): void {
   render(
-    <TerminalPage
-      sessions={sessions}
-      activeSessionId={activeSessionId}
-      xtermTheme={THEME}
-      terminalSubscribe={() => (_cb: (chunk: string) => void) => () => {
-        /* no-op */
-      }}
-      onTerminalWrite={() => undefined}
-      onTerminalResize={() => undefined}
-      onSelectSession={() => undefined}
-      onCloseSession={() => undefined}
-    />,
+    // → **The Chinese locale is pinned** ✓ — the empty state is asserted by
+    //   its wording ✓ (the wording is the interface's ✓).
+    <LocaleContext.Provider value="zh-Hans">
+      <TerminalPage
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        xtermTheme={THEME}
+        terminalSubscribe={() => (_cb: (chunk: string) => void) => () => {
+          /* no-op */
+        }}
+        onTerminalWrite={() => undefined}
+        onTerminalResize={() => undefined}
+        onSelectSession={() => undefined}
+        onCloseSession={() => undefined}
+      />
+    </LocaleContext.Provider>,
   );
 }
 

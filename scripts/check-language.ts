@@ -118,9 +118,25 @@ interface Finding {
   text: string;
 }
 
+/**
+ * The files the gate reads ✓.
+ *
+ * → **The tracked ones** ✓ **and the new ones** ✓ (`--others
+ *   --exclude-standard` ✓ → the files that are not ignored ✓).
+ * → **Why the new ones count** ✓: `git ls-files` alone lists only what is
+ *   already committed ✓ → **a file that is written today escapes the gate
+ *   until it is committed** ✓ → the author finds out in CI instead of here
+ *   ✗ (a false negative ✓ — found on 2026-11-21 ✓).
+ */
 function trackedFiles(): string[] {
-  const out = execFileSync('git', ['ls-files'], { encoding: 'utf8' });
-  return out.split('\n').filter((f) => f.length > 0);
+  const out = new Set<string>();
+  for (const args of [['ls-files'], ['ls-files', '--others', '--exclude-standard']]) {
+    const listed = execFileSync('git', args, { encoding: 'utf8' });
+    for (const file of listed.split('\n')) {
+      if (file.length > 0) out.add(file);
+    }
+  }
+  return [...out];
 }
 
 function scriptKind(ext: string): ts.ScriptKind {

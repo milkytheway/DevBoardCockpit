@@ -842,9 +842,10 @@ handle(IPC.cardsCsp, (instanceId, detail) => {
  */
 async function startTagRuntime(): Promise<void> {
   const fakeIds = new Set(fakeProfileIds(process.env));
-  const candidates = pickCandidates(listProfiles()).filter(
-    (candidate) => FAKE_MODE === 'only' || !fakeIds.has(candidate.profileId),
-  );
+  // → **In the "only" mode the fake board is what the person asked for** ✓ →
+  //   it is the candidate then ✓ (and the only one ✓).
+  const exclude = FAKE_MODE === 'only' ? [] : [...fakeIds];
+  const candidates = pickCandidates(listProfiles(), { exclude });
   if (candidates.length === 0) {
     // No connection with a board pack: the panels will show 'no connection with a board pack'
     return;

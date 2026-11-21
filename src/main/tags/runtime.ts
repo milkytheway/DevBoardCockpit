@@ -415,10 +415,22 @@ export const RETRY_BACKOFF_MS: readonly number[] = [2000, 5000, 10000, 30000];
  *
  * The criterion is `!= null` (it removes `null` and `undefined` at the
  * same time).
+ *
+ * → **`exclude` keeps a profile out of the running** ✓ — the **fake board**
+ *   ✓ (it is synthetic data ✓ and it always connects ✓ → left in the race
+ *   ✓ it wins ✓ and the interface shows the fake board as the board the
+ *   person is on ✗ — found on 2026-11-21 ✓).
+ *   → The rule lives here ✓ (not in the electron entry point ✓) so that it
+ *   can be **tested** ✓.
  */
-export function pickCandidates(profiles: ConnectionProfile[]): RuntimeCandidate[] {
+export function pickCandidates(
+  profiles: ConnectionProfile[],
+  options: { exclude?: readonly string[] } = {},
+): RuntimeCandidate[] {
+  const excluded = new Set(options.exclude ?? []);
   return profiles
     .filter((p) => p.board_pack != null)
+    .filter((p) => !excluded.has(p.id))
     .map((p) => ({ profileId: p.id, profile: p }));
 }
 

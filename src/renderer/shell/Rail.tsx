@@ -61,6 +61,10 @@ export function Rail({
               className={`rail__item${active ? ' is-active' : ''}`}
               aria-current={active ? 'page' : undefined}
               title={pick(entry.label, locale)}
+              // → **A stable e2e hook** ✓ (not a class name ✓ — the shell's
+              //   DOM may be replaced wholesale ✓) → the e2e test goes to a
+              //   page without knowing the language ✓.
+              data-cockpit-page={entry.id}
               onClick={() => onPage(entry.id)}
             >
               <span className="rail__glyph" aria-hidden>
