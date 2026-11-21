@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Node.js 20 or later. On Windows, the Visual Studio build tools are required to compile the native modules `node-pty` and `serialport`.
+Node.js 20 or later. **No compiler is needed.** `node-pty` and `serialport` are NAPI modules: the prebuilt binaries that ship with them work across the Node and the Electron versions. The Visual Studio build tools are only needed in the rare case where a prebuilt binary does not fit the machine.
 
 ## Setup
 
@@ -11,7 +11,7 @@ npm install
 npm test
 ```
 
-`npm install` runs a postinstall step that builds the native modules for the local Electron version. On a machine without the build tools, the install completes but the native modules will not load.
+`npm install` runs a postinstall step that checks the native modules: when they load (the usual case — the prebuilt binaries are used) nothing is compiled, and only when one of them does not fit the machine is it compiled from the source. That is the only case that needs a compiler.
 
 ## Checks
 

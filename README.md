@@ -46,7 +46,8 @@
 
 ## 快速开始
 
-前置条件：Node.js 20.19 或更高版本；Windows。开发环境需要 Visual Studio 生成工具，用于编译 `node-pty` 与 `serialport`。
+前置条件：Node.js 20.19 或更高版本；Windows。**不需要编译工具** ✓ —— `node-pty` 与 `serialport` 都是 NAPI 模块 ✓，包自带的预编译二进制跨 Node / Electron 版本通用 ✓。
+只有当预编译的二进制与本机对不上时 ✓，安装脚本才会去编译 ✓ —— 那时才需要 Visual Studio 生成工具（"Desktop development with C++" 工作负载 ✓）。
 
 ```bash
 git clone <repository-url>

@@ -18,8 +18,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      # The native modules (node-pty, serialport) are compiled against the local
-      # Electron ABI. The build tools are present on the Windows runner image.
+      # The native modules (node-pty, serialport) are NAPI modules: the prebuilt
+      # binaries that ship with them are used, so no compiler is needed. The
+      # build tools are on the runner image for the rare case where one of them
+      # does not fit.
       # `npm ci` and not `npm install`: the lock file is what the repository
       # says it ships — `npm install` may change it and install something
       # else than the lock file says.

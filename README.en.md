@@ -49,7 +49,7 @@ the directory you want it in, and it puts a shortcut on the desktop.
 
 ## Getting started
 
-Prerequisites: Node.js 20.19 or later; Windows. Development requires the Visual Studio build tools to compile `node-pty` and `serialport`.
+Prerequisites: Node.js 20.19 or later; Windows. **No compiler is needed**: `node-pty` and `serialport` are NAPI modules, and the prebuilt binaries that ship with them work across the Node and the Electron versions. The install only compiles them when a prebuilt binary does not fit the machine, and that is the only case that needs the Visual Studio build tools (the "Desktop development with C++" workload).
 
 ```bash
 git clone <repository-url>
