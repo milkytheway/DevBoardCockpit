@@ -142,7 +142,8 @@ be missing.
 ## 8. The fake device
 
 ```bash
-COCKPIT_FAKE=1 npm run dev     # the fake board is listed first
+npm run dev                    # the fake board ships and is on by default
+COCKPIT_FAKE=off npm run dev   # no fake board at all
 COCKPIT_FAKE=only npm run dev  # only the fake board
 ```
 
@@ -154,6 +155,7 @@ all run; only the layer that talks to the board is replaced.
 |---|---|
 | The fake board emits raw text only — jiffies, kB, `@Hz`, millidegrees. It never produces a percentage and never produces a state. | The five states are the contract (`docs/spec/01`). A fake that invents them is a second copy of the contract, and it will drift. |
 | The fake device's connection profile is never written to disk. | `profiles/targets/` stays clean. |
+| The real boards are listed **first**; the fake one comes last. | The default selection has to be the real board — the fake one is synthetic data. |
 | The production build **does** contain it — the user decided that on 2026-11-21. | The fake board is useful without the hardware ✓; the interface labels it as synthetic data on every screen ✓ and the real boards come first ✓. `scripts/check-build.ts` **asserts the marker is there** ✓. |
 
 Without it, the shell can only be developed against absent hardware — and an
