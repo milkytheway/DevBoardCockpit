@@ -35,7 +35,7 @@
     "dev": "electron-vite dev",
     "build": "node scripts/clean-out.mjs && electron-vite build && tsx scripts/check-build.ts",
     "build:fake": "node scripts/clean-out.mjs && electron-vite build --mode fake",
-    "dist": "electron-vite build && tsx scripts/check-build.ts && electron-builder --win --publish never",
+    "dist": "electron-vite build && tsx scripts/check-build.ts && tsx scripts/check-installer-path.ts && electron-builder --win --publish never",
     "dist:dir": "electron-vite build && tsx scripts/check-build.ts && electron-builder --dir --publish never",
     "check:package": "tsx scripts/check-package.ts",
     "release:check": "tsx scripts/check-release-version.ts",

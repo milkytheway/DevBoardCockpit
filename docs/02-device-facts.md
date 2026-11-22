@@ -261,6 +261,14 @@ had opened COM3 exclusively and swallowed the replies; after stopping it the sam
 | G3 | the child process flashes a console window | on Windows a process launched by a GUI opens a console window by default; the previous project sampled metrics once a second → the screen flickered madly | child processes always use `CREATE_NO_WINDOW` / `windowsHide: true` on the Node side | 🟢 |
 | G4 | session log | a crash, a restart or closing the window must not lose the record | every line goes to disk + flush; the ANSI codes are stripped; the path is `%LOCALAPPDATA%/<App>/logs/<date>/<label>-<HHMMSS>.log` | 🟢 |
 | G5 | the terminal does not flow back | widening a VT terminal cannot restore the cells that were cut off | either do not resize, or accept the truncation | 🟢 measured with pyte in the previous project |
+| G6 | **the path of the working tree must be plain ASCII** | the NSIS installer fails with *"Error writing temporary file. Make sure your temp folder is valid."* → the build dies **after** the 84 MB artefact was written (a stub of 188 KB is left behind ✓) → **the cause is the path, not the disk and not the temp folder** ✓ (both were checked ✓: 28 GB free ✓ · a short ASCII temp folder changed nothing ✓) | build from a path made of ASCII letters only ✓ (e.g. `C:\work\DevBoardCockpit` ✓) → the same tree ✓ the same node_modules ✓ and the installer is written in full ✓ (measured 2026-11-22 ✓: 84.0 MB ✓ · `npm run check:package` ✓) | 🟢 measured 2026-11-22 |
+
+> **G6 in one sentence** ✓: the directory names of this repository live under
+> `02、RK3588开发平台` ✓ (Chinese characters ✓ · a full-width comma ✓) — that
+> is fine for the application ✓ (it reads the profiles and the cards ✓) but
+> **not** for the NSIS installer ✓ → **the release workflow builds on a
+> runner with an ASCII path** ✓ (`D:\a\DevBoardCockpit\DevBoardCockpit` ✓)
+> → the published installer is complete ✓ ✓.
 
 ---
 
