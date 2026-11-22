@@ -2,7 +2,7 @@
 
 [中文](README.md)
 
-A Windows desktop workbench for embedded Linux boards. A standard set of board metrics exposes runtime state, composable cards build live instrumentation and controls, and workflow packs orchestrate build, deployment and verification tasks. The same capabilities are available to external agents through MCP.
+A Windows desktop workbench for embedded Linux boards. It connects a board over ADB, SSH or serial, reads the runtime state through standard board metrics, encapsulates a set of operations into composable cards for live instrumentation and controls, and orchestrates build, deployment and verification tasks with workflow packs. The same capabilities are available to external agents through MCP, so an AI can work on the embedded Linux project with you.
 
 ![DevBoard Cockpit workbench](docs/assets/devboard-cockpit-workbench.png)
 

@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-面向嵌入式 Linux 开发板的 Windows 桌面工作台。以标准板卡指标读取运行状态，通过可组合卡片构建实时监控与操作面板，通过流程包编排编译、部署和验证任务；同一套能力也可通过 MCP 提供给外部 agent。
+面向嵌入式 Linux 开发板的 Windows 桌面工作台。通过 ADB、SSH、串口连接板卡，以标准板卡指标读取运行状态，通过可组合卡片封装一套操作、构建实时监控与操作面板，通过流程包编排编译、部署和验证任务；同一套能力也可通过 MCP 提供给外部 agent，与 AI 协作完成嵌入式开发。
 
 ![DevBoard Cockpit 工作台](docs/assets/devboard-cockpit-workbench.png)
 
