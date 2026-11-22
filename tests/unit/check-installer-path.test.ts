@@ -24,14 +24,14 @@ describe('the path of the working tree and the installer', () => {
   });
 
   it('**a path with Chinese characters is reported** ✓ (the installer fails there ✓)', () => {
-    const report = reportPath('D:\\3588\\02、RK3588开发平台\\DevBoardCockpit');
+    const report = reportPath('D:\\3588\\02\u3001RK3588\u5f00\u53d1\u5e73\u53f0\\DevBoardCockpit');
     expect(report.plainAscii).toBe(false);
     expect(report.offenders.length).toBeGreaterThan(0);
   });
 
   it('**the warning names the path and the characters** ✓ (the person has to know what to change ✓)', () => {
-    const warning = pathWarning(reportPath('D:\\3588\\02、RK3588开发平台\\DevBoardCockpit'));
-    expect(warning).toContain('D:\\3588\\02、RK3588开发平台\\DevBoardCockpit');
+    const warning = pathWarning(reportPath('D:\\3588\\02\u3001RK3588\u5f00\u53d1\u5e73\u53f0\\DevBoardCockpit'));
+    expect(warning).toContain('D:\\3588\\02\u3001RK3588\u5f00\u53d1\u5e73\u53f0\\DevBoardCockpit');
     // → The characters are named by their code point ✓ (a Chinese character
     //   cannot be shown reliably in a console ✓).
     expect(warning).toMatch(/U\+[0-9A-F]{4}/);
@@ -39,12 +39,12 @@ describe('the path of the working tree and the installer', () => {
   });
 
   it('**the warning says the application itself is fine** ✓ (only the installer is affected ✓)', () => {
-    const warning = pathWarning(reportPath('D:\\3588\\02、RK3588开发平台\\DevBoardCockpit'));
+    const warning = pathWarning(reportPath('D:\\3588\\02\u3001RK3588\u5f00\u53d1\u5e73\u53f0\\DevBoardCockpit'));
     expect(warning).toContain('the application itself is fine');
   });
 
   it('**the warning says the published release is not affected** ✓ (the runner path is plain ✓)', () => {
-    const warning = pathWarning(reportPath('D:\\3588\\02、RK3588开发平台\\DevBoardCockpit'));
+    const warning = pathWarning(reportPath('D:\\3588\\02\u3001RK3588\u5f00\u53d1\u5e73\u53f0\\DevBoardCockpit'));
     expect(warning).toContain('the published release is not affected');
   });
 });

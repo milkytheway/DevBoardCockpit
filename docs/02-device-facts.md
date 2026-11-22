@@ -264,11 +264,13 @@ had opened COM3 exclusively and swallowed the replies; after stopping it the sam
 | G6 | **the path of the working tree must be plain ASCII** | the NSIS installer fails with *"Error writing temporary file. Make sure your temp folder is valid."* → the build dies **after** the 84 MB artefact was written (a stub of 188 KB is left behind ✓) → **the cause is the path, not the disk and not the temp folder** ✓ (both were checked ✓: 28 GB free ✓ · a short ASCII temp folder changed nothing ✓) | build from a path made of ASCII letters only ✓ (e.g. `C:\work\DevBoardCockpit` ✓) → the same tree ✓ the same node_modules ✓ and the installer is written in full ✓ (measured 2026-11-22 ✓: 84.0 MB ✓ · `npm run check:package` ✓) | 🟢 measured 2026-11-22 |
 
 > **G6 in one sentence** ✓: the directory names of this repository live under
-> `02、RK3588开发平台` ✓ (Chinese characters ✓ · a full-width comma ✓) — that
-> is fine for the application ✓ (it reads the profiles and the cards ✓) but
-> **not** for the NSIS installer ✓ → **the release workflow builds on a
-> runner with an ASCII path** ✓ (`D:\a\DevBoardCockpit\DevBoardCockpit` ✓)
-> → the published installer is complete ✓ ✓.
+> a folder whose name holds **Chinese characters and a full-width comma** ✓
+> (the path of this checkout ✓ — it is the name the machine of the person
+> who wrote it has ✓) — that is fine for the application ✓ (it reads the
+> profiles ✓ and the cards ✓) but **not** for the NSIS installer ✓ → **the
+> release workflow builds on a runner with an ASCII path** ✓
+> (`D:\a\DevBoardCockpit\DevBoardCockpit` ✓) → the published installer is
+> complete ✓ ✓.
 >
 > **For a local installer on this machine** ✓ → build from the copy in
 > `C:\cbc-ascii-test` ✓ (same source ✓ · same node_modules ✓) →
