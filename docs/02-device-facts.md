@@ -269,6 +269,12 @@ had opened COM3 exclusively and swallowed the replies; after stopping it the sam
 > **not** for the NSIS installer ✓ → **the release workflow builds on a
 > runner with an ASCII path** ✓ (`D:\a\DevBoardCockpit\DevBoardCockpit` ✓)
 > → the published installer is complete ✓ ✓.
+>
+> **For a local installer on this machine** ✓ → build from the copy in
+> `C:\cbc-ascii-test` ✓ (same source ✓ · same node_modules ✓) →
+> `npm run dist` ✓ → **84.0 MB** ✓ → and it installs ✓ (measured 2026-11-22 ✓:
+> the silent install returned 0 ✓ · the application starts ✓ · it writes its
+> user data ✓).
 
 ---
 
